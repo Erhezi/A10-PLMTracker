@@ -17,3 +17,74 @@ body { font-feature-settings: "tnum"; }
 .text-accent { color: var(--plm-accent); }
 
 footer { font-size: .75rem; }
+
+.toast-container { width: 480px; }
+
+.flash-bg {
+  background: var(--plm-accent-soft);
+  border-bottom: 1px solid rgba(13,110,253,0.06);
+}
+
+/* flash toast base: span full width, lighter shades, close on far right */
+.flash-toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* ensures close is at far right */
+  width: 100%;
+  border-radius: .5rem;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.03);
+  padding: .5rem .75rem;
+  color: #0b3a83;
+  background: rgba(255,255,255,0.6); /* subtle light base so category tints show */
+}
+
+.flash-toast .toast-body {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  white-space: normal;
+}
+
+/* category variants (lighter accents) */
+.flash-toast.info {
+  background: rgba(13,110,253,0.06);
+  color: var(--plm-accent);
+}
+.flash-toast.success {
+  background: rgba(25,135,84,0.06);
+  color: var(--plm-success);
+}
+.flash-toast.danger {
+  background: rgba(220,53,69,0.06);
+  color: var(--plm-danger);
+}
+.flash-toast.warning {
+  background: rgba(255,193,7,0.04);
+  color: var(--plm-warn);
+}
+
+/* ensure close button visible; keep it at far right */
+.flash-toast .btn-close {
+  filter: none;
+  opacity: .9;
+  flex: 0 0 auto;
+}
+
+/* tidy up spacing inside container */
+#toast-container { width: 100%; }
+#toast-container .toast { min-width: 0; }
+
+/* Wider container when screen permits */
+@media (min-width: 1000px) {
+  .container-wider { max-width: 1880px; }
+}
+
+/* Stage badge shared styling (used in groups.html and collect.html) */
+.stage-badge { font-weight:500; }
+.stage-discontinued { background:#6c757d; color:#fff; }
+.stage-pending-item-number-assigned { background:#0d6efd; color:#fff; }
+.stage-pending-or-approval { background:#6610f2; color:#fff; }
+.stage-transition-tracking { background:#20c997; color:#062b22; }
+.stage-delete { background:#dc3545; color:#fff; }
+.stage-tracking-completed { background:#198754; color:#fff; }

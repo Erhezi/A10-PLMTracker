@@ -1,0 +1,32 @@
+<div class="table-responsive small mb-2">
+  <table class="table table-sm table-hover align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th style="width:42px">Pick</th>
+        <th>Item</th>
+        <th>Mfg</th>
+        <th>Mfg Part</th>
+        <th>Description</th>
+        <th>Active</th>
+        <th>Discontinue</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for it in items %}
+      <tr data-item-row data-item-code="{{ it.item }}">
+        <td>
+          <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ it.item }}">
+        </td>
+        <td class="text-nowrap fw-semibold">{{ it.item }}</td>
+        <td>{{ it.manufacturer or '' }}</td>
+        <td>{{ it.mfg_part_num or '' }}</td>
+        <td style="max-width:260px" class="text-truncate" title="{{ it.item_description }}">{{ it.item_description or '' }}</td>
+        <td>{% if it.is_active %}<span class="badge bg-success">Y</span>{% else %}<span class="badge bg-secondary">N</span>{% endif %}</td>
+        <td>{% if it.is_discontinued %}<span class="badge bg-danger">Y</span>{% else %}<span class="badge bg-secondary">N</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="text-muted fst-italic">No matches</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

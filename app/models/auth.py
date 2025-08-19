@@ -3,6 +3,8 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from .. import db
+from . import now_ny_naive
+from sqlalchemy import text
 
 
 class User(db.Model, UserMixin):
@@ -11,9 +13,10 @@ class User(db.Model, UserMixin):
     user_id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     name = db.Column(db.String(120))
+    user_role = db.Column(db.String(50), nullable=False, server_default=text("'user'"), index=True)  # e.g., 'admin', 'user'
     pw_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=False), default=now_ny_naive, nullable=False)
     last_login_at = db.Column(db.DateTime)
 
     # Flask-Login required attribute name is 'id' or 'get_id'; we map id property.

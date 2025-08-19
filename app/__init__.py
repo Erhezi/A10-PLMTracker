@@ -26,6 +26,8 @@ def create_app(env: str | None = None):
 
     # Import models so that db.create_all sees them
     from .models.auth import User  # noqa: F401
+    from .models.relations import ItemLink  # noqa: F401
+    from .models.inventory import Item  # noqa: F401
 
     # Register blueprints
     from .auth.routes import bp as auth_bp

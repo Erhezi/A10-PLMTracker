@@ -1,14 +1,480 @@
 {% extends 'base.html' %}
 {% block title %}Groups — PLM Tracker{% endblock %}
 {% block content %}
-<h1 class="h4 fw-semibold mb-3">Item Groups</h1>
-<p class="text-muted small">Placeholder for groups list / filters.</p>
-<table class="table table-sm table-hover bg-white shadow-sm align-middle">
-  <thead class="table-light">
-    <tr><th>ID</th><th>Status</th><th>Reason</th><th>Members</th></tr>
-  </thead>
-  <tbody>
-    <tr><td colspan="4" class="text-muted small">No data yet.</td></tr>
-  </tbody>
-</table>
+<h1 class ="h4 fw-semibold mb-3">Item Groups</h1>
+<p class="text-muted small">List all items entered for tracking</p>
+<div class="d-flex align-items-end gap-3 flex-wrap mb-2">
+  <div style="width:170px;">
+    <label for="filter-mode" class="form-label small mb-1 text-muted">Filter Mode</label>
+    <select id="filter-mode" class="form-select form-select-sm">
+      <option value="contains">Contains (any col)</option>
+      <option value="not-contains">Not Contains (any col)</option>
+  <option value="item-group">By Item Group</option>
+  <option value="stage">By Stage</option>
+    </select>
+  </div>
+  <div class="flex-grow-1" style="max-width:380px;">
+    <label for="filter-input" class="form-label small mb-1 text-muted">Quick Filter</label>
+    <input id="filter-input" type="text" class="form-control form-control-sm" placeholder="Type to filter..." autocomplete="off" />
+  </div>
+  <div class="small text-muted">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
+  <form method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Delete? This cannot be undone.');">
+    <button type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
+      Clear Deleted ({{ count_deleted }})
+    </button>
+  </form>
+</div>
+
+<div class="table-responsive position-relative border rounded shadow-sm" style="max-height:700px; overflow:auto;">
+  <table class="table table-sm table-hover align-middle mb-0" id="itemlink-table">
+    <thead class="table-light small sticky-top shadow-sm" style="z-index:5;">
+      <tr>
+        <th style="width:58px;" class="text-center sortable" data-sort="none" data-type="none">Edit <span class="sort-indicator"></span></th>
+        <th class="text-center sortable" data-type="number">Item Group <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text">Item <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text">Replace Item <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text">Mfg Part # <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text">Mfg <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text" style="min-width:240px;">Item Description <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text">Repl Mfg # <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text">Repl Mfg <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="text" style="min-width:240px;">Repl Description <span class="sort-indicator"></span></th>
+  <th class="text-center sortable" data-type="stage">Stage <span class="sort-indicator"></span></th>
+  <th class="sortable" data-type="date" style="min-width:110px;">Go Live <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="wrike">Wrike ID <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="date">CreateDT <span class="sort-indicator"></span></th>
+        <th class="sortable" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
+      </tr>
+    </thead>
+    <tbody class="small">
+      {% if items %}
+        {% for r in items %}
+        <tr data-item="{{ r.item }}" data-replace-item="{{ r.replace_item }}">
+          <td class="text-center">
+            <button class="btn btn-outline-primary btn-sm edit-btn" type="button">Edit</button>
+            <div class="d-none action-buttons">
+              <button class="btn btn-success btn-sm save-btn" type="button" title="Save changes">Save</button>
+              <button class="btn btn-secondary btn-sm cancel-btn" type="button" title="Cancel edits">Cancel</button>
+            </div>
+          </td>
+          <td class="text-center fw-semibold">{{ r.item_group }}</td>
+          <td class="font-monospace">{{ r.item }}</td>
+          <td class="font-monospace">
+            {% if r.stage == 'Discontinued' and (r.replace_item is none or r.replace_item|string|lower in ['nan','']) %}
+              <span class="text-muted fst-italic">null</span>
+            {% else %}{{ r.replace_item }}{% endif %}
+          </td>
+          <td title="{{ r.mfg_part_num }}" class="text-truncate" style="max-width:140px;">{{ r.mfg_part_num }}</td>
+          <td class="text-truncate" style="max-width:120px;">{{ r.manufacturer }}</td>
+          <td class="text-truncate" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
+          <td title="{{ r.repl_mfg_part_num }}" class="text-truncate" style="max-width:140px;">
+            {% if r.stage == 'Discontinued' and (r.repl_mfg_part_num is none or r.repl_mfg_part_num|string|lower in ['nan','']) %}
+              <span class="text-muted fst-italic">null</span>
+            {% else %}{{ r.repl_mfg_part_num }}{% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:120px;">
+            {% if r.stage == 'Discontinued' and (r.repl_manufacturer is none or r.repl_manufacturer|string|lower in ['nan','']) %}
+              <span class="text-muted fst-italic">null</span>
+            {% else %}{{ r.repl_manufacturer }}{% endif %}
+          </td>
+          <td class="text-truncate" style="max-width:260px;" title="{{ r.repl_item_description }}">
+            {% if r.stage == 'Discontinued' and (r.repl_item_description is none or r.repl_item_description|string|lower in ['nan','']) %}
+              <span class="text-muted fst-italic">null</span>
+            {% else %}{{ r.repl_item_description }}{% endif %}
+          </td>
+          <td class="stage-cell text-center" data-value="{{ r.stage or '' }}">
+            <span class="read-value">
+              {% if r.stage %}
+                <span class="badge stage-badge stage-{{ r.stage|lower|replace(' ', '-') }}">{{ r.stage }}</span>
+              {% endif %}
+            </span>
+            <select class="form-select form-select-sm d-none" name="stage">
+              <option value="">--</option>
+              {% for s in allowed_stages %}
+                <option value="{{ s }}" {% if r.stage==s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="date-cell" data-value="{{ r.expected_go_live_date }}">
+            <span class="read-value">
+              {% if not r.expected_go_live_date or r.expected_go_live_date|string|lower in ['nan','none',''] %}
+                <span class="text-muted fst-italic">unknown</span>
+              {% else %}
+                {{ r.expected_go_live_date }}
+              {% endif %}
+            </span>
+            <input type="date" class="form-control form-control-sm d-none" name="expected_go_live_date" value="{{ r.expected_go_live_date }}" />
+          </td>
+          <td class="wrike-cell" data-value="{{ r.wrike_id }}">
+            <span class="read-value">
+              {% set wrike_str = (r.wrike_id|string) if r.wrike_id else '' %}
+              {% if wrike_str and wrike_str.isdigit() and wrike_str|length == 10 %}
+                <a href="https://www.wrike.com/open.htm?id={{ wrike_str }}" target="_blank" rel="noopener" class="small">{{ wrike_str }}</a>
+              {% elif wrike_str %}
+                <span class="text-muted small">{{ wrike_str }}</span>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </span>
+            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" title="10 digits" class="form-control form-control-sm d-none" name="wrike_id" value="{{ r.wrike_id }}" />
+          </td>
+          <td class="text-nowrap text-muted" style="font-size: .7rem;">{{ r.create_dt.strftime('%Y-%m-%d') if r.create_dt else '' }}</td>
+          <td class="text-nowrap text-muted" style="font-size: .7rem;">{{ r.update_dt.strftime('%Y-%m-%d %H:%M:%S') if r.update_dt else '' }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="15" class="text-muted fst-italic">No ItemLink records.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const table = document.getElementById('itemlink-table');
+  const filterInput = document.getElementById('filter-input');
+  const filterMode = document.getElementById('filter-mode');
+  const visibleCountEl = document.getElementById('visible-count');
+  if(!table) return;
+
+  // Handle potential caching issues on reload
+  if (performance.navigation.type === 1) {
+    // This is a page reload - ensure data attributes are in sync
+    console.log('Page was reloaded - refreshing data attributes');
+    document.querySelectorAll('#itemlink-table .stage-cell').forEach(cell => {
+      const badge = cell.querySelector('.stage-badge');
+      if (badge) {
+        cell.dataset.value = badge.innerText.trim();
+      }
+    });
+  }
+
+  table.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const row = btn.closest('tr');
+    if(btn.classList.contains('edit-btn')) {
+      enterEdit(row, btn);
+    } else if(btn.classList.contains('cancel-btn')) {
+      exitEdit(row);
+    } else if(btn.classList.contains('save-btn')) {
+      await saveRow(row);
+    }
+  });
+
+  // Filter logic (client side)
+  function applyFilter(){
+    const qRaw = filterInput.value.trim();
+    const q = qRaw.toLowerCase();
+    const mode = filterMode.value;
+    const rows = table.tBodies[0].rows;
+    let visible = 0;
+    for(const tr of rows){
+      if(tr.dataset.item === undefined){
+        continue;
+      }
+      let match = true;
+      if(q){
+        if(mode === 'contains'){
+          match = tr.innerText.toLowerCase().includes(q);
+        } else if(mode === 'not-contains'){
+          match = !tr.innerText.toLowerCase().includes(q);
+        } else if(mode === 'item-group'){
+          const cell = tr.children[1]; // Item Group column
+            const cellText = (cell ? cell.innerText : '').trim().toLowerCase();
+            match = cellText === q; // exact match on item group
+        } else if(mode === 'stage'){
+          const stageCell = tr.querySelector('.stage-cell .stage-badge');
+          const stageText = stageCell ? stageCell.innerText.trim().toLowerCase() : '';
+          match = stageText.includes(q); // allow partial match
+        }
+      }
+      tr.classList.toggle('d-none', !match);
+      if(match) visible++;
+    }
+    if(visibleCountEl) visibleCountEl.textContent = visible;
+  }
+  if(filterInput && filterMode){
+    filterInput.addEventListener('input', applyFilter);
+    filterMode.addEventListener('change', applyFilter);
+    applyFilter();
+  }
+
+  function enterEdit(row, editButton){
+    row.querySelectorAll('.read-value').forEach(el => el.classList.add('d-none'));
+    row.querySelectorAll('select, input').forEach(el => el.classList.remove('d-none'));
+    const actionDiv = row.querySelector('.action-buttons');
+    actionDiv.classList.remove('d-none');
+    editButton.classList.add('d-none');
+    row.classList.add('table-warning');
+
+    // Stage transition filtering per rules
+    const stageCell = row.querySelector('.stage-cell');
+    if(stageCell){
+      const current = stageCell.dataset.value || '';
+      const sel = stageCell.querySelector('select[name="stage"]');
+      if(sel){
+        // First reset all options to enabled
+        Array.from(sel.options).forEach(opt => {
+          opt.disabled = false;
+        });
+        
+        // Then apply rules
+        Array.from(sel.options).forEach(opt => {
+          if(!opt.value) return; // skip blank
+          let allow = true;
+          if(current === 'Discontinued'){
+            // Only allow Delete or Tracking Completed or remain Discontinued
+            if(!['Discontinued','Delete','Tracking Completed'].includes(opt.value)) allow = false;
+          } else {
+            // Disallow selecting Discontinued
+            if(opt.value === 'Discontinued') allow = false;
+          }
+          opt.disabled = !allow;
+        });
+        
+        // Ensure the current value is selected
+        sel.value = current;
+      }
+    }
+  }
+
+  function exitEdit(row){
+    row.querySelectorAll('.read-value').forEach(el => el.classList.remove('d-none'));
+    row.querySelectorAll('select, input').forEach(el => el.classList.add('d-none'));
+    const actionDiv = row.querySelector('.action-buttons');
+    actionDiv.classList.add('d-none');
+    row.querySelector('.edit-btn').classList.remove('d-none');
+    row.classList.remove('table-warning');
+    // Reset input values to original data-value attributes
+    const stageCell = row.querySelector('.stage-cell');
+    const dateCell = row.querySelector('.date-cell');
+    const wrikeCell = row.querySelector('.wrike-cell');
+    if(stageCell){
+      const sel = stageCell.querySelector('select');
+      sel.value = stageCell.dataset.value || '';
+    }
+    if(dateCell){
+      const inp = dateCell.querySelector('input');
+      inp.value = dateCell.dataset.value || '';
+    }
+    if(wrikeCell){
+      const inp = wrikeCell.querySelector('input');
+      inp.value = wrikeCell.dataset.value || '';
+    }
+  }
+  async function saveRow(row){
+    const item = row.dataset.item;
+    const replaceItem = row.dataset['replaceItem'];
+    const stage = row.querySelector('select[name="stage"]').value;
+    const dateVal = row.querySelector('input[name="expected_go_live_date"]').value;
+    const wrikeId = row.querySelector('input[name="wrike_id"]').value;
+    
+    try {
+      const formData = new FormData();
+      formData.append('stage', stage);
+      if(dateVal) formData.append('expected_go_live_date', dateVal);
+      if(wrikeId) formData.append('wrike_id', wrikeId);
+      
+      const resp = await fetch(`/groups/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}/update`, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }
+      });
+      
+      if(!resp.ok){
+        let msg = 'Update failed';
+        try { const err = await resp.json(); if(err.message) msg = err.message; } catch {}
+        alert(msg);
+        return;
+      }
+      const data = await resp.json();
+      if(data.status !== 'ok'){
+        alert(data.message || 'Update failed');
+        return;
+      }
+      // Update UI with returned record
+      const rec = data.record;
+      // Stage update
+      const stageCell = row.querySelector('.stage-cell');
+      if(stageCell){
+        stageCell.dataset.value = rec.stage || '';
+        const badgeWrap = stageCell.querySelector('.read-value');
+        if(badgeWrap){
+          badgeWrap.innerHTML = rec.stage ? `<span class="badge stage-badge stage-${(rec.stage||'').toLowerCase().replace(/ /g,'-')}">${rec.stage}</span>` : '';
+        }
+        const sel = stageCell.querySelector('select');
+        if(sel) sel.value = rec.stage || '';
+      }
+      // Date update
+      const dateCell = row.querySelector('.date-cell');
+      if(dateCell){
+        dateCell.dataset.value = rec.expected_go_live_date || '';
+        const span = dateCell.querySelector('.read-value');
+        if(span){
+          if(!rec.expected_go_live_date){
+            span.innerHTML = '<span class="text-muted fst-italic">unknown</span>';
+          } else {
+            span.textContent = rec.expected_go_live_date;
+          }
+        }
+        const inp = dateCell.querySelector('input');
+        if(inp) inp.value = rec.expected_go_live_date || '';
+      }
+      // Wrike update
+      const wrikeCell = row.querySelector('.wrike-cell');
+      if(wrikeCell){
+        wrikeCell.dataset.value = rec.wrike_id || '';
+        const span = wrikeCell.querySelector('.read-value');
+        if(span){
+          const wid = rec.wrike_id || '';
+            if(wid && /^\d{10}$/.test(wid)){
+              span.innerHTML = `<a href="https://www.wrike.com/open.htm?id=${wid}" target="_blank" rel="noopener" class="small">${wid}</a>`;
+            } else if(wid){
+              span.innerHTML = `<span class="text-muted small">${wid}</span>`;
+            } else {
+              span.innerHTML = '<span class="text-muted small">—</span>';
+            }
+        }
+        const inp = wrikeCell.querySelector('input');
+        if(inp) inp.value = rec.wrike_id || '';
+      }
+      // Update update_dt column (last cell)
+      const updateCell = row.lastElementChild; // update_dt is last td
+      if(updateCell){
+        if(rec.update_dt){
+          try { updateCell.textContent = new Date(rec.update_dt).toISOString().slice(0,19).replace('T',' '); } catch { updateCell.textContent = rec.update_dt; }
+        }
+      }
+      exitEdit(row);
+    } catch (err) {
+      console.error('Error saving row:', err);
+      alert('An error occurred while saving');
+    }
+  }
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Acquire references (some may already be defined in previous script block; guard redefinitions)
+  const table = document.getElementById('itemlink-table');
+  if(!table) return;
+  const thead = table.tHead;
+  const tbody = table.tBodies[0];
+  const headers = Array.from(thead.querySelectorAll('th.sortable'));
+
+  // Preserve original order index for stable sort / reset
+  Array.from(tbody.rows).forEach((tr, idx) => tr.dataset._orig = idx);
+
+  let currentSort = { index: null, dir: 'asc' };
+
+  function getCellValue(tr, idx, type){
+    const cell = tr.cells[idx];
+    if(!cell) return '';
+    let raw = cell.innerText.trim();
+    if(type === 'number'){
+      const n = parseFloat(raw.replace(/[^0-9.-]/g,''));
+      return isNaN(n) ? Number.NEGATIVE_INFINITY : n; // blanks -> very small
+    }
+    if(type === 'date'){
+      // Expect YYYY-MM-DD or 'unknown'
+      if(/\d{4}-\d{2}-\d{2}/.test(raw)) return raw; // lexicographic works for ISO dates
+      return '9999-99-99';
+    }
+    if(type === 'datetime'){
+      // Format 'YYYY-MM-DD HH:MM:SS'
+      if(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(raw)) return raw; // ISO-like
+      return '9999-99-99 99:99:99';
+    }
+    if(type === 'stage'){
+      const badge = cell.querySelector('.stage-badge');
+      raw = badge ? badge.innerText.trim() : '';
+      return raw.toLowerCase();
+    }
+    if(type === 'wrike'){
+      const link = cell.querySelector('a');
+      if(link) raw = link.innerText.trim();
+      const digits = raw.match(/\d{10}/);
+      return digits ? digits[0] : ''; // sort numeric id as string
+    }
+    return raw.toLowerCase();
+  }
+
+  function sortBy(idx, type){
+    // Toggle direction
+    if(currentSort.index === idx){
+      currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort.index = idx;
+      currentSort.dir = 'asc';
+    }
+
+    headers.forEach((h,i)=>{
+      h.classList.toggle('active', i===idx);
+      const ind = h.querySelector('.sort-indicator');
+      if(ind){
+        if(i===idx){
+          ind.textContent = currentSort.dir === 'asc' ? '▲' : '▼';
+        } else {
+          ind.textContent = ''; // clear others
+        }
+      }
+    });
+
+    const rows = Array.from(tbody.rows).filter(r=>r.dataset.item !== undefined);
+    const dirMod = currentSort.dir === 'asc' ? 1 : -1;
+
+    rows.sort((a,b)=>{
+      const va = getCellValue(a, idx, type);
+      const vb = getCellValue(b, idx, type);
+      if(type === 'number'){
+        return (va - vb) * dirMod || (a.dataset._orig - b.dataset._orig);
+      }
+      if(va < vb) return -1 * dirMod;
+      if(va > vb) return 1 * dirMod;
+      return (a.dataset._orig - b.dataset._orig); // stable
+    });
+
+    // Re-append in sorted order
+    rows.forEach(r=>tbody.appendChild(r));
+  }
+
+  headers.forEach((th, idx) => {
+    th.addEventListener('click', (e) => {
+      // Avoid sorting if clicking on a form control inside header
+      if(e.target.closest('button, input, select')) return;
+      const type = th.dataset.type || 'text';
+      // If type none, still allow resetting to original order toggle
+      if(type === 'none'){
+        // Reset to original order
+        currentSort = { index: null, dir: 'asc' };
+        headers.forEach(h=>{ h.classList.remove('active'); const ind = h.querySelector('.sort-indicator'); if(ind) ind.textContent=''; });
+        const rows = Array.from(tbody.rows).filter(r=>r.dataset.item !== undefined).sort((a,b)=>a.dataset._orig - b.dataset._orig);
+        rows.forEach(r=>tbody.appendChild(r));
+        return;
+      }
+      sortBy(idx, type);
+    });
+  });
+});
+</script>
+<style>
+  #itemlink-table tbody tr:hover { background:#f7f9fc; }
+  #itemlink-table .stage-badge { font-weight:500; }
+  /* Stage specific colors */
+  .stage-discontinued { background:#6c757d; color:#fff; }
+  .stage-pending-item-number-assigned { background:#0d6efd; color:#fff; }
+  .stage-pending-or-approval { background:#6610f2; color:#fff; }
+  .stage-transition-tracking { background:#20c997; color:#062b22; }
+  .stage-delete { background:#dc3545; color:#fff; }
+  .stage-tracking-completed { background:#198754; color:#fff; }
+  #itemlink-table td, #itemlink-table th { vertical-align:middle; }
+  #itemlink-table td { line-height:1.1rem; }
+  #itemlink-table td .form-control, #itemlink-table td .form-select { min-width:110px; }
+  #itemlink-table thead th { position:sticky; top:0; backdrop-filter:blur(4px); cursor:pointer; user-select:none; }
+  #itemlink-table th.sortable .sort-indicator { opacity:0.4; font-size:0.65rem; margin-left:4px; }
+  #itemlink-table th.sortable.active { background:#eef3f9; }
+  #itemlink-table th.sortable.active .sort-indicator { opacity:1; }
+  #itemlink-table .table-warning { --bs-table-bg:#fff3cd !important; }
+</style>
 {% endblock %}

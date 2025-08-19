@@ -2,23 +2,298 @@
 {% block title %}Collect Links — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3">Item Relation Collection</h1>
-<p class="text-muted small">Dual picker UI placeholder. Implement HTMX interactions next.</p>
-<div class="row g-3">
+<p class="text-muted small mb-4">Search and check source item(s) and replacement item(s), then Create Links. Sentinels: <span class="badge bg-secondary">PENDING</span>, <span class="badge bg-secondary">NO REPLACEMENT</span>.</p>
+
+<div class="row g-4">
   <div class="col-md-6">
-    <div class="card shadow-sm border-0">
-      <div class="card-body">
-        <label class="form-label small text-uppercase">Item</label>
-        <input class="form-control" placeholder="Search item..." />
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body d-flex flex-column">
+        <label class="form-label small text-uppercase">Items</label>
+        <input id="item-search" name="q" class="form-control mb-2" placeholder="Search item..." autocomplete="off"
+               hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" />
+        <div class="small text-muted mb-2">Check boxes to select. Max 6 per side (<=36 links).</div>
+        <div id="item-selected" class="mb-2"></div>
+        <div id="item-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
       </div>
     </div>
   </div>
   <div class="col-md-6">
-    <div class="card shadow-sm border-0">
-      <div class="card-body">
-        <label class="form-label small text-uppercase">Replace Item</label>
-        <input class="form-control" placeholder="Search replacement..." />
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body d-flex flex-column">
+        <label class="form-label small text-uppercase">Replacement Items</label>
+        <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement..." autocomplete="off"
+               hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" />
+        <div class="d-flex gap-2 mb-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="PENDING">Add PENDING</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="NO REPLACEMENT">Add NO REPLACEMENT</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-repl">Clear</button>
+        </div>
+        <div id="repl-selected" class="mb-2"></div>
+        <div id="repl-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
       </div>
     </div>
   </div>
 </div>
+
+<div class="mt-4 d-flex align-items-end gap-3 flex-wrap">
+  <div class="d-flex flex-column">
+    <label class="form-label small mb-1 text-muted">Item PLM Stage</label>
+    <div class="d-flex align-items-center gap-2">
+      <span id="derived-stage" class="badge bg-info">&mdash;</span>
+      <select id="stage-override" class="form-select form-select-sm w-auto" disabled>
+        <option value="Pending OR Approval">Pending OR Approval</option>
+        <option value="Transition Tracking">Transition Tracking</option>
+      </select>
+    </div>
+  </div>
+  <div class="d-flex flex-column">
+    <label class="form-label small mb-1 text-muted">Expected Go Live Date</label>
+    <input type="date" id="expected-go-live" class="form-control form-control-sm" min="{{ date_min }}" max="{{ date_max }}" />
+  </div>
+  <div class="d-flex flex-column">
+    <label class="form-label small mb-1 text-muted">Wrike Task ID (10 digits)</label>
+    <input type="text" pattern="\d{10}" maxlength="10" minlength="10" inputmode="numeric" id="wrike-id" class="form-control form-control-sm" placeholder="##########" />
+  </div>
+  <button id="create-links" class="btn btn-primary btn-sm" disabled>Create Links</button>
+  <div id="batch-feedback" class="small"></div>
+</div>
+
+<div class="mt-4" id="created-results-wrapper" style="display:none;">
+  <h2 class="h6 fw-semibold">Newly Created Links</h2>
+  <div class="table-responsive border rounded shadow-sm">
+    <table class="table table-sm table-hover align-middle mb-0" id="created-links-table">
+      <thead class="table-light small">
+        <tr>
+          <th class="text-center" style="width:40px;">Remove</th>
+          <th class="text-center">Item Group</th>
+          <th>Item</th>
+          <th>Replace Item</th>
+          <th>Mfg Part #</th>
+          <th>Mfg</th>
+          <th style="min-width:220px;">Item Description</th>
+          <th>Repl Mfg #</th>
+          <th>Repl Mfg</th>
+          <th style="min-width:220px;">Repl Description</th>
+          <th class="text-center">Stage</th>
+          <th style="min-width:110px;">Go Live</th>
+          <th>Wrike ID</th>
+          <th>CreateDT</th>
+          <th>UpdateDT</th>
+        </tr>
+      </thead>
+      <tbody class="small"></tbody>
+    </table>
+  </div>
+</div>
+
+<script id="allowed-stages-data" type="application/json">{{ allowed_stages|tojson }}</script>
+<script>
+(function(){
+  const itemSelectedEl = document.getElementById('item-selected');
+  const replSelectedEl = document.getElementById('repl-selected');
+  const stageBadge = document.getElementById('derived-stage');
+  const stageSelect = document.getElementById('stage-override');
+  const createBtn = document.getElementById('create-links');
+  const feedback = document.getElementById('batch-feedback');
+  const goLiveInput = document.getElementById('expected-go-live');
+  const wrikeInput = document.getElementById('wrike-id');
+  const createdWrapper = document.getElementById('created-results-wrapper');
+  const createdTableBody = document.querySelector('#created-links-table tbody');
+  const itemSearch = document.getElementById('item-search');
+  const replSearch = document.getElementById('repl-search');
+  const SENTINELS = ['PENDING','NO REPLACEMENT'];
+
+  let items = [];
+  let repls = [];
+
+  function renderSelections(){
+  const pill = (c,kind)=>`<span class='badge bg-secondary me-1 mb-1' data-code='${c}' data-kind='${kind}'>${c} <span class='ms-1' data-remove='x' style='cursor:pointer' aria-label='Remove'>&times;</span></span>`;
+  itemSelectedEl.innerHTML = items.map(c=>pill(c,'item')).join('');
+  replSelectedEl.innerHTML = repls.map(c=>pill(c,'repl')).join('');
+    updateStage();
+    createBtn.disabled = !(items.length && repls.length);
+  }
+
+  function updateStage(){
+    let stage = '—';
+    let locked = false;
+    if(repls.length===1 && repls[0]==='PENDING'){ stage='Pending Item Number Assigned'; locked=true; }
+    else if(repls.length===1 && repls[0]==='NO REPLACEMENT'){ stage='Discontinued'; locked=true; }
+    else if(repls.length){ stage='Pending OR Approval'; }
+    stageBadge.textContent = stage;
+    stageBadge.className = 'badge ' + (locked? 'bg-secondary':'bg-info');
+    stageSelect.disabled = locked || stage==='—';
+    if(!locked && stage!=='—') stageSelect.value = 'Pending OR Approval';
+  }
+
+  function enforceLimits(){
+    if(items.length > 6) items = items.slice(0,6);
+    if(repls.length > 6) repls = repls.slice(0,6);
+  }
+
+  document.addEventListener('click', e => {
+    const sentinelBtn = e.target.closest('button[data-sentinel]');
+    if(sentinelBtn){
+      const code = sentinelBtn.getAttribute('data-sentinel');
+      // If any real replacements selected, ignore adding sentinel
+      if(repls.length && !SENTINELS.includes(repls[0])) return;
+      repls = [code];
+      // Uncheck any checkboxes in replacement results
+      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
+      renderSelections();
+      return;
+    }
+    if(e.target.id==='clear-repl'){
+      repls = [];
+      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
+      renderSelections();
+      return;
+    }
+    const removeBtn = e.target.closest('[data-remove]');
+    if(removeBtn){
+      const badge = removeBtn.closest('[data-code]');
+      if(badge){
+        const code = badge.getAttribute('data-code');
+        const kind = badge.getAttribute('data-kind');
+        if(kind==='item') items = items.filter(i=>i!==code); else repls = repls.filter(r=>r!==code);
+        document.querySelectorAll(`input[data-pick-checkbox][value="${code}"]`).forEach(cb=> cb.checked=false);
+        // If a sentinel was removed (kind repl) nothing special needed; stage updates via renderSelections
+        renderSelections();
+      }
+    }
+  });
+
+  document.body.addEventListener('htmx:afterSwap', evt => {
+    const tgt = evt.target;
+    if(tgt.id==='item-results' || tgt.id==='repl-results'){
+      const isRepl = tgt.id==='repl-results';
+      tgt.querySelectorAll('input[data-pick-checkbox]').forEach(cb => {
+        // Re-check if already selected (fresh content)
+        if((isRepl? repls: items).includes(cb.value)) cb.checked = true;
+        cb.addEventListener('change', () => {
+          const code = cb.value;
+          if(isRepl){
+            if(cb.checked){
+              // Block selecting if sentinel already chosen
+              if(repls.length===1 && SENTINELS.includes(repls[0])) { cb.checked=false; return; }
+              if(!repls.includes(code)) repls.push(code);
+            } else {
+              repls = repls.filter(c=>c!==code);
+            }
+          } else {
+            if(cb.checked){ if(!items.includes(code)) items.push(code); }
+            else { items = items.filter(c=>c!==code); }
+          }
+          enforceLimits();
+          renderSelections();
+        });
+      });
+    }
+  });
+
+  createBtn.addEventListener('click', async () => {
+    if(createBtn.disabled) return;
+    const stageDerived = stageBadge.textContent;
+    let stageToSend = stageDerived;
+    if(stageToSend==='Pending OR Approval' && stageSelect.value !== 'Pending OR Approval'){
+      stageToSend = stageSelect.value;
+    }
+    const payload = { items, replace_items: repls, stage: stageToSend };
+    const goLive = goLiveInput.value.trim();
+    if(goLive) payload.expected_go_live_date = goLive;
+    const wrike = wrikeInput.value.trim();
+    if(wrike){
+      if(!/^\d{10}$/.test(wrike)){
+        feedback.innerHTML = `<span class='text-danger'>Wrike Task ID must be 10 digits</span>`;
+        return;
+      }
+      payload.wrike_id = wrike;
+    }
+    feedback.textContent = 'Creating...';
+    try {
+      const res = await fetch('/api/item-links/batch', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if(!res.ok){
+        feedback.innerHTML = `<span class='text-danger'>Error: ${json.error||'Failed'}</span>`;
+      } else {
+        feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${json.group_id}</span>`;
+        if(json.records && json.records.length){
+          createdWrapper.style.display = '';
+          // Append rows
+          const rowsHtml = json.records.map(r => {
+            const stageBadge = r.stage ? `<span class='badge stage-badge stage-${r.stage.toLowerCase().replace(/ /g,'-')}'>${r.stage}</span>` : '';
+            const goLive = r.expected_go_live_date ? r.expected_go_live_date : `<span class='text-muted fst-italic'>unknown</span>`;
+            const wrikeDisp = r.wrike_id ? (r.wrike_id.match(/^\d{10}$/) ? `<a href='https://www.wrike.com/open.htm?id=${r.wrike_id}' target='_blank' rel='noopener' class='small'>${r.wrike_id}</a>` : `<span class='text-muted small'>${r.wrike_id}</span>`) : '<span class="text-muted small">—</span>';
+            return `<tr>
+              <td class='text-center'>
+                <button type='button' class='btn btn-sm btn-outline-danger py-0 px-1' title='Remove link' data-remove-link data-item='${r.item}' data-replace-item='${r.replace_item}'>&times;</button>
+              </td>
+              <td class='text-center fw-semibold'>${r.item_group}</td>
+              <td class='font-monospace'>${r.item}</td>
+              <td class='font-monospace'>${r.replace_item}</td>
+              <td class='text-truncate' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
+              <td class='text-truncate' style='max-width:120px;'>${r.manufacturer||''}</td>
+              <td class='text-truncate' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
+              <td class='text-truncate' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
+              <td class='text-truncate' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
+              <td class='text-truncate' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
+              <td class='text-center'>${stageBadge}</td>
+              <td>${goLive}</td>
+              <td>${wrikeDisp}</td>
+              <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.create_dt ? r.create_dt.substring(0,10):''}</td>
+              <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.update_dt ? r.update_dt.replace('T',' ').substring(0,19):''}</td>
+            </tr>`;
+          }).join('');
+          createdTableBody.insertAdjacentHTML('beforeend', rowsHtml);
+          // optional: clear selections after creation
+          items = []; repls = [];
+          document.querySelectorAll('input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
+          renderSelections();
+        }
+      }
+    } catch(err){
+      feedback.innerHTML = `<span class='text-danger'>Error: ${err}</span>`;
+    }
+  });
+
+  renderSelections();
+
+  // Deletion handler for dynamically added rows
+  createdTableBody.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-remove-link]');
+    if(!btn) return;
+    const item = btn.getAttribute('data-item');
+    const replaceItem = btn.getAttribute('data-replace-item');
+    if(!item || !replaceItem) return;
+    if(!confirm(`Remove link ${item} -> ${replaceItem}?`)) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
+    try {
+      const res = await fetch(`/api/item-links/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}`, { method: 'DELETE' });
+      if(!res.ok){
+        const j = await res.json().catch(()=>({}));
+        feedback.innerHTML = `<span class='text-danger'>Delete failed: ${j.error||res.status}</span>`;
+        btn.disabled = false;
+        btn.innerHTML = '&times;';
+        return;
+      }
+      const row = btn.closest('tr');
+      row?.remove();
+      feedback.innerHTML = `<span class='text-success'>Deleted link ${item} → ${replaceItem}</span>`;
+      // Hide wrapper if table now empty
+      if(!createdTableBody.querySelector('tr')){
+        createdWrapper.style.display = 'none';
+      }
+    } catch(err){
+      feedback.innerHTML = `<span class='text-danger'>Delete error: ${err}</span>`;
+      btn.disabled = false;
+      btn.innerHTML = '&times;';
+    }
+  });
+})();
+</script>
 {% endblock %}

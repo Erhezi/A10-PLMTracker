@@ -1,0 +1,29 @@
+<!-- base layout placeholder -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{% block title %}Inventory Conversion Tracker{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="{{ url_for('auth.login') }}">Auth</a>
+  </nav>
+  <div class="flashes">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% if msgs %}
+        <ul class="flashes">
+          {% for category, message in msgs %}
+            <li class="flash {{ category }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+  </div>
+  <main>
+  {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

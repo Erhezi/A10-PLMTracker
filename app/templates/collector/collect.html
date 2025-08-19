@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Collect Links — PLM Tracker{% endblock %}
+{% block content %}
+<h1 class="h4 fw-semibold mb-3">Item Relation Collection</h1>
+<p class="text-muted small">Dual picker UI placeholder. Implement HTMX interactions next.</p>
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <label class="form-label small text-uppercase">Item</label>
+        <input class="form-control" placeholder="Search item..." />
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <label class="form-label small text-uppercase">Replace Item</label>
+        <input class="form-control" placeholder="Search replacement..." />
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

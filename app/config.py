@@ -1,28 +1,29 @@
-"""Configuration object placeholders (Dev/Test/Prod)."""
 import os
-from datetime import timedelta
 
-class BaseConfig:
-    SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_DEV")
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "mssql+pyodbc://username:password@dsn")  # placeholder DSN
+class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
+    SERVER = os.getenv("DB_SERVER", "MISCPrdAdhocDB")
+    DATABASE = os.getenv("DB_NAME", "PRIME")
+    DRIVER = os.getenv("ODBC_DRIVER", "ODBC+Driver+17+for+SQL+Server")
+    TRUSTED = os.getenv("DB_TRUSTED", "yes")
+    # Build MSSQL URI (Integrated Security). If running locally w/out domain context, may need SQL auth.
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "DATABASE_URL",
+        f"mssql+pyodbc://{SERVER}/{DATABASE}?trusted_connection={TRUSTED}&driver={DRIVER}" if os.name == "nt" else f"mssql+pyodbc://{SERVER}/{DATABASE}?Trusted_Connection={TRUSTED}&driver={DRIVER}"
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Auth / security
-    ALLOWED_EMAIL_DOMAINS = os.getenv("ALLOWED_EMAIL_DOMAINS", "example.com").split(",")
-    EMAIL_VERIFICATION_TOKEN_MINUTES = int(os.getenv("EMAIL_VERIFICATION_TOKEN_MINUTES", "60"))
-    PASSWORD_RESET_TOKEN_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_MINUTES", "30"))
-
-    # Mail (stub defaults)
-    MAIL_SERVER = os.getenv("MAIL_SERVER", "localhost")
-    MAIL_PORT = int(os.getenv("MAIL_PORT", "25"))
-    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "false").lower() == "true"
-    MAIL_USERNAME = os.getenv("MAIL_USERNAME")
-    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
-    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "noreply@example.com")
-
-class DevConfig(BaseConfig):
+class DevelopmentConfig(Config):
     DEBUG = True
+    # Allow override to SQLite for quick dev (set USE_SQLITE=1)
+    if os.getenv("USE_SQLITE") == "1":
+        SQLALCHEMY_DATABASE_URI = "sqlite:///plm_dev.db"
 
-class ProdConfig(BaseConfig):
+class ProductionConfig(Config):
     DEBUG = False
-    # Could enable stricter settings / feature flags here
+
+config_map = {
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "default": DevelopmentConfig,
+}

@@ -1,52 +1,57 @@
-"""Application factory setup."""
-from __future__ import annotations
-import os
 from flask import Flask
-from .config import DevConfig, ProdConfig
-from .extensions import db, migrate, login_manager, csrf
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager
+from sqlalchemy import MetaData, text
+import os
 
-# Blueprint imports will be deferred (placeholders) to avoid circular imports until implemented.
+from .config import config_map
 
-def create_app(env: str | None = None) -> Flask:
-    app = Flask(__name__)
+# Global DB + Login manager instances
+metadata = MetaData(schema="PLM")
+db = SQLAlchemy(metadata=metadata)
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"
 
-    env_name = env or os.getenv("FLASK_ENV", "development")
-    if env_name == "production":
-        app.config.from_object(ProdConfig())
-    else:
-        app.config.from_object(DevConfig())
+
+def create_app(env: str | None = None):
+    app = Flask(__name__, static_folder="static", template_folder="templates")
+
+    env = env or os.getenv("FLASK_ENV", "development")
+    cfg_cls = config_map.get(env, config_map["default"])
+    app.config.from_object(cfg_cls)
 
     # Init extensions
     db.init_app(app)
-    migrate.init_app(app, db)
     login_manager.init_app(app)
-    csrf.init_app(app)
 
-    register_blueprints(app)
-    register_shellcontext(app)
+    # Import models so that db.create_all sees them
+    from .models.auth import User  # noqa: F401
+
+    # Register blueprints
+    from .auth.routes import bp as auth_bp
+    from .collector.routes import bp as collector_bp
+    from .dashboard.routes import bp as dashboard_bp
+    from .main.routes import bp as main_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(collector_bp)
+    app.register_blueprint(dashboard_bp)
+    app.register_blueprint(main_bp)
+
+    # Bootstrap schema + tables (no Alembic for MVP)
+    with app.app_context():
+        engine = db.engine
+        if engine.url.get_backend_name().startswith("mssql"):
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    IF SCHEMA_ID('PLM') IS NULL EXEC('CREATE SCHEMA PLM AUTHORIZATION dbo;')
+                """))
+        db.create_all()
 
     return app
 
 
-def register_blueprints(app: Flask) -> None:
-    # Local imports (blueprints will provide 'bp')
-    from .auth import routes as auth_routes  # type: ignore
-    from .items import routes as items_routes  # placeholders
-    from .contracts import routes as contracts_routes
-    from .groups import routes as groups_routes
-    from .tracking import routes as tracking_routes
-    from .admin import routes as admin_routes
-
-    # Each routes.py will expose a blueprint named 'bp' later; for now we'll skip if missing
-    for module in [auth_routes, items_routes, contracts_routes, groups_routes, tracking_routes, admin_routes]:
-        bp = getattr(module, "bp", None)
-        if bp is not None:
-            app.register_blueprint(bp)
-
-
-def register_shellcontext(app: Flask) -> None:
-    from . import models
-
-    @app.shell_context_processor
-    def _ctx():  # pragma: no cover - convenience
-        return {"db": db, "models": models}
+@login_manager.user_loader
+def load_user(user_id: str):
+    from .models.auth import User
+    return db.session.get(User, int(user_id))

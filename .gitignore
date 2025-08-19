@@ -72,6 +72,7 @@ migrations/*.log
 *.db
 *.sqlite3
 instance/*.db
+plm_dev.db
 
 # Cache & compiled front-end assets
 *.sass-cache
@@ -131,3 +132,9 @@ reports/
 
 # Temporary scratch
 scratch/
+
+# Waitress logs
+waitress.log
+
+# VSCode tasks
+.vscode/tasks.json

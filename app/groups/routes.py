@@ -1,1 +1,0 @@
-"""Group & member routes placeholder."""

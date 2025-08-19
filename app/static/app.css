@@ -1,1 +1,19 @@
-/* global styles placeholder */
+body { font-feature-settings: "tnum"; }
+.navbar-brand { letter-spacing: .5px; }
+.stat-tile .fs-4 { font-variant-numeric: tabular-nums; }
+.toast-container { width: 320px; }
+.card { border-radius: .75rem; }
+
+/* Light utility palette for supply chain dashboard feel */
+:root {
+  --plm-accent: #0d6efd;
+  --plm-accent-soft: #e7f1ff;
+  --plm-warn: #ffc107;
+  --plm-danger: #dc3545;
+  --plm-success: #198754;
+}
+
+.bg-soft-accent { background: var(--plm-accent-soft); }
+.text-accent { color: var(--plm-accent); }
+
+footer { font-size: .75rem; }

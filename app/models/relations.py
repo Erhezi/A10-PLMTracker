@@ -10,8 +10,8 @@ class ItemLink(db.Model):
 	item_group = db.Column("Item Group", db.Integer)
 
 	# Composite primary key
-	item = db.Column("Item", db.String(50), primary_key=True)
-	replace_item = db.Column("Replace Item", db.String(50), primary_key=True)
+	item = db.Column("Item", db.String(10), primary_key=True)
+	replace_item = db.Column("Replace Item", db.String(250), primary_key=True)
 
 	# Metadata columns from the sheet
 	mfg_part_num = db.Column("Manufacturer Part Num", db.String(100))

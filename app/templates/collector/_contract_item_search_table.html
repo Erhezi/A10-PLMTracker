@@ -1,0 +1,43 @@
+<div class="table-responsive small mb-2">
+  <table class="table table-sm table-hover align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th style="width:42px">Pick</th>
+        <th>Item</th>
+        <th>Mfg</th>
+        <th>Mfg Part</th>
+        <th>Description</th>
+        <th>Contract</th>
+        <th>Item Type</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in contract_items %}
+      <tr data-contract-item-row data-contract-id="{{ r.contract_id }}" data-mfg-part-num="{{ r.mfg_part_num }}">
+        <td>
+          {# If Item Type is Special we synthesize a PENDING placeholder code #}
+          {% if r.item_type and r.item_type|lower == 'special' %}
+            <input type="checkbox" class="form-check-input" data-pick-checkbox value="PENDING***{{ r.mfg_part_num }}" data-contract-id="{{ r.contract_id }}" data-mfg-part="{{ r.mfg_part_num }}" data-pending-placeholder="1">
+          {% else %}
+            <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ r.item }}" data-contract-id="{{ r.contract_id }}" data-mfg-part="{{ r.mfg_part_num }}">
+          {% endif %}
+        </td>
+        <td class="text-nowrap fw-semibold">
+          {% if r.item_type and r.item_type|lower == 'special' %}
+            PENDING***{{ r.mfg_part_num }}
+          {% else %}
+            {{ r.item or '' }}
+          {% endif %}
+        </td>
+        <td>{{ r.manufacturer or '' }}</td>
+        <td>{{ r.mfg_part_num or '' }}</td>
+        <td style="max-width:260px" class="text-truncate" title="{{ r.item_description }}">{{ r.item_description or '' }}</td>
+        <td>{{ r.contract_id }}</td>
+        <td>{{ r.item_type or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="text-muted fst-italic">No matches</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

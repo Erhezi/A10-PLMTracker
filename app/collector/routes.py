@@ -3,7 +3,7 @@ from flask_login import login_required
 from sqlalchemy import func, or_
 from .. import db
 from ..models.relations import ItemLink
-from ..models.inventory import Item
+from ..models.inventory import Item, ContractItem
 
 ALLOWED_STAGES = [
     'Discontinued',
@@ -14,7 +14,7 @@ ALLOWED_STAGES = [
     'Tracking Completed'
 ]
 
-SENTINEL_REPLACEMENTS = {"PENDING", "NO REPLACEMENT"}
+SENTINEL_REPLACEMENTS = {"NO REPLACEMENT"}  # Dynamic PENDING*** codes handled separately
 
 bp = Blueprint("collector", __name__, url_prefix="")
 
@@ -187,6 +187,55 @@ def api_search_items():
     ])
 
 
+@bp.get("/api/contract-items/search")
+@login_required
+def api_search_contract_items():
+    """Search ContractItem by normalized user input against Item.search_shadow.
+
+    Behavior changes:
+      - Only searches on Item.search_shadow (joined via ContractItem.item)
+      - Input is normalized by removing spaces and hyphens before building LIKE pattern
+      - LIKE pattern: if length > 3 use %term%, else term% (prefix search for short inputs)
+    """
+    q_raw = (request.args.get("q") or "").strip()
+    if not q_raw:
+        if request.headers.get("HX-Request"):
+            return render_template("collector/_contract_item_search_table.html", contract_items=[])
+        return jsonify([])
+    # normalize: remove spaces and dashes
+    q_norm = q_raw.replace(" ", "").replace("-", "")
+    if not q_norm:
+        if request.headers.get("HX-Request"):
+            return render_template("collector/_contract_item_search_table.html", contract_items=[])
+        return jsonify([])
+    limit = min(int(request.args.get("limit", 15) or 15), 50)
+
+    query = ContractItem.query
+    like_term = f"%{q_norm}%" if len(q_norm) > 3 else f"{q_norm}%"
+    query = query.filter(ContractItem.search_shadow.ilike(like_term))
+
+    rows = (
+        query.order_by(ContractItem.mfg_part_num, ContractItem.manufacturer, ContractItem.item)
+        .limit(limit)
+        .all()
+    )
+
+    if request.headers.get("HX-Request"):
+        return render_template("collector/_contract_item_search_table.html", contract_items=rows)
+
+    return jsonify([
+        {
+            "contract_id": r.contract_id,
+            "manufacturer": r.manufacturer,
+            "mfg_part_num": r.mfg_part_num,
+            "item_description": r.item_description,
+            "item_type": r.item_type,
+            "item": r.item,
+        }
+        for r in rows
+    ])
+
+
 # -------------------- Helpers --------------------
 def _fetch_items_map(codes: set[str]) -> dict[str, Item]:
     if not codes:
@@ -196,19 +245,17 @@ def _fetch_items_map(codes: set[str]) -> dict[str, Item]:
 
 
 def _determine_stage(replacements: list[str], explicit: str | None) -> tuple[str, bool]:
-    """Return (stage, locked) where locked means user cannot override later.
+    """Return (default_stage, locked) for the *batch*.
 
-    Business rules provided:
-      - If only sentinel 'PENDING' => stage 'Pending Item Number Assigned' (locked)
+    Dynamic pending placeholders (PENDING***<mfg_part>) are NOT treated as sentinel for locking; they will be
+    assigned stage 'Pending Item Number Assigned' per-row later but do not lock others in the batch.
+
+    Rules:
       - If only sentinel 'NO REPLACEMENT' => stage 'Discontinued' (locked)
-      - Else default 'Pending OR Approval' (not locked) unless explicit provided.
-      - If explicit provided and not locked and valid, take explicit.
+      - Else default 'Pending OR Approval' unless explicit provided.
     """
-    if len(replacements) == 1 and replacements[0] == "PENDING":
-        return "Pending Item Number Assigned", True
     if len(replacements) == 1 and replacements[0] == "NO REPLACEMENT":
         return "Discontinued", True
-    # normal case
     if explicit and explicit in ALLOWED_STAGES:
         return explicit, False
     return "Pending OR Approval", False
@@ -261,13 +308,9 @@ def api_batch_item_links():
     # Basic validation
     if not items or not replace_items:
         return jsonify({"error": "Both items and replace_items required"}), 400
-    # Disallow sentinel on left side
-    if any(c in SENTINEL_REPLACEMENTS for c in items):
-        return jsonify({"error": "Sentinel values only allowed as replacement items"}), 400
-    # Reject mixing sentinel + real replacements
-    sentinel_in_repl = [c for c in replace_items if c in SENTINEL_REPLACEMENTS]
-    if sentinel_in_repl and len(replace_items) > 1:
-        return jsonify({"error": "Cannot mix sentinel replacement with real replacements"}), 400
+    # Disallow sentinel (NO REPLACEMENT) or dynamic pending placeholder on left side
+    if any(c in SENTINEL_REPLACEMENTS or c.startswith("PENDING***") for c in items):
+        return jsonify({"error": "Placeholder / sentinel values only allowed as replacement items"}), 400
     # Deduplicate while preserving original order
     def _dedupe(seq):
         seen = set()
@@ -317,19 +360,20 @@ def api_batch_item_links():
     if locked and explicit_stage and explicit_stage != stage:
         return jsonify({"error": "Stage override not allowed for this replacement type"}), 400
 
-    # Lookup real items (exclude sentinel)
-    real_codes = set(items + [r for r in replace_items if r not in SENTINEL_REPLACEMENTS])
+    # Lookup real items (exclude sentinel and dynamic pending placeholders)
+    real_codes = set(items + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))])
     items_map = _fetch_items_map(real_codes)
     missing = [c for c in real_codes if c not in items_map]
     if missing:
         return jsonify({"error": "Some items not found", "missing": missing}), 400
 
     # Determine group id & merge groups
-    canonical_group, merged = _resolve_group(real_codes | set(replace_items))
+    canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
 
     created = 0
     skipped = []
     from ..models import now_ny_naive
+    created_records = []  # accumulate for response
     for src in items:
         src_item = items_map[src]
         for repl in replace_items:
@@ -340,7 +384,35 @@ def api_batch_item_links():
             if exists:
                 skipped.append([src, repl])
                 continue
-            # Build new link
+            link_stage = stage
+            repl_mfg_part = None
+            repl_manufacturer = None
+            repl_desc = None
+            if repl in SENTINEL_REPLACEMENTS:
+                # Only NO REPLACEMENT sentinel now
+                link_stage = "Discontinued"  # enforce
+                repl_manufacturer = "(N/A)"
+                repl_desc = "No replacement planned"
+            elif repl.startswith("PENDING***"):
+                # Dynamic pending placeholder: extract mfg part number
+                part_num = repl.split("***",1)[1] if "***" in repl else None
+                link_stage = "Pending Item Number Assigned"
+                # Try to find contract item by mfg part number to populate fields
+                ci = ContractItem.query.filter(ContractItem.mfg_part_num == part_num).first() if part_num else None
+                if ci:
+                    repl_mfg_part = ci.mfg_part_num
+                    repl_manufacturer = ci.manufacturer
+                    repl_desc = ci.item_description or "Pending replacement item"
+                else:
+                    repl_mfg_part = part_num
+                    repl_manufacturer = "(Pending)"
+                    repl_desc = "Pending replacement item"
+            else:
+                repl_item = items_map[repl]
+                repl_mfg_part = repl_item.mfg_part_num
+                repl_manufacturer = repl_item.manufacturer
+                repl_desc = repl_item.item_description
+
             link = ItemLink(
                 item_group=canonical_group,
                 item=src,
@@ -348,27 +420,18 @@ def api_batch_item_links():
                 mfg_part_num=src_item.mfg_part_num,
                 manufacturer=src_item.manufacturer,
                 item_description=src_item.item_description,
-                stage=stage,
+                stage=link_stage,
                 expected_go_live_date=expected_go_live_date,
                 wrike_id=wrike_id,
                 create_dt=now_ny_naive(),
                 update_dt=now_ny_naive(),
+                repl_mfg_part_num=repl_mfg_part,
+                repl_manufacturer=repl_manufacturer,
+                repl_item_description=repl_desc,
             )
-            if repl in SENTINEL_REPLACEMENTS:
-                if repl == "PENDING":
-                    link.repl_manufacturer = "(Pending)"
-                    link.repl_item_description = "Pending replacement item"
-                else:  # NO REPLACEMENT
-                    link.repl_manufacturer = "(N/A)"
-                    link.repl_item_description = "No replacement planned"
-                link.repl_mfg_part_num = None
-            else:
-                repl_item = items_map[repl]
-                link.repl_mfg_part_num = repl_item.mfg_part_num
-                link.repl_manufacturer = repl_item.manufacturer
-                link.repl_item_description = repl_item.item_description
             db.session.add(link)
             created += 1
+            created_records.append(link)
 
     if created:
         db.session.commit()
@@ -379,19 +442,8 @@ def api_batch_item_links():
 
     # Build created record details for client display
     records = []
-    if created:
-        # Fetch just-created links (could filter by group & create_dt ~ now, simpler: query by group and items involved)
-        # To avoid race conditions, filter by group and source items provided & replacement items provided
-        fetched = (
-            ItemLink.query.filter(
-                ItemLink.item_group == canonical_group,
-                ItemLink.item.in_(items),
-                ItemLink.replace_item.in_(replace_items),
-                ItemLink.stage == stage,
-            ).all()
-        )
-        from datetime import datetime as _dt
-        for r in fetched:
+    if created_records:
+        for r in created_records:
             records.append({
                 "item_group": r.item_group,
                 "item": r.item,

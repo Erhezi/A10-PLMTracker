@@ -2,7 +2,7 @@
 {% block title %}Collect Links — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3">Item Relation Collection</h1>
-<p class="text-muted small mb-4">Search and check source item(s) and replacement item(s), then Create Links. Sentinels: <span class="badge bg-secondary">PENDING</span>, <span class="badge bg-secondary">NO REPLACEMENT</span>.</p>
+<p class="text-muted small mb-4">Search and check source item(s) and replacement item(s), then Create Links. Sentinel: <span class="badge bg-secondary">NO REPLACEMENT</span>. Selecting a Contract Item whose Item Type is <code>Special</code> will add a placeholder replacement in the form <code>PENDING***&lt;mfg part number&gt;</code> and auto-stage it to <em>Pending Item Number Assigned</em>.</p>
 
 <div class="row g-4">
   <div class="col-md-6">
@@ -24,9 +24,8 @@
         <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement..." autocomplete="off"
                hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" />
         <div class="d-flex gap-2 mb-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="PENDING">Add PENDING</button>
           <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="NO REPLACEMENT">Add NO REPLACEMENT</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-repl">Clear</button>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="toggle-repl-mode" data-mode="item" title="Toggle search between Item and Contract Item">Mode: Item</button>
         </div>
         <div id="repl-selected" class="mb-2"></div>
         <div id="repl-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
@@ -101,7 +100,10 @@
   const createdTableBody = document.querySelector('#created-links-table tbody');
   const itemSearch = document.getElementById('item-search');
   const replSearch = document.getElementById('repl-search');
-  const SENTINELS = ['PENDING','NO REPLACEMENT'];
+  const replResults = document.getElementById('repl-results');
+  const ORIGINAL_REPL_ENDPOINT = '/api/items/search';
+  const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';
+  const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
 
   let items = [];
   let repls = [];
@@ -117,8 +119,8 @@
   function updateStage(){
     let stage = '—';
     let locked = false;
-    if(repls.length===1 && repls[0]==='PENDING'){ stage='Pending Item Number Assigned'; locked=true; }
-    else if(repls.length===1 && repls[0]==='NO REPLACEMENT'){ stage='Discontinued'; locked=true; }
+  if(repls.length===1 && repls[0]==='NO REPLACEMENT'){ stage='Discontinued'; locked=true; }
+  else if(repls.length===1 && /^PENDING\*\*\*/.test(repls[0])){ stage='Pending Item Number Assigned'; locked=false; }
     else if(repls.length){ stage='Pending OR Approval'; }
     stageBadge.textContent = stage;
     stageBadge.className = 'badge ' + (locked? 'bg-secondary':'bg-info');
@@ -131,24 +133,46 @@
     if(repls.length > 6) repls = repls.slice(0,6);
   }
 
+  function updateReplSearchEndpoint(){
+    const mode = document.getElementById('toggle-repl-mode')?.getAttribute('data-mode') || 'item';
+    const was = replSearch.getAttribute('data-mode') || 'item';
+    const toContract = mode === 'contract';
+    const endpoint = toContract ? CONTRACT_ITEM_ENDPOINT : ORIGINAL_REPL_ENDPOINT;
+    
+    replSearch.setAttribute('data-mode', mode);
+    replSearch.setAttribute('hx-get', endpoint);
+    replSearch.placeholder = toContract ? 'Search contract item by mfg part...' : 'Search replacement...';
+    
+    // Force HTMX to re-process the element with new attributes
+    if(window.htmx){
+      window.htmx.process(replSearch);
+    }
+    
+    // Always refresh when mode changes; also clear current results immediately for visual feedback
+    if(was !== mode){
+      replResults.innerHTML = '<div class="small text-muted">Loading '+ (toContract? 'contract' : 'item') +' search...</div>';
+      if(window.htmx){
+        const q = replSearch.value.trim();
+        const url = q ? `${endpoint}?q=${encodeURIComponent(q)}` : endpoint;
+        window.htmx.ajax('GET', url, { target: '#repl-results' });
+      } else {
+        replSearch.dispatchEvent(new Event('keyup'));
+      }
+    }
+  }
+
   document.addEventListener('click', e => {
     const sentinelBtn = e.target.closest('button[data-sentinel]');
     if(sentinelBtn){
       const code = sentinelBtn.getAttribute('data-sentinel');
-      // If any real replacements selected, ignore adding sentinel
-      if(repls.length && !SENTINELS.includes(repls[0])) return;
-      repls = [code];
-      // Uncheck any checkboxes in replacement results
-      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
-      renderSelections();
+      if(code==='NO REPLACEMENT'){
+        repls = ['NO REPLACEMENT'];
+        document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
+        renderSelections();
+      }
       return;
     }
-    if(e.target.id==='clear-repl'){
-      repls = [];
-      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
-      renderSelections();
-      return;
-    }
+  // clear-repl button removed; no action here
     const removeBtn = e.target.closest('[data-remove]');
     if(removeBtn){
       const badge = removeBtn.closest('[data-code]');
@@ -174,11 +198,35 @@
           const code = cb.value;
           if(isRepl){
             if(cb.checked){
-              // Block selecting if sentinel already chosen
-              if(repls.length===1 && SENTINELS.includes(repls[0])) { cb.checked=false; return; }
-              if(!repls.includes(code)) repls.push(code);
+              // If selecting NO REPLACEMENT sentinel
+              if(SENTINELS.includes(code)){
+                // Uncheck all other checkboxes first to keep UI consistent
+                document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(other => { if(other!==cb) other.checked=false; });
+                repls = [code];
+              } else if(/^PENDING\*\*\*/.test(code)) {
+                // Dynamic pending placeholder; allow mixing with normal items? Requirement: mixing allowed.
+                if(!repls.includes(code)) repls.push(code);
+              } else {
+                // Block selecting if sentinel already chosen
+                if(repls.length===1 && SENTINELS.includes(repls[0])) { cb.checked=false; return; }
+                if(!repls.includes(code)) repls.push(code);
+              }
             } else {
               repls = repls.filter(c=>c!==code);
+            }
+            // If in contract mode and code not empty, mirror state across all same-value checkboxes in current result pane
+            const currentMode = replSearch.getAttribute('data-mode') || 'item';
+            if(currentMode === 'contract' && code){
+              // Gather all checkboxes with same value
+              const peerCbs = tgt.querySelectorAll(`input[data-pick-checkbox][value="${code}"]`);
+              peerCbs.forEach(p => { if(p !== cb) p.checked = cb.checked; });
+              // Ensure repls contains (or removes) code exactly once
+              if(cb.checked){
+                if(SENTINELS.includes(code)) repls = [code];
+                else if(!repls.includes(code)) repls.push(code);
+              } else {
+                repls = repls.filter(r=>r!==code);
+              }
             }
           } else {
             if(cb.checked){ if(!items.includes(code)) items.push(code); }
@@ -294,6 +342,41 @@
       btn.innerHTML = '&times;';
     }
   });
+
+  // Toggle button for replacement search mode
+  const toggleReplModeBtn = document.getElementById('toggle-repl-mode');
+  if(toggleReplModeBtn){
+    toggleReplModeBtn.addEventListener('click', () => {
+      const currentMode = toggleReplModeBtn.getAttribute('data-mode');
+      const newMode = currentMode === 'item' ? 'contract' : 'item';
+      
+      // 1) Clear current replacement selections
+      repls = [];
+      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb => cb.checked = false);
+      
+      // 2) Clear the search input
+      replSearch.value = '';
+      
+      // 3) Update button and mode
+      toggleReplModeBtn.setAttribute('data-mode', newMode);
+      toggleReplModeBtn.textContent = `Mode: ${newMode.charAt(0).toUpperCase() + newMode.slice(1)}`;
+      replSearch.setAttribute('data-mode', newMode);
+      
+      // 4) Switch table display and refresh selections
+      updateReplSearchEndpoint();
+      renderSelections(); // Update UI to reflect cleared selections
+
+      // 5) Force immediate table refresh with blank query to show correct table headers/structure
+      const endpoint = replSearch.getAttribute('hx-get');
+      replResults.innerHTML = '<div class="small text-muted">Loading '+ (newMode==='contract' ? 'contract' : 'item') +' search...</div>';
+      if(window.htmx){
+        window.htmx.ajax('GET', endpoint + '?q=', { target: '#repl-results' });
+      } else {
+        // Fallback: trigger a synthetic event (will use hx-trigger if supported later)
+        replSearch.dispatchEvent(new Event('keyup'));
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}

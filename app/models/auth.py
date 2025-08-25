@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 class User(db.Model, UserMixin):
     __tablename__ = "users"
+    __table_args__ = {"schema": "PLM"}
 
     user_id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)

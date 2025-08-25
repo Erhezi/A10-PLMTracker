@@ -18,9 +18,9 @@
     <input id="filter-input" type="text" class="form-control form-control-sm" placeholder="Type to filter..." autocomplete="off" />
   </div>
   <div class="small text-muted">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
-  <form method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Delete? This cannot be undone.');">
-    <button type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
-      Clear Deleted ({{ count_deleted }})
+  <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');">
+    <button id="clear-deleted-btn" type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
+      Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
     </button>
   </form>
 </div>
@@ -60,7 +60,7 @@
           <td class="text-center fw-semibold">{{ r.item_group }}</td>
           <td class="font-monospace">{{ r.item }}</td>
           <td class="font-monospace">
-            {% if r.stage == 'Discontinued' and (r.replace_item is none or r.replace_item|string|lower in ['nan','']) %}
+            {% if r.stage == 'Tracking - Discontinued' and (r.replace_item is none or r.replace_item|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.replace_item }}{% endif %}
           </td>
@@ -68,17 +68,17 @@
           <td class="text-truncate" style="max-width:120px;">{{ r.manufacturer }}</td>
           <td class="text-truncate" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
           <td title="{{ r.repl_mfg_part_num }}" class="text-truncate" style="max-width:140px;">
-            {% if r.stage == 'Discontinued' and (r.repl_mfg_part_num is none or r.repl_mfg_part_num|string|lower in ['nan','']) %}
+            {% if r.stage == 'Tracking - Discontinued' and (r.repl_mfg_part_num is none or r.repl_mfg_part_num|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_mfg_part_num }}{% endif %}
           </td>
           <td class="text-truncate" style="max-width:120px;">
-            {% if r.stage == 'Discontinued' and (r.repl_manufacturer is none or r.repl_manufacturer|string|lower in ['nan','']) %}
+            {% if r.stage == 'Tracking - Discontinued' and (r.repl_manufacturer is none or r.repl_manufacturer|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_manufacturer }}{% endif %}
           </td>
           <td class="text-truncate" style="max-width:260px;" title="{{ r.repl_item_description }}">
-            {% if r.stage == 'Discontinued' and (r.repl_item_description is none or r.repl_item_description|string|lower in ['nan','']) %}
+            {% if r.stage == 'Tracking - Discontinued' and (r.repl_item_description is none or r.repl_item_description|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_item_description }}{% endif %}
           </td>
@@ -105,7 +105,7 @@
             </span>
             <input type="date" class="form-control form-control-sm d-none" name="expected_go_live_date" value="{{ r.expected_go_live_date }}" />
           </td>
-          <td class="wrike-cell" data-value="{{ r.wrike_id }}">
+          <td class="wrike-cell" data-value="{{ r.wrike_id or ''}}">
             <span class="read-value">
               {% set wrike_str = (r.wrike_id|string) if r.wrike_id else '' %}
               {% if wrike_str and wrike_str.isdigit() and wrike_str|length == 10 %}
@@ -116,7 +116,7 @@
                 <span class="text-muted small">—</span>
               {% endif %}
             </span>
-            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" title="10 digits" class="form-control form-control-sm d-none" name="wrike_id" value="{{ r.wrike_id }}" />
+            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" title="10 digits" class="form-control form-control-sm d-none" name="wrike_id" value="{{ r.wrike_id or '' }}" />
           </td>
           <td class="text-nowrap text-muted" style="font-size: .7rem;">{{ r.create_dt.strftime('%Y-%m-%d') if r.create_dt else '' }}</td>
           <td class="text-nowrap text-muted" style="font-size: .7rem;">{{ r.update_dt.strftime('%Y-%m-%d %H:%M:%S') if r.update_dt else '' }}</td>
@@ -131,6 +131,8 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  // All stages are already canonical; no legacy normalization needed.
+
   const table = document.getElementById('itemlink-table');
   const filterInput = document.getElementById('filter-input');
   const filterMode = document.getElementById('filter-mode');
@@ -223,12 +225,12 @@ document.addEventListener('DOMContentLoaded', () => {
         Array.from(sel.options).forEach(opt => {
           if(!opt.value) return; // skip blank
           let allow = true;
-          if(current === 'Discontinued'){
-            // Only allow Delete or Tracking Completed or remain Discontinued
-            if(!['Discontinued','Delete','Tracking Completed'].includes(opt.value)) allow = false;
+          if(current === 'Tracking - Discontinued'){
+            // Only allow Deleted or Tracking Completed or remain Tracking - Discontinued
+            if(!['Tracking - Discontinued','Deleted','Tracking Completed'].includes(opt.value)) allow = false;
           } else {
-            // Disallow selecting Discontinued
-            if(opt.value === 'Discontinued') allow = false;
+            // Disallow selecting Tracking - Discontinued
+            if(opt.value === 'Tracking - Discontinued') allow = false;
           }
           opt.disabled = !allow;
         });
@@ -295,6 +297,29 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Update UI with returned record
       const rec = data.record;
+      // Maintain deleted count and toggle Clear Deleted button if stage changed
+      try {
+        const oldStage = (row.querySelector('.stage-cell')?.dataset.value || '').trim();
+        const newStage = (rec.stage || '').trim();
+        const countEl = document.getElementById('clear-deleted-count');
+        const btn = document.getElementById('clear-deleted-btn');
+        // Prefer server authoritative count if provided
+        if(typeof data.count_deleted !== 'undefined' && countEl && btn){
+          const cur = parseInt(data.count_deleted || '0', 10) || 0;
+          countEl.textContent = cur;
+          btn.disabled = cur === 0;
+        } else if(oldStage !== newStage && countEl && btn){
+          // fallback local adjustment
+          let cur = parseInt(countEl.textContent || '0', 10) || 0;
+          if(oldStage.toLowerCase() === 'deleted' && newStage.toLowerCase() !== 'deleted'){
+            cur = Math.max(0, cur - 1);
+          } else if(oldStage.toLowerCase() !== 'deleted' && newStage.toLowerCase() === 'deleted'){
+            cur = cur + 1;
+          }
+          countEl.textContent = cur;
+          btn.disabled = cur === 0;
+        }
+      } catch(e){ console.warn('Could not update deleted count', e); }
       // Stage update
       const stageCell = row.querySelector('.stage-cell');
       if(stageCell){
@@ -462,11 +487,11 @@ document.addEventListener('DOMContentLoaded', () => {
   #itemlink-table tbody tr:hover { background:#f7f9fc; }
   #itemlink-table .stage-badge { font-weight:500; }
   /* Stage specific colors */
-  .stage-discontinued { background:#6c757d; color:#fff; }
-  .stage-pending-item-number-assigned { background:#0d6efd; color:#fff; }
-  .stage-pending-or-approval { background:#6610f2; color:#fff; }
-  .stage-transition-tracking { background:#20c997; color:#062b22; }
-  .stage-delete { background:#dc3545; color:#fff; }
+  .stage-tracking---discontinued { background:#6c757d; color:#fff; }
+  .stage-pending-item-number { background:#0d6efd; color:#fff; }
+  .stage-pending-clinical-approval { background:#6610f2; color:#fff; }
+  .stage-tracking---item-transition { background:#20c997; color:#062b22; }
+  .stage-deleted { background:#dc3545; color:#fff; }
   .stage-tracking-completed { background:#198754; color:#fff; }
   #itemlink-table td, #itemlink-table th { vertical-align:middle; }
   #itemlink-table td { line-height:1.1rem; }

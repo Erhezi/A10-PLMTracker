@@ -5,14 +5,19 @@ from .. import db
 from ..models.relations import ItemLink
 from ..models.inventory import Item, ContractItem
 
-ALLOWED_STAGES = [
-    'Discontinued',
-    'Pending Item Number Assigned',
-    'Pending OR Approval',
-    'Transition Tracking',
-    'Delete',
+"""Stage name definitions (canonical only)."""
+
+ALLOWED_STAGES = [  # New canonical stage names (order meaningful for UI select)
+    'Tracking - Discontinued',
+    'Pending Item Number',
+    'Pending Clinical Approval',
+    'Tracking - Item Transition',
+    'Deleted',
     'Tracking Completed'
 ]
+
+def normalize_stage(value: str | None) -> str | None:  # kept for minimal refactor
+    return value
 
 SENTINEL_REPLACEMENTS = {"NO REPLACEMENT"}  # Dynamic PENDING*** codes handled separately
 
@@ -48,17 +53,18 @@ def collect():
 @login_required
 def groups():
     items = ItemLink.query.order_by(ItemLink.item_group, ItemLink.item).all()
-    count_deleted = ItemLink.query.filter(ItemLink.stage == 'Delete').count()
+    # Count rows currently flagged as deleted
+    count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
     return render_template("collector/groups.html", items=items, allowed_stages=ALLOWED_STAGES, count_deleted=count_deleted)
 
 @bp.post('/groups/clear-deleted')
 @login_required
 def clear_deleted():
-    # Delete only rows whose stage is exactly 'Delete'
-    q = ItemLink.query.filter(ItemLink.stage == 'Delete')
+    # Delete only rows whose stage is Deleted
+    q = ItemLink.query.filter(ItemLink.stage == 'Deleted')
     count = q.count()
     if count == 0:
-        flash('No rows with stage Delete to remove', 'info')
+        flash('No rows with stage Deleted to remove', 'info')
         return redirect(url_for('collector.groups'))
     q.delete(synchronize_session=False)
     db.session.commit()
@@ -92,20 +98,20 @@ def update_item(item: str, replace_item: str):
         return redirect(url_for("collector.groups"))
 
     # Transition rules:
-    #  - If current stage is Discontinued, only allow Delete or Tracking Completed
-    #  - If current stage is not Discontinued, disallow moving into Discontinued directly
+    #  - If current stage is Tracking - Discontinued, only allow Deleted or Tracking Completed
+    #  - If current stage is not Tracking - Discontinued, disallow moving into it directly
     current_stage = record.stage or ''
-    if current_stage == 'Discontinued':
-        if stage not in ('Discontinued', 'Delete', 'Tracking Completed'):
+    if current_stage == 'Tracking - Discontinued':
+        if stage not in ('Tracking - Discontinued', 'Deleted', 'Tracking Completed'):
             if wants_json:
-                return jsonify({"status":"error","field":"stage","message":"Invalid transition from Discontinued"}), 400
-            flash("Cannot transition from Discontinued to that stage (only Delete or Tracking Completed allowed)", "warning")
+                return jsonify({"status":"error","field":"stage","message":"Invalid transition from Tracking - Discontinued"}), 400
+            flash("Cannot transition from Tracking - Discontinued to that stage (only Deleted or Tracking Completed allowed)", "warning")
             return redirect(url_for("collector.groups"))
     else:
-        if stage == 'Discontinued':
+        if stage == 'Tracking - Discontinued':
             if wants_json:
-                return jsonify({"status":"error","field":"stage","message":"Cannot set stage to Discontinued here"}), 400
-            flash("Cannot set stage to Discontinued here", "warning")
+                return jsonify({"status":"error","field":"stage","message":"Cannot set stage to Tracking - Discontinued here"}), 400
+            flash("Cannot set stage to Tracking - Discontinued here", "warning")
             return redirect(url_for("collector.groups"))
 
     record.stage = stage
@@ -126,6 +132,8 @@ def update_item(item: str, replace_item: str):
     record.update_dt = now_ny_naive()
     db.session.commit()
     if wants_json:
+        # Also return current deleted count for client-side UI updates
+        count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
         return jsonify({
             "status":"ok",
             "message":"ItemLink updated",
@@ -136,7 +144,8 @@ def update_item(item: str, replace_item: str):
                 "expected_go_live_date": record.expected_go_live_date.isoformat() if record.expected_go_live_date else None,
                 "wrike_id": record.wrike_id,
                 "update_dt": record.update_dt.isoformat() if record.update_dt else None,
-            }
+            },
+            "count_deleted": count_deleted,
         })
     flash("ItemLink updated", "success")
     return redirect(url_for("collector.groups"))
@@ -248,17 +257,17 @@ def _determine_stage(replacements: list[str], explicit: str | None) -> tuple[str
     """Return (default_stage, locked) for the *batch*.
 
     Dynamic pending placeholders (PENDING***<mfg_part>) are NOT treated as sentinel for locking; they will be
-    assigned stage 'Pending Item Number Assigned' per-row later but do not lock others in the batch.
+    assigned stage 'Pending Item Number' per-row later but do not lock others in the batch.
 
     Rules:
-      - If only sentinel 'NO REPLACEMENT' => stage 'Discontinued' (locked)
-      - Else default 'Pending OR Approval' unless explicit provided.
+    - If only sentinel 'NO REPLACEMENT' => stage 'Tracking - Discontinued' (locked)
+    - Else default 'Pending Clinical Approval' unless explicit provided.
     """
     if len(replacements) == 1 and replacements[0] == "NO REPLACEMENT":
-        return "Discontinued", True
+        return 'Tracking - Discontinued', True
     if explicit and explicit in ALLOWED_STAGES:
         return explicit, False
-    return "Pending OR Approval", False
+    return 'Pending Clinical Approval', False
 
 
 def _resolve_group(all_codes: set[str]) -> tuple[int, list[int]]:
@@ -355,7 +364,7 @@ def api_batch_item_links():
 
     # Determine stage
     stage, locked = _determine_stage(replace_items, explicit_stage)
-    if stage not in ALLOWED_STAGES:
+    if stage not in ALLOWED_STAGES:  # After normalization only canonical should remain
         return jsonify({"error": "Invalid stage"}), 400
     if locked and explicit_stage and explicit_stage != stage:
         return jsonify({"error": "Stage override not allowed for this replacement type"}), 400
@@ -390,13 +399,13 @@ def api_batch_item_links():
             repl_desc = None
             if repl in SENTINEL_REPLACEMENTS:
                 # Only NO REPLACEMENT sentinel now
-                link_stage = "Discontinued"  # enforce
+                link_stage = 'Tracking - Discontinued'  # enforce
                 repl_manufacturer = "(N/A)"
                 repl_desc = "No replacement planned"
             elif repl.startswith("PENDING***"):
                 # Dynamic pending placeholder: extract mfg part number
                 part_num = repl.split("***",1)[1] if "***" in repl else None
-                link_stage = "Pending Item Number Assigned"
+                link_stage = 'Pending Item Number'
                 # Try to find contract item by mfg part number to populate fields
                 ci = ContractItem.query.filter(ContractItem.mfg_part_num == part_num).first() if part_num else None
                 if ci:

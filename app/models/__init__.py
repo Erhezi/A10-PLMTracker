@@ -42,3 +42,30 @@ def now_ny_naive() -> datetime:
     return now_ny().replace(tzinfo=None)
 
 __all__ = ["now_ny", "now_ny_naive", "NY_TZ"]
+
+# Export commonly used model classes from submodules so callers can do
+# `from app.models import ItemLocationPar` (used by `relations.py`).
+try:
+    # import lazily to avoid import-time side-effects; inventory has no
+    # dependency on this module so this is safe.
+    from .inventory import (
+        Item,
+        ContractItem,
+        ItemLocationPar,
+        ItemLocationInventory,
+        Requesters365Day,
+        PO90Day,
+    )
+    __all__.extend([
+        "Item",
+        "ContractItem",
+        "ItemLocationPar",
+        "ItemLocationInventory",
+        "Requesters365Day",
+        "PO90Day",
+    ])
+except Exception:
+    # If inventory can't be imported at package-import time (e.g. missing
+    # DB deps), keep package importable; the specific importers will
+    # surface the real error when they import the models.
+    pass

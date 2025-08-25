@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from .. import db
+from sqlalchemy.orm import relationship, foreign
+from sqlalchemy import and_, or_
 
 
 class Item(db.Model):
@@ -50,5 +52,219 @@ class ContractItem(db.Model):
             f"<ContractItem contract={self.contract_id} {self.manufacturer} "
             f"{self.mfg_part_num} item={self.item}>"
         )
+    
+class Requesters365Day(db.Model):
+    """
+    Mapping to PLM.vw_vw_365Day_Requesters (SQL Server VIEW).
+    """
 
-__all__ = ["Item", "ContractItem"]
+    __tablename__ = "vw_vw_365Day_Requesters"
+    __table_args__ = {"schema": "PLM"}
+
+    # no natural PK in your schema, so we mark all columns as nullable
+    # and rely on SQLAlchemy's requirement for *some* PK surrogate.
+    RequestingLocation = db.Column(db.String(40),  primary_key=True, nullable=True)
+    Item               = db.Column(db.String(100), primary_key=True, nullable=True)
+    Requester          = db.Column(db.String(20),  primary_key=True, nullable=True)
+
+    RequesterName      = db.Column(db.String(100), nullable=True)
+    Requisition_FD5    = db.Column("Requisition.FD5", db.String(150), nullable=True)
+    EmailAddress       = db.Column(db.String(450), nullable=True)
+
+    def __repr__(self):
+        return (f"<Requesters365Day("
+                f"Requester={self.Requester!r}, "
+                f"Item={self.Item!r}, "
+                f"Location={self.RequestingLocation!r})>")
+
+
+class PO90Day(db.Model):
+    """
+    Mapping to PLM.vw_90Day_PO (SQL Server VIEW).
+    """
+
+    __tablename__ = "vw_90Day_PO"
+    __table_args__ = {"schema": "PLM"}
+
+    POReleaseDate      = db.Column(db.Date, priamry_key = True, nullable=True)
+    PO                 = db.Column(db.String(20),  primary_key=True, nullable=False)
+    POLine             = db.Column(db.String(10),  primary_key=True, nullable=False)
+    PurchaseOrderLine  = db.Column(db.String(10),  nullable=False)
+
+    OrderToStoreroom   = db.Column(db.String(13),  nullable=False)
+    Location           = db.Column(db.String(40),  nullable=True)
+    TrasientInventoryLocation = db.Column(db.String(40),  nullable=True)
+
+    Item               = db.Column(db.String(100), nullable=True)
+    EnteredBuyUOM      = db.Column(db.String(20),  nullable=True)
+    EnteredBuyUOMMultiplier = db.Column(db.Numeric, nullable=True)
+    Item_StockUOM      = db.Column("Item.StockUOM", db.String(20), nullable=True)
+    UOMConversion      = db.Column(db.Numeric, nullable=True)
+
+    Quantity           = db.Column(db.Numeric, nullable=True)
+    ReceivedQuantity   = db.Column(db.Numeric, nullable=True)
+    CancelQuantity     = db.Column(db.Numeric, nullable=True)
+
+    OrderQty_EA        = db.Column(db.Numeric, nullable=True)
+    ReceivedQty_EA     = db.Column(db.Numeric, nullable=True)
+    CancelQty_EA       = db.Column(db.Numeric, nullable=True)
+
+    IsOpenForReceivingIncludingUnreleased = db.Column(db.String(10), nullable=True)
+
+    Vendor             = db.Column(db.String(40),  nullable=False)
+    VendorName         = db.Column(db.String(255), nullable=True)
+
+    Index              = db.Column(db.String(40),  nullable=True)
+    IndexText          = db.Column(db.String(255), nullable=True)
+    BusinessArea       = db.Column(db.String(10),  nullable=True)
+    BusinessAreaText   = db.Column(db.String(255), nullable=True)
+
+    Requisition        = db.Column(db.String(20),  nullable=True)
+    RequisitionLine    = db.Column(db.String(10),  nullable=True)
+    PO_RequesterName   = db.Column("PO.RequesterName", db.String(255), nullable=True)
+
+    def __repr__(self):
+        return (f"<PO90Day("
+                f"PO={self.PO}, Line={self.POLine}, "
+                f"Vendor={self.Vendor}, Item={self.Item})>")
+
+
+class ItemLocationPar(db.Model):
+    """
+    Mapping to PLM.vw_ItemLocation_Par view
+    """
+
+    __tablename__ = "vw_ItemLocation_Par"
+    __table_args__ = {"schema": "PLM"}
+
+    Inventory_base_ID       = db.Column(db.BIGINT, primary_key=True, nullable=True)
+
+    Company                 = db.Column(db.String(10),  nullable=False)
+    Location                = db.Column(db.String(20),  nullable=False)
+    LocationText            = db.Column(db.String(255), nullable=True)
+    PreferredBin            = db.Column(db.String(40),  nullable=True)
+    Item                    = db.Column(db.String(10),  nullable=False)
+    ItemDescription         = db.Column(db.String(255), nullable=True)
+    ItemType                = db.Column(db.String(40),  nullable=True)
+    Active                  = db.Column(db.String(5),   nullable=True)
+    Discontinued            = db.Column(db.String(5),   nullable=True)
+    VendorItem              = db.Column(db.String(100), nullable=True)
+    defaultBuyUOM           = db.Column(db.String(20),  nullable=True)
+    BuyUOMMultiplier        = db.Column(db.Numeric,     nullable=True)
+    AutomaticPO             = db.Column(db.String(5),   nullable=True)
+    StockUOM                = db.Column(db.String(20),  nullable=False)
+    UOMConversion           = db.Column(db.Numeric,     nullable=True)
+    ReorderQuantityCode     = db.Column(db.String(40),  nullable=True)
+    ReorderPoint            = db.Column(db.Integer,     nullable=True)
+    UnitCostInStockUOM      = db.Column(db.Numeric,     nullable=True)
+    DerivedAverageCost      = db.Column(db.Numeric,     nullable=True)
+
+    report_stamp            = db.Column("report stamp", db.DateTime, nullable=False)
+
+    br7                     = db.Column(db.Numeric,     nullable=True)
+    br35                    = db.Column(db.Numeric,     nullable=True)
+    br91                    = db.Column(db.Numeric,     nullable=True)
+    br365                   = db.Column(db.Numeric,     nullable=True)
+    issued_count_365        = db.Column(db.Integer,     nullable=True)
+    ReqQty_EA               = db.Column(db.Numeric,     nullable=True)
+
+    # -----------------------Requesters365Day relationship-----------------------
+    requesers_365 = relationship(
+        "Requesters365Day",
+        primaryjoin=and_(
+            foreign(Requesters365Day.Item) == Item,
+            foreign(Requesters365Day.RequestingLocation) == Location,
+        ),
+        viewonly=True,
+        lazy="selectin",
+        doc = "List of Requesters365Day entries for this (Item, Location) on Pars"
+    )
+
+    def __repr__(self):
+        return (f"<ItemLocationPar("
+                f"ID={self.Inventory_base_ID}, "
+                f"Company={self.Company!r}, Location={self.Location!r}, "
+                f"Item={self.Item!r})")
+
+
+class ItemLocationInventory(db.Model):
+    """
+    Mapping to PLM.vw_ItemLocation_Inventory (SQL Server VIEW).
+    """
+
+    __tablename__ = "vw_ItemLocation_Inventory"
+    __table_args__ = {"schema": "PLM"}
+
+    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True)
+
+    Company             = db.Column(db.String(10),   nullable=False)
+    Location            = db.Column(db.String(20),   nullable=False)
+    LocationText        = db.Column(db.String(255),  nullable=True)
+    PreferredBin        = db.Column(db.String(40),   nullable=True)
+    Item                = db.Column(db.String(10),   nullable=False)
+    ItemDescription     = db.Column(db.String(255),  nullable=True)
+    ItemType            = db.Column(db.String(40),   nullable=True)
+    Active              = db.Column(db.String(5),    nullable=True)
+    Discontinued        = db.Column(db.String(5),    nullable=True)
+    VendorItem          = db.Column(db.String(100),  nullable=True)
+    defaultBuyUOM       = db.Column(db.String(20),   nullable=True)
+    BuyUOMMultiplier    = db.Column(db.Numeric,      nullable=True)
+    AutomaticPO         = db.Column(db.String(5),    nullable=True)
+    StockUOM            = db.Column(db.String(20),   nullable=False)
+    UOMConversion       = db.Column(db.Numeric,      nullable=True)
+    ReorderQuantityCode = db.Column(db.String(40),   nullable=True)
+    ReorderPoint        = db.Column(db.Integer,      nullable=True)
+
+    MaxOrderQty         = db.Column(db.Integer,      nullable=True)
+    MinOrderQty         = db.Column(db.Integer,      nullable=True)
+    OnHandQty           = db.Column(db.Integer,      nullable=True)
+    AvailableQty        = db.Column(db.Integer,      nullable=True)
+    OnOrderQty          = db.Column(db.Integer,      nullable=True)
+
+    UnitCostInStockUOM  = db.Column(db.Numeric,      nullable=True)
+    DerivedAverageCost  = db.Column(db.Numeric,      nullable=True)
+
+    report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
+
+    br7                 = db.Column(db.Numeric,      nullable=True)
+    br35                = db.Column(db.Numeric,      nullable=True)
+    br91                = db.Column(db.Numeric,      nullable=True)
+    br365               = db.Column(db.Numeric,      nullable=True)
+    issued_count_365    = db.Column(db.Integer,      nullable=True)
+
+    OrderQty_EA         = db.Column(db.Numeric,      nullable=True)
+    ReceivedQty_EA      = db.Column(db.Numeric,      nullable=True)
+    CancelQty_EA        = db.Column(db.Numeric,      nullable=True)
+
+    # -----------------------Requesters365Day relationship-----------------------
+    requesers_365 = relationship(
+        "Requesters365Day",
+        primaryjoin=and_(
+            foreign(Requesters365Day.Item) == Item,
+            foreign(Requesters365Day.RequestingLocation) == Location,
+        ),
+        viewonly=True,
+        lazy="selectin",
+        doc = "List of Requesters365Day entries for this (Item, Location) on Inventory"
+    )
+
+    # -----------------------PO90Day relationship-----------------------
+    po_90 = relationship(
+        "PO90Day",
+        primaryjoin=and_(
+            foreign(PO90Day.Item) == Item,
+            foreign(PO90Day.OrderToStoreroom) == Location,
+        ),
+        viewonly=True,
+        lazy="selectin",
+        doc = "List of PO90Day entries for this (Item, Location) on Inventory"
+    )
+
+    def __repr__(self):
+        return (f"<ItemLocationInventory("
+                f"ID={self.Inventory_base_ID}, "
+                f"Company={self.Company!r}, Location={self.Location!r}, "
+                f"Item={self.Item!r}, StockUOM={self.StockUOM!r})>")
+
+
+__all__ = ["Item", "ContractItem", "ItemLocationPar", "ItemLocationInventory", "Requesters365Day", "PO90Day"]

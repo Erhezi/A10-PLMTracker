@@ -1,10 +1,12 @@
 from __future__ import annotations
 from .. import db
 from . import now_ny_naive
-
+from . import ItemLocationPar, ItemLocationInventory
+from sqlalchemy.orm import relationship, foreign
 
 class ItemLink(db.Model):
 	__tablename__ = "ItemLink"
+	__table_args__ = {"schema": "PLM"}
 
 	# Clean Python attribute  ->  Exact DB column name (with spaces)
 	item_group = db.Column("Item Group", db.Integer)
@@ -28,6 +30,35 @@ class ItemLink(db.Model):
 	create_dt = db.Column("CreateDT", db.DateTime(timezone=False), default=now_ny_naive)
 	update_dt = db.Column("UpdateDT", db.DateTime(timezone=False), default=now_ny_naive, onupdate=now_ny_naive)
 	wrike_id = db.Column("WrikeID", db.String(50))
+
+	# ---------- READ-ONLY relationships to PAR view ----------
+	item_par_locations = relationship(
+        "ItemLocationPar",
+        primaryjoin=foreign(ItemLocationPar.Item) == item,
+        viewonly=True,
+        lazy="selectin",
+    )
+	replace_par_locations = relationship(
+        "ItemLocationPar",
+        primaryjoin=foreign(ItemLocationPar.Item) == replace_item,
+        viewonly=True,
+        lazy="selectin",
+    )
+
+    # ---------- READ-ONLY relationships to INVENTORY view ----------
+	item_inventory_locations = relationship(
+        "ItemLocationInventory",
+        primaryjoin=foreign(ItemLocationInventory.Item) == item,
+        viewonly=True,
+        lazy="selectin",
+    )
+	replace_item_inventory_locations = relationship(
+        "ItemLocationInventory",
+        primaryjoin=foreign(ItemLocationInventory.Item) == replace_item,
+        viewonly=True,
+        lazy="selectin",
+    )
+
 
 	def __repr__(self):
 		return f"<ItemLink {self.item} -> {self.replace_item} ({self.item_group}, {self.stage})>"

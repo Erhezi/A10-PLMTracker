@@ -2,7 +2,7 @@
 {% block title %}Collect Links — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3">Item Relation Collection</h1>
-<p class="text-muted small mb-4">Search and check source item(s) and replacement item(s), then Create Links. Sentinel: <span class="badge bg-secondary">NO REPLACEMENT</span>. Selecting a Contract Item whose Item Type is <code>Special</code> will add a placeholder replacement in the form <code>PENDING***&lt;mfg part number&gt;</code> and auto-stage it to <em>Pending Item Number Assigned</em>.</p>
+<p class="text-muted small mb-4">Search and check source item(s) and replacement item(s), then Create Links. Sentinel: <span class="badge bg-secondary">NO REPLACEMENT</span>. Selecting a Contract Item whose Item Type is <code>Special</code> will add a placeholder replacement in the form <code>PENDING***&lt;mfg part number&gt;</code> and auto-stage it to <em>Pending Item Number</em>.</p>
 
 <div class="row g-4">
   <div class="col-md-6">
@@ -40,8 +40,8 @@
     <div class="d-flex align-items-center gap-2">
       <span id="derived-stage" class="badge bg-info">&mdash;</span>
       <select id="stage-override" class="form-select form-select-sm w-auto" disabled>
-        <option value="Pending OR Approval">Pending OR Approval</option>
-        <option value="Transition Tracking">Transition Tracking</option>
+        <option value="Pending Clinical Approval">Pending Clinical Approval</option>
+        <option value="Tracking - Item Transition">Tracking - Item Transition</option>
       </select>
     </div>
   </div>
@@ -117,15 +117,15 @@
   }
 
   function updateStage(){
-    let stage = '—';
-    let locked = false;
-  if(repls.length===1 && repls[0]==='NO REPLACEMENT'){ stage='Discontinued'; locked=true; }
-  else if(repls.length===1 && /^PENDING\*\*\*/.test(repls[0])){ stage='Pending Item Number Assigned'; locked=false; }
-    else if(repls.length){ stage='Pending OR Approval'; }
+  let stage = '—';
+  let locked = false;
+  if(repls.length===1 && repls[0]==='NO REPLACEMENT'){ stage='Tracking - Discontinued'; locked=true; }
+  else if(repls.length===1 && /^PENDING\*\*\*/.test(repls[0])){ stage='Pending Item Number'; locked=false; }
+  else if(repls.length){ stage='Pending Clinical Approval'; }
     stageBadge.textContent = stage;
     stageBadge.className = 'badge ' + (locked? 'bg-secondary':'bg-info');
     stageSelect.disabled = locked || stage==='—';
-    if(!locked && stage!=='—') stageSelect.value = 'Pending OR Approval';
+  if(!locked && stage!=='—') stageSelect.value = 'Pending Clinical Approval';
   }
 
   function enforceLimits(){
@@ -243,8 +243,8 @@
     if(createBtn.disabled) return;
     const stageDerived = stageBadge.textContent;
     let stageToSend = stageDerived;
-    if(stageToSend==='Pending OR Approval' && stageSelect.value !== 'Pending OR Approval'){
-      stageToSend = stageSelect.value;
+    if(stageToSend==='Pending Clinical Approval' && stageSelect.value !== 'Pending Clinical Approval'){
+      stageToSend = stageSelect.value; // user override
     }
     const payload = { items, replace_items: repls, stage: stageToSend };
     const goLive = goLiveInput.value.trim();

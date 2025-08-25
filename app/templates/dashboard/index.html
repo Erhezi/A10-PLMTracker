@@ -1,40 +1,168 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard — PLM Tracker{% endblock %}
 {% block content %}
-<h1 class="h4 fw-semibold mb-4">Dashboard (MVP Placeholder)</h1>
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3">
-    <div class="card shadow-sm border-0 stat-tile">
-      <div class="card-body py-3">
-        <div class="small text-uppercase text-muted">Active Groups</div>
-        <div class="fs-4 fw-semibold" id="kpi-groups">0</div>
+<h1 class="h4 fw-semibold mb-4">Dashboard</h1>
+
+<!-- Section 1: KPI Cards + Filters (full width) -->
+<div class="container-fluid p-0 mb-4" id="section-kpis">
+  <div class="d-flex flex-column flex-lg-row align-items-lg-end gap-3 mb-3">
+    <form id="dashboard-filters" class="row g-2 flex-grow-1">
+      <div class="col-6 col-md-3">
+        <label class="form-label small text-uppercase text-muted mb-1">Item Group</label>
+        <select class="form-select form-select-sm" name="item_group">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small text-uppercase text-muted mb-1">Location</label>
+        <select class="form-select form-select-sm" name="location">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small text-uppercase text-muted mb-1">Status</label>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">All</option>
+          <option value="active">Active</option>
+          <option value="discontinued">Discontinued</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary btn-sm me-2">Apply</button>
+        <button type="reset" class="btn btn-outline-secondary btn-sm">Reset</button>
+      </div>
+    </form>
+  </div>
+  <div class="row g-3" id="kpi-row">
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm border-0 stat-tile">
+        <div class="card-body py-3">
+          <div class="small text-uppercase text-muted">Active Groups</div>
+          <div class="fs-4 fw-semibold" id="kpi-groups">0</div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="card shadow-sm border-0 stat-tile">
-      <div class="card-body py-3">
-        <div class="small text-uppercase text-muted">Items Impacted</div>
-        <div class="fs-4 fw-semibold" id="kpi-items">0</div>
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm border-0 stat-tile">
+        <div class="card-body py-3">
+          <div class="small text-uppercase text-muted">Items Impacted</div>
+          <div class="fs-4 fw-semibold" id="kpi-items">0</div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="card shadow-sm border-0 stat-tile">
-      <div class="card-body py-3">
-        <div class="small text-uppercase text-muted">Ready %</div>
-        <div class="fs-4 fw-semibold" id="kpi-ready">0%</div>
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm border-0 stat-tile">
+        <div class="card-body py-3">
+          <div class="small text-uppercase text-muted">Ready %</div>
+          <div class="fs-4 fw-semibold" id="kpi-ready">0%</div>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="card shadow-sm border-0 stat-tile">
-      <div class="card-body py-3">
-        <div class="small text-uppercase text-muted">Coverage Days</div>
-        <div class="fs-4 fw-semibold" id="kpi-coverage">0</div>
+    <div class="col-6 col-lg-3">
+      <div class="card shadow-sm border-0 stat-tile">
+        <div class="card-body py-3">
+          <div class="small text-uppercase text-muted">Coverage Days</div>
+          <div class="fs-4 fw-semibold" id="kpi-coverage">0</div>
+        </div>
       </div>
     </div>
   </div>
 </div>
-<p class="text-muted small">This is a placeholder. Add group impact table and charts next.</p>
+
+<!-- Section 2 + 3 container -->
+<div id="section-content" class="container-fluid p-0">
+  <div class="row g-4">
+    <!-- Section 2: Tables (Left 60%) -->
+    <div class="col-12 col-xl-7 col-xxl-8" id="section-tables">
+      <!-- Inventory Table -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Inventory Items</h6>
+          <div class="small text-muted" id="inventory-count">0 rows</div>
+        </div>
+        <div class="table-responsive" style="max-height:420px; overflow:auto;">
+          <table class="table table-sm table-hover align-middle mb-0" id="table-inventory">
+            <thead class="table-light sticky-top">
+              <tr class="small text-nowrap">
+                <th>Item Group</th>
+                <th>Item</th>
+                <th>Location</th>
+                <th>Auto-replenishment</th>
+                <th>Active</th>
+                <th>Discontinued</th>
+                <th>Current Qty</th>
+                <th>Weekly Burn</th>
+                <th>Weeks on Hand</th>
+                <th>90-day PO Qty</th>
+                <th>Requesters (Past Year)</th>
+                <th>Replacement Item</th>
+                <th>Location (RI)</th>
+                <th>Auto-replenishment (RI)</th>
+                <th>Active (RI)</th>
+                <th>Discontinued (RI)</th>
+                <th>Current Qty (RI)</th>
+                <th>Weekly Burn (RI)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- dynamic rows inserted by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Par Location Table -->
+      <div class="card shadow-sm">
+        <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">Par Locations</h6>
+          <div class="small text-muted" id="par-count">0 rows</div>
+        </div>
+        <div class="table-responsive" style="max-height:420px; overflow:auto;">
+          <table class="table table-sm table-hover align-middle mb-0" id="table-par">
+            <thead class="table-light sticky-top">
+              <tr class="small text-nowrap">
+                <th>Item Group</th>
+                <th>Item</th>
+                <th>Location</th>
+                <th>Auto-replenishment</th>
+                <th>Active</th>
+                <th>Discontinued</th>
+                <th>Reorder Point</th>
+                <th>Weekly Demand</th>
+                <th>Weeks Reorder</th>
+                <th>90-day Req Qty</th>
+                <th>Requesters (Past Year)</th>
+                <th>Item Group</th>
+                <th>Replacement Item</th>
+                <th>Location (RI)</th>
+                <th>Auto-replenishment (RI)</th>
+                <th>Active (RI)</th>
+                <th>Discontinued (RI)</th>
+                <th>Reorder Point (RI)</th>
+                <th>Weekly Demand (RI)</th>
+                <th>Weeks Reorder (RI)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- dynamic rows inserted by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Chart (Right 40%) -->
+    <div class="col-12 col-xl-5 col-xxl-4" id="section-chart">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-white py-2">
+          <h6 class="mb-0">Daily Balance (Item vs Replacement)</h6>
+        </div>
+        <div class="card-body">
+          <canvas id="daily-balance-chart" height="300" class="w-100"></canvas>
+          <div class="text-muted small mt-2">Chart placeholder.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

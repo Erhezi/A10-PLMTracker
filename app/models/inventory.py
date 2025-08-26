@@ -86,7 +86,7 @@ class PO90Day(db.Model):
     __tablename__ = "vw_90Day_PO"
     __table_args__ = {"schema": "PLM"}
 
-    POReleaseDate      = db.Column(db.Date, priamry_key = True, nullable=True)
+    POReleaseDate      = db.Column(db.Date, primary_key = True, nullable=True)
     PO                 = db.Column(db.String(20),  primary_key=True, nullable=False)
     POLine             = db.Column(db.String(10),  primary_key=True, nullable=False)
     PurchaseOrderLine  = db.Column(db.String(10),  nullable=False)
@@ -267,4 +267,75 @@ class ItemLocationInventory(db.Model):
                 f"Item={self.Item!r}, StockUOM={self.StockUOM!r})>")
 
 
-__all__ = ["Item", "ContractItem", "ItemLocationPar", "ItemLocationInventory", "Requesters365Day", "PO90Day"]
+class ItemLocations(db.Model):
+    """
+    Mapping to PLM.vw_ItemLocations (SQL Server VIEW).
+    Holds the canonical (Company, Location) setup for each Item and its Inventory_base_ID.
+    """
+
+    __tablename__ = "vw_ItemLocations"
+    __table_args__ = {"schema": "PLM"}
+
+    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True)
+
+    Company             = db.Column(db.String(10),   nullable=False)
+    Location            = db.Column(db.String(20),   nullable=False)
+    LocationText        = db.Column(db.String(255),  nullable=True)
+    LocationType        = db.Column(db.String(40),   nullable=True)
+    PreferredBin        = db.Column(db.String(40),   nullable=True)
+
+    Item                = db.Column(db.String(10),   nullable=False)
+    ItemDescription     = db.Column(db.String(255),  nullable=True)
+    ItemType            = db.Column(db.String(40),   nullable=True)
+    Active              = db.Column(db.String(5),    nullable=True)
+    Discontinued        = db.Column(db.String(5),    nullable=True)
+    VendorItem          = db.Column(db.String(100),  nullable=True)
+
+    defaultBuyUOM       = db.Column(db.String(20),   nullable=True)
+    BuyUOMMultiplier    = db.Column(db.Numeric,      nullable=True)
+    AutomaticPO         = db.Column(db.String(5),    nullable=True)
+    StockUOM            = db.Column(db.String(20),   nullable=False)
+    UOMConversion       = db.Column(db.Numeric,      nullable=True)
+    ReorderQuantityCode = db.Column(db.String(40),   nullable=True)
+    ReorderPoint        = db.Column(db.Integer,      nullable=True)
+
+    MaxOrderQty         = db.Column(db.Integer,      nullable=True)
+    MinOrderQty         = db.Column(db.Integer,      nullable=True)
+    OnHandQty           = db.Column(db.Integer,      nullable=True)
+    AvailableQty        = db.Column(db.Integer,      nullable=True)
+    OnOrderQty          = db.Column(db.Integer,      nullable=True)
+
+    UnitCostInStockUOM  = db.Column(db.Numeric,      nullable=True)
+    DerivedAverageCost  = db.Column(db.Numeric,      nullable=True)
+
+    report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
+
+    # ----------------------- Related single-row view lookups -----------------------
+    # Assuming Inventory_base_ID is stable across the different view variants.
+    par_view = relationship(
+        "ItemLocationPar",
+        primaryjoin=foreign(ItemLocationPar.Inventory_base_ID) == Inventory_base_ID,
+        viewonly=True,
+        uselist=False,
+        lazy="joined",
+        doc="Par-level metrics for this canonical location (by Inventory_base_ID)"
+    )
+    inventory_view = relationship(
+        "ItemLocationInventory",
+        primaryjoin=foreign(ItemLocationInventory.Inventory_base_ID) == Inventory_base_ID,
+        viewonly=True,
+        uselist=False,
+        lazy="joined",
+        doc="Inventory-level metrics (stock/on-hand) for this canonical location"
+    )
+
+    def __repr__(self):
+        return f"<ItemLocations Item={self.Item} {self.Company}/{self.Location}>"
+
+__all__ = ["Item", 
+           "ContractItem", 
+           "ItemLocationPar", 
+           "ItemLocationInventory", 
+           "ItemLocations", 
+           "Requesters365Day", 
+           "PO90Day"]

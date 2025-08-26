@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required
 from sqlalchemy import func, or_
+from sqlalchemy.orm import noload
 from .. import db
 from ..models.relations import ItemLink
 from ..models.inventory import Item, ContractItem
@@ -52,7 +53,13 @@ def collect():
 @bp.route("/groups")
 @login_required
 def groups():
-    items = ItemLink.query.order_by(ItemLink.item_group, ItemLink.item).all()
+    # Avoid eager loading any relationships (they are not needed for groups table)
+    items = (
+        ItemLink.query
+        .options(noload('*'))
+        .order_by(ItemLink.item_group, ItemLink.item)
+        .all()
+    )
     # Count rows currently flagged as deleted
     count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
     return render_template("collector/groups.html", items=items, allowed_stages=ALLOWED_STAGES, count_deleted=count_deleted)
@@ -379,35 +386,59 @@ def api_batch_item_links():
     # Determine group id & merge groups
     canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
 
+    # -------- Optimized creation to avoid per-pair queries --------
+    from sqlalchemy import and_ as _and
+    from ..models import now_ny_naive
+
     created = 0
     skipped = []
-    from ..models import now_ny_naive
-    created_records = []  # accumulate for response
-    for src in items:
+    created_records = []
+
+    # Prefetch existing pairs in one query (excluding self-pairs early)
+    candidate_src = items
+    candidate_repl = replace_items
+    if candidate_src and candidate_repl:
+        existing_rows = db.session.query(ItemLink.item, ItemLink.replace_item).filter(
+            ItemLink.item.in_(candidate_src),
+            ItemLink.replace_item.in_(candidate_repl),
+            ItemLink.item != ItemLink.replace_item
+        ).all()
+        existing_pairs = set(existing_rows)
+    else:
+        existing_pairs = set()
+
+    # Prefetch contract items for all pending placeholders
+    pending_parts = {r.split('***',1)[1] for r in candidate_repl if r.startswith('PENDING***') and '***' in r}
+    pending_ci_map = {}
+    if pending_parts:
+        for ci in ContractItem.query.filter(ContractItem.mfg_part_num.in_(pending_parts)).all():
+            pending_ci_map.setdefault(ci.mfg_part_num, ci)
+
+    ts_now = now_ny_naive()
+
+    for src in candidate_src:
         src_item = items_map[src]
-        for repl in replace_items:
+        for repl in candidate_repl:
             if src == repl:
                 skipped.append([src, repl])
                 continue
-            exists = ItemLink.query.filter_by(item=src, replace_item=repl).first()
-            if exists:
+            if (src, repl) in existing_pairs:
                 skipped.append([src, repl])
                 continue
+
             link_stage = stage
             repl_mfg_part = None
             repl_manufacturer = None
             repl_desc = None
+
             if repl in SENTINEL_REPLACEMENTS:
-                # Only NO REPLACEMENT sentinel now
-                link_stage = 'Tracking - Discontinued'  # enforce
+                link_stage = 'Tracking - Discontinued'
                 repl_manufacturer = "(N/A)"
                 repl_desc = "No replacement planned"
-            elif repl.startswith("PENDING***"):
-                # Dynamic pending placeholder: extract mfg part number
-                part_num = repl.split("***",1)[1] if "***" in repl else None
+            elif repl.startswith('PENDING***'):
+                part_num = repl.split('***',1)[1] if '***' in repl else None
                 link_stage = 'Pending Item Number'
-                # Try to find contract item by mfg part number to populate fields
-                ci = ContractItem.query.filter(ContractItem.mfg_part_num == part_num).first() if part_num else None
+                ci = pending_ci_map.get(part_num)
                 if ci:
                     repl_mfg_part = ci.mfg_part_num
                     repl_manufacturer = ci.manufacturer
@@ -432,8 +463,8 @@ def api_batch_item_links():
                 stage=link_stage,
                 expected_go_live_date=expected_go_live_date,
                 wrike_id=wrike_id,
-                create_dt=now_ny_naive(),
-                update_dt=now_ny_naive(),
+                create_dt=ts_now,
+                update_dt=ts_now,
                 repl_mfg_part_num=repl_mfg_part,
                 repl_manufacturer=repl_manufacturer,
                 repl_item_description=repl_desc,
@@ -442,12 +473,8 @@ def api_batch_item_links():
             created += 1
             created_records.append(link)
 
-    if created:
+    if created or merged:
         db.session.commit()
-    else:
-        # if only merges happened without new rows, still commit merges
-        if merged:
-            db.session.commit()
 
     # Build created record details for client display
     records = []

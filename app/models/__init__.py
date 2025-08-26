@@ -53,6 +53,7 @@ try:
         ContractItem,
         ItemLocationPar,
         ItemLocationInventory,
+        ItemLocations,
         Requesters365Day,
         PO90Day,
     )
@@ -61,6 +62,7 @@ try:
         "ContractItem",
         "ItemLocationPar",
         "ItemLocationInventory",
+        "ItemLocations",
         "Requesters365Day",
         "PO90Day",
     ])

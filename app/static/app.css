@@ -81,10 +81,37 @@ footer { font-size: .75rem; }
 }
 
 /* Stage badge shared styling (used in groups.html and collect.html) */
-.stage-badge { font-weight:500; }
-.stage-discontinued { background:#6c757d; color:#fff; }
-.stage-pending-item-number-assigned { background:#0d6efd; color:#fff; }
-.stage-pending-or-approval { background:#6610f2; color:#fff; }
-.stage-transition-tracking { background:#20c997; color:#062b22; }
-.stage-delete { background:#dc3545; color:#fff; }
-.stage-tracking-completed { background:#198754; color:#fff; }
+.stage-badge { 
+  font-weight: 500; 
+  padding: 0.25em 0.6em;
+  border-radius: 0.375rem;
+  font-size: 0.75em;
+}
+
+.stage-pending-item-number { background: #0d6efd !important; color: #fff !important; }
+.stage-pending-clinical-approval { background: #6610f2 !important; color: #fff !important; }
+.stage-deleted { background: #dc3545 !important; color: #fff !important; }
+/* Tracking composite stages (normalized slug collapses repeated hyphens) */
+.stage-tracking-completed { background: #198754 !important; color: #fff !important; }
+.stage-tracking-discontinued { background: #6c757d !important; color: #fff !important; }
+.stage-tracking-item-transition { background: #20c997 !important; color: #fff !important; }
+
+/* Inventory table specific tweaks */
+#table-inventory { font-size: .8rem; }
+#table-inventory thead th { position: sticky; top: 0; background: #f8f9fa; }
+#table-inventory th, #table-inventory td { vertical-align: middle; }
+#table-inventory td.text-wrap { white-space: normal; }
+#table-inventory td, #table-inventory th { white-space: normal; }
+/* Allow manual tweaking via width classes on <th>. Users/devs can edit class list to adjust widths */
+#table-inventory th.col-stage { width: 80px; }
+#table-inventory th.col-group { width: 120px; }
+#table-inventory th.col-item { width: 140px; }
+#table-inventory th.col-location { width: 140px; }
+#table-inventory th.col-auto { width: 110px; }
+#table-inventory th.col-active, #table-inventory th.col-disc { width: 70px; }
+#table-inventory th.col-num { width: 90px; }
+#table-inventory th.col-repl-item { width: 160px; }
+/* Boldness already applied via fw-semibold in HTML; ensure consistent */
+#table-inventory td.col-item-cell, #table-inventory td.col-repl-item-cell { font-weight: 600; }
+/* Stage badge already globally styled; ensure small size fits */
+#table-inventory .stage-badge { font-size: .65rem; letter-spacing: .25px; }

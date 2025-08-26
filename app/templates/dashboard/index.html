@@ -84,24 +84,26 @@
           <table class="table table-sm table-hover align-middle mb-0" id="table-inventory">
             <thead class="table-light sticky-top">
               <tr class="small text-nowrap">
-                <th>Item Group</th>
-                <th>Item</th>
-                <th>Location</th>
-                <th>Auto-replenishment</th>
-                <th>Active</th>
-                <th>Discontinued</th>
-                <th>Current Qty</th>
-                <th>Weekly Burn</th>
-                <th>Weeks on Hand</th>
-                <th>90-day PO Qty</th>
-                <th>Requesters (Past Year)</th>
-                <th>Replacement Item</th>
-                <th>Location (RI)</th>
-                <th>Auto-replenishment (RI)</th>
-                <th>Active (RI)</th>
-                <th>Discontinued (RI)</th>
-                <th>Current Qty (RI)</th>
-                <th>Weekly Burn (RI)</th>
+                <th data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
+                <th data-field="item_group" class="col-group">Item Group</th>
+                <th data-field="item" class="col-item">Item</th>
+                <th data-field="location" class="col-location">Location</th>
+                <th data-field="auto_replenishment" class="col-auto">Auto-eplenishment</th>
+                <th data-field="active" class="col-active">Active</th>
+                <th data-field="discontinued" class="col-disc">Discontinued</th>
+                <th data-field="current_qty" class="col-num">Current Qty</th>
+                <th data-field="weekly_burn" class="col-num">Weekly Burn</th>
+                <th data-field="weeks_on_hand" class="col-num">Weeks on Hand</th>
+                <th data-field="po_90_qty" class="col-num">90-day PO Qty</th>
+                <th data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
+                <th data-field="replacement_item" class="col-repl-item">Replacement Item</th>
+                <th data-field="location_ri" class="col-location">Location (RI)</th>
+                <th data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
+                <th data-field="active_ri" class="col-active">Active (RI)</th>
+                <th data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
+                <th data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
+                <th data-field="weekly_burn_ri" class="col-num">Weekly Burn (RI)</th>
+                <th data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
               </tr>
             </thead>
             <tbody>
@@ -121,6 +123,7 @@
           <table class="table table-sm table-hover align-middle mb-0" id="table-par">
             <thead class="table-light sticky-top">
               <tr class="small text-nowrap">
+                <th>Stage</th> <!-- New column for Par Location Stage -->
                 <th>Item Group</th>
                 <th>Item</th>
                 <th>Location</th>
@@ -165,4 +168,78 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const tbody = document.querySelector('#table-inventory tbody');
+  const countEl = document.getElementById('inventory-count');
+  
+  console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
+
+  async function loadInventory() {
+    try {
+      console.log('Fetching inventory data...');
+      countEl.textContent = 'loading...';
+      
+      const resp = await fetch('/dashboard/api/inventory');
+      console.log('API response status:', resp.status, resp.statusText);
+      
+      if(!resp.ok) {
+        const errorText = await resp.text();
+        console.error('API error response:', errorText);
+        throw new Error('HTTP '+resp.status + ': ' + errorText);
+      }
+      
+      const data = await resp.json();
+      console.log('API data received:', data);
+      
+      const rows = data.rows || [];
+      console.log('Number of rows:', rows.length);
+      
+      tbody.innerHTML = '';
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        function fmt(val) { return (val === null || val === undefined || val === '') ? '' : val; }
+        function num(val, digits=2) { 
+          if(val===null||val===undefined||val==='') return ''; 
+          const n=Number(val); 
+          if(!isFinite(n)) return ''; 
+          return n.toFixed(digits); 
+        }
+        tr.innerHTML = `
+          <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
+          <td>${fmt(r.item_group)}</td>
+          <td class="fw-semibold text-wrap col-item-cell">${fmt(r.item)}</td>
+          <td class="text-wrap">${fmt(r.location)}</td>
+          <td>${fmt(r.auto_replenishment)}</td>
+          <td>${fmt(r.active)}</td>
+          <td>${fmt(r.discontinued)}</td>
+          <td class="text-end">${num(r.current_qty,0)}</td>
+          <td class="text-end">${num(r.weekly_burn)}</td>
+          <td class="text-end">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
+          <td class="text-end">${num(r.po_90_qty,0)}</td>
+          <td class="text-end">${num(r.requesters_past_year,0)}</td>
+          <td class="fw-semibold text-wrap col-repl-item-cell">${fmt(r.replacement_item)}</td>
+          <td class="text-wrap">${fmt(r.location_ri)}</td>
+          <td>${fmt(r.auto_replenishment_ri)}</td>
+          <td>${fmt(r.active_ri)}</td>
+          <td>${fmt(r.discontinued_ri)}</td>
+          <td class="text-end">${num(r.current_qty_ri,0)}</td>
+          <td class="text-end">${num(r.weekly_burn_ri)}</td>
+          <td class="text-end">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      countEl.textContent = rows.length + ' rows';
+      console.log('Table populated successfully');
+    } catch (e) {
+      console.error('Failed loading inventory', e);
+      countEl.textContent = 'error: ' + e.message;
+    }
+  }
+
+  loadInventory();
+});
+</script>
 {% endblock %}

@@ -21,6 +21,8 @@ def build_location_pairs(
     require_active: bool = False,
     include_par: bool = False,  # ignored for inventory-only view
     location_types: Optional[List[str]] = None,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> List[Dict]:
     """Fetch pre-computed inventory side-by-side rows from PLM.vw_PLMTrackerBase.
 
@@ -43,6 +45,10 @@ def build_location_pairs(
     if location_types:
         q = q.where(v.LocationType.in_(location_types))
 
+    if offset:
+        q = q.offset(max(offset, 0))
+    if limit is not None:
+        q = q.limit(limit)
     rows_raw = db.session.execute(q).scalars().all()
 
     out: List[Dict] = []

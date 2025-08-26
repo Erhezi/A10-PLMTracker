@@ -20,11 +20,9 @@
         </select>
       </div>
       <div class="col-6 col-md-3">
-        <label class="form-label small text-uppercase text-muted mb-1">Status</label>
-        <select class="form-select form-select-sm" name="status">
+        <label class="form-label small text-uppercase text-muted mb-1">Stage</label>
+        <select class="form-select form-select-sm" name="stage">
           <option value="">All</option>
-          <option value="active">Active</option>
-          <option value="discontinued">Discontinued</option>
         </select>
       </div>
       <div class="col-6 col-md-3 d-flex align-items-end">
@@ -53,16 +51,8 @@
     <div class="col-6 col-lg-3">
       <div class="card shadow-sm border-0 stat-tile">
         <div class="card-body py-3">
-          <div class="small text-uppercase text-muted">Ready %</div>
-          <div class="fs-4 fw-semibold" id="kpi-ready">0%</div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-lg-3">
-      <div class="card shadow-sm border-0 stat-tile">
-        <div class="card-body py-3">
-          <div class="small text-uppercase text-muted">Coverage Days</div>
-          <div class="fs-4 fw-semibold" id="kpi-coverage">0</div>
+          <div class="small text-uppercase text-muted">Location Impacted</div>
+          <div class="fs-4 fw-semibold" id="kpi-ready">0</div>
         </div>
       </div>
     </div>
@@ -110,6 +100,15 @@
               <!-- dynamic rows inserted by JS -->
             </tbody>
           </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center border-top small px-3 py-2" id="inventory-pager" style="display:none;">
+          <div>
+            <button class="btn btn-outline-secondary btn-sm" id="inv-first" disabled>&laquo; First</button>
+            <button class="btn btn-outline-secondary btn-sm" id="inv-prev" disabled>&lsaquo; Prev</button>
+            <button class="btn btn-outline-secondary btn-sm" id="inv-next" disabled>Next &rsaquo;</button>
+            <button class="btn btn-outline-secondary btn-sm" id="inv-last" disabled>Last &raquo;</button>
+          </div>
+          <div id="inv-page-info" class="text-muted"></div>
         </div>
       </div>
 
@@ -174,15 +173,62 @@
 document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.querySelector('#table-inventory tbody');
   const countEl = document.getElementById('inventory-count');
+  const pager = document.getElementById('inventory-pager');
+  const btnFirst = document.getElementById('inv-first');
+  const btnPrev = document.getElementById('inv-prev');
+  const btnNext = document.getElementById('inv-next');
+  const btnLast = document.getElementById('inv-last');
+  const pageInfo = document.getElementById('inv-page-info');
+  let currentPage = 1;
+  const perPage = 20;
+  let totalPages = 1;
+  const filterForm = document.getElementById('dashboard-filters');
+  const selItemGroup = filterForm.querySelector('select[name="item_group"]');
+  const selLocation = filterForm.querySelector('select[name="location"]');
+  const selStage = filterForm.querySelector('select[name="stage"]');
   
   console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
 
-  async function loadInventory() {
+  // Fetch distinct filter options
+  async function loadFilterOptions() {
+    try {
+      const resp = await fetch('/dashboard/api/filter-options');
+      if(!resp.ok) throw new Error('Failed loading filter options');
+      const data = await resp.json();
+      // Item Groups
+      selItemGroup.innerHTML = '<option value="">All</option>' + data.item_groups.map(g => `<option value="${g}">${g}</option>`).join('');
+      // Locations
+      selLocation.innerHTML = '<option value="">All</option>' + data.locations.map(l => `<option value="${l.value}">${l.label}</option>`).join('');
+      // Stages (restricted)
+      selStage.innerHTML = '<option value="">All</option>' + data.stages.map(s => `<option value="${s}">${s}</option>`).join('');
+    } catch (e) {
+      console.error('Failed to load filter options', e);
+    }
+  }
+
+  function updatePager() {
+    if(totalPages <= 1){
+      pager.style.display = 'none';
+      return;
+    }
+    pager.style.display = '';
+    btnFirst.disabled = btnPrev.disabled = currentPage <= 1;
+    btnNext.disabled = btnLast.disabled = currentPage >= totalPages;
+    pageInfo.textContent = `Page ${currentPage} / ${totalPages}`;
+  }
+
+  async function loadInventory(page=1) {
     try {
       console.log('Fetching inventory data...');
       countEl.textContent = 'loading...';
-      
-      const resp = await fetch('/dashboard/api/inventory');
+      const params = new URLSearchParams();
+      params.set('page', page);
+      params.set('per_page', perPage);
+      // selected filters
+      if(selItemGroup.value) params.set('item_group', selItemGroup.value);
+      if(selLocation.value) params.set('location', selLocation.value);
+      if(selStage.value) params.set('stage', selStage.value);
+      const resp = await fetch(`/dashboard/api/inventory?${params.toString()}`);
       console.log('API response status:', resp.status, resp.statusText);
       
       if(!resp.ok) {
@@ -195,6 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('API data received:', data);
       
       const rows = data.rows || [];
+      currentPage = data.page || 1;
+      totalPages = data.pages || 1;
       console.log('Number of rows:', rows.length);
       
       tbody.innerHTML = '';
@@ -231,7 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         tbody.appendChild(tr);
       }
-      countEl.textContent = rows.length + ' rows';
+    countEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
+    updatePager();
       console.log('Table populated successfully');
     } catch (e) {
       console.error('Failed loading inventory', e);
@@ -239,7 +288,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  loadInventory();
+  btnFirst.addEventListener('click', () => { if(currentPage>1) loadInventory(1); });
+  btnPrev.addEventListener('click', () => { if(currentPage>1) loadInventory(currentPage-1); });
+  btnNext.addEventListener('click', () => { if(currentPage<totalPages) loadInventory(currentPage+1); });
+  btnLast.addEventListener('click', () => { if(currentPage<totalPages) loadInventory(totalPages); });
+
+  filterForm.addEventListener('submit', evt => {
+    evt.preventDefault();
+    loadInventory(1);
+  });
+  filterForm.addEventListener('reset', () => {
+    setTimeout(() => { // allow default reset
+      loadInventory(1);
+    });
+  });
+
+  loadFilterOptions().then(() => loadInventory(1));
 });
 </script>
 {% endblock %}

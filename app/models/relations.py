@@ -55,11 +55,13 @@ class PLMTrackerBase(db.Model):
 	"""
 
 	__tablename__ = "vw_PLMTrackerBase"
+	# __tablename__ = "PLMTrackerBase"
 	__table_args__ = {"schema": "PLM"}
 
 	# Columns (use exact names where provided)
 	Stage = db.Column("Stage", db.String(100), nullable=False)
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
+	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
 	Item = db.Column("Item", db.String(10), nullable=False)
 	Location = db.Column("Location", db.String(20), nullable=True)
@@ -117,5 +119,5 @@ class PLMTrackerBase(db.Model):
 	# Provide a synthetic composite primary key for the mapper so SQLAlchemy can
 	# work with result objects. Adjust if your view has a better natural key.
 	__mapper_args__ = {
-		"primary_key": [Item, Replace_Item, Location]
+		"primary_key": [Group_Locations, Item, Replace_Item]
 	}

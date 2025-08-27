@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .. import db
 from sqlalchemy.orm import relationship, foreign
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, Index, UniqueConstraint
 
 
 class Item(db.Model):
@@ -129,154 +129,23 @@ class PO90Day(db.Model):
                 f"Vendor={self.Vendor}, Item={self.Item})>")
 
 
-class ItemLocationPar(db.Model):
-    """
-    Mapping to PLM.vw_ItemLocation_Par view
-    """
-
-    __tablename__ = "vw_ItemLocation_Par"
-    __table_args__ = {"schema": "PLM"}
-
-    Inventory_base_ID       = db.Column(db.BIGINT, primary_key=True, nullable=True)
-
-    Company                 = db.Column(db.String(10),  nullable=False)
-    Location                = db.Column(db.String(20),  nullable=False)
-    LocationText            = db.Column(db.String(255), nullable=True)
-    PreferredBin            = db.Column(db.String(40),  nullable=True)
-    Item                    = db.Column(db.String(10),  nullable=False)
-    ItemDescription         = db.Column(db.String(255), nullable=True)
-    ItemType                = db.Column(db.String(40),  nullable=True)
-    Active                  = db.Column(db.String(5),   nullable=True)
-    Discontinued            = db.Column(db.String(5),   nullable=True)
-    VendorItem              = db.Column(db.String(100), nullable=True)
-    defaultBuyUOM           = db.Column(db.String(20),  nullable=True)
-    BuyUOMMultiplier        = db.Column(db.Numeric,     nullable=True)
-    AutomaticPO             = db.Column(db.String(5),   nullable=True)
-    StockUOM                = db.Column(db.String(20),  nullable=False)
-    UOMConversion           = db.Column(db.Numeric,     nullable=True)
-    ReorderQuantityCode     = db.Column(db.String(40),  nullable=True)
-    ReorderPoint            = db.Column(db.Integer,     nullable=True)
-    UnitCostInStockUOM      = db.Column(db.Numeric,     nullable=True)
-    DerivedAverageCost      = db.Column(db.Numeric,     nullable=True)
-
-    report_stamp            = db.Column("report stamp", db.DateTime, nullable=False)
-
-    br7                     = db.Column(db.Numeric,     nullable=True)
-    br35                    = db.Column(db.Numeric,     nullable=True)
-    br91                    = db.Column(db.Numeric,     nullable=True)
-    br365                   = db.Column(db.Numeric,     nullable=True)
-    issued_count_365        = db.Column(db.Integer,     nullable=True)
-    ReqQty_EA               = db.Column(db.Numeric,     nullable=True)
-
-    # -----------------------Requesters365Day relationship-----------------------
-    requesers_365 = relationship(
-        "Requesters365Day",
-        primaryjoin=and_(
-            foreign(Requesters365Day.Item) == Item,
-            foreign(Requesters365Day.RequestingLocation) == Location,
-        ),
-        viewonly=True,
-        lazy="selectin",
-        doc = "List of Requesters365Day entries for this (Item, Location) on Pars"
-    )
-
-    def __repr__(self):
-        return (f"<ItemLocationPar("
-                f"ID={self.Inventory_base_ID}, "
-                f"Company={self.Company!r}, Location={self.Location!r}, "
-                f"Item={self.Item!r})")
-
-
-class ItemLocationInventory(db.Model):
-    """
-    Mapping to PLM.vw_ItemLocation_Inventory (SQL Server VIEW).
-    """
-
-    __tablename__ = "vw_ItemLocation_Inventory"
-    __table_args__ = {"schema": "PLM"}
-
-    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True)
-
-    Company             = db.Column(db.String(10),   nullable=False)
-    Location            = db.Column(db.String(20),   nullable=False)
-    LocationText        = db.Column(db.String(255),  nullable=True)
-    PreferredBin        = db.Column(db.String(40),   nullable=True)
-    Item                = db.Column(db.String(10),   nullable=False)
-    ItemDescription     = db.Column(db.String(255),  nullable=True)
-    ItemType            = db.Column(db.String(40),   nullable=True)
-    Active              = db.Column(db.String(5),    nullable=True)
-    Discontinued        = db.Column(db.String(5),    nullable=True)
-    VendorItem          = db.Column(db.String(100),  nullable=True)
-    defaultBuyUOM       = db.Column(db.String(20),   nullable=True)
-    BuyUOMMultiplier    = db.Column(db.Numeric,      nullable=True)
-    AutomaticPO         = db.Column(db.String(5),    nullable=True)
-    StockUOM            = db.Column(db.String(20),   nullable=False)
-    UOMConversion       = db.Column(db.Numeric,      nullable=True)
-    ReorderQuantityCode = db.Column(db.String(40),   nullable=True)
-    ReorderPoint        = db.Column(db.Integer,      nullable=True)
-
-    MaxOrderQty         = db.Column(db.Integer,      nullable=True)
-    MinOrderQty         = db.Column(db.Integer,      nullable=True)
-    OnHandQty           = db.Column(db.Integer,      nullable=True)
-    AvailableQty        = db.Column(db.Integer,      nullable=True)
-    OnOrderQty          = db.Column(db.Integer,      nullable=True)
-
-    UnitCostInStockUOM  = db.Column(db.Numeric,      nullable=True)
-    DerivedAverageCost  = db.Column(db.Numeric,      nullable=True)
-
-    report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
-
-    br7                 = db.Column(db.Numeric,      nullable=True)
-    br35                = db.Column(db.Numeric,      nullable=True)
-    br91                = db.Column(db.Numeric,      nullable=True)
-    br365               = db.Column(db.Numeric,      nullable=True)
-    issued_count_365    = db.Column(db.Integer,      nullable=True)
-
-    OrderQty_EA         = db.Column(db.Numeric,      nullable=True)
-    ReceivedQty_EA      = db.Column(db.Numeric,      nullable=True)
-    CancelQty_EA        = db.Column(db.Numeric,      nullable=True)
-
-    # -----------------------Requesters365Day relationship-----------------------
-    requesers_365 = relationship(
-        "Requesters365Day",
-        primaryjoin=and_(
-            foreign(Requesters365Day.Item) == Item,
-            foreign(Requesters365Day.RequestingLocation) == Location,
-        ),
-        viewonly=True,
-        lazy="selectin",
-        doc = "List of Requesters365Day entries for this (Item, Location) on Inventory"
-    )
-
-    # -----------------------PO90Day relationship-----------------------
-    po_90 = relationship(
-        "PO90Day",
-        primaryjoin=and_(
-            foreign(PO90Day.Item) == Item,
-            foreign(PO90Day.OrderToStoreroom) == Location,
-        ),
-        viewonly=True,
-        lazy="selectin",
-        doc = "List of PO90Day entries for this (Item, Location) on Inventory"
-    )
-
-    def __repr__(self):
-        return (f"<ItemLocationInventory("
-                f"ID={self.Inventory_base_ID}, "
-                f"Company={self.Company!r}, Location={self.Location!r}, "
-                f"Item={self.Item!r}, StockUOM={self.StockUOM!r})>")
-
 
 class ItemLocations(db.Model):
     """
-    Mapping to PLM.vw_ItemLocations (SQL Server VIEW).
+    Mapping to PLM.vw_ItemLocations (SQL Server table).
     Holds the canonical (Company, Location) setup for each Item and its Inventory_base_ID.
     """
 
-    __tablename__ = "vw_ItemLocations"
-    __table_args__ = {"schema": "PLM"}
+    __tablename__ = "ItemLocations"
+    # include schema plus explicit UniqueConstraint and Index definitions
+    __table_args__ = (
+        UniqueConstraint('Location', 'Item', name='UQ_ItemLocations_Location_Item'),
+        Index('IX_ItemLocations_Item', 'Item'),
+        Index('IX_ItemLocations_Location', 'Location'),
+        {'schema': 'PLM'},
+    )
 
-    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True)
+    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True) # sarrogate PK
 
     Company             = db.Column(db.String(10),   nullable=False)
     Location            = db.Column(db.String(20),   nullable=False)
@@ -310,32 +179,14 @@ class ItemLocations(db.Model):
 
     report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
 
-    # ----------------------- Related single-row view lookups -----------------------
-    # Assuming Inventory_base_ID is stable across the different view variants.
-    par_view = relationship(
-        "ItemLocationPar",
-        primaryjoin=foreign(ItemLocationPar.Inventory_base_ID) == Inventory_base_ID,
-        viewonly=True,
-        uselist=False,
-        lazy="joined",
-        doc="Par-level metrics for this canonical location (by Inventory_base_ID)"
-    )
-    inventory_view = relationship(
-        "ItemLocationInventory",
-        primaryjoin=foreign(ItemLocationInventory.Inventory_base_ID) == Inventory_base_ID,
-        viewonly=True,
-        uselist=False,
-        lazy="joined",
-        doc="Inventory-level metrics (stock/on-hand) for this canonical location"
-    )
+    # ----------------------- Relations -----------------------
+
 
     def __repr__(self):
         return f"<ItemLocations Item={self.Item} {self.Company}/{self.Location}>"
 
 __all__ = ["Item", 
            "ContractItem", 
-           "ItemLocationPar", 
-           "ItemLocationInventory", 
            "ItemLocations", 
            "Requesters365Day", 
            "PO90Day"]

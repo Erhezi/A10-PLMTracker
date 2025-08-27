@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from .. import db
-from ..models.inventory import ItemLocationPar, ItemLocationInventory, ItemLocations  # legacy imports (may be removed later)
+from ..models.inventory import ItemLocations  # legacy imports (may be removed later)
 from ..models.relations import PLMTrackerBase  # new consolidated view
 
 

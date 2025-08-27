@@ -9,7 +9,6 @@ from sqlalchemy import text
 
 class User(db.Model, UserMixin):
     __tablename__ = "users"
-    __table_args__ = {"schema": "PLM"}
 
     user_id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
@@ -19,6 +18,11 @@ class User(db.Model, UserMixin):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=False), default=now_ny_naive, nullable=False)
     last_login_at = db.Column(db.DateTime)
+
+    # For Resetting Password, adding tempcode feature
+    reset_code = db.Column(db.String(10))
+    reset_code_expiry = db.Column(db.DateTime)
+
 
     # Flask-Login required attribute name is 'id' or 'get_id'; we map id property.
     @property

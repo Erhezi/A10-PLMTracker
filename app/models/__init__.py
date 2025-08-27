@@ -51,8 +51,6 @@ try:
     from .inventory import (
         Item,
         ContractItem,
-        ItemLocationPar,
-        ItemLocationInventory,
         ItemLocations,
         Requesters365Day,
         PO90Day,
@@ -60,8 +58,6 @@ try:
     __all__.extend([
         "Item",
         "ContractItem",
-        "ItemLocationPar",
-        "ItemLocationInventory",
         "ItemLocations",
         "Requesters365Day",
         "PO90Day",

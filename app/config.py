@@ -1,4 +1,10 @@
-import os
+import os 
+from pathlib import Path
+from dotenv import load_dotenv
+
+root_env = Path(__file__).resolve().parents[1] / ".env"
+if root_env.exists():
+    load_dotenv(root_env)
 
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
@@ -13,6 +19,20 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Microsoft Graph settings
+    TENANT_ID = os.getenv("TENANT_ID")
+    CLIENT_ID = os.getenv("CLIENT_ID")
+    CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+    AAD_ENDPOINT = os.getenv("AAD_ENDPOINT", "https://login.microsoftonline.com")
+    GRAPH_ENDPOINT = os.getenv("GRAPH_ENDPOINT", "https://graph.microsoft.com")
+    FROM_EMAIL = os.getenv("FROM", "procurementdatateam@montefiore.org") # our service account
+
+    @classmethod
+    def validate(cls):
+        missing = [k for k in ["TENANT_ID", "CLIENT_ID", "CLIENT_SECRET"] if not getattr(cls, k)]
+        if missing:
+            raise ValueError(f"Missing required environment variables for Microsoft Graph: {', '.join(missing)}")
+        
 class DevelopmentConfig(Config):
     DEBUG = True
     # Allow override to SQLite for quick dev (set USE_SQLITE=1)

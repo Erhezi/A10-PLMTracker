@@ -54,9 +54,9 @@ def api_inventory():
     except ValueError:
         page = 1
     try:
-        per_page = int(request.args.get("per_page", 20))
+        per_page = int(request.args.get("per_page", 100))
     except ValueError:
-        per_page = 20
+        per_page = 100
     page = max(page, 1)
     per_page = max(min(per_page, 200), 1)
 
@@ -76,7 +76,7 @@ def api_inventory():
     end = start + per_page
     rows = all_rows[start:end]
     if rows:
-        print(rows[0])
+        print(rows[0]) #debug (keep it for now)
     return jsonify({
         "rows": rows,
         "count": len(rows),
@@ -122,4 +122,85 @@ def api_filter_options():
         "item_groups": item_groups,
         "locations": locations,
         "stages": stages,
+    })
+
+
+@bp.route("/api/par")
+@login_required
+def api_par():
+    """Par location data (Par Locations table).
+
+    Similar filtering semantics as inventory endpoint but restricted to Par Location types.
+    Weeks Reorder = ReorderPoint / weekly_burn (and we negate to present positive like inventory logic).
+    """
+    allowed_stage_values = {
+        "Tracking - Discontinued",
+        "Tracking - Item Transition",
+        "Pending Clinical Approval",
+    }
+    stage_param = request.args.get("stage") or request.args.get("stages")
+    if stage_param:
+        stage_list_raw = [s.strip() for s in stage_param.split(",") if s.strip()]
+        stages_list = [s for s in stage_list_raw if s in allowed_stage_values] or list(allowed_stage_values)
+    else:
+        stages_list = list(allowed_stage_values)
+
+    item_group_param = request.args.get("item_group")
+    try:
+        item_group_filter = int(item_group_param) if item_group_param else None
+    except ValueError:
+        item_group_filter = None
+    location = request.args.get("location") or None
+
+    # Pagination
+    try:
+        page = int(request.args.get("page", 1))
+    except ValueError:
+        page = 1
+    try:
+        per_page = int(request.args.get("per_page", 100))
+    except ValueError:
+        per_page = 100
+    page = max(page, 1)
+    per_page = max(min(per_page, 200), 1)
+
+    # Fetch par location rows
+    all_rows = build_location_pairs(
+        stages=stages_list,
+        location=location,
+        include_par=True,
+        location_types=["Par Location"],
+    )
+    # Filter by item_group if needed
+    if item_group_filter is not None:
+        all_rows = [r for r in all_rows if r.get("item_group") == item_group_filter]
+
+    # Recompute weeks_reorder using reorder point instead of available qty
+    for r in all_rows:
+        reorder_pt = r.get("reorder_point")
+        wb = r.get("weekly_burn")
+        if reorder_pt is None or wb in (None, 0):
+            r["weeks_reorder"] = "unknown"
+        else:
+            try:
+                val = float(reorder_pt) / float(wb) if float(wb) != 0 else None
+                if val is None:
+                    r["weeks_reorder"] = "unknown"
+                else:
+                    # Keep sign convention consistent (inventory negates weeks_on_hand)
+                    r["weeks_reorder"] = -1 * val if val is not None else "unknown"
+            except Exception:
+                r["weeks_reorder"] = "unknown"
+
+    total = len(all_rows)
+    start = (page - 1) * per_page
+    end = start + per_page
+    rows = all_rows[start:end]
+    return jsonify({
+        "rows": rows,
+        "count": len(rows),
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": (total + per_page - 1) // per_page if per_page else 1,
     })

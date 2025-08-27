@@ -115,3 +115,20 @@ footer { font-size: .75rem; }
 #table-inventory td.col-item-cell, #table-inventory td.col-repl-item-cell { font-weight: 600; }
 /* Stage badge already globally styled; ensure small size fits */
 #table-inventory .stage-badge { font-size: .65rem; letter-spacing: .25px; }
+
+/* Par table styling mirrors inventory for consistency */
+#table-par { font-size: .8rem; }
+#table-par thead th { position: sticky; top: 0; background: #f8f9fa; }
+#table-par th, #table-par td { vertical-align: middle; white-space: normal; }
+#table-par td.text-wrap { white-space: normal; }
+#table-par .stage-badge { font-size: .65rem; letter-spacing: .25px; }
+
+/* Column width helpers (reuse same class names) */
+#table-par th.col-stage { width: 80px; }
+#table-par th.col-group { width: 120px; }
+#table-par th.col-item { width: 140px; }
+#table-par th.col-location { width: 140px; }
+#table-par th.col-auto { width: 110px; }
+#table-par th.col-active, #table-par th.col-disc { width: 70px; }
+#table-par th.col-num { width: 90px; }
+#table-par th.col-repl-item { width: 160px; }

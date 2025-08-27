@@ -1,49 +1,60 @@
 from __future__ import annotations
 from .. import db
 from . import now_ny_naive
-from . import ItemLocationPar, ItemLocationInventory, ItemLocations
 from sqlalchemy.orm import relationship, foreign
+from sqlalchemy import Index, text
 
 class ItemLink(db.Model):
-	__tablename__ = "ItemLink"
-	# Include server-side indexes (already created manually) for ORM awareness / reflection.
-	# Note: SQLAlchemy will not attempt to create them if they already exist; keeps metadata aligned.
-	from sqlalchemy import Index
-	__table_args__ = (
-		Index("UX_ItemLink_Item_Replace", "Item", "Replace Item", unique=True),
-		Index("IX_ItemLink_Item", "Item"),
-		Index("IX_ItemLink_ReplaceItem", "Replace Item"),
-		Index("IX_ItemLink_ItemGroup", "Item Group"),
-		Index("IX_ItemLink_Stage", "Stage"),
-		{"schema": "PLM"},
-	)
+    __tablename__ = "ItemLink"
+    __table_args__ = (
+        # Filtered UNIQUE: triplet unique only when Replace Item is present
+        Index(
+            "UX_ItemLink_Item_Replace",
+            "Item Group", "Item", "Replace Item",
+            unique=True,
+            mssql_where=text("[Replace Item] IS NOT NULL"),
+        ),
+        # Filtered UNIQUE: at most one NULL-replacement row per (Group, Item)
+        Index(
+            "UX_ItemLink_GroupItem_Discontinued",
+            "Item Group", "Item",
+            unique=True,
+            mssql_where=text("[Replace Item] IS NULL"),
+        ),
+        # Search indexes you said you use a lot
+        Index("IX_ItemLink_Item", "Item"),
+        Index("IX_ItemLink_ItemGroup", "Item Group"),
+        Index("IX_ItemLink_ReplaceItem", "Replace Item"),
+        Index("IX_ItemLink_Stage", "Stage"),
+        {"schema": "PLM"},
+    )
 
-	# Clean Python attribute  ->  Exact DB column name (with spaces)
-	item_group = db.Column("Item Group", db.Integer)
+    # Surrogate primary key (already IDENTITY in SQL Server)
+    pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
 
-	# Composite primary key
-	item = db.Column("Item", db.String(10), primary_key=True)
-	replace_item = db.Column("Replace Item", db.String(250), primary_key=True)
+    # Natural key fields (not PKs anymore)
+    item_group      = db.Column("Item Group", db.Integer,    nullable=False)  # flipped to NOT NULL
+    item            = db.Column("Item",       db.String(10),  nullable=False)
+    replace_item    = db.Column("Replace Item", db.String(250), nullable=True)  # flipped to NULL
 
-	# Metadata columns from the sheet
-	mfg_part_num = db.Column("Manufacturer Part Num", db.String(100))
-	manufacturer = db.Column("Manufacturer", db.String(100))
-	item_description = db.Column("Item Description", db.String(500))
+    # Metadata columns
+    mfg_part_num        = db.Column("Manufacturer Part Num",           db.String(100))
+    manufacturer        = db.Column("Manufacturer",                    db.String(100))
+    item_description    = db.Column("Item Description",                db.String(500))
 
-	repl_mfg_part_num = db.Column("Replace Item Manufacturer Part Num", db.String(100))
-	repl_manufacturer = db.Column("Replace Item Manufacturer", db.String(100))
-	repl_item_description = db.Column("Replace Item Item Description", db.String(500))
+    repl_mfg_part_num   = db.Column("Replace Item Manufacturer Part Num", db.String(100))
+    repl_manufacturer   = db.Column("Replace Item Manufacturer",          db.String(100))
+    repl_item_description = db.Column("Replace Item Item Description",    db.String(500))
 
-	stage = db.Column("Stage", db.String(100))
-	expected_go_live_date = db.Column("Expected Go Live Date", db.Date)
+    stage               = db.Column("Stage", db.String(100))
+    expected_go_live_date = db.Column("Expected Go Live Date", db.Date)
 
-	create_dt = db.Column("CreateDT", db.DateTime(timezone=False), default=now_ny_naive)
-	update_dt = db.Column("UpdateDT", db.DateTime(timezone=False), default=now_ny_naive, onupdate=now_ny_naive)
-	wrike_id = db.Column("WrikeID", db.String(50))
+    create_dt           = db.Column("CreateDT", db.DateTime(timezone=False))
+    update_dt           = db.Column("UpdateDT", db.DateTime(timezone=False))
+    wrike_id            = db.Column("WrikeID",  db.String(50))
 
-
-	def __repr__(self):
-		return f"<ItemLink {self.item} -> {self.replace_item} ({self.item_group}, {self.stage})>"
+    def __repr__(self):
+        return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
 
 
 class PLMTrackerBase(db.Model):
@@ -121,3 +132,22 @@ class PLMTrackerBase(db.Model):
 	__mapper_args__ = {
 		"primary_key": [Group_Locations, Item, Replace_Item]
 	}
+
+
+class PLMQty(db.Model):
+	"""Read-only mapping to PLM.vw_PLMQty view.
+
+	Synthetic composite primary key uses Location, Item, and report_stamp so
+	the ORM can work with result objects.
+	"""
+
+	__tablename__ = "vw_PLMQty"
+	__table_args__ = {"schema": "PLM"}
+
+	# Columns
+	Location = db.Column("Location", db.String(20), nullable=False, primary_key=True)
+	Item = db.Column("Item", db.String(10), nullable=False, primary_key=True)
+	report_stamp = db.Column("report stamp", db.DateTime, nullable=False, primary_key=True)
+
+	AvailableQty = db.Column("AvailableQty", db.Integer, nullable=True)
+	Item_Group = db.Column("Item Group", db.Integer, nullable=True)

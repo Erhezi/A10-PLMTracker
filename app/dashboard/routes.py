@@ -3,7 +3,7 @@ from flask_login import login_required
 from sqlalchemy import select, func
 from ..utility.item_locations import build_location_pairs
 from .. import db
-from ..models.relations import ItemLink, PLMTrackerBase
+from ..models.relations import ItemLink, PLMTrackerBase, PLMQty
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
@@ -248,4 +248,55 @@ def api_par():
         "page": page,
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page else 1,
+    })
+
+
+@bp.route("/api/qty/<int:item_group>")
+@login_required
+def api_qty(item_group: int):
+    """Return historical quantity time-series (AvailableQty) per (Item, Location)
+    for a given item_group from the PLMQty view.
+
+    Response structure:
+    {
+      "item_group": <int>,
+      "series": [
+          {"item": "12345", "location": "LOC1", "points": [
+              {"t": "2025-08-01T00:00:00", "qty": 42}, ...
+          ]}, ...
+      ]
+    }
+    """
+    # Query all rows for this item group ordered for stable client-side rendering
+    stmt = (
+        select(
+            PLMQty.Item.label("item"),
+            PLMQty.Location.label("location"),
+            PLMQty.report_stamp.label("stamp"),
+            PLMQty.AvailableQty.label("qty"),
+        )
+        .where(PLMQty.Item_Group == item_group)
+        .order_by(PLMQty.Item, PLMQty.Location, PLMQty.report_stamp)
+    )
+
+    rows = db.session.execute(stmt).all()
+    series_map = {}
+    for item, location, stamp, qty in rows:
+        key = (item, location)
+        bucket = series_map.setdefault(key, [])
+        bucket.append({
+            "t": stamp.isoformat() if stamp else None,
+            "qty": int(qty) if qty is not None else None,
+        })
+
+    series = [
+        {"item": k[0], "location": k[1], "points": v}
+        for k, v in series_map.items()
+    ]
+
+    return jsonify({
+        "item_group": item_group,
+        "series": series,
+        "series_count": len(series),
+        "point_count": sum(len(s["points"]) for s in series),
     })

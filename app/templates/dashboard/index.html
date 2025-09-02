@@ -189,11 +189,11 @@
     <div class="col-12 col-xl-5 col-xxl-4" id="section-chart">
       <div class="card shadow-sm h-100">
         <div class="card-header bg-white py-2">
-          <h6 class="mb-0">Daily Balance (Item vs Replacement)</h6>
+          <h6 class="mb-0">Inventory Daily Balance (Item Group: <span id="current-item-group">Not Selected</span>)</h6>
         </div>
         <div class="card-body">
-          <canvas id="daily-balance-chart" height="300" class="w-100"></canvas>
-          <div class="text-muted small mt-2">Chart placeholder.</div>
+          <div id="qty-chart" style="height:360px; position:relative;"></div>
+          <div class="text-muted small mt-2" id="chart-hint">&nbsp;</div>
         </div>
       </div>
     </div>
@@ -201,6 +201,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.querySelector('#table-inventory tbody');
@@ -357,6 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if(!isFinite(n)) return ''; 
           return n.toFixed(digits); 
         }
+        tr.dataset.itemGroup = r.item_group;
+        tr.dataset.item = r.item;
         tr.innerHTML = `
           <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td>${fmt(r.item_group)}</td>
@@ -382,10 +385,12 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         tbody.appendChild(tr);
+        tbody.appendChild(tr);
       }
     countEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
     updatePager();
       console.log('Table populated successfully');
+      attachInventoryRowClick();
     } catch (e) {
       console.error('Failed loading inventory', e);
       countEl.textContent = 'error: ' + e.message;
@@ -600,6 +605,150 @@ document.addEventListener('DOMContentLoaded', () => {
       loadPar(1);
     });
   });
+
+  // D3 chart logic
+  const chartContainer = document.getElementById('qty-chart');
+  let lastItemGroup = null;
+  let chartDataCache = new Map();
+
+  function attachInventoryRowClick(){
+    tbody.querySelectorAll('tr').forEach(tr => {
+      tr.addEventListener('click', () => {
+        const ig = tr.dataset.itemGroup;
+        if(!ig) return;
+        if(ig === lastItemGroup){
+          // toggle collapse maybe in future; for now ignore
+        }
+        loadQtySeries(ig);
+      });
+    });
+  }
+
+  async function loadQtySeries(itemGroup){
+    lastItemGroup = itemGroup;
+    chartContainer.innerHTML = '<div class="text-muted small">Loading series for Item Group '+itemGroup+'...</div>';
+    try {
+      if(chartDataCache.has(itemGroup)){
+        renderQtyChart(chartDataCache.get(itemGroup), itemGroup);
+        return;
+      }
+      const resp = await fetch(`/dashboard/api/qty/${itemGroup}`);
+      if(!resp.ok) throw new Error('Failed loading qty');
+      const data = await resp.json();
+      chartDataCache.set(itemGroup, data);
+      renderQtyChart(data, itemGroup);
+    } catch(e){
+      console.error(e);
+      chartContainer.innerHTML = '<div class="text-danger small">Failed loading data: '+e.message+'</div>';
+    }
+  }
+
+  function renderQtyChart(data, itemGroup){
+    chartContainer.innerHTML = '';
+    const rawSeries = data.series || [];
+    // Build unified point list for global x/y domains
+    const allPoints = [];
+    rawSeries.forEach(s => s.points.forEach(p => { if(p.t) allPoints.push(p); }));
+    if(!allPoints.length){
+      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+'</div>';
+      return;
+    }
+  // Update header span and hide hint
+  const headerSpan = document.getElementById('current-item-group');
+  if(headerSpan) headerSpan.textContent = itemGroup;
+  const hintEl = document.getElementById('chart-hint');
+  if(hintEl) hintEl.style.display = 'none';
+    function parseIso(s){ return new Date(s); }
+    const xExtent = d3.extent(allPoints, d => parseIso(d.t));
+    const yExtent = d3.extent(allPoints, d => d.qty);
+    const locations = Array.from(new Set(rawSeries.map(s => s.location || 'Unknown'))).sort();
+    const multiLocation = locations.length > 1;
+
+    // If multiple locations, create a small-multiple chart per location, otherwise single chart as before.
+    const perChartHeight = multiLocation ? 240 : (chartContainer.clientHeight || 320); // plot area + margins
+    const baseWidth = chartContainer.clientWidth || 400;
+    const margin = {top: 20, right: 30, bottom: 60, left: 60}; // extra bottom for legend separation
+    const innerW = baseWidth - margin.left - margin.right;
+    const innerH = perChartHeight - margin.top - margin.bottom;
+    // Color by item only so same item across locations retains color
+    const distinctItems = Array.from(new Set(rawSeries.map(s => s.item))).sort();
+    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(distinctItems);
+    const x = d3.scaleUtc().domain(xExtent).range([0, innerW]);
+    // We'll build per-location y scales; fallback unified when single chart
+  // Add 10% headroom above max
+  const maxGlobal = yExtent[1];
+  const paddedGlobalMax = (maxGlobal > 0) ? maxGlobal * 1.1 : maxGlobal; // only pad positive ranges
+  const unifiedY = d3.scaleLinear().domain([Math.min(0, yExtent[0]), paddedGlobalMax]).nice().range([innerH, 0]);
+    function makeLine(yScale){
+      return d3.line().defined(d => d.t && d.qty != null).x(d => x(parseIso(d.t))).y(d => yScale(d.qty));
+    }
+
+    function drawOneChart(seriesSubset, locationLabel){
+      const svg = d3.select(chartContainer).append('svg')
+        .attr('width', baseWidth)
+        .attr('height', perChartHeight)
+        .style('display','block')
+        .style('margin-bottom','12px');
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+      // Axes
+      g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(6));
+      // Build y scale for this subset (independent per location if multiLocation)
+      let yScale;
+      if(multiLocation){
+  const locExtent = d3.extent(seriesSubset.flatMap(s => s.points.filter(p=>p.t).map(p => p.qty)));
+  const paddedLocMax = (locExtent[1] > 0) ? locExtent[1] * 1.1 : locExtent[1];
+  yScale = d3.scaleLinear().domain([Math.min(0, locExtent[0]), paddedLocMax]).nice().range([innerH,0]);
+      } else {
+        yScale = unifiedY;
+      }
+      g.append('g').call(d3.axisLeft(yScale));
+      const line = makeLine(yScale);
+      // Title for small multiples
+      g.append('text')
+        .attr('x', 0)
+        .attr('y', -6)
+        .attr('text-anchor','start')
+        .attr('class','small fw-semibold')
+        .text(multiLocation ? `Location: ${locationLabel}` : `Available Qty — Item Group ${itemGroup}`);
+
+      const legendEntries = [];
+      seriesSubset.forEach(s => {
+        const key = multiLocation ? s.item : (s.item + ' @ ' + (s.location || 'Unknown'));
+        const c = color(s.item); // color by item
+        g.append('path')
+          .datum(s.points.filter(p => p.t))
+          .attr('fill','none')
+          .attr('stroke', c)
+          .attr('stroke-width',1.5)
+          .attr('d', line)
+          .append('title').text(key);
+        legendEntries.push({key, color: c});
+      });
+
+      // Legend (placed with more vertical gap from x-axis)
+      const legendYOffset = innerH + 20; // 20px below axis instead of tight
+      const legend = g.append('g').attr('transform', `translate(0,${legendYOffset})`);
+      let lx = 0; let ly = 0; const maxWidth = innerW; const rowH = 16;
+      legendEntries.forEach(le => {
+        const group = legend.append('g').attr('transform', `translate(${lx},${ly})`);
+        group.append('rect').attr('width',12).attr('height',12).attr('fill', le.color).attr('rx',2);
+        group.append('text').attr('x',16).attr('y',10).attr('font-size','11px').text(le.key);
+        const bbox = group.node().getBBox();
+        lx += bbox.width + 12;
+        if(lx > maxWidth){ lx = 0; ly += rowH; group.attr('transform', `translate(${lx},${ly})`); lx += bbox.width + 12; }
+      });
+    }
+
+    if(multiLocation){
+      locations.forEach(loc => {
+        const subset = rawSeries.filter(s => (s.location || 'Unknown') === loc).slice().sort((a,b)=> a.item.localeCompare(b.item));
+        drawOneChart(subset, loc);
+      });
+    } else {
+      drawOneChart(rawSeries.slice().sort((a,b)=> a.item.localeCompare(b.item) || a.location.localeCompare(b.location)), rawSeries[0]?.location || 'Unknown');
+    }
+
+  }
 
   loadFilterOptions().then(() => { loadInventory(1); loadPar(1); });
 });

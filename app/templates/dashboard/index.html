@@ -7,25 +7,44 @@
 <div class="container-fluid p-0 mb-4" id="section-kpis">
   <div class="d-flex flex-column flex-lg-row align-items-lg-end gap-3 mb-3">
     <form id="dashboard-filters" class="row g-2 flex-grow-1">
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <label class="form-label small text-uppercase text-muted mb-1">Item Group</label>
-        <select class="form-select form-select-sm" name="item_group">
-          <option value="">All</option>
-        </select>
+        <!-- Multi-select dropdown with checkboxes -->
+        <div class="dropdown w-100" id="item-group-multiselect">
+          <button class="form-select form-select-sm text-start d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="item-group-button">
+            <span class="flex-grow-1" data-default-label>All</span>
+            <span class="ms-auto small text-muted" id="item-group-count" style="display:none;"></span>
+          </button>
+          <div class="dropdown-menu p-2 small" style="max-height:320px; overflow:auto;">
+            <div class="text-muted fst-italic px-2 py-1">Loading...</div>
+          </div>
+          <input type="hidden" name="item_group" value="" />
+        </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <label class="form-label small text-uppercase text-muted mb-1">Location</label>
-        <select class="form-select form-select-sm" name="location">
-          <option value="">All</option>
-        </select>
+        <div class="dropdown w-100" id="location-multiselect">
+          <button class="form-select form-select-sm text-start d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="location-button">
+            <span class="flex-grow-1" data-default-label>All</span>
+            <span class="ms-auto small text-muted" id="location-count" style="display:none;"></span>
+          </button>
+          <div class="dropdown-menu p-2 small" style="max-height:320px; overflow:auto;">
+            <div class="text-muted fst-italic px-2 py-1">Loading...</div>
+          </div>
+          <input type="hidden" name="location" value="" />
+        </div>
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
         <label class="form-label small text-uppercase text-muted mb-1">Stage</label>
         <select class="form-select form-select-sm" name="stage">
           <option value="">All</option>
         </select>
       </div>
-      <div class="col-6 col-md-3 d-flex align-items-end">
+      <div class="col-6 col-md-4">
+        <label class="form-label small text-uppercase text-muted mb-1">Desc Search</label>
+        <input type="text" class="form-control form-control-sm" name="desc_search" placeholder="search description" />
+      </div>
+      <div class="col-6 col-md-2 d-flex align-items-end">
         <!-- Apply button removed: filters auto-apply on change -->
         <button type="reset" class="btn btn-outline-secondary btn-sm">Reset</button>
       </div>
@@ -208,9 +227,20 @@ document.addEventListener('DOMContentLoaded', () => {
   let parCurrentPage = 1;
   let parTotalPages = 1;
   const filterForm = document.getElementById('dashboard-filters');
-  const selItemGroup = filterForm.querySelector('select[name="item_group"]');
-  const selLocation = filterForm.querySelector('select[name="location"]');
+  const selItemGroup = filterForm.querySelector('input[name="item_group"]'); // hidden field storing comma list
+  const itemGroupMulti = document.getElementById('item-group-multiselect');
+  const itemGroupMenu = itemGroupMulti.querySelector('.dropdown-menu');
+  const itemGroupButton = document.getElementById('item-group-button');
+  const itemGroupDefaultLabel = itemGroupButton.querySelector('[data-default-label]');
+  const itemGroupCount = document.getElementById('item-group-count');
+  const selLocation = filterForm.querySelector('input[name="location"]'); // hidden multi-select
+  const locMulti = document.getElementById('location-multiselect');
+  const locMenu = locMulti.querySelector('.dropdown-menu');
+  const locButton = document.getElementById('location-button');
+  const locDefaultLabel = locButton.querySelector('[data-default-label]');
+  const locCount = document.getElementById('location-count');
   const selStage = filterForm.querySelector('select[name="stage"]');
+  const inpDescSearch = filterForm.querySelector('input[name="desc_search"]');
   
   console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
 
@@ -220,10 +250,46 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await fetch('/dashboard/api/filter-options');
       if(!resp.ok) throw new Error('Failed loading filter options');
       const data = await resp.json();
-      // Item Groups
-      selItemGroup.innerHTML = '<option value="">All</option>' + data.item_groups.map(g => `<option value="${g}">${g}</option>`).join('');
+      // Item Groups -> build checkbox list
+      const groups = data.item_groups || [];
+      if(!groups.length){
+        itemGroupMenu.innerHTML = '<div class="px-2 py-1 text-muted">No item groups found</div>';
+      } else {
+        const itemsHtml = groups.map(g => `
+          <div class="form-check">
+            <input class="form-check-input item-group-checkbox" type="checkbox" value="${g}" id="ig-${g}">
+            <label class="form-check-label" for="ig-${g}">${g}</label>
+          </div>`).join('');
+        itemGroupMenu.innerHTML = `
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-select-all">Select All</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-clear">Clear</button>
+          </div>
+          <div class="border-top mt-2 pt-2"></div>
+          ${itemsHtml}`;
+      }
+      attachItemGroupEvents();
       // Locations
-      selLocation.innerHTML = '<option value="">All</option>' + data.locations.map(l => `<option value="${l.value}">${l.label}</option>`).join('');
+      // Locations -> build checkbox list
+      const locs = data.locations || [];
+      if(!locs.length){
+        locMenu.innerHTML = '<div class="px-2 py-1 text-muted">No locations found</div>';
+      } else {
+        const locItemsHtml = locs.map(obj => {
+          const val = obj.value;
+          const label = obj.label;
+          return `<div class=\"form-check location-option\" data-label=\"${label.toLowerCase().replace(/&/g,'&amp;')}\">\n  <input class=\"form-check-input location-checkbox\" type=\"checkbox\" value=\"${val}\" id=\"loc-${val.replace(/[^a-zA-Z0-9_-]/g,'')}\">\n  <label class=\"form-check-label\" for=\"loc-${val.replace(/[^a-zA-Z0-9_-]/g,'')}\">${label}</label>\n</div>`;
+        }).join('');
+        locMenu.innerHTML = `
+          <input type="text" class="form-control form-control-sm mb-2" id="loc-search" placeholder="Search (use * wildcard)" autocomplete="off" />
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="loc-select-all">Select All</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="loc-clear">Clear</button>
+          </div>
+          <div class="border-top mt-2 pt-2"></div>
+          <div id="loc-options-container">${locItemsHtml}</div>`;
+      }
+      attachLocationEvents();
       // Stages (restricted)
       selStage.innerHTML = '<option value="">All</option>' + data.stages.map(s => `<option value="${s}">${s}</option>`).join('');
     } catch (e) {
@@ -263,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if(selItemGroup.value) params.set('item_group', selItemGroup.value);
       if(selLocation.value) params.set('location', selLocation.value);
       if(selStage.value) params.set('stage', selStage.value);
+      if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
       const resp = await fetch(`/dashboard/api/inventory?${params.toString()}`);
       console.log('API response status:', resp.status, resp.statusText);
       
@@ -392,12 +459,143 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
   const autoApply = debounce(()=>{ loadInventory(1); loadPar(1); });
-  [selItemGroup, selLocation, selStage].forEach(sel => sel.addEventListener('change', autoApply));
+  [selStage, inpDescSearch].forEach(sel => sel.addEventListener('change', autoApply));
+  // Multi-select handling
+  function updateItemGroupSelection(triggerChange=true){
+    const checked = Array.from(itemGroupMenu.querySelectorAll('.item-group-checkbox:checked')).map(cb => cb.value);
+    selItemGroup.value = checked.join(',');
+    if(!checked.length){
+      itemGroupDefaultLabel.textContent = 'All';
+      itemGroupCount.style.display='none';
+    } else {
+      if(checked.length <= 3){
+        itemGroupDefaultLabel.textContent = checked.join(', ');
+        itemGroupCount.style.display='none';
+      } else {
+        itemGroupDefaultLabel.textContent = 'Item Groups';
+        itemGroupCount.textContent = checked.length + ' selected';
+        itemGroupCount.style.display='';
+      }
+    }
+    if(triggerChange) autoApply();
+  }
+  function attachItemGroupEvents(){
+    const selectAllBtn = itemGroupMenu.querySelector('#ig-select-all');
+    const clearBtn = itemGroupMenu.querySelector('#ig-clear');
+    if(selectAllBtn){
+      selectAllBtn.addEventListener('click', () => {
+        itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => { cb.checked = true; });
+        updateItemGroupSelection();
+      });
+    }
+    if(clearBtn){
+      clearBtn.addEventListener('click', () => {
+        itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => { cb.checked = false; });
+        updateItemGroupSelection();
+      });
+    }
+    itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => updateItemGroupSelection());
+    });
+  }
+  // Location multi-select handling
+  function updateLocationSelection(triggerChange=true){
+    const checked = Array.from(locMenu.querySelectorAll('.location-checkbox:checked')).map(cb => cb.value);
+    selLocation.value = checked.join(',');
+    if(!checked.length){
+      locDefaultLabel.textContent = 'All';
+      locCount.style.display='none';
+    } else {
+      if(checked.length <= 2){
+        locDefaultLabel.textContent = checked.join(', ');
+        locCount.style.display='none';
+      } else {
+        locDefaultLabel.textContent = 'Locations';
+        locCount.textContent = checked.length + ' selected';
+        locCount.style.display='';
+      }
+    }
+    if(triggerChange) autoApply();
+  }
+  function attachLocationEvents(){
+    const selectAllBtn = locMenu.querySelector('#loc-select-all');
+    const clearBtn = locMenu.querySelector('#loc-clear');
+    const searchInput = locMenu.querySelector('#loc-search');
+    if(selectAllBtn){
+      selectAllBtn.addEventListener('click', () => {
+        // Only select visible options
+        locMenu.querySelectorAll('.location-option:not([data-hidden="1"]) .location-checkbox').forEach(cb => { cb.checked = true; });
+        updateLocationSelection();
+      });
+    }
+    if(clearBtn){
+      clearBtn.addEventListener('click', () => {
+        locMenu.querySelectorAll('.location-checkbox').forEach(cb => { cb.checked = false; });
+        updateLocationSelection();
+      });
+    }
+    locMenu.querySelectorAll('.location-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => updateLocationSelection());
+    });
+    if(searchInput){
+      let lastFilter = '';
+      searchInput.addEventListener('input', () => {
+        const raw = searchInput.value.trim();
+        if(raw === lastFilter) return;
+        lastFilter = raw;
+        if(!raw){
+          // reset all
+          locMenu.querySelectorAll('.location-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
+          return;
+        }
+        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
+        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
+        // After escaping, literal '*' became \*; replace with '.*'
+        patternEsc = patternEsc.replace(/\\\*/g, '.*');
+        if(!raw.includes('*')){
+          // Implicit contains match
+          patternEsc = '.*' + patternEsc + '.*';
+        }
+  let regex = null;
+  try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        locMenu.querySelectorAll('.location-option').forEach(div => {
+          const label = (div.getAttribute('data-label') || '').toLowerCase();
+          const match = !regex || regex.test(label);
+          if(match){
+            div.style.display='';
+            div.removeAttribute('data-hidden');
+          } else {
+            div.style.display='none';
+            div.setAttribute('data-hidden','1');
+          }
+        });
+      });
+    }
+  }
+  inpDescSearch.addEventListener('keyup', autoApply);
 
   // Legacy form submit (no visible submit button now) still prevented
   filterForm.addEventListener('submit', evt => { evt.preventDefault(); });
   filterForm.addEventListener('reset', () => {
-    setTimeout(() => { // allow default reset
+    setTimeout(() => { // allow default reset first
+      // Clear hidden multi-select values & uncheck all checkboxes
+      selItemGroup.value = '';
+      itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => { cb.checked = false; });
+      itemGroupDefaultLabel.textContent = 'All';
+      itemGroupCount.style.display='none';
+      selLocation.value = '';
+      locMenu.querySelectorAll('.location-checkbox').forEach(cb => { cb.checked = false; });
+      locDefaultLabel.textContent = 'All';
+      locCount.style.display='none';
+      // Clear location search box if present and show all
+      const locSearch = locMenu.querySelector('#loc-search');
+      if(locSearch){
+        locSearch.value='';
+        locMenu.querySelectorAll('.location-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
+      }
+      // Clear description search input explicitly (form reset usually does but ensure)
+      inpDescSearch.value='';
+      // Reload data
       loadInventory(1);
       loadPar(1);
     });

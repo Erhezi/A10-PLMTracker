@@ -36,17 +36,30 @@ def api_inventory():
     else:
         stages_list = list(allowed_stage_values)
 
-    item_group_param = request.args.get("item_group")
-    try:
-        item_group_filter = int(item_group_param) if item_group_param else None
-    except ValueError:
-        item_group_filter = None
+    # Support multi-select item_group as comma-separated values
+    item_group_param = request.args.get("item_group") or ""
+    item_group_filters = []
+    if item_group_param:
+        for part in item_group_param.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                item_group_filters.append(int(part))
+            except ValueError:
+                continue
+    item_group_filters = list(dict.fromkeys(item_group_filters))  # dedupe preserving order
 
-    location = request.args.get("location") or None
+    # Multi-location support (comma-separated)
+    location_param = request.args.get("location") or ""
+    location_filters = [loc.strip() for loc in location_param.split(',') if loc.strip()] if location_param else []
 
     company = request.args.get("company") or None  # reserved / future
     active_param = request.args.get("active")
     require_active = active_param.lower() == "true" if active_param else False
+
+    desc_search = request.args.get("desc_search") or ""
+    desc_search_lower = desc_search.lower().strip()
 
     # Pagination params
     try:
@@ -64,13 +77,23 @@ def api_inventory():
     all_rows = build_location_pairs(
         stages=stages_list,
         company=company,
-        location=location,
+        location=None,  # handled post-fetch for multi list
         require_active=require_active,
         include_par=False,
         location_types=["Inventory Location"],
     )
-    if item_group_filter is not None:
-        all_rows = [r for r in all_rows if r.get("item_group") == item_group_filter]
+    if location_filters:
+        loc_set = set(location_filters)
+        all_rows = [r for r in all_rows if (r.get("location") in loc_set)]
+    if item_group_filters:
+        allowed_set = set(item_group_filters)
+        all_rows = [r for r in all_rows if r.get("item_group") in allowed_set]
+    # Description search filter (case-insensitive substring match on either side)
+    if desc_search_lower:
+        all_rows = [r for r in all_rows if (
+            str(r.get("item_description") or "").lower().find(desc_search_lower) != -1 or
+            str(r.get("item_description_ri") or "").lower().find(desc_search_lower) != -1
+        )]
     total = len(all_rows)
     start = (page - 1) * per_page
     end = start + per_page
@@ -145,12 +168,24 @@ def api_par():
     else:
         stages_list = list(allowed_stage_values)
 
-    item_group_param = request.args.get("item_group")
-    try:
-        item_group_filter = int(item_group_param) if item_group_param else None
-    except ValueError:
-        item_group_filter = None
-    location = request.args.get("location") or None
+    # Multi-select item_group support
+    item_group_param = request.args.get("item_group") or ""
+    item_group_filters = []
+    if item_group_param:
+        for part in item_group_param.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                item_group_filters.append(int(part))
+            except ValueError:
+                continue
+    item_group_filters = list(dict.fromkeys(item_group_filters))
+    location_param = request.args.get("location") or ""
+    location_filters = [loc.strip() for loc in location_param.split(',') if loc.strip()] if location_param else []
+
+    desc_search = request.args.get("desc_search") or ""
+    desc_search_lower = desc_search.lower().strip()
 
     # Pagination
     try:
@@ -167,13 +202,23 @@ def api_par():
     # Fetch par location rows
     all_rows = build_location_pairs(
         stages=stages_list,
-        location=location,
+        location=None,
         include_par=True,
         location_types=["Par Location"],
     )
+    if location_filters:
+        loc_set = set(location_filters)
+        all_rows = [r for r in all_rows if (r.get("location") in loc_set)]
     # Filter by item_group if needed
-    if item_group_filter is not None:
-        all_rows = [r for r in all_rows if r.get("item_group") == item_group_filter]
+    if item_group_filters:
+        allowed_set = set(item_group_filters)
+        all_rows = [r for r in all_rows if r.get("item_group") in allowed_set]
+    # Description search
+    if desc_search_lower:
+        all_rows = [r for r in all_rows if (
+            str(r.get("item_description") or "").lower().find(desc_search_lower) != -1 or
+            str(r.get("item_description_ri") or "").lower().find(desc_search_lower) != -1
+        )]
 
     # Recompute weeks_reorder using reorder point instead of available qty
     for r in all_rows:

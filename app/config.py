@@ -27,6 +27,12 @@ class Config:
     GRAPH_ENDPOINT = os.getenv("GRAPH_ENDPOINT", "https://graph.microsoft.com")
     FROM_EMAIL = os.getenv("FROM", "procurementdatateam@montefiore.org") # our service account
 
+    # -------------------------------------------
+    #            Program Parameters
+    # -------------------------------------------
+    # # Batch processing limits
+    MAX_BATCH_PER_SIDE = int(os.getenv("MAX_BATCH_PER_SIDE", "6"))  # Max items or replace_items per side (total combinations = per_side^2)
+
     @classmethod
     def validate(cls):
         missing = [k for k in ["TENANT_ID", "CLIENT_ID", "CLIENT_SECRET"] if not getattr(cls, k)]

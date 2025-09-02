@@ -21,8 +21,8 @@
         <td>{{ it.manufacturer or '' }}</td>
         <td>{{ it.mfg_part_num or '' }}</td>
         <td style="max-width:260px" class="text-truncate" title="{{ it.item_description }}">{{ it.item_description or '' }}</td>
-        <td>{% if it.is_active %}<span class="badge bg-success">Y</span>{% else %}<span class="badge bg-secondary">N</span>{% endif %}</td>
-        <td>{% if it.is_discontinued %}<span class="badge bg-danger">Y</span>{% else %}<span class="badge bg-secondary">N</span>{% endif %}</td>
+        <td>{% if it.is_active == 'Yes' %}<span class="badge bg-success">Y</span>{% else %}<span class="badge bg-danger">N</span>{% endif %}</td>
+        <td>{% if it.is_discontinued == 'Yes' %}<span class="badge bg-danger">Y</span>{% else %}<span class="badge bg-success">N</span>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="7" class="text-muted fst-italic">No matches</td></tr>

@@ -1,8 +1,8 @@
 from __future__ import annotations
 from .. import db
 from . import now_ny_naive
-from sqlalchemy.orm import relationship, foreign
-from sqlalchemy import Index, text
+from sqlalchemy.orm import relationship, foreign, backref
+from sqlalchemy import Index, UniqueConstraint, text
 
 class ItemLink(db.Model):
     __tablename__ = "ItemLink"
@@ -33,9 +33,9 @@ class ItemLink(db.Model):
     pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
 
     # Natural key fields (not PKs anymore)
-    item_group      = db.Column("Item Group", db.Integer,    nullable=False)  # flipped to NOT NULL
+    item_group      = db.Column("Item Group", db.Integer,    nullable=False)  
     item            = db.Column("Item",       db.String(10),  nullable=False)
-    replace_item    = db.Column("Replace Item", db.String(250), nullable=True)  # flipped to NULL
+    replace_item    = db.Column("Replace Item", db.String(250), nullable=True)  
 
     # Metadata columns
     mfg_part_num        = db.Column("Manufacturer Part Num",           db.String(100))
@@ -46,7 +46,7 @@ class ItemLink(db.Model):
     repl_manufacturer   = db.Column("Replace Item Manufacturer",          db.String(100))
     repl_item_description = db.Column("Replace Item Item Description",    db.String(500))
 
-    stage               = db.Column("Stage", db.String(100))
+    stage                 = db.Column("Stage", db.String(100))
     expected_go_live_date = db.Column("Expected Go Live Date", db.Date)
 
     create_dt           = db.Column("CreateDT", db.DateTime(timezone=False))
@@ -55,6 +55,69 @@ class ItemLink(db.Model):
 
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
+    
+
+class PendingItems(db.Model):
+	__tablename__ = "PendingItems"
+	__table_args__ = (
+		# unique constraint on (item_link_id, replace_item_pending)
+		# to prevent duplicate pending entries for same link and part num
+		UniqueConstraint("item_link_id", "replace_item_pending", 
+				         name="UX_PendingItems_Link_ReplacePending"),
+		# index for filtering
+		Index("IX_PendingItems_Status", "status"),
+		Index("IX_PendingItems_ReplaceItemPending", "replace_item_pending"),
+		{"schema": "PLM"},
+	)
+
+	# sarrogate primary key
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+	# foreign key reference back to ItemLink
+	item_link_id = db.Column("item_link_id", db.BigInteger, db.ForeignKey("PLM.ItemLink.PKID", ondelete='CASCADE'), nullable=False)
+
+	# the placeholder code e.g. PENDING***ABC123
+	replace_item_pending = db.Column("replace_item_pending", db.String(250), nullable=False)
+
+	# basic information to track progress and locate the item
+	status = db.Column("status", db.String(20), nullable=False, default="PENDING")  # PENDING, IMAST, ERROR
+	contract_id = db.Column("contract_id", db.String(50), nullable=False)
+	mfg_part_num = db.Column("mfg_part_num", db.String(100), nullable=False)
+
+	# item master number acquired
+	replace_item_immast = db.Column("replace_item_immast", db.String(10), nullable=False, default = "")
+	
+	# timestamps
+	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+	update_dt = db.Column("update_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive, onupdate=now_ny_naive)
+
+	item_link = relationship(
+		"ItemLink", 
+		foreign_keys=[item_link_id], 
+		backref=backref("pending_items", cascade="all, delete-orphan"),
+		lazy="joined"
+    )
+
+	def __repr__(self):
+		return f"<PendingItems id={self.pkid} link_id={self.item_link_id} pending={self.replace_item_pending} status={self.status} immast={self.replace_item_immast}>"
+	
+	@classmethod
+	def create_from_contract_item(cls, item_link_id: int, contract_id: str, mfg_part_num: str) -> PendingItems:
+		placeholder = f"PENDING***{mfg_part_num}"
+		return cls(
+			item_link_id=item_link_id,
+			replace_item_pending=placeholder,
+			contract_id=contract_id,
+			mfg_part_num=mfg_part_num,
+			status="PENDING",
+			replace_item_immast=""
+		)
+	
+	def mark_as_immast(self, immast_item: str):
+		self.replace_item_immast = immast_item
+		self.status = "IMMAST"
+	
+	def mark_as_error(self):
+		self.status = "ERROR"
 
 
 class PLMTrackerBase(db.Model):

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PLM Business Requirements v1.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; line-height: 1.6; color: #2c3e50; }
+    h1, h2, h3 { color: #1a5276; }
+    h1 { border-bottom: 3px solid #1a5276; padding-bottom: 0.3em; }
+    h2 { margin-top: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
+    h3 { margin-top: 1em; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    table, th, td { border: 1px solid #aaa; }
+    th, td { padding: 8px 12px; text-align: left; }
+    th { background: #f4f6f6; }
+    .note { font-style: italic; color: #555; margin-top: 0.5em; }
+    .highlight { font-weight: bold; color: #c0392b; }
+    .appendix-links a { margin-right: 16px; }
+    .toc-top { background:#f9fbfc; border:1px solid #e5e7eb; padding:10px 12px; border-radius:8px; }
+    .wrike { margin:10px 0 20px; }
+    .diagram-wrap { margin: 16px 0; }
+    .mermaid { border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });</script>
+</head>
+<body>
+
+  <h1>PLM Business Requirements v1.1</h1>
+
+<div class="wrike">
+  <strong>Wrike Task:</strong>
+  <a href="https://www.wrike.com/workspace.htm?acc=2635024#/inbox/work_item/1727098445" target="_blank" rel="noopener">Open in Wrike</a>
+</div>
+
+<div class="toc-top appendix-links">
+  <strong>Quick Links:</strong>
+  <a href="#diagram">Stage Transition Diagram</a>
+  <a href="#examples">Supplemental Examples</a>
+</div>
+
+<section id="brd">
+  <h2>Business Requirements (Simplified)</h2>
+  <p><strong>Project:</strong> Product Lifecycle Management (PLM)<br/>
+     <strong>Date:</strong> 2025-08-26<br/>
+     <strong>Prepared by:</strong> Dan Li (dli2@montefiore.org)<br/>
+     <strong>Version:</strong> v1.1</p>
+
+  <div class="section">
+    <h2>1. Overview</h2>
+    <p>The PLM system supports product lifecycle tracking, item linkage, reporting, and decision-making.
+       The system is designed with modular front-end components, supported by a central data model:</p>
+    <ul>
+      <li><strong>Authentication (Auth):</strong> Secure user access and role management.</li>
+      <li><strong>Collector:</strong> Core module for item linkage, verification, and lifecycle stage management.</li>
+      <li><strong>Dashboard:</strong> Visualization and analytics of item status, inventory, and performance.</li>
+      <li><strong>(Planned) Reporting Module:</strong> Dedicated reporting/export functionality for business and integration use cases.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>2. Modules and Functional Requirements</h2>
+
+    <h3>2.1 Authentication (Auth)</h3>
+    <ul>
+      <li>Roles (Initial): <strong>Admin</strong>, <strong>User</strong>, <strong>Read-only</strong>.</li>
+      <li>Runs on internal server (no SSO integration planned).</li>
+      <li>Simple session management (initial implementation).</li>
+      <li>Audit logging: Not supported in initial release; planned for future enhancement.</li>
+    </ul>
+
+    <h3>2.2 Collector Module</h3>
+    <p><em>Purpose:</em> Central workflow for item linkage collection, validation, and lifecycle tracking.</p>
+
+    <h4>2.2.1 Item Linkage</h4>
+    <ul>
+      <li>Capture linkage between <strong>Item ↔ Replace Item</strong> pairs.</li>
+      <li>System will <strong>flag error and alert</strong> if:
+        <ul>
+          <li>Many-to-many relationships are detected.</li>
+          <li>Chaining of replacements is detected.</li>
+          <li>Cyclic relations are detected.</li>
+        </ul>
+      </li>
+      <li>Only <strong>many-to-one</strong> and <strong>one-to-many</strong> merges will be supported.</li>
+      <li>Support simple <strong>Item Group merge</strong>, preserving lineage.</li>
+    </ul>
+
+    <h4>2.2.2 Stages Management</h4>
+    <p>Lifecycle stages (applied at <strong>Item Pair</strong> level):</p>
+    <ul>
+      <li>Tracking - Discontinued</li>
+      <li>Pending Item Number</li>
+      <li>Pending Clinical Approval</li>
+      <li>Tracking - Item Transition</li>
+      <li>Deleted</li>
+      <li>Tracking Completed</li>
+    </ul>
+
+    <h4>2.2.2.1 Stage Change Responsibility & Batch Actions</h4>
+    <ul>
+      <li><strong>Responsibility:</strong> <em>MM/PDE/MDM</em> (final owner TBD) will change stage from
+        <em>Pending Clinical Approval</em> → <em>Tracking - Item Transition</em> once the <strong>Item Location set-up</strong> is finished.</li>
+      <li><strong>Batch capability:</strong> Provide bulk stage-change on the <em>Group</em> page to update multiple Item Pairs in one action.</li>
+    </ul>
+
+    <h4>2.2.3 Export to MDM</h4>
+    <ul>
+      <li>Identify at which stage(s) data is ready to be exported to MDM.</li>
+      <li>Define export data structure and frequency.</li>
+      <li>Ensure audit trail for exported records (planned for later phase).</li>
+    </ul>
+
+    <h3>2.3 Dashboard Module</h3>
+    <p><em>Purpose:</em> Visualization of lifecycle and operational KPIs.</p>
+
+    <h4>2.3.1 Required Fields (updated list)</h4>
+    <ul>
+      <li>Item Active Status</li>
+      <li>Item Discontinued Status</li>
+      <li>Daily Quantity Balance</li>
+      <li>Weekly Burn Rate (normalized across all locations, calculated in EA)</li>
+      <li>Weeks on Hand</li>
+      <li>90-day PO Quantity</li>
+      <li>Auto-Replenishment (Yes/No)</li>
+      <li>Past 365 Days Requester Names (Item, Location, Requester; consider including user emails)</li>
+    </ul>
+
+    <h4>2.3.1.1 Wildcard Field Search</h4>
+    <p>Allow wildcard/partial matching across <strong>Inventory</strong> and <strong>PAR</strong> tables to filter results by
+       Item, Location, and Description (e.g., <code>*123*</code>, <code>AB?</code>).</p>
+
+    <h4>2.3.2 Reporting / Export</h4>
+    <ul>
+      <li>Enable export of dashboard datasets to Excel (.xlsx)</li>
+      <li>Support Infor upload template formatting for ItemLocation configuration</li>
+    </ul>
+
+    <h4>2.3.2.1 ItemLocation Upload Template (Stage-Gated)</h4>
+    <ul>
+      <li>Expose the Infor-compliant <strong>ItemLocation upload</strong> template only when the Item Pair's stage is
+        <em>Pending Clinical Approval</em>.</li>
+      <li>All other stages remain read-only; no MDM-consumable file should be produced.</li>
+    </ul>
+
+  </div>
+
+  <div class="section">
+    <h2>3. Business Rules</h2>
+    <ol>
+      <li><strong>Item Linkage Rules</strong>
+        <ul>
+          <li>Many-to-many, chaining, or cyclic relations must be flagged and disallowed.</li>
+          <li>Only one-to-one, one-to-many and many-to-one item conversion permitted.</li>
+        </ul>
+      </li>
+      <li><strong>Stage Handling</strong>
+        <ul>
+          <li>Stages are applied per Item Pair.</li>
+          <li>Item Pairs under <em>Pending Clinical Approval</em> will enable the Item Location export capability.</li>
+          <li>Item Pairs under other stages are read-only and no MDM-consumable file should be produced.</li>
+        </ul>
+      </li>
+      <li><strong>Dashboard Metrics</strong>
+        <ul>
+          <li>Burn rate is shown normalized across all locations in EA (or the lowest possible UOM as defined by Infor ItemUOM).</li>
+          <li>Past 365 days requester data requires reliable user identifiers (names and possibly emails).</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>4. Non-Functional Requirements</h2>
+    <ul>
+      <li>Performance: Dashboard responsiveness should be kept reasonable (&lt;= 20 seconds preferred).</li>
+      <li>Auditability: Stage changes and exports to be logged (future phase).</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>5. Future Open Discussions</h2>
+    <ul>
+      <li>Finalize user-base and user-scope.</li>
+      <li>Refine export rules for different user groups.</li>
+      <li>Refine user roles and permissions.</li>
+      <li>Consider additional stages if needed in future phases.</li>
+      <li>Define how to integrate management steps between this tracker and Wrike for ease of adoption.</li>
+    </ul>
+  </div>
+
+</section>
+
+<section id="diagram" class="diagram-wrap">
+  <h2>Stage Transition Diagram</h2>
+  <div class="mermaid">
+stateDiagram-v2
+    direction LR
+
+    %% === States (updated labels) ===
+    state "Pending Item Number" as PINA
+    state "Pending Clinical Approval" as PCA
+    state "Tracking - Item Transition" as TT
+    state "Tracking - Discontinued" as DISC
+    state "Deleted" as DEL
+    state "Tracking Completed" as DONE
+
+    %% === Creation paths ===
+    [*] --> PCA : Creation<br/>(replacement has Item #)
+    [*] --> PINA : Creation<br/>(replacement missing Item #)
+    [*] --> DISC : Creation<br/>(replacement set Discontinued)<br/>(replacement becomes null)
+
+    %% === Normal flow ===
+    PINA --> PCA : Item # assigned
+    PCA  --> TT  : User marks approved
+
+    %% === Completion ===
+    DISC --> DONE : Mark completed
+    TT   --> DONE : Mark completed
+
+    %% === Restore from Completed (≤ 90 days) ===
+    DONE --> TT   : Restore ≤90 days
+    DONE --> DISC : Restore ≤90 days
+
+    %% === Delete (from any active state) ===
+    PINA --> DEL : Mark as Deleted
+    PCA  --> DEL : Mark as Deleted
+    TT   --> DEL : Mark as Deleted
+    DISC --> DEL : Mark as Deleted
+    DONE --> DEL : Mark as Deleted
+
+    %% === Restore from Deleted (if still visible) ===
+    DEL --> PINA : Restore
+    DEL --> PCA  : Restore
+    DEL --> TT   : Restore
+    DEL --> DISC : Restore
+
+    %% === Notes ===
+    note right of DISC
+      If set to Discontinued at creation,
+      replacement item becomes null (NaN)
+    end note
+
+    note right of DONE
+      Retained up to 90 days.
+      After that permanently removed
+      (archived for audit only).
+    end note
+  </div>
+</section>
+
+  
+<section id="examples">
+  <h2>Supplemental: Case Handling Rules with Examples</h2>
+  <p><strong>Definition:</strong> A <em>location setting</em> is the stock configuration of an item at each location.
+    For <strong>PAR</strong> locations → replenishment stock quantity. For <strong>Non-PAR</strong> locations → minimum + maximum stock quantity.
+  </p>
+
+  <h3>Case 1: One-to-One (1:1) Mapping</h3>
+  <p><strong>Conversion:</strong> Item <strong>A</strong> → replaced by Item <strong>B</strong></p>
+  <p><strong>Rule:</strong> Replacement item inherits 100% of original item’s locations; overlapping locations are summed.</p>
+  <table>
+    <tr><th>Item</th><th>Locations (Before)</th></tr>
+    <tr><td>A</td><td>(X, 100), (Y, 200), (Z, 500)</td></tr>
+    <tr><td>B</td><td>(U, 20), (X, 100)</td></tr>
+  </table>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 20), (X, 200), (Y, 200), (Z, 500)</td></tr>
+  </table>
+
+  <h3>Case 2: Many-to-One (N:1) Mapping</h3>
+  <p><strong>Conversion:</strong> Items <strong>A, C</strong> → replaced by Item <strong>B</strong></p>
+  <p><strong>Rule:</strong> Replacement item takes <em>union</em> of all locations; overlapping locations are summed.</p>
+  <table>
+    <tr><th>Item</th><th>Locations (Before)</th></tr>
+    <tr><td>A</td><td>(X, 100), (Y, 200)</td></tr>
+    <tr><td>C</td><td>(Y, 300), (Z, 400)</td></tr>
+    <tr><td>B</td><td>(U, 50), (X, 100)</td></tr>
+  </table>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 50), (X, 200), (Y, 500), (Z, 400)</td></tr>
+  </table>
+
+  <h3>Case 3: One-to-Many (1:N) Mapping</h3>
+  <p><strong>Conversion:</strong> Item <strong>A</strong> → replaced by Items <strong>B, C</strong></p>
+  <p><strong>Rule:</strong> Original item’s locations are copied to each replacement. Each replacement has a <em>Projected Volume</em> (default = even split).
+  Final setting per location = <code>(original qty × projected volume) + pre-existing qty</code>.</p>
+
+  <h4>Example A: Even Split (0.5 : 0.5)</h4>
+  <table>
+    <tr><th>Item</th><th>Locations (Before)</th></tr>
+    <tr><td>A</td><td>(X, 100), (Y, 200)</td></tr>
+    <tr><td>B</td><td>(U, 50), (X, 100)</td></tr>
+    <tr><td>C</td><td>(V, 30)</td></tr>
+  </table>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 50), (X, 150), (Y, 100)</td></tr>
+    <tr><td>C</td><td>(V, 30), (X, 50), (Y, 100)</td></tr>
+  </table>
+  <p class="note">Explanation: For B at X, 100×0.5 + 100 pre-existing = 150. For Y, 200×0.5 = 100. C gets the remaining half.</p>
+
+  <h4>Example B: Adjusted Split (0.7 : 0.3)</h4>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 50), (X, 170), (Y, 140)</td></tr>
+    <tr><td>C</td><td>(V, 30), (X, 30), (Y, 60)</td></tr>
+  </table>
+  <p class="note">Explanation: For B at X, 100×0.7 + 100 pre-existing = 170. For Y, 200×0.7 = 140. C gets the remainder: X=30, Y=60.</p>
+
+  <h3>Case 4: Unsupported (Flagged & Blocked)</h3>
+  <p>The following mappings are <span class="highlight">not supported</span> and will be flagged as errors. No export to MDM occurs until corrected.</p>
+
+  <h4>4.1 Many-to-Many (N:M)</h4>
+  <p><strong>Example:</strong> A→B, A→D, C→B, C→D</p>
+  <p><strong>System Behavior:</strong> Error banner: <em>“Many-to-many mapping detected. Only 1:N or N:1 allowed.”</em></p>
+  <p><strong>Recommended Action:</strong> Decide on a single clear structure:
+  <ul>
+    <li>Merge → N:1</li>
+    <li>Split → 1:N</li>
+  </ul></p>
+
+  <h4>4.2 Cyclic (A→B, B→A)</h4>
+  <p><strong>System Behavior:</strong> Error banner: <em>“Cyclic replacement detected (A↔B).”</em></p>
+  <p><strong>Recommended Action:</strong> Review <strong>item group status</strong>. Close the older item group so only one valid direction remains.</p>
+
+  <h4>4.3 Chain (A→B, B→C)</h4>
+  <p><strong>System Behavior:</strong> Error banner: <em>“Chained replacements detected (A→B→C). Use a single-hop mapping.”</em></p>
+  <p><strong>Recommended Action:</strong> Review <strong>item group status</strong>. Close the outdated group and maintain a single direct replacement path (e.g., A→C).</p>
+</section>
+
+
+  <section id="appendix">
+    <h2>Appendix</h2>
+    <p class="appendix-links">
+      <a href="#diagram">Jump to Stage Transition Diagram</a>
+      <a href="#examples">Jump to Supplemental Examples</a>
+    </p>
+  </section>
+
+</body>
+</html>

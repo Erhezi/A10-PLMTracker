@@ -85,6 +85,7 @@ def build_location_pairs(
             "po_90_qty": r.OrderQty90_EA,
             "req_qty_ea": r.ReqQty90_EA,
             "requesters_past_year": r.issued_count_365,
+            "item_description": r.ItemDescription,
             # replacement side
             "auto_replenishment_ri": r.AutomaticPO_ri,
             "active_ri": r.Active_ri,
@@ -96,6 +97,7 @@ def build_location_pairs(
             "po_90_qty_ri": r.OrderQty90_EA_ri,
             "req_qty_ea_ri": r.ReqQty90_EA_ri,
             "requesters_past_year_ri": r.issued_count_365_ri,
+            "item_description_ri": r.ItemDescription_ri,
         })
     # Stable sort by item_group then location for display
     out.sort(key=lambda d: (d.get("item_group") or 0, d.get("location") or ""))

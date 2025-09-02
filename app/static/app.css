@@ -102,15 +102,35 @@ footer { font-size: .75rem; }
 #table-inventory th, #table-inventory td { vertical-align: middle; }
 #table-inventory td.text-wrap { white-space: normal; }
 #table-inventory td, #table-inventory th { white-space: normal; }
-/* Allow manual tweaking via width classes on <th>. Users/devs can edit class list to adjust widths */
-#table-inventory th.col-stage { width: 80px; }
-#table-inventory th.col-group { width: 120px; }
-#table-inventory th.col-item { width: 140px; }
-#table-inventory th.col-location { width: 140px; }
-#table-inventory th.col-auto { width: 110px; }
-#table-inventory th.col-active, #table-inventory th.col-disc { width: 70px; }
-#table-inventory th.col-num { width: 90px; }
-#table-inventory th.col-repl-item { width: 160px; }
+/* ---------------------------------------------- */
+/* Shared column sizing & overflow helpers        */
+/* ---------------------------------------------- */
+/* Width tokens (apply on <th>) */
+#table-inventory th.col-stage, #table-par th.col-stage { width: 80px; }
+#table-inventory th.col-group, #table-par th.col-group { width: 120px; }
+#table-inventory th.col-item, #table-par th.col-item { width: 140px; }
+#table-inventory th.col-location, #table-par th.col-location { width: 140px; }
+#table-inventory th.col-auto, #table-par th.col-auto { width: 110px; }
+#table-inventory th.col-active, #table-inventory th.col-disc,
+#table-par th.col-active, #table-par th.col-disc { width: 70px; }
+#table-inventory th.col-num, #table-par th.col-num { width: 90px; }
+#table-inventory th.col-repl-item, #table-par th.col-repl-item { width: 160px; }
+
+/* Description columns: constrained, resizable (manual drag width in dev tools), with ellipsis */
+.col-desc {
+  width: 200px;
+  min-width: 150px;
+  max-width: 320px; /* slightly wider upper bound */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Ensure data cells inheriting .col-desc behave the same in both tables */
+#table-inventory td.col-desc, #table-par td.col-desc { white-space: nowrap; }
+
+/* Utility: allow a future .col-nowrap to apply ellipsis anywhere */
+.col-nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Boldness already applied via fw-semibold in HTML; ensure consistent */
 #table-inventory td.col-item-cell, #table-inventory td.col-repl-item-cell { font-weight: 600; }
 /* Stage badge already globally styled; ensure small size fits */
@@ -123,12 +143,4 @@ footer { font-size: .75rem; }
 #table-par td.text-wrap { white-space: normal; }
 #table-par .stage-badge { font-size: .65rem; letter-spacing: .25px; }
 
-/* Column width helpers (reuse same class names) */
-#table-par th.col-stage { width: 80px; }
-#table-par th.col-group { width: 120px; }
-#table-par th.col-item { width: 140px; }
-#table-par th.col-location { width: 140px; }
-#table-par th.col-auto { width: 110px; }
-#table-par th.col-active, #table-par th.col-disc { width: 70px; }
-#table-par th.col-num { width: 90px; }
-#table-par th.col-repl-item { width: 160px; }
+/* Par table inherits shared column width helpers above */

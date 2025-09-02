@@ -2,9 +2,11 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.orm import noload
+import re
 from .. import db
-from ..models.relations import ItemLink
+from ..models.relations import ItemLink, PendingItems
 from ..models.inventory import Item, ContractItem
+from ..utility.item_group import validate_batch_inputs, validate_stage_and_items, BatchValidationError
 
 """Stage name definitions (canonical only)."""
 
@@ -41,13 +43,22 @@ def collect():
         return _d(y, m, day)
 
     today = date.today()
+    min_date = add_months(today, -3)
     max_date = add_months(today, 6)
+    
+    # Import config for batch limits
+    from flask import current_app
+    max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
+    max_combinations = max_per_side * max_per_side  # Calculate total combinations for display
+    
     return render_template(
         "collector/collect.html",
         allowed_stages=ALLOWED_STAGES,
         sample_items=sample_items,
-        date_min=today.isoformat(),
+        date_min=min_date.isoformat(),
         date_max=max_date.isoformat(),
+        max_combinations=max_combinations,
+        max_per_side=max_per_side,
     )
 
 @bp.route("/groups")
@@ -180,7 +191,7 @@ def api_search_items():
     like_term = f"%{q}%" if len(q) > 3 else f"{q}%"
     query = query.filter(Item.item.ilike(like_term))
     if active_only:
-        query = query.filter(Item.is_active.is_(True))
+        query = query.filter(Item.is_active == 'Yes')
 
     items = query.order_by(Item.item).limit(limit).all()
 
@@ -196,8 +207,8 @@ def api_search_items():
             "manufacturer": it.manufacturer,
             "mfg_part_num": it.mfg_part_num,
             "item_description": it.item_description,
-            "is_active": bool(it.is_active),
-            "is_discontinued": bool(it.is_discontinued),
+            "is_active": it.is_active == 'Yes',
+            "is_discontinued": it.is_discontinued == 'Yes',
         }
         for it in items
     ])
@@ -253,30 +264,6 @@ def api_search_contract_items():
 
 
 # -------------------- Helpers --------------------
-def _fetch_items_map(codes: set[str]) -> dict[str, Item]:
-    if not codes:
-        return {}
-    rows = Item.query.filter(Item.item.in_(codes)).all()
-    return {r.item: r for r in rows}
-
-
-def _determine_stage(replacements: list[str], explicit: str | None) -> tuple[str, bool]:
-    """Return (default_stage, locked) for the *batch*.
-
-    Dynamic pending placeholders (PENDING***<mfg_part>) are NOT treated as sentinel for locking; they will be
-    assigned stage 'Pending Item Number' per-row later but do not lock others in the batch.
-
-    Rules:
-    - If only sentinel 'NO REPLACEMENT' => stage 'Tracking - Discontinued' (locked)
-    - Else default 'Pending Clinical Approval' unless explicit provided.
-    """
-    if len(replacements) == 1 and replacements[0] == "NO REPLACEMENT":
-        return 'Tracking - Discontinued', True
-    if explicit and explicit in ALLOWED_STAGES:
-        return explicit, False
-    return 'Pending Clinical Approval', False
-
-
 def _resolve_group(all_codes: set[str]) -> tuple[int, list[int]]:
     """Determine canonical group id for a new batch touching item codes.
 
@@ -317,6 +304,7 @@ def api_batch_item_links():
     data = request.get_json(silent=True) or {}
     items = data.get("items") or []
     replace_items = data.get("replace_items") or []
+    pending_meta = data.get("pending_meta") or {}
     explicit_stage = data.get("stage") or None
     expected_go_live_date_raw = (data.get("expected_go_live_date") or "").strip() or None
     wrike_id = (data.get("wrike_id") or "").strip() or None
@@ -324,64 +312,39 @@ def api_batch_item_links():
     # Basic validation
     if not items or not replace_items:
         return jsonify({"error": "Both items and replace_items required"}), 400
-    # Disallow sentinel (NO REPLACEMENT) or dynamic pending placeholder on left side
-    if any(c in SENTINEL_REPLACEMENTS or c.startswith("PENDING***") for c in items):
-        return jsonify({"error": "Placeholder / sentinel values only allowed as replacement items"}), 400
-    # Deduplicate while preserving original order
-    def _dedupe(seq):
-        seen = set()
-        out = []
-        for s in seq:
-            if s not in seen:
-                seen.add(s)
-                out.append(s)
-        return out
-    items = _dedupe([s.strip() for s in items if s and s.strip()])
-    replace_items = _dedupe([s.strip() for s in replace_items if s and s.strip()])
 
-    # Limit pairs (<=36)
-    if len(items) * len(replace_items) > 36:
-        return jsonify({"error": "Too many combinations (max 36)"}), 400
+    # Use utility functions for validation
+    try:
+        # Get config value for max per side
+        from flask import current_app
+        max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
+        
+        # Validate and normalize inputs
+        items, replace_items, validated_wrike_id, validated_date = validate_batch_inputs(
+            items=items,
+            replace_items=replace_items,
+            wrike_id=wrike_id,
+            expected_go_live_date_raw=expected_go_live_date_raw,
+            sentinel_replacements=SENTINEL_REPLACEMENTS,
+            max_per_side=max_per_side
+        )
+        
+        # Validate stage and lookup items
+        stage, locked, items_map, missing = validate_stage_and_items(
+            items=items,
+            replace_items=replace_items,
+            explicit_stage=explicit_stage,
+            allowed_stages=ALLOWED_STAGES,
+            sentinel_replacements=SENTINEL_REPLACEMENTS
+        )
+        
+    except BatchValidationError as e:
+        if e.error_code == "missing_items":
+            return jsonify({"error": e.message, "missing": missing}), 400
+        return jsonify({"error": e.message}), 400
 
-    # Validate wrike id (optional, must be 10 digits if provided)
-    if wrike_id:
-        import re
-        if not re.fullmatch(r"\d{10}", wrike_id):
-            return jsonify({"error": "Wrike Task ID must be exactly 10 digits"}), 400
-
-    # Parse and validate expected go live date (optional, within next 6 months)
-    expected_go_live_date = None
-    if expected_go_live_date_raw:
-        from datetime import date, datetime
-        from calendar import monthrange
-        def add_months(d: date, months: int) -> date:
-            m = d.month - 1 + months
-            y = d.year + m // 12
-            m = m % 12 + 1
-            day = min(d.day, monthrange(y, m)[1])
-            return date(y, m, day)
-        try:
-            expected_go_live_date = datetime.strptime(expected_go_live_date_raw, "%Y-%m-%d").date()
-        except ValueError:
-            return jsonify({"error": "Invalid expected_go_live_date format; use YYYY-MM-DD"}), 400
-        today = date.today()
-        max_allowed = add_months(today, 6)
-        if not (today <= expected_go_live_date <= max_allowed):
-            return jsonify({"error": "Expected Go Live Date must be between today and 6 months from today"}), 400
-
-    # Determine stage
-    stage, locked = _determine_stage(replace_items, explicit_stage)
-    if stage not in ALLOWED_STAGES:  # After normalization only canonical should remain
-        return jsonify({"error": "Invalid stage"}), 400
-    if locked and explicit_stage and explicit_stage != stage:
-        return jsonify({"error": "Stage override not allowed for this replacement type"}), 400
-
-    # Lookup real items (exclude sentinel and dynamic pending placeholders)
+    # Extract real codes for group resolution (exclude sentinel and dynamic pending placeholders)
     real_codes = set(items + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))])
-    items_map = _fetch_items_map(real_codes)
-    missing = [c for c in real_codes if c not in items_map]
-    if missing:
-        return jsonify({"error": "Some items not found", "missing": missing}), 400
 
     # Determine group id & merge groups
     canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
@@ -393,6 +356,7 @@ def api_batch_item_links():
     created = 0
     skipped = []
     created_records = []
+    pending_items_to_create = []  # Store info for PendingItems creation
 
     # Prefetch existing pairs in one query (excluding self-pairs early)
     candidate_src = items
@@ -432,9 +396,12 @@ def api_batch_item_links():
             repl_desc = None
 
             if repl in SENTINEL_REPLACEMENTS:
+                # Sentinel means intentionally no replacement item number; neutralize replacement metadata
                 link_stage = 'Tracking - Discontinued'
-                repl_manufacturer = "(N/A)"
-                repl_desc = "No replacement planned"
+                repl = None  # Set replace_item to None for discontinued items
+                repl_mfg_part = None
+                repl_manufacturer = None
+                repl_desc = None
             elif repl.startswith('PENDING***'):
                 part_num = repl.split('***',1)[1] if '***' in repl else None
                 link_stage = 'Pending Item Number'
@@ -442,11 +409,11 @@ def api_batch_item_links():
                 if ci:
                     repl_mfg_part = ci.mfg_part_num
                     repl_manufacturer = ci.manufacturer
-                    repl_desc = ci.item_description or "Pending replacement item"
+                    repl_desc = ci.item_description or 'Pending replacement item description'
                 else:
                     repl_mfg_part = part_num
-                    repl_manufacturer = "(Pending)"
-                    repl_desc = "Pending replacement item"
+                    repl_manufacturer = '(Pending)'
+                    repl_desc = 'Pending replacement item'
             else:
                 repl_item = items_map[repl]
                 repl_mfg_part = repl_item.mfg_part_num
@@ -461,8 +428,8 @@ def api_batch_item_links():
                 manufacturer=src_item.manufacturer,
                 item_description=src_item.item_description,
                 stage=link_stage,
-                expected_go_live_date=expected_go_live_date,
-                wrike_id=wrike_id,
+                expected_go_live_date=validated_date,
+                wrike_id=validated_wrike_id,
                 create_dt=ts_now,
                 update_dt=ts_now,
                 repl_mfg_part_num=repl_mfg_part,
@@ -472,8 +439,28 @@ def api_batch_item_links():
             db.session.add(link)
             created += 1
             created_records.append(link)
+            
+            # If this is a 'Pending Item Number' stage, queue PendingItems creation
+            if link_stage == 'Pending Item Number' and repl.startswith('PENDING***'):
+                meta = pending_meta.get(repl) or {}
+                contract_id_meta = meta.get('contract_id')
+                mfg_part_meta = meta.get('mfg_part_num') or repl.split('***',1)[1]
+                if contract_id_meta and mfg_part_meta:
+                    pending_items_to_create.append((link, contract_id_meta, mfg_part_meta))
 
     if created or merged:
+        # Flush to assign PKIDs to ItemLink records before creating PendingItems
+        db.session.flush()
+        
+        # Create PendingItems for links with 'Pending Item Number' stage
+        for link, contract_id_meta, mfg_part_meta in pending_items_to_create:
+            pending_item = PendingItems.create_from_contract_item(
+                item_link_id=link.pkid,
+                contract_id=contract_id_meta,
+                mfg_part_num=mfg_part_meta
+            )
+            db.session.add(pending_item)
+        
         db.session.commit()
 
     # Build created record details for client display

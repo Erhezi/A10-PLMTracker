@@ -26,7 +26,7 @@
         </select>
       </div>
       <div class="col-6 col-md-3 d-flex align-items-end">
-        <button type="submit" class="btn btn-primary btn-sm me-2">Apply</button>
+        <!-- Apply button removed: filters auto-apply on change -->
         <button type="reset" class="btn btn-outline-secondary btn-sm">Reset</button>
       </div>
     </form>
@@ -74,26 +74,28 @@
           <table class="table table-sm table-hover align-middle mb-0" id="table-inventory">
             <thead class="table-light sticky-top">
               <tr class="small text-nowrap">
-                <th data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
-                <th data-field="item_group" class="col-group">Item Group</th>
-                <th data-field="item" class="col-item">Item</th>
-                <th data-field="location" class="col-location">Location</th>
-                <th data-field="auto_replenishment" class="col-auto">Auto-eplenishment</th>
-                <th data-field="active" class="col-active">Active</th>
-                <th data-field="discontinued" class="col-disc">Discontinued</th>
-                <th data-field="current_qty" class="col-num">Current Qty</th>
-                <th data-field="weekly_burn" class="col-num">Weekly Burn</th>
-                <th data-field="weeks_on_hand" class="col-num">Weeks on Hand</th>
-                <th data-field="po_90_qty" class="col-num">90-day PO Qty</th>
-                <th data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
-                <th data-field="replacement_item" class="col-repl-item">Replacement Item</th>
-                <th data-field="location_ri" class="col-location">Location (RI)</th>
-                <th data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
-                <th data-field="active_ri" class="col-active">Active (RI)</th>
-                <th data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
-                <th data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
-                <th data-field="weekly_burn_ri" class="col-num">Weekly Burn (RI)</th>
-                <th data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
+                <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
+                <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="inv-col-item" data-field="item" class="col-item">Item</th>
+                <th id="inv-col-location" data-field="location" class="col-location">Location</th>
+                <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-eplenishment</th>
+                <th id="inv-col-active" data-field="active" class="col-active">Active</th>
+                <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discontinued</th>
+                <th id="inv-col-current" data-field="current_qty" class="col-num">Current Qty</th>
+                <th id="inv-col-weekly" data-field="weekly_burn" class="col-num">Weekly Burn</th>
+                <th id="inv-col-weeks" data-field="weeks_on_hand" class="col-num">Weeks on Hand</th>
+                <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
+                <th id="inv-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
+                <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Replacement Item</th>
+                <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
+                <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
+                <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
+                <th id="inv-col-current-ri" data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
+                <th id="inv-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Burn (RI)</th>
+                <th id="inv-col-weeks-ri" data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
+                <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
+                <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
             </thead>
             <tbody>
@@ -143,6 +145,8 @@
                 <th id="par-col-reorder-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
                 <th id="par-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Demand (RI)</th>
                 <th id="par-col-weeks-ri" data-field="weeks_reorder_ri" class="col-num">Weeks Reorder (RI)</th>
+                <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
+                <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
             </thead>
             <tbody>
@@ -191,8 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLast = document.getElementById('inv-last');
   const pageInfo = document.getElementById('inv-page-info');
   let currentPage = 1;
-  const perPage = 100; // inventory rows per page
-  const parPerPage = 20;
+  const perPage = 20; // inventory rows per page
+  const parPerPage = 100; // par rows per page
   let totalPages = 1;
   // Par table pagination state
   const parPager = document.getElementById('par-pager');
@@ -254,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
       countEl.textContent = 'loading...';
       const params = new URLSearchParams();
       params.set('page', page);
-  params.set('per_page', parPerPage);
+      params.set('per_page', perPage);
       // selected filters
       if(selItemGroup.value) params.set('item_group', selItemGroup.value);
       if(selLocation.value) params.set('location', selLocation.value);
@@ -307,6 +311,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="text-end">${num(r.current_qty_ri,0)}</td>
           <td class="text-end">${num(r.weekly_burn_ri)}</td>
           <td class="text-end">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
+          <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
+          <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         tbody.appendChild(tr);
       }
@@ -324,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
       parCountEl.textContent = 'loading...';
       const params = new URLSearchParams();
       params.set('page', page);
-      params.set('per_page', perPage);
+      params.set('per_page', parPerPage);
       if(selItemGroup.value) params.set('item_group', selItemGroup.value);
       if(selLocation.value) params.set('location', selLocation.value);
       if(selStage.value) params.set('stage', selStage.value);
@@ -361,6 +367,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="text-end">${num(r.reorder_point_ri,0)}</td>
             <td class="text-end">${num(r.weekly_burn_ri)}</td>
             <td class="text-end">${typeof r.weeks_reorder_ri === 'string' ? r.weeks_reorder_ri : num(r.weeks_reorder_ri,1) }</td>
+            <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
+            <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         parTbody.appendChild(tr);
       }
@@ -381,11 +389,13 @@ document.addEventListener('DOMContentLoaded', () => {
   parBtnNext.addEventListener('click', () => { if(parCurrentPage<parTotalPages) loadPar(parCurrentPage+1); });
   parBtnLast.addEventListener('click', () => { if(parCurrentPage<parTotalPages) loadPar(parTotalPages); });
 
-  filterForm.addEventListener('submit', evt => {
-    evt.preventDefault();
-    loadInventory(1);
-    loadPar(1);
-  });
+  // Auto-apply filters: on any select change, reload data (debounced)
+  function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
+  const autoApply = debounce(()=>{ loadInventory(1); loadPar(1); });
+  [selItemGroup, selLocation, selStage].forEach(sel => sel.addEventListener('change', autoApply));
+
+  // Legacy form submit (no visible submit button now) still prevented
+  filterForm.addEventListener('submit', evt => { evt.preventDefault(); });
   filterForm.addEventListener('reset', () => {
     setTimeout(() => { // allow default reset
       loadInventory(1);

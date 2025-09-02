@@ -54,9 +54,9 @@ def api_inventory():
     except ValueError:
         page = 1
     try:
-        per_page = int(request.args.get("per_page", 100))
+        per_page = int(request.args.get("per_page", 20))
     except ValueError:
-        per_page = 100
+        per_page = 20
     page = max(page, 1)
     per_page = max(min(per_page, 200), 1)
 

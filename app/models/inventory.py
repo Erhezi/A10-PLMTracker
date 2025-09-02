@@ -13,8 +13,8 @@ class Item(db.Model):
 
     # Use the actual view column names (after AS in the view definition)
     item = db.Column("item", db.String(50), primary_key=True)
-    is_active = db.Column("is_active", db.Boolean)
-    is_discontinued = db.Column("is_discontinued", db.Boolean)
+    is_active = db.Column("is_active", db.String(5))
+    is_discontinued = db.Column("is_discontinued", db.String(5))
     manufacturer = db.Column("manufacturer", db.String(255))
     mfg_part_num = db.Column("mfg_part_num", db.String(100))
     item_description = db.Column("item_description", db.String(500))
@@ -55,10 +55,11 @@ class ContractItem(db.Model):
     
 class Requesters365Day(db.Model):
     """
-    Mapping to PLM.vw_vw_365Day_Requesters (SQL Server VIEW).
+    Mapping to PLM.vw_365Day_Requesters (SQL Server VIEW).
+    Read-only
     """
 
-    __tablename__ = "vw_vw_365Day_Requesters"
+    __tablename__ = "vw_365Day_Requesters"
     __table_args__ = {"schema": "PLM"}
 
     # no natural PK in your schema, so we mark all columns as nullable
@@ -81,6 +82,7 @@ class Requesters365Day(db.Model):
 class PO90Day(db.Model):
     """
     Mapping to PLM.vw_90Day_PO (SQL Server VIEW).
+    Read-only.
     """
 
     __tablename__ = "vw_90Day_PO"
@@ -129,11 +131,54 @@ class PO90Day(db.Model):
                 f"Vendor={self.Vendor}, Item={self.Item})>")
 
 
+class ItemLocationsBR(db.Model):
+    """
+    Mapping to PLM.ItemLocationsBR (SQL Server table).
+    Holds (Company, Location, Item) specific pre-calculated 
+    1. burn rate at various aggregation frequencies
+        (7, 35, 91, 365 days) by 'Inventory Issued' type of transactions
+    2. 90-day Purchase Order Qty (EA converted) -- for Inventory Locations
+    3. 90-day Requesition Qty (EA converted) -- for Par Locations
+    Refresh using stored procedure PLM.sp_PLM_MakeItemLocationsBR_FullRefresh
+    """
+    __tablename__ = "ItemLocationsBR"
+    # include schema plus explicit UniqueConstraint and Index definitions
+    __table_args__ = (
+        UniqueConstraint('Location', 'Item', name='UQ_ItemLocationsBR_Location_Item'),
+        Index('IX_ItemLocationsBR_Item', 'Item'),
+        Index('IX_ItemLocationsBR_Location', 'Location'),
+        Index('IX_ItemLocationsBR_LocationType', 'LocationType'),
+        {'schema': 'PLM'},
+    )
+
+    Inventory_base_ID    = db.Column(db.Integer, primary_key=True, nullable=False)
+    LocationType         = db.Column(db.String(40),  nullable=True)
+    Company              = db.Column(db.String(10),  nullable=False)
+    Location             = db.Column(db.String(255), nullable=False)
+    Item                 = db.Column(db.String(255), nullable=False)
+
+    br7                  = db.Column(db.Numeric(17), nullable=True)
+    br35                 = db.Column(db.Numeric(17), nullable=True)
+    br91                 = db.Column(db.Numeric(17), nullable=True)
+    br365                = db.Column(db.Numeric(17), nullable=True)
+
+    issued_count_365     = db.Column(db.Integer, nullable=True)
+
+    OrderQty90_EA        = db.Column(db.Numeric(17), nullable=True)
+    ReceivedQty90_EA     = db.Column(db.Numeric(17), nullable=True)
+    CancelQty90_EA       = db.Column(db.Numeric(17), nullable=True)
+    ReqQty90_EA          = db.Column(db.Numeric(9),  nullable=True)
+
+    def __repr__(self):
+        return f"<ItemLocationsBR Item={self.Item} {self.Company}/{self.Location}>"
+
+
 
 class ItemLocations(db.Model):
     """
-    Mapping to PLM.vw_ItemLocations (SQL Server table).
+    Mapping to PLM.ItemLocations (SQL Server table).
     Holds the canonical (Company, Location) setup for each Item and its Inventory_base_ID.
+    Refresh using stored procedure PLM.sp_PLM_MakeItemLocations_FullRefresh
     """
 
     __tablename__ = "ItemLocations"
@@ -142,6 +187,7 @@ class ItemLocations(db.Model):
         UniqueConstraint('Location', 'Item', name='UQ_ItemLocations_Location_Item'),
         Index('IX_ItemLocations_Item', 'Item'),
         Index('IX_ItemLocations_Location', 'Location'),
+        Index('IX_ItemLocations_LocationType', 'LocationType'),
         {'schema': 'PLM'},
     )
 

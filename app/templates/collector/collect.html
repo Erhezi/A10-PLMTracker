@@ -9,9 +9,9 @@
     <div class="card shadow-sm border-0 h-100">
       <div class="card-body d-flex flex-column">
         <label class="form-label small text-uppercase">Items</label>
-        <input id="item-search" name="q" class="form-control mb-2" placeholder="Search item..." autocomplete="off"
+        <input id="item-search" name="q" class="form-control mb-2" placeholder="Search item (by 6-digit Infor Item Number)..." autocomplete="off"
                hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" />
-        <div class="small text-muted mb-2">Check boxes to select. Max 6 per side (<=36 links).</div>
+        <div class="small text-muted mb-2">Check boxes to select. Max {{ max_per_side }} per side.</div>
         <div id="item-selected" class="mb-2"></div>
         <div id="item-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
       </div>
@@ -21,7 +21,7 @@
     <div class="card shadow-sm border-0 h-100">
       <div class="card-body d-flex flex-column">
         <label class="form-label small text-uppercase">Replacement Items</label>
-        <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement..." autocomplete="off"
+        <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement (by 6-digit Infor Item Number)..." autocomplete="off"
                hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" />
         <div class="d-flex gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="NO REPLACEMENT">Add NO REPLACEMENT</button>
@@ -86,6 +86,7 @@
 </div>
 
 <script id="allowed-stages-data" type="application/json">{{ allowed_stages|tojson }}</script>
+<script id="batch-limits-data" type="application/json">{{ {"max_combinations": max_combinations, "max_per_side": max_per_side}|tojson }}</script>
 <script>
 (function(){
   const itemSelectedEl = document.getElementById('item-selected');
@@ -105,8 +106,15 @@
   const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
 
+  // Load batch limits from template data
+  const batchLimitsData = document.getElementById('batch-limits-data');
+  const batchLimits = batchLimitsData ? JSON.parse(batchLimitsData.textContent) : { max_combinations: 36, max_per_side: 6 };
+  const MAX_PER_SIDE = batchLimits.max_per_side;
+  const MAX_COMBINATIONS = batchLimits.max_combinations;
+
   let items = [];
   let repls = [];
+  let pendingMeta = {}; // map PENDING***<part> -> { contract_id, mfg_part_num }
 
   function renderSelections(){
   const pill = (c,kind)=>`<span class='badge bg-secondary me-1 mb-1' data-code='${c}' data-kind='${kind}'>${c} <span class='ms-1' data-remove='x' style='cursor:pointer' aria-label='Remove'>&times;</span></span>`;
@@ -129,8 +137,8 @@
   }
 
   function enforceLimits(){
-    if(items.length > 6) items = items.slice(0,6);
-    if(repls.length > 6) repls = repls.slice(0,6);
+    if(items.length > MAX_PER_SIDE) items = items.slice(0, MAX_PER_SIDE);
+    if(repls.length > MAX_PER_SIDE) repls = repls.slice(0, MAX_PER_SIDE);
   }
 
   function updateReplSearchEndpoint(){
@@ -141,7 +149,7 @@
     
     replSearch.setAttribute('data-mode', mode);
     replSearch.setAttribute('hx-get', endpoint);
-    replSearch.placeholder = toContract ? 'Search contract item by mfg part...' : 'Search replacement...';
+    replSearch.placeholder = toContract ? 'Search contract item (by Mfg Part Number)...' : 'Search replacement (by 6-digit Infor Item Number)...';
     
     // Force HTMX to re-process the element with new attributes
     if(window.htmx){
@@ -196,6 +204,12 @@
         if((isRepl? repls: items).includes(cb.value)) cb.checked = true;
         cb.addEventListener('change', () => {
           const code = cb.value;
+          const contractId = cb.getAttribute('data-contract-id');
+          const mfgPart = cb.getAttribute('data-mfg-part');
+          const isPendingPlaceholder = cb.hasAttribute('data-pending-placeholder');
+          if(isPendingPlaceholder && /^PENDING\*\*\*/.test(code) && contractId && mfgPart){
+            pendingMeta[code] = { contract_id: contractId, mfg_part_num: mfgPart };
+          }
           if(isRepl){
             if(cb.checked){
               // If selecting NO REPLACEMENT sentinel
@@ -241,12 +255,31 @@
 
   createBtn.addEventListener('click', async () => {
     if(createBtn.disabled) return;
+    
+    // Check per-side limits first
+    if(items.length > MAX_PER_SIDE) {
+      feedback.innerHTML = `<span class='text-danger'>Too many source items (${items.length}). Max per side: ${MAX_PER_SIDE}</span>`;
+      return;
+    }
+    if(repls.length > MAX_PER_SIDE) {
+      feedback.innerHTML = `<span class='text-danger'>Too many replacement items (${repls.length}). Max per side: ${MAX_PER_SIDE}</span>`;
+      return;
+    }
+    
+    // Check combination limit
+    const totalCombinations = items.length * repls.length;
+    if(totalCombinations > MAX_COMBINATIONS) {
+      feedback.innerHTML = `<span class='text-danger'>Too many combinations (${totalCombinations}). Max allowed: ${MAX_COMBINATIONS}</span>`;
+      return;
+    }
+    
     const stageDerived = stageBadge.textContent;
     let stageToSend = stageDerived;
     if(stageToSend==='Pending Clinical Approval' && stageSelect.value !== 'Pending Clinical Approval'){
       stageToSend = stageSelect.value; // user override
     }
     const payload = { items, replace_items: repls, stage: stageToSend };
+    if(Object.keys(pendingMeta).length){ payload.pending_meta = pendingMeta; }
     const goLive = goLiveInput.value.trim();
     if(goLive) payload.expected_go_live_date = goLive;
     const wrike = wrikeInput.value.trim();
@@ -307,8 +340,6 @@
       feedback.innerHTML = `<span class='text-danger'>Error: ${err}</span>`;
     }
   });
-
-  renderSelections();
 
   // Deletion handler for dynamically added rows
   createdTableBody.addEventListener('click', async (e) => {

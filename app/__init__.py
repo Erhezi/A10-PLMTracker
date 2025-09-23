@@ -34,11 +34,13 @@ def create_app(env: str | None = None):
     from .collector.routes import bp as collector_bp
     from .dashboard.routes import bp as dashboard_bp
     from .main.routes import bp as main_bp
+    from .admin.routes import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(collector_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(main_bp)
+    app.register_blueprint(admin_bp)
 
     # Bootstrap schema + tables (no Alembic for MVP)
     with app.app_context():

@@ -3,7 +3,7 @@ from flask_login import login_required
 from sqlalchemy import select, func
 from ..utility.item_locations import build_location_pairs
 from .. import db
-from ..models.relations import ItemLink, PLMTrackerBase
+from ..models.relations import ItemLink, PLMTrackerBase, PLMQty
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
@@ -36,17 +36,30 @@ def api_inventory():
     else:
         stages_list = list(allowed_stage_values)
 
-    item_group_param = request.args.get("item_group")
-    try:
-        item_group_filter = int(item_group_param) if item_group_param else None
-    except ValueError:
-        item_group_filter = None
+    # Support multi-select item_group as comma-separated values
+    item_group_param = request.args.get("item_group") or ""
+    item_group_filters = []
+    if item_group_param:
+        for part in item_group_param.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                item_group_filters.append(int(part))
+            except ValueError:
+                continue
+    item_group_filters = list(dict.fromkeys(item_group_filters))  # dedupe preserving order
 
-    location = request.args.get("location") or None
+    # Multi-location support (comma-separated)
+    location_param = request.args.get("location") or ""
+    location_filters = [loc.strip() for loc in location_param.split(',') if loc.strip()] if location_param else []
 
     company = request.args.get("company") or None  # reserved / future
     active_param = request.args.get("active")
     require_active = active_param.lower() == "true" if active_param else False
+
+    desc_search = request.args.get("desc_search") or ""
+    desc_search_lower = desc_search.lower().strip()
 
     # Pagination params
     try:
@@ -64,13 +77,23 @@ def api_inventory():
     all_rows = build_location_pairs(
         stages=stages_list,
         company=company,
-        location=location,
+        location=None,  # handled post-fetch for multi list
         require_active=require_active,
         include_par=False,
         location_types=["Inventory Location"],
     )
-    if item_group_filter is not None:
-        all_rows = [r for r in all_rows if r.get("item_group") == item_group_filter]
+    if location_filters:
+        loc_set = set(location_filters)
+        all_rows = [r for r in all_rows if (r.get("location") in loc_set)]
+    if item_group_filters:
+        allowed_set = set(item_group_filters)
+        all_rows = [r for r in all_rows if r.get("item_group") in allowed_set]
+    # Description search filter (case-insensitive substring match on either side)
+    if desc_search_lower:
+        all_rows = [r for r in all_rows if (
+            str(r.get("item_description") or "").lower().find(desc_search_lower) != -1 or
+            str(r.get("item_description_ri") or "").lower().find(desc_search_lower) != -1
+        )]
     total = len(all_rows)
     start = (page - 1) * per_page
     end = start + per_page
@@ -145,12 +168,24 @@ def api_par():
     else:
         stages_list = list(allowed_stage_values)
 
-    item_group_param = request.args.get("item_group")
-    try:
-        item_group_filter = int(item_group_param) if item_group_param else None
-    except ValueError:
-        item_group_filter = None
-    location = request.args.get("location") or None
+    # Multi-select item_group support
+    item_group_param = request.args.get("item_group") or ""
+    item_group_filters = []
+    if item_group_param:
+        for part in item_group_param.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                item_group_filters.append(int(part))
+            except ValueError:
+                continue
+    item_group_filters = list(dict.fromkeys(item_group_filters))
+    location_param = request.args.get("location") or ""
+    location_filters = [loc.strip() for loc in location_param.split(',') if loc.strip()] if location_param else []
+
+    desc_search = request.args.get("desc_search") or ""
+    desc_search_lower = desc_search.lower().strip()
 
     # Pagination
     try:
@@ -167,13 +202,23 @@ def api_par():
     # Fetch par location rows
     all_rows = build_location_pairs(
         stages=stages_list,
-        location=location,
+        location=None,
         include_par=True,
         location_types=["Par Location"],
     )
+    if location_filters:
+        loc_set = set(location_filters)
+        all_rows = [r for r in all_rows if (r.get("location") in loc_set)]
     # Filter by item_group if needed
-    if item_group_filter is not None:
-        all_rows = [r for r in all_rows if r.get("item_group") == item_group_filter]
+    if item_group_filters:
+        allowed_set = set(item_group_filters)
+        all_rows = [r for r in all_rows if r.get("item_group") in allowed_set]
+    # Description search
+    if desc_search_lower:
+        all_rows = [r for r in all_rows if (
+            str(r.get("item_description") or "").lower().find(desc_search_lower) != -1 or
+            str(r.get("item_description_ri") or "").lower().find(desc_search_lower) != -1
+        )]
 
     # Recompute weeks_reorder using reorder point instead of available qty
     for r in all_rows:
@@ -203,4 +248,55 @@ def api_par():
         "page": page,
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page else 1,
+    })
+
+
+@bp.route("/api/qty/<int:item_group>")
+@login_required
+def api_qty(item_group: int):
+    """Return historical quantity time-series (AvailableQty) per (Item, Location)
+    for a given item_group from the PLMQty view.
+
+    Response structure:
+    {
+      "item_group": <int>,
+      "series": [
+          {"item": "12345", "location": "LOC1", "points": [
+              {"t": "2025-08-01T00:00:00", "qty": 42}, ...
+          ]}, ...
+      ]
+    }
+    """
+    # Query all rows for this item group ordered for stable client-side rendering
+    stmt = (
+        select(
+            PLMQty.Item.label("item"),
+            PLMQty.Location.label("location"),
+            PLMQty.report_stamp.label("stamp"),
+            PLMQty.AvailableQty.label("qty"),
+        )
+        .where(PLMQty.Item_Group == item_group)
+        .order_by(PLMQty.Item, PLMQty.Location, PLMQty.report_stamp)
+    )
+
+    rows = db.session.execute(stmt).all()
+    series_map = {}
+    for item, location, stamp, qty in rows:
+        key = (item, location)
+        bucket = series_map.setdefault(key, [])
+        bucket.append({
+            "t": stamp.isoformat() if stamp else None,
+            "qty": int(qty) if qty is not None else None,
+        })
+
+    series = [
+        {"item": k[0], "location": k[1], "points": v}
+        for k, v in series_map.items()
+    ]
+
+    return jsonify({
+        "item_group": item_group,
+        "series": series,
+        "series_count": len(series),
+        "point_count": sum(len(s["points"]) for s in series),
     })

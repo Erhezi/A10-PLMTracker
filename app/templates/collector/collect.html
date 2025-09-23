@@ -66,10 +66,10 @@
           <th class="text-center" style="width:40px;">Remove</th>
           <th class="text-center">Item Group</th>
           <th>Item</th>
-          <th>Replace Item</th>
           <th>Mfg Part #</th>
           <th>Mfg</th>
           <th style="min-width:220px;">Item Description</th>
+          <th>Replace Item</th>
           <th>Repl Mfg #</th>
           <th>Repl Mfg</th>
           <th style="min-width:220px;">Repl Description</th>
@@ -315,10 +315,10 @@
               </td>
               <td class='text-center fw-semibold'>${r.item_group}</td>
               <td class='font-monospace'>${r.item}</td>
-              <td class='font-monospace'>${r.replace_item}</td>
               <td class='text-truncate' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
               <td class='text-truncate' style='max-width:120px;'>${r.manufacturer||''}</td>
               <td class='text-truncate' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
+              <td class='font-monospace'>${r.replace_item||''}</td>
               <td class='text-truncate' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
               <td class='text-truncate' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
               <td class='text-truncate' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>

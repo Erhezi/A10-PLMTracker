@@ -31,19 +31,19 @@
       <tr>
         <th style="width:58px;" class="text-center sortable" data-sort="none" data-type="none">Edit <span class="sort-indicator"></span></th>
         <th class="text-center sortable" data-type="number">Item Group <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text">Item <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text">Replace Item <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text">Mfg Part # <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text">Mfg <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text" style="min-width:240px;">Item Description <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text">Repl Mfg # <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text">Repl Mfg <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="text" style="min-width:240px;">Repl Description <span class="sort-indicator"></span></th>
-  <th class="text-center sortable" data-type="stage">Stage <span class="sort-indicator"></span></th>
-  <th class="sortable" data-type="date" style="min-width:110px;">Go Live <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="wrike">Wrike ID <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="date">CreateDT <span class="sort-indicator"></span></th>
-        <th class="sortable" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
+        <th class="sortable col-src" data-type="text" style="min-width:70px;">Item <span class="sort-indicator"></span></th>
+        <th class="sortable col-src" data-type="text">Mfg Part # <span class="sort-indicator"></span></th>
+        <th class="sortable col-src" data-type="text">Mfg <span class="sort-indicator"></span></th>
+        <th class="sortable col-src" data-type="text" style="min-width:240px;">Item Description <span class="sort-indicator"></span></th>
+        <th class="sortable col-repl" data-type="text" style="width:70px; min-width:70px; max-width:70px;">Replace Item <span class="sort-indicator"></span></th>
+        <th class="sortable col-repl" data-type="text">Repl Mfg # <span class="sort-indicator"></span></th>
+        <th class="sortable col-repl" data-type="text">Repl Mfg <span class="sort-indicator"></span></th>
+        <th class="sortable col-repl" data-type="text" style="min-width:240px;">Repl Description <span class="sort-indicator"></span></th>
+        <th class="text-center sortable" data-type="stage">Stage <span class="sort-indicator"></span></th>
+  <th class="sortable text-center" data-type="date" style="min-width:110px;">Go Live <span class="sort-indicator"></span></th>
+  <th class="sortable text-center" data-type="wrike">Wrike ID <span class="sort-indicator"></span></th>
+  <th class="sortable text-center" data-type="date">CreateDT <span class="sort-indicator"></span></th>
+  <th class="sortable text-center" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
       </tr>
     </thead>
     <tbody class="small">
@@ -58,26 +58,26 @@
             </div>
           </td>
           <td class="text-center fw-semibold">{{ r.item_group }}</td>
-          <td class="font-monospace">{{ r.item }}</td>
-          <td class="font-monospace">
+          <td class="font-monospace col-src">{{ r.item }}</td>
+          <td title="{{ r.mfg_part_num }}" class="text-truncate col-src" style="max-width:140px;">{{ r.mfg_part_num }}</td>
+          <td class="text-truncate col-src" style="max-width:120px;">{{ r.manufacturer }}</td>
+          <td class="text-truncate col-src" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
+          <td class="font-monospace ellipsis col-70 col-repl" title="{% if r.replace_item is not none %}{{ r.replace_item }}{% endif %}">
             {% if r.stage == 'Tracking - Discontinued' and (r.replace_item is none or r.replace_item|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
-            {% else %}{{ r.replace_item }}{% endif %}
+            {% else %}<span class="ellipsis-text">{{ r.replace_item }}</span>{% endif %}
           </td>
-          <td title="{{ r.mfg_part_num }}" class="text-truncate" style="max-width:140px;">{{ r.mfg_part_num }}</td>
-          <td class="text-truncate" style="max-width:120px;">{{ r.manufacturer }}</td>
-          <td class="text-truncate" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
-          <td title="{{ r.repl_mfg_part_num }}" class="text-truncate" style="max-width:140px;">
+          <td title="{{ r.repl_mfg_part_num }}" class="text-truncate col-repl" style="max-width:140px;">
             {% if r.stage == 'Tracking - Discontinued' and (r.repl_mfg_part_num is none or r.repl_mfg_part_num|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_mfg_part_num }}{% endif %}
           </td>
-          <td class="text-truncate" style="max-width:120px;">
+          <td class="text-truncate col-repl" style="max-width:120px;">
             {% if r.stage == 'Tracking - Discontinued' and (r.repl_manufacturer is none or r.repl_manufacturer|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_manufacturer }}{% endif %}
           </td>
-          <td class="text-truncate" style="max-width:260px;" title="{{ r.repl_item_description }}">
+          <td class="text-truncate col-repl" style="max-width:260px;" title="{{ r.repl_item_description }}">
             {% if r.stage == 'Tracking - Discontinued' and (r.repl_item_description is none or r.repl_item_description|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_item_description }}{% endif %}
@@ -501,5 +501,13 @@ document.addEventListener('DOMContentLoaded', () => {
   #itemlink-table th.sortable.active { background:#eef3f9; }
   #itemlink-table th.sortable.active .sort-indicator { opacity:1; }
   #itemlink-table .table-warning { --bs-table-bg:#fff3cd !important; }
+  /* fixed small column classes */
+  .col-70 { width:70px; min-width:70px; max-width:70px; }
+  .ellipsis { overflow:hidden; }
+  .ellipsis-text { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Source (Item/Mfg/Mfg Part/Description) - pale yellow (tbody only) */
+  tbody td.col-src { background: #fff9e6; }
+  /* Replacement columns - pale blue (tbody only) */
+  tbody td.col-repl { background: #e9f7ff; }
 </style>
 {% endblock %}

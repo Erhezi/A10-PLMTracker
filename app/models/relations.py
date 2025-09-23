@@ -214,3 +214,7 @@ class PLMQty(db.Model):
 
 	AvailableQty = db.Column("AvailableQty", db.Integer, nullable=True)
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
+
+	__mapper_args__ = {
+		"primary_key": [Location, Item, report_stamp]
+	}

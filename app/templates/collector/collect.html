@@ -314,14 +314,14 @@
                 <button type='button' class='btn btn-sm btn-outline-danger py-0 px-1' title='Remove link' data-remove-link data-item='${r.item}' data-replace-item='${r.replace_item}'>&times;</button>
               </td>
               <td class='text-center fw-semibold'>${r.item_group}</td>
-              <td class='font-monospace'>${r.item}</td>
-              <td class='text-truncate' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
-              <td class='text-truncate' style='max-width:120px;'>${r.manufacturer||''}</td>
-              <td class='text-truncate' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
-              <td class='font-monospace'>${r.replace_item||''}</td>
-              <td class='text-truncate' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
-              <td class='text-truncate' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
-              <td class='text-truncate' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
+              <td class='font-monospace col-src'>${r.item}</td>
+              <td class='text-truncate col-src' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
+              <td class='text-truncate col-src' style='max-width:120px;'>${r.manufacturer||''}</td>
+              <td class='text-truncate col-src' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
+              <td class='font-monospace col-repl'>${r.replace_item||''}</td>
+              <td class='text-truncate col-repl' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
+              <td class='text-truncate col-repl' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
+              <td class='text-truncate col-repl' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
               <td class='text-center'>${stageBadge}</td>
               <td>${goLive}</td>
               <td>${wrikeDisp}</td>
@@ -410,4 +410,9 @@
   }
 })();
 </script>
+<style>
+  /* created-links-table: color source and replacement tbody cells like groups table */
+  #created-links-table tbody td.col-src { background: #fff9e6; }
+  #created-links-table tbody td.col-repl { background: #e9f7ff; }
+</style>
 {% endblock %}

@@ -131,6 +131,77 @@ class PO90Day(db.Model):
                 f"Vendor={self.Vendor}, Item={self.Item})>")
 
 
+class ItemStartEndDate(db.Model):
+    """
+    Mapping to PLM.ItemStartEndDate.
+    Table holds the transaction start and end date for each (Company, Location, Item).
+    Refresh using stored procedure PLM.sp_PLM_MakeInvItemStartEndDate_FullRefresh
+    We will need to use those date to help calculate burn rates for items
+    """
+
+    __tablename__ = "ItemStartEndDate"
+    __table_args__ = (
+        UniqueConstraint('Company', 'Location', 'Item', name='UQ_InvItemStartEndDate_Company_Location_Item'),
+        Index('IX_InvItemStartEndDate_Item', 'Item'),
+        Index('IX_InvItemStartEndDate_Location', 'Location'),
+        Index('IX_InvItemStartEndDate_Company', 'Company'),
+        {"schema": "PLM"},
+    )
+
+    Inventory_base_ID = db.Column(db.BIGINT, primary_key=True, nullable=False) # surrogate PK
+
+    Company        = db.Column(db.String(10), nullable=False)
+    Location       = db.Column(db.String(20), nullable=False)
+    Item           = db.Column(db.String(10), nullable=False)
+    CreateDate     = db.Column("create_date", db.Date, nullable=False)
+    ZDate          = db.Column("z_date", db.Date, nullable=False)
+
+    def __repr__(self):
+        return f"<PLMItemStartEndDate Location={self.Location} Item={self.Item} Start={self.StartDate} End={self.EndDate}>"
+    
+
+class DailyIssueOutQty(db.Model):
+    """
+    Mapping to PLM.DailyIssueOutQty.
+    Built by PLM.sp_PLM_extractDailyIssueOutQty (truncate & reload).
+    PK: (Inventory_base_ID, trx_date)
+    Unique: (Company, Location, Item, trx_date)
+    Indexes: trx_date, item, location, (location, item)
+    """
+
+    __tablename__ = "DailyIssueOutQty"
+    __table_args__ = (
+        UniqueConstraint('Company', 'Location', 'Item', 'trx_date',
+                         name='UQ_DailyIssueOutQty_Company_Location_Item_trxdate'),
+        # Indexes
+        Index('IX_DailyIssueOutQty_trx_date', 'trx_date'),
+        Index('IX_DailyIssueOutQty_item', 'Item'),
+        Index('IX_DailyIssueOutQty_location', 'Location'),
+        Index('IX_DailyIssueOutQty_location_item', 'Location', 'Item'),
+        {"schema": "PLM"},
+    )
+
+    # Columns
+    Inventory_base_ID = db.Column(db.BIGINT, primary_key=True, nullable=False) # surrogate PK
+    trx_date       = db.Column(db.Date, nullable=False)
+
+    Company        = db.Column(db.String(10),  nullable=False)
+    Location       = db.Column(db.String(20),  nullable=False)
+    Item           = db.Column(db.String(10),  nullable=False)
+
+    StockUOM       = db.Column(db.String(10),  nullable=False)
+    QtyInStockUOM  = db.Column(db.Integer)
+
+    CreateDate    = db.Column("create_date", db.Date)
+    ZDate         = db.Column("z_date", db.Date)
+    existing_days  = db.Column(db.Integer)
+
+    def __repr__(self):
+        return (f"<DailyIssueOutQty inv_id={self.Inventory_base_ID} "
+                f"item={self.Item} loc={self.Location} date={self.trx_date} "
+                f"qty={self.QtyInStockUOM}>")
+
+
 class ItemLocationsBR(db.Model):
     """
     Mapping to PLM.ItemLocationsBR (SQL Server table).
@@ -151,10 +222,10 @@ class ItemLocationsBR(db.Model):
         {'schema': 'PLM'},
     )
 
-    Inventory_base_ID    = db.Column(db.Integer, primary_key=True, nullable=False)
+    Inventory_base_ID    = db.Column(db.BIGINT, primary_key=True, nullable=False)
     LocationType         = db.Column(db.String(40),  nullable=True)
     Company              = db.Column(db.String(10),  nullable=False)
-    Location             = db.Column(db.String(255), nullable=False)
+    Location             = db.Column(db.String(20), nullable=False)
     Item                 = db.Column(db.String(255), nullable=False)
 
     br7                  = db.Column(db.Numeric(17), nullable=True)
@@ -171,7 +242,6 @@ class ItemLocationsBR(db.Model):
 
     def __repr__(self):
         return f"<ItemLocationsBR Item={self.Item} {self.Company}/{self.Location}>"
-
 
 
 class ItemLocations(db.Model):
@@ -224,6 +294,7 @@ class ItemLocations(db.Model):
     DerivedAverageCost  = db.Column(db.Numeric,      nullable=True)
 
     report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
+    create_stamp        = db.Column("create stamp", db.DateTime, nullable=False)
 
     # ----------------------- Relations -----------------------
 
@@ -235,4 +306,5 @@ __all__ = ["Item",
            "ContractItem", 
            "ItemLocations", 
            "Requesters365Day", 
-           "PO90Day"]
+           "PO90Day",
+           "ItemStartEndDate"]

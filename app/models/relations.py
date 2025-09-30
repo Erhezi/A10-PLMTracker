@@ -211,6 +211,7 @@ class PLMQty(db.Model):
 	Location = db.Column("Location", db.String(20), nullable=False, primary_key=True)
 	Item = db.Column("Item", db.String(10), nullable=False, primary_key=True)
 	report_stamp = db.Column("report stamp", db.DateTime, nullable=False, primary_key=True)
+	z_stamp = db.Column("z_stamp", db.DateTime, nullable=True)
 
 	AvailableQty = db.Column("AvailableQty", db.Integer, nullable=True)
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)

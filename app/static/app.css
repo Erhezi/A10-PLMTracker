@@ -102,6 +102,20 @@ footer { font-size: .75rem; }
 #table-inventory th, #table-inventory td { vertical-align: middle; }
 #table-inventory td.text-wrap { white-space: normal; }
 #table-inventory td, #table-inventory th { white-space: normal; }
+#table-inventory tbody tr.inventory-row-selected td,
+#table-inventory tbody tr.inventory-row-selected th {
+  background: var(--plm-accent-soft) !important;
+}
+#table-inventory tbody tr.inventory-row-selected td:first-child {
+  border-left: 3px solid var(--plm-accent);
+}
+#table-inventory tbody tr.inventory-row-selected:hover td,
+#table-inventory tbody tr.inventory-row-selected:hover th {
+  background: var(--plm-accent-soft) !important;
+}
+#table-inventory tbody tr.inventory-row-selected {
+  transition: background-color 120ms ease-in;
+}
 /* ---------------------------------------------- */
 /* Shared column sizing & overflow helpers        */
 /* ---------------------------------------------- */

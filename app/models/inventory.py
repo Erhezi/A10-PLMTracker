@@ -93,6 +93,8 @@ class PO90Day(db.Model):
     POLine             = db.Column(db.String(10),  primary_key=True, nullable=False)
     PurchaseOrderLine  = db.Column(db.String(10),  nullable=False)
 
+    Company            = db.Column(db.String(10),  nullable=False)
+
     OrderToStoreroom   = db.Column(db.String(13),  nullable=False)
     Location           = db.Column(db.String(40),  nullable=True)
     TrasientInventoryLocation = db.Column(db.String(40),  nullable=True)
@@ -189,8 +191,8 @@ class DailyIssueOutQty(db.Model):
     Location       = db.Column(db.String(20),  nullable=False)
     Item           = db.Column(db.String(10),  nullable=False)
 
-    StockUOM       = db.Column(db.String(10),  nullable=False)
-    QtyInStockUOM  = db.Column(db.Integer)
+    Lum       = db.Column(db.String(10),  nullable=False)
+    QtyInLum  = db.Column(db.Integer)
 
     CreateDate    = db.Column("create_date", db.Date)
     ZDate         = db.Column("z_date", db.Date)
@@ -199,7 +201,7 @@ class DailyIssueOutQty(db.Model):
     def __repr__(self):
         return (f"<DailyIssueOutQty inv_id={self.Inventory_base_ID} "
                 f"item={self.Item} loc={self.Location} date={self.trx_date} "
-                f"qty={self.QtyInStockUOM}>")
+                f"qty={self.QtyInLum}>")
 
 
 class ItemLocationsBR(db.Model):
@@ -305,6 +307,8 @@ class ItemLocations(db.Model):
 __all__ = ["Item", 
            "ContractItem", 
            "ItemLocations", 
+           "ItemLocationsBR",
            "Requesters365Day", 
            "PO90Day",
-           "ItemStartEndDate"]
+           "ItemStartEndDate",
+           "DailyIssueOutQty",]

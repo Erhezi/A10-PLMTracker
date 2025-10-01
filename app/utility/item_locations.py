@@ -73,6 +73,7 @@ def build_location_pairs(
             "item": r.Item,
             "replacement_item": r.Replace_Item,
             "location": r.Location,  # unified location label (view-level logic)
+            "group_location": r.Group_Locations or r.Location,
             "location_ri": r.Location_ri or r.Location,  # fallback
             "location_type": r.LocationType,
             "auto_replenishment": r.AutomaticPO,
@@ -100,7 +101,10 @@ def build_location_pairs(
             "item_description_ri": r.ItemDescription_ri,
         })
     # Stable sort by item_group then location for display
-    out.sort(key=lambda d: (d.get("item_group") or 0, d.get("location") or ""))
+    out.sort(key=lambda d: (
+        d.get("item_group") or 0,
+        (d.get("group_location") or d.get("location") or "")
+    ))
     return out
 
 

@@ -1,8 +1,22 @@
 from __future__ import annotations
 from .. import db
 from . import now_ny_naive
-from sqlalchemy.orm import relationship, foreign, backref
+from sqlalchemy.orm import relationship, backref, object_session
 from sqlalchemy import Index, UniqueConstraint, text
+
+
+class ItemGroupConflictError(Exception):
+	"""Raised when attempting to assign an item to both sides within the same group."""
+
+	def __init__(self, item_group: int, item: str, existing_side: str, requested_side: str):
+		super().__init__(
+			f"Item {item} in group {item_group} already assigned to side {existing_side}; "
+			f"cannot assign to side {requested_side}."
+		)
+		self.item_group = item_group
+		self.item = item
+		self.existing_side = existing_side
+		self.requested_side = requested_side
 
 class ItemLink(db.Model):
     __tablename__ = "ItemLink"
@@ -56,6 +70,120 @@ class ItemLink(db.Model):
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
     
+
+class ItemGroup(db.Model):
+	""" Mapping to PLM.ItemGroup table.
+	Store the pair of (Item, Item Group, Side) information
+	When the item link pair(s) are validated and created, the 
+	information will be write to this table for easy reference
+	and easy check. 
+	The side is either 'O' for original item or 'R' for replacement item.
+	table will have unique constraint on (Item, Item Group, Side)
+	"""
+
+	__tablename__ = "ItemGroup"
+	__table_args__ = (
+		UniqueConstraint("Item", "Item Group", "Side", name="UX_ItemGroup_Item_Group_Side"),
+		Index("IX_ItemGroup_Item", "Item"),
+		Index("IX_ItemGroup_ItemGroup", "Item Group"),
+		{"schema": "PLM"},
+	)
+
+	# Surrogate primary key (already IDENTITY in SQL Server)
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+	# foreign key reference back to ItemLink
+	item_link_id = db.Column("item_link_id", db.BigInteger, db.ForeignKey("PLM.ItemLink.PKID", ondelete='CASCADE'), nullable=False)
+
+	item = db.Column("Item", db.String(10), nullable=False)
+	item_group = db.Column("Item Group", db.Integer, nullable=False)
+	side = db.Column("Side", db.String(1), nullable=False)  # 'O' or 'R'
+	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+	update_dt = db.Column("update_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive, onupdate=now_ny_naive)
+
+	item_link = relationship(
+		"ItemLink",
+		backref=backref("item_groups", cascade="all, delete-orphan", passive_deletes=True),
+		foreign_keys=[item_link_id],
+	)
+
+	def __repr__(self):
+		return f"<ItemGroup id={self.pkid} group={self.item_group} item={self.item} side={self.side}>"
+
+	@classmethod
+	def _resolve_session(cls, session=None, item_link=None):
+		if session is not None:
+			return session
+		if item_link is not None:
+			session = object_session(item_link)
+			if session is not None:
+				return session
+		return db.session
+
+	@classmethod
+	def ensure_allowed_side(cls, item_group: int, item_code: str | None, side: str, *, session=None, item_link_id: int | None = None):
+		"""Validate that an item within a group can take the requested side."""
+		if not item_code:
+			return
+		session = cls._resolve_session(session)
+		existing = (
+			session.query(cls)
+			.filter(cls.item_group == item_group, cls.item == item_code)
+			.first()
+		)
+		if existing and existing.side != side and existing.item_link_id != item_link_id:
+			raise ItemGroupConflictError(item_group, item_code, existing.side, side)
+
+	@classmethod
+	def sync_from_item_link(cls, item_link: ItemLink, *, session=None):
+		"""Ensure ItemGroup rows reflect the provided ItemLink."""
+		if item_link.pkid is None:
+			raise ValueError("ItemLink must be flushed before syncing ItemGroup entries")
+		session = cls._resolve_session(session, item_link)
+		desired_pairs = [(item_link.item, "O")]
+		if item_link.replace_item:
+			desired_pairs.append((item_link.replace_item, "R"))
+		desired_keys = {(code, side) for code, side in desired_pairs if code}
+
+		# Remove stale rows tied to this link that are no longer represented
+		existing_rows = (
+			session.query(cls)
+			.filter(cls.item_link_id == item_link.pkid)
+			.all()
+		)
+		for row in existing_rows:
+			if (row.item, row.side) not in desired_keys:
+				session.delete(row)
+
+		for code, side in desired_pairs:
+			cls._upsert(session, item_link, code, side)
+
+	@classmethod
+	def _upsert(cls, session, item_link: ItemLink, item_code: str | None, side: str):
+		if not item_code:
+			return
+		existing = (
+			session.query(cls)
+			.filter(cls.item_group == item_link.item_group, cls.item == item_code)
+			.first()
+		)
+		if existing:
+			if existing.side != side and existing.item_link_id != item_link.pkid:
+				raise ItemGroupConflictError(item_link.item_group, item_code, existing.side, side)
+			existing.side = side
+			existing.item_link_id = item_link.pkid
+			existing.update_dt = now_ny_naive()
+			return existing
+		new_entry = cls(
+			item_link_id=item_link.pkid,
+			item=item_code,
+			item_group=item_link.item_group,
+			side=side,
+			create_dt=now_ny_naive(),
+			update_dt=now_ny_naive(),
+		)
+		session.add(new_entry)
+		return new_entry
+
 
 class PendingItems(db.Model):
 	__tablename__ = "PendingItems"
@@ -119,13 +247,91 @@ class PendingItems(db.Model):
 	def mark_as_error(self):
 		self.status = "ERROR"
 
+class PLMItemGroupLocation(db.Model):
+	"""Read-only mapping to PLM.vw_PLMItemGroupLocation view.
+
+	This is an important building block that collect all locations 
+	associated with each item group.
+
+	Synthetic composite primary key uses Item Group and Location so the ORM
+	can work with result objects.
+	"""
+
+	__tablename__ = "vw_PLMItemGroupLocation"
+	__table_args__ = {"schema": "PLM"}
+
+	# Columns
+	Item_Group = db.Column("Item Group", db.Integer, nullable=False, primary_key=True)
+	Company = db.Column("Company", db.String(10), nullable=False, primary_key=True)
+	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False, primary_key=True)
+	LocationType = db.Column("LocationType", db.String(40), nullable=True)
+
+	__mapper_args__ = {
+		"primary_key": [Item_Group, Company, Group_Locations]
+	}
+
+	def __repr__(self):
+		return f"<PLMItemGroupLocation group={self.Item_Group} company={self.Company} location={self.Group_Locations}>"
+
+class PLMTranckerHead(db.Model):
+	"""Read-only mapping to PLM.vw_PLMTrackerHead view.
+
+	This is the left side of the PLMTrackerBase and essential building block 
+	to correctly identify the z-date in determing the terminating date for burn
+	rate calculation.
+
+	z-date -- initially this is designed to reflect the first zero-inventory date
+	for an item at a location after the most recent non-zero inventory date. burn 
+	rate, when traverse backwards from z-date, help us to avoid the dilution effect
+	of historical usage when an item was stocked but not used for a long time.
+
+	with the new method, z-date now consider the item and replacement item as a pair,
+	and the z-date is thus moved to the introduction date of the replacement item if
+	it is earlier than the original z-date. In this case, we avoid the complexity of
+	trying to resolve the burn rate for the transition period when both items are stocked.
+
+	it is possible that the replacement item is co-existing with the original item for 
+	a long time, and in such case the conversion is to consolidate to replacement item.
+	In this case, we would like to introduce an artificial co-existing period threshold
+	(e.g. 90 days) so if co-exstence is longer than that, the final burn rate calculation
+	will be based on the sum of usage of both items.
+
+	This view doesn't expose a natural primary key; we provide a synthetic
+	composite mapper_key so the ORM can work with instances. No relationships
+	are declared here.
+	"""
+
+	__tablename__ = "vw_PLMTrackerHead"
+	# __tablename__ = "PLMTrackerHead"
+	__table_args__ = {"schema": "PLM"}
+
+	# Columns (use exact names where provided)
+	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False, primary_key=True)
+
+	Item_Group = db.Column("Item Group", db.Integer, nullable=False)
+	Item = db.Column("Item", db.String(10), nullable=False)
+	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
+
+	Stage = db.Column("Stage", db.String(100), nullable=False)
+
+	Group_Locations = db.Column("Group Locations", db.String(20), nullable=True, primary_key=True)
+	LocationType = db.Column("LocationType", db.String(40), nullable=True)
+	Company = db.Column("Company", db.String(10), nullable=True)
+
+	__mapper_args__ = {
+		"primary_key": [PKID_ItemLink, Group_Locations]
+	}
+
+	def __repr__(self):
+		return f"<PLMTrackerHead link={self.PKID_ItemLink} group={self.Item_Group} item={self.Item} replace={self.Replace_Item} location={self.Group_Locations}>"
+	
 
 class PLMTrackerBase(db.Model):
 	"""Read-only mapping to PLM.vw_PLMTrackerBase used by dashboard views.
 
 	This view doesn't expose a natural primary key; we provide a synthetic
 	composite mapper_key so the ORM can work with instances. No relationships
-	are declared here per your request.
+	are declared here.
 	"""
 
 	__tablename__ = "vw_PLMTrackerBase"
@@ -137,6 +343,7 @@ class PLMTrackerBase(db.Model):
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
+	
 	Item = db.Column("Item", db.String(10), nullable=False)
 	Location = db.Column("Location", db.String(20), nullable=True)
 	LocationText = db.Column("LocationText", db.String(255), nullable=True)
@@ -161,6 +368,7 @@ class PLMTrackerBase(db.Model):
 	issued_count_365 = db.Column("issued_count_365", db.Integer, nullable=True)
 	OrderQty90_EA = db.Column("OrderQty90_EA", db.Numeric, nullable=True)
 	ReqQty90_EA = db.Column("ReqQty90_EA", db.Numeric, nullable=True)
+	
 	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
 
 	# Replace Item side (ri) fields
@@ -210,7 +418,7 @@ class PLMQty(db.Model):
 	# Columns
 	Location = db.Column("Location", db.String(20), nullable=False, primary_key=True)
 	Item = db.Column("Item", db.String(10), nullable=False, primary_key=True)
-	report_stamp = db.Column("report stamp", db.DateTime, nullable=False, primary_key=True)
+	report_stamp = db.Column("update stamp", db.DateTime, nullable=False, primary_key=True) # this is mapped to update stamp on inventory location, not the report stamp
 	z_stamp = db.Column("z_stamp", db.DateTime, nullable=True)
 
 	AvailableQty = db.Column("AvailableQty", db.Integer, nullable=True)

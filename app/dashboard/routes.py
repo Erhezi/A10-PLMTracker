@@ -84,7 +84,7 @@ def api_inventory():
     )
     if location_filters:
         loc_set = set(location_filters)
-        all_rows = [r for r in all_rows if (r.get("location") in loc_set)]
+        all_rows = [r for r in all_rows if (r.get("group_location") in loc_set)]
     if item_group_filters:
         allowed_set = set(item_group_filters)
         all_rows = [r for r in all_rows if r.get("item_group") in allowed_set]
@@ -127,14 +127,14 @@ def api_filter_options():
     # Locations (pull from view)
     v = PLMTrackerBase
     loc_query = (
-        select(func.distinct(v.LocationType), v.Location)
-        .where(v.Location.isnot(None))
-        .order_by(v.LocationType, v.Location)
+        select(func.distinct(v.LocationType), v.Group_Locations)
+        .where(v.Group_Locations.isnot(None))
+        .order_by(v.LocationType, v.Group_Locations)
     )
     locations = []
-    for lt, loc in db.session.execute(loc_query).all():
-        label = f"{lt} - {loc}" if lt else loc
-        locations.append({"value": loc, "type": lt, "label": label})
+    for lt, group_loc in db.session.execute(loc_query).all():
+        label = f"{lt} - {group_loc}" if lt else group_loc
+        locations.append({"value": group_loc, "type": lt, "label": label})
 
     stages = [
         "Tracking - Discontinued",
@@ -208,7 +208,7 @@ def api_par():
     )
     if location_filters:
         loc_set = set(location_filters)
-        all_rows = [r for r in all_rows if (r.get("location") in loc_set)]
+        all_rows = [r for r in all_rows if (r.get("group_location") in loc_set)]
     # Filter by item_group if needed
     if item_group_filters:
         allowed_set = set(item_group_filters)
@@ -278,8 +278,17 @@ def api_qty(item_group: int):
         .where(PLMQty.Item_Group == item_group)
         .order_by(PLMQty.Item, PLMQty.Location, PLMQty.report_stamp)
     )
-
     rows = db.session.execute(stmt).all()
+
+    gl_map = {}
+    if rows:
+        gl_query = (
+            select(PLMTrackerBase.Item, PLMTrackerBase.Location, PLMTrackerBase.Group_Locations)
+            .where(PLMTrackerBase.Item_Group == item_group)
+        )
+        for item, location, group_loc in db.session.execute(gl_query).all():
+            bucket = gl_map.setdefault(item, {})
+            bucket[location] = group_loc
     series_map = {}
     for item, location, stamp, qty in rows:
         key = (item, location)
@@ -288,10 +297,14 @@ def api_qty(item_group: int):
             "t": stamp.isoformat() if stamp else None,
             "qty": int(qty) if qty is not None else None,
         })
-
     series = [
-        {"item": k[0], "location": k[1], "points": v}
-        for k, v in series_map.items()
+        {
+            "item": item_key,
+            "location": loc_key,
+            "group_location": gl_map.get(item_key, {}).get(loc_key) or gl_map.get(item_key, {}).get(None) or loc_key,
+            "points": points,
+        }
+        for (item_key, loc_key), points in series_map.items()
     ]
 
     return jsonify({

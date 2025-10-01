@@ -4,7 +4,8 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import noload
 import re
 from .. import db
-from ..models.relations import ItemLink, PendingItems
+from ..models import now_ny_naive
+from ..models.relations import ItemLink, ItemGroup, PendingItems, ItemGroupConflictError
 from ..models.inventory import Item, ContractItem
 from ..utility.item_group import validate_batch_inputs, validate_stage_and_items, BatchValidationError
 
@@ -146,7 +147,6 @@ def update_item(item: str, replace_item: str):
         record.expected_go_live_date = None
 
     record.wrike_id = wrike_id
-    from ..models import now_ny_naive
     record.update_dt = now_ny_naive()
     db.session.commit()
     if wants_json:
@@ -294,6 +294,10 @@ def _resolve_group(all_codes: set[str]) -> tuple[int, list[int]]:
             ItemLink.query.filter(ItemLink.item_group.in_(to_merge))
             .update({ItemLink.item_group: canonical}, synchronize_session=False)
         )
+        (
+            ItemGroup.query.filter(ItemGroup.item_group.in_(to_merge))
+            .update({ItemGroup.item_group: canonical, ItemGroup.update_dt: now_ny_naive()}, synchronize_session=False)
+        )
     return canonical, to_merge
 
 
@@ -313,7 +317,17 @@ def api_batch_item_links():
     if not items or not replace_items:
         return jsonify({"error": "Both items and replace_items required"}), 400
 
-    # Use utility functions for validation
+    validated_wrike_id = None
+    validated_date = None
+    stage = None
+    locked = False
+    items_map = {}
+    missing = []
+    real_codes: set[str] = set()
+    canonical_group: int | None = None
+    merged: list[int] = []
+
+    # Use utility functions for validation and group resolution
     try:
         # Get config value for max per side
         from flask import current_app
@@ -338,20 +352,47 @@ def api_batch_item_links():
             sentinel_replacements=SENTINEL_REPLACEMENTS
         )
         
+        # Extract real codes for group resolution (exclude sentinel and dynamic pending placeholders)
+        real_codes = set(items + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))])
+
+        # Determine group id & merge groups
+        canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
+
+        # Ensure batch does not assign conflicting sides for the same item
+        batch_side_tracker: dict[str, str] = {}
+
+        def register_batch_side(code: str | None, desired_side: str):
+            if not code:
+                return
+            prev = batch_side_tracker.get(code)
+            if prev and prev != desired_side:
+                raise BatchValidationError(
+                    f"Item {code} cannot be both side {prev} and {desired_side} within the same group"
+                )
+            batch_side_tracker[code] = desired_side
+
+        for src in items:
+            register_batch_side(src, 'O')
+            ItemGroup.ensure_allowed_side(canonical_group, src, 'O', session=db.session)
+
+        for repl in replace_items:
+            if repl in SENTINEL_REPLACEMENTS:
+                continue
+            register_batch_side(repl, 'R')
+            ItemGroup.ensure_allowed_side(canonical_group, repl, 'R', session=db.session)
+
     except BatchValidationError as e:
+        db.session.rollback()
         if e.error_code == "missing_items":
             return jsonify({"error": e.message, "missing": missing}), 400
         return jsonify({"error": e.message}), 400
 
-    # Extract real codes for group resolution (exclude sentinel and dynamic pending placeholders)
-    real_codes = set(items + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))])
-
-    # Determine group id & merge groups
-    canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
+    except ItemGroupConflictError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
 
     # -------- Optimized creation to avoid per-pair queries --------
     from sqlalchemy import and_ as _and
-    from ..models import now_ny_naive
 
     created = 0
     skipped = []
@@ -451,6 +492,13 @@ def api_batch_item_links():
     if created or merged:
         # Flush to assign PKIDs to ItemLink records before creating PendingItems
         db.session.flush()
+
+        try:
+            for link in created_records:
+                ItemGroup.sync_from_item_link(link, session=db.session)
+        except ItemGroupConflictError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
         
         # Create PendingItems for links with 'Pending Item Number' stage
         for link, contract_id_meta, mfg_part_meta in pending_items_to_create:

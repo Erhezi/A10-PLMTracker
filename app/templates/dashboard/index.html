@@ -358,8 +358,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if(!isFinite(n)) return ''; 
           return n.toFixed(digits); 
         }
-        tr.dataset.itemGroup = r.item_group;
-        tr.dataset.item = r.item;
+    tr.dataset.itemGroup = r.item_group;
+    tr.dataset.item = r.item;
+    tr.dataset.location = r.location || '';
+    tr.dataset.groupLocation = r.group_location || r.location || '';
+    tr.dataset.replacementItem = r.replacement_item || '';
         tr.innerHTML = `
           <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td>${fmt(r.item_group)}</td>
@@ -384,7 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
-        tbody.appendChild(tr);
         tbody.appendChild(tr);
       }
     countEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
@@ -608,77 +610,223 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // D3 chart logic
   const chartContainer = document.getElementById('qty-chart');
-  let lastItemGroup = null;
-  let chartDataCache = new Map();
+  const chartHeaderSpan = document.getElementById('current-item-group');
+  const chartHint = document.getElementById('chart-hint');
+  const inventoryTable = document.getElementById('table-inventory');
+  const inventoryTableRegion = inventoryTable ? inventoryTable.parentElement : null;
+  const defaultSelectionState = { itemGroup: null, location: null, primaryItem: null, replacementItem: null };
+  let lastSelection = { ...defaultSelectionState };
+  let selectedInventoryRow = null;
+  let selectedInventorySignature = null;
+  const chartDataCache = new Map();
+
+  function getRowSignature(tr){
+    if(!tr) return null;
+    return [
+      tr.dataset.itemGroup || '',
+      tr.dataset.item || '',
+      tr.dataset.groupLocation || tr.dataset.location || '',
+      tr.dataset.replacementItem || '',
+    ].join('::');
+  }
+
+  function resetChartDisplay(){
+    if(chartContainer){
+      chartContainer.innerHTML = '<div class="text-muted small text-center py-5">Select an inventory row to view the chart</div>';
+    }
+    if(chartHeaderSpan){
+      chartHeaderSpan.textContent = 'Not Selected';
+    }
+    if(chartHint){
+      chartHint.textContent = '';
+      chartHint.style.display = '';
+    }
+  }
+
+  function clearInventoryRowHighlight(){
+    if(selectedInventoryRow){
+      selectedInventoryRow.classList.remove('inventory-row-selected');
+      selectedInventoryRow.removeAttribute('aria-selected');
+    }
+    selectedInventoryRow = null;
+  }
+
+  function selectInventoryRow(tr){
+    if(!tr) return;
+    if(selectedInventoryRow === tr){
+      selectedInventorySignature = getRowSignature(tr);
+      tr.classList.add('inventory-row-selected');
+      tr.setAttribute('aria-selected', 'true');
+      return;
+    }
+    clearInventoryRowHighlight();
+    selectedInventoryRow = tr;
+    selectedInventorySignature = getRowSignature(tr);
+    tr.classList.add('inventory-row-selected');
+    tr.setAttribute('aria-selected', 'true');
+  }
+
+  function clearInventorySelection({ resetChart = true } = {}){
+    clearInventoryRowHighlight();
+    selectedInventorySignature = null;
+    lastSelection = { ...defaultSelectionState };
+    if(resetChart){
+      resetChartDisplay();
+    }
+  }
+
+  function restoreSelectedRowHighlight(){
+    if(!selectedInventorySignature) return;
+    const nextRow = Array.from(tbody.querySelectorAll('tr')).find(tr => getRowSignature(tr) === selectedInventorySignature);
+    if(nextRow){
+      selectedInventoryRow = nextRow;
+      nextRow.classList.add('inventory-row-selected');
+      nextRow.setAttribute('aria-selected', 'true');
+    } else {
+      clearInventorySelection({ resetChart: true });
+    }
+  }
+
+  resetChartDisplay();
 
   function attachInventoryRowClick(){
     tbody.querySelectorAll('tr').forEach(tr => {
-      tr.addEventListener('click', () => {
+      tr.addEventListener('click', evt => {
+        evt.stopPropagation();
+        selectInventoryRow(tr);
         const ig = tr.dataset.itemGroup;
+        const loc = (tr.dataset.groupLocation || tr.dataset.location || '').trim();
+        const primaryItem = tr.dataset.item || '';
+        const replacementItem = tr.dataset.replacementItem || '';
         if(!ig) return;
-        if(ig === lastItemGroup){
-          // toggle collapse maybe in future; for now ignore
+        if(
+          lastSelection.itemGroup === ig &&
+          lastSelection.location === loc &&
+          lastSelection.primaryItem === primaryItem &&
+          lastSelection.replacementItem === replacementItem
+        ){
+          return;
         }
-        loadQtySeries(ig);
+        loadQtySeries(ig, loc, { primaryItem, replacementItem });
       });
     });
+    restoreSelectedRowHighlight();
   }
 
-  async function loadQtySeries(itemGroup){
-    lastItemGroup = itemGroup;
-    chartContainer.innerHTML = '<div class="text-muted small">Loading series for Item Group '+itemGroup+'...</div>';
+  document.addEventListener('click', evt => {
+    if(!selectedInventorySignature) return;
+    if(inventoryTable && inventoryTable.contains(evt.target)) return;
+    if(inventoryTableRegion && inventoryTableRegion.contains(evt.target)) return;
+    clearInventorySelection({ resetChart: true });
+  });
+
+  async function loadQtySeries(itemGroup, location, targetItems = {}){
+    const trimmedLocation = location ? location.trim() : '';
+    const primaryItem = targetItems.primaryItem || null;
+    const replacementItem = targetItems.replacementItem || null;
+    lastSelection = { itemGroup, location: trimmedLocation, primaryItem, replacementItem };
+    const locSuffix = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+    chartContainer.innerHTML = '<div class="text-muted small">Loading series for Item Group '+itemGroup+locSuffix+'...</div>';
     try {
       if(chartDataCache.has(itemGroup)){
-        renderQtyChart(chartDataCache.get(itemGroup), itemGroup);
+        renderQtyChart(chartDataCache.get(itemGroup), itemGroup, trimmedLocation, { primaryItem, replacementItem });
         return;
       }
       const resp = await fetch(`/dashboard/api/qty/${itemGroup}`);
       if(!resp.ok) throw new Error('Failed loading qty');
       const data = await resp.json();
       chartDataCache.set(itemGroup, data);
-      renderQtyChart(data, itemGroup);
+      renderQtyChart(data, itemGroup, trimmedLocation, { primaryItem, replacementItem });
     } catch(e){
       console.error(e);
       chartContainer.innerHTML = '<div class="text-danger small">Failed loading data: '+e.message+'</div>';
     }
   }
 
-  function renderQtyChart(data, itemGroup){
+  function renderQtyChart(data, itemGroup, locationFilter, targetItems = {}){
     chartContainer.innerHTML = '';
+    const tooltip = d3.select(chartContainer)
+      .append('div')
+      .attr('class', 'qty-chart-tooltip')
+      .style('position', 'absolute')
+      .style('pointer-events', 'none')
+      // slightly more transparent background
+  .style('background', 'rgba(15, 23, 42, 0.78)')
+  .style('max-width', '220px')
+      .style('color', '#fff')
+  .style('padding', '4px 8px')
+      .style('border-radius', '4px')
+      .style('font-size', '11px')
+      .style('line-height', '1.25')
+      .style('z-index', '10')
+      .style('display', 'none');
+    const formatTooltipDate = d3.timeFormat('%Y-%m-%d');
+    const formatTooltipQty = d3.format(',.0f');
     const rawSeries = data.series || [];
-    // Build unified point list for global x/y domains
-    const allPoints = [];
-    rawSeries.forEach(s => s.points.forEach(p => { if(p.t) allPoints.push(p); }));
-    if(!allPoints.length){
-      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+'</div>';
+    const trimmedLocation = locationFilter ? locationFilter.trim() : '';
+    const normalizedFilter = trimmedLocation ? trimmedLocation.toLowerCase() : null;
+    const filteredSeries = normalizedFilter
+      ? rawSeries.filter(s => {
+          const locKey = (s.group_location || s.location || '').toLowerCase();
+          return locKey === normalizedFilter;
+        })
+      : rawSeries.slice();
+    if(!filteredSeries.length){
+      const locationMsg = trimmedLocation ? ' at Location '+trimmedLocation : '';
+      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+locationMsg+'</div>';
+      const headerSpan = document.getElementById('current-item-group');
+      if(headerSpan) headerSpan.textContent = trimmedLocation ? `${itemGroup} @ ${trimmedLocation}` : itemGroup;
       return;
     }
-  // Update header span and hide hint
-  const headerSpan = document.getElementById('current-item-group');
-  if(headerSpan) headerSpan.textContent = itemGroup;
-  const hintEl = document.getElementById('chart-hint');
-  if(hintEl) hintEl.style.display = 'none';
+    // Build unified point list for global x/y domains
+    const allPoints = [];
+    filteredSeries.forEach(s => s.points.forEach(p => { if(p.t) allPoints.push(p); }));
+    if(!allPoints.length){
+      const locationMsg = trimmedLocation ? ' at Location '+trimmedLocation : '';
+      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+locationMsg+'</div>';
+      const headerSpan = document.getElementById('current-item-group');
+      if(headerSpan) headerSpan.textContent = trimmedLocation ? `${itemGroup} @ ${trimmedLocation}` : itemGroup;
+      return;
+    }
+    // Update header span and hide hint
+    const headerSpan = document.getElementById('current-item-group');
+    if(headerSpan) headerSpan.textContent = trimmedLocation ? `${itemGroup} @ ${trimmedLocation}` : itemGroup;
+    const hintEl = document.getElementById('chart-hint');
+    if(hintEl) hintEl.style.display = 'none';
+
+    const primaryItem = targetItems.primaryItem || null;
+    const replacementItem = targetItems.replacementItem || null;
+    const PRIMARY_COLOR = '#f97316';
+    const REPLACEMENT_COLOR = '#2563eb';
+
     function parseIso(s){ return new Date(s); }
     const xExtent = d3.extent(allPoints, d => parseIso(d.t));
     const yExtent = d3.extent(allPoints, d => d.qty);
-    const locations = Array.from(new Set(rawSeries.map(s => s.location || 'Unknown'))).sort();
+    const locations = Array.from(new Set(filteredSeries.map(s => s.group_location || s.location || 'Unknown'))).sort();
     const multiLocation = locations.length > 1;
+
+    const distinctItems = Array.from(new Set(filteredSeries.map(s => s.item))).sort();
+    const fallbackItems = distinctItems.filter(it => it !== primaryItem && it !== replacementItem);
+    const fallbackColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(fallbackItems);
+    const getSeriesColor = (itemName) => {
+      if(primaryItem && itemName === primaryItem) return PRIMARY_COLOR;
+      if(replacementItem && itemName === replacementItem) return REPLACEMENT_COLOR;
+      return fallbackColorScale(itemName);
+    };
 
     // If multiple locations, create a small-multiple chart per location, otherwise single chart as before.
     const perChartHeight = multiLocation ? 240 : (chartContainer.clientHeight || 320); // plot area + margins
     const baseWidth = chartContainer.clientWidth || 400;
-    const margin = {top: 20, right: 30, bottom: 60, left: 60}; // extra bottom for legend separation
+    const margin = {top: 20, right: 30, bottom: 90, left: 60}; // extra bottom for rotated labels + legend separation
     const innerW = baseWidth - margin.left - margin.right;
     const innerH = perChartHeight - margin.top - margin.bottom;
     // Color by item only so same item across locations retains color
-    const distinctItems = Array.from(new Set(rawSeries.map(s => s.item))).sort();
-    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(distinctItems);
     const x = d3.scaleUtc().domain(xExtent).range([0, innerW]);
     // We'll build per-location y scales; fallback unified when single chart
-  // Add 10% headroom above max
-  const maxGlobal = yExtent[1];
-  const paddedGlobalMax = (maxGlobal > 0) ? maxGlobal * 1.1 : maxGlobal; // only pad positive ranges
-  const unifiedY = d3.scaleLinear().domain([Math.min(0, yExtent[0]), paddedGlobalMax]).nice().range([innerH, 0]);
+    // Add 10% headroom above max
+    const maxGlobal = yExtent[1];
+    const paddedGlobalMax = (maxGlobal > 0) ? maxGlobal * 1.1 : maxGlobal; // only pad positive ranges
+    const unifiedY = d3.scaleLinear().domain([Math.min(0, yExtent[0]), paddedGlobalMax]).nice().range([innerH, 0]);
     function makeLine(yScale){
       return d3.line().defined(d => d.t && d.qty != null).x(d => x(parseIso(d.t))).y(d => yScale(d.qty));
     }
@@ -691,18 +839,42 @@ document.addEventListener('DOMContentLoaded', () => {
         .style('margin-bottom','12px');
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
       // Axes
-      g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(6));
+      const xAxis = d3.axisBottom(x)
+        .ticks(d3.timeMonth.every(1))
+        .tickFormat(d3.timeFormat('%Y-%m'));
+      const xAxisG = g.append('g')
+        .attr('transform', `translate(0,${innerH})`)
+        .call(xAxis);
+      xAxisG.selectAll('text')
+        .attr('text-anchor', 'end')
+        .attr('dx', '0.8em')
+        .attr('dy', '1.4em')
+        .attr('transform', 'rotate(-45)');
       // Build y scale for this subset (independent per location if multiLocation)
       let yScale;
       if(multiLocation){
-  const locExtent = d3.extent(seriesSubset.flatMap(s => s.points.filter(p=>p.t).map(p => p.qty)));
-  const paddedLocMax = (locExtent[1] > 0) ? locExtent[1] * 1.1 : locExtent[1];
-  yScale = d3.scaleLinear().domain([Math.min(0, locExtent[0]), paddedLocMax]).nice().range([innerH,0]);
+        const locExtent = d3.extent(seriesSubset.flatMap(s => s.points.filter(p=>p.t).map(p => p.qty)));
+        const paddedLocMax = (locExtent[1] > 0) ? locExtent[1] * 1.1 : locExtent[1];
+        yScale = d3.scaleLinear().domain([Math.min(0, locExtent[0]), paddedLocMax]).nice().range([innerH,0]);
       } else {
         yScale = unifiedY;
       }
+      const bisectDate = d3.bisector(p => parseIso(p.t)).left;
       g.append('g').call(d3.axisLeft(yScale));
       const line = makeLine(yScale);
+      const focusGroup = g.append('g')
+        .attr('class', 'chart-focus')
+        .attr('pointer-events', 'none')
+        .style('display', 'none');
+      const crosshair = focusGroup.append('line')
+        .attr('class', 'chart-crosshair')
+        .attr('y1', 0)
+        .attr('y2', innerH)
+        .attr('stroke', '#0f172a')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
+        .attr('opacity', 0.85);
+      const focusCircles = new Map();
       // Title for small multiples
       g.append('text')
         .attr('x', 0)
@@ -712,21 +884,176 @@ document.addEventListener('DOMContentLoaded', () => {
         .text(multiLocation ? `Location: ${locationLabel}` : `Available Qty — Item Group ${itemGroup}`);
 
       const legendEntries = [];
+      const seriesMeta = new Map();
       seriesSubset.forEach(s => {
-        const key = multiLocation ? s.item : (s.item + ' @ ' + (s.location || 'Unknown'));
-        const c = color(s.item); // color by item
-        g.append('path')
-          .datum(s.points.filter(p => p.t))
+        const locLabel = s.group_location || s.location || 'Unknown';
+  const labelSuffix = s.item === primaryItem ? ' (O Item)' : (s.item === replacementItem ? ' (R Item)' : '');
+        const decoratedName = labelSuffix ? `${s.item}${labelSuffix}` : s.item;
+        const key = multiLocation ? decoratedName : `${decoratedName} @ ${locLabel}`;
+        const c = getSeriesColor(s.item); // color by item with overrides
+        const linePoints = s.points
+          .filter(p => p.t && p.qty !== null && p.qty !== undefined && Number.isFinite(Number(p.qty)))
+          .map(p => ({ t: p.t, qty: Number(p.qty) }));
+        if(!linePoints.length) return;
+        const path = g.append('path')
+          .datum(linePoints)
           .attr('fill','none')
           .attr('stroke', c)
           .attr('stroke-width',1.5)
-          .attr('d', line)
-          .append('title').text(key);
+          .attr('pointer-events', 'none')
+          .attr('d', line);
+        path.append('title').text(key);
+        // Keep base item in meta.label (decorate only for legend keys)
+        seriesMeta.set(s.item, {
+          points: linePoints,
+          color: c,
+          label: s.item,
+          location: locLabel,
+        });
         legendEntries.push({key, color: c});
       });
 
+      const hideFocus = () => {
+        focusGroup.style('display', 'none');
+        crosshair.style('display', 'none');
+        tooltip.style('display', 'none');
+        focusCircles.forEach(circle => circle.style('display', 'none'));
+      };
+
+      const trackedItems = [];
+      if(primaryItem) trackedItems.push(primaryItem);
+      if(replacementItem && (!primaryItem || replacementItem !== primaryItem)) trackedItems.push(replacementItem);
+  focusCircles.clear();
+  focusGroup.selectAll('circle').remove();
+      (trackedItems.length ? trackedItems : Array.from(seriesMeta.keys())).forEach(item => {
+        const meta = seriesMeta.get(item);
+        if(!meta) return;
+        const circle = focusGroup.append('circle')
+          .attr('r', 4)
+          .attr('fill', '#ffffff')
+          .attr('stroke', meta.color)
+          .attr('stroke-width', 1.6)
+          .style('display', 'none');
+        focusCircles.set(item, circle);
+      });
+
+      const overlay = g.append('rect')
+        .attr('class', 'chart-hover-overlay')
+        .attr('width', innerW)
+        .attr('height', innerH)
+        .attr('fill', 'transparent')
+        .style('cursor', 'col-resize');
+
+      const handleHover = (event) => {
+        const [mx] = d3.pointer(event, g.node());
+        const rawDate = x.invert(mx);
+        if(!rawDate) {
+          hideFocus();
+          return;
+        }
+        const domain = x.domain();
+        const crosshairDate = new Date(Math.min(Math.max(rawDate.getTime(), domain[0].getTime()), domain[1].getTime()));
+        const entries = [];
+        const itemsToShow = trackedItems.length ? trackedItems : Array.from(seriesMeta.keys());
+        itemsToShow.forEach(item => {
+          const meta = seriesMeta.get(item);
+          if(!meta || !meta.points.length) return;
+          let idx = bisectDate(meta.points, crosshairDate);
+          if(idx <= 0){
+            idx = 1;
+          } else if(idx >= meta.points.length){
+            idx = meta.points.length - 1;
+          }
+          const lower = meta.points[idx - 1] || meta.points[0];
+          const upper = meta.points[idx] || meta.points[meta.points.length - 1];
+          const lowerDate = parseIso(lower.t);
+          const upperDate = parseIso(upper.t);
+          if(!lowerDate || !upperDate) return;
+          const lowerQty = Number(lower.qty);
+          const upperQty = Number(upper.qty);
+          if(!Number.isFinite(lowerQty) || !Number.isFinite(upperQty)) return;
+          let ratio = (crosshairDate - lowerDate) / (upperDate - lowerDate || 1);
+          if(!Number.isFinite(ratio)) ratio = 0;
+          ratio = Math.min(1, Math.max(0, ratio));
+          const qtyVal = lowerQty + (upperQty - lowerQty) * ratio;
+          const yPos = yScale(qtyVal);
+          entries.push({
+            item,
+            meta,
+            qty: qtyVal,
+            date: crosshairDate,
+            xPos: x(crosshairDate),
+            yPos,
+          });
+        });
+        if(!entries.length){
+          hideFocus();
+          return;
+        }
+        const anchor = entries.find(e => e.item === primaryItem) || entries[0];
+        const anchorX = anchor.xPos;
+        focusGroup.style('display', null);
+        crosshair
+          .attr('x1', anchorX)
+          .attr('x2', anchorX)
+          .attr('y1', 0)
+          .attr('y2', innerH)
+          .style('display', null);
+        focusCircles.forEach((circle, item) => {
+          const entry = entries.find(e => e.item === item);
+          if(entry){
+            circle
+              .style('display', null)
+              .attr('cx', anchorX)
+              .attr('cy', entry.yPos)
+              .attr('stroke', entry.meta.color);
+          } else {
+            circle.style('display', 'none');
+          }
+        });
+        // Show location once at the top (from the anchor), then date, then per-item rows
+        const locationTop = (anchor && anchor.meta && anchor.meta.location) ? anchor.meta.location : 'Unknown';
+        let content = `<div style="font-size:11px; color:rgba(226, 232, 240, 0.95); margin-bottom:6px;">${locationTop}</div>`;
+        content += `<div class="fw-semibold">${formatTooltipDate(anchor.date)}</div>`;
+        entries.forEach(entry => {
+          const role = entry.item === primaryItem ? 'O Item' : (entry.item === replacementItem ? 'R Item' : '');
+          const leftText = `${entry.meta.label}${role ? ' (' + role + ')' : ''}:`;
+          // Tooltip-only color tweak: make replacement item label brighter for readability
+          const tooltipLabelColor = (role === 'R Item') ? '#3b82f6' : entry.meta.color;
+          // tighter spacing: smaller gap and top margin, align center vertically
+          content += `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:2px;">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px;">
+                <span style="color:${tooltipLabelColor}; font-weight:600;">${leftText}</span>
+              </div>
+              <div style="min-width:56px; text-align:right; font-variant-numeric: tabular-nums;">${formatTooltipQty(entry.qty)}</div>
+            </div>`;
+        });
+        tooltip.style('display', 'block').html(content);
+        const tooltipNode = tooltip.node();
+        const containerRect = chartContainer.getBoundingClientRect();
+        const svgRect = svg.node().getBoundingClientRect();
+        const tipWidth = tooltipNode ? tooltipNode.offsetWidth : 0;
+        const tipHeight = tooltipNode ? tooltipNode.offsetHeight : 0;
+        let left = (svgRect.left - containerRect.left) + margin.left + anchorX + 12;
+        let top = (svgRect.top - containerRect.top) + margin.top + anchor.yPos - tipHeight - 12;
+        const maxLeft = containerRect.width - tipWidth - 8;
+        if(left > maxLeft) left = maxLeft;
+        if(left < 8) left = 8;
+        if(top < 0) top = (svgRect.top - containerRect.top) + margin.top + anchor.yPos + 12;
+        const maxTop = containerRect.height - tipHeight - 8;
+        if(top > maxTop) top = maxTop;
+        tooltip.style('left', `${Math.max(0, left)}px`).style('top', `${Math.max(0, top)}px`);
+        focusGroup.raise();
+      };
+
+      overlay
+        .on('mouseenter', handleHover)
+        .on('mousemove', handleHover)
+        .on('mouseleave', hideFocus);
+
       // Legend (placed with more vertical gap from x-axis)
-      const legendYOffset = innerH + 20; // 20px below axis instead of tight
+      const legendYOffset = innerH + 50; // 40px below axis to avoid overlap with rotated labels
       const legend = g.append('g').attr('transform', `translate(0,${legendYOffset})`);
       let lx = 0; let ly = 0; const maxWidth = innerW; const rowH = 16;
       legendEntries.forEach(le => {
@@ -741,11 +1068,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if(multiLocation){
       locations.forEach(loc => {
-        const subset = rawSeries.filter(s => (s.location || 'Unknown') === loc).slice().sort((a,b)=> a.item.localeCompare(b.item));
+        const subset = filteredSeries
+          .filter(s => (s.group_location || s.location || 'Unknown') === loc)
+          .slice()
+          .sort((a,b)=> a.item.localeCompare(b.item));
         drawOneChart(subset, loc);
       });
     } else {
-      drawOneChart(rawSeries.slice().sort((a,b)=> a.item.localeCompare(b.item) || a.location.localeCompare(b.location)), rawSeries[0]?.location || 'Unknown');
+      const sortedSeries = filteredSeries.slice().sort((a,b)=> a.item.localeCompare(b.item) || (a.group_location || a.location || '').localeCompare(b.group_location || b.location || ''));
+      drawOneChart(sortedSeries, sortedSeries[0]?.group_location || sortedSeries[0]?.location || 'Unknown');
     }
 
   }

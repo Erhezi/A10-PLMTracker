@@ -4,6 +4,7 @@ from app.models.relations import ItemLink, ConflictError
 from app.utility.node_check import (
     RelationGraph,
     register_link_in_graph,
+    detect_many_to_many_conflict,
     CONFLICT_CHAINING,
     CONFLICT_MANY_TO_MANY,
     CONFLICT_RECIPROCAL,
@@ -80,3 +81,70 @@ def test_conflict_error_log_rejects_unknown_type():
             error_message="should fail",
             triggering_links=[],
         )
+
+
+class _StubQuery:
+    def __init__(self, rows):
+        self._rows = rows
+        self._limit = None
+
+    def filter(self, *_, **__):
+        return self
+
+    def order_by(self, *_, **__):
+        return self
+
+    def limit(self, limit_value):
+        self._limit = limit_value
+        return self
+
+    def all(self):
+        if self._limit is None:
+            return list(self._rows)
+        return list(self._rows)[: self._limit]
+
+
+class _StubSession:
+    def __init__(self, result_batches):
+        self._result_batches = list(result_batches)
+        self._call_index = 0
+
+    def query(self, model):  # noqa: ARG002 - model unused in stub
+        rows = self._result_batches[self._call_index]
+        self._call_index += 1
+        return _StubQuery(rows)
+
+
+def test_detect_many_to_many_conflict_with_global_state():
+    outgoing = [_link("A", "X", 101)]
+    incoming = [_link("C", "B", 202)]
+    session = _StubSession([outgoing, incoming])
+
+    conflict = detect_many_to_many_conflict(session, item="A", replace_item="B")
+
+    assert conflict is not None
+    assert conflict.error_type == CONFLICT_MANY_TO_MANY
+    assert {link.pkid for link in conflict.triggering_links} == {101, 202}
+
+
+def test_detect_many_to_many_conflict_respects_skip_item():
+    outgoing = [_link("A", "X", 301)]
+    incoming = [_link("A", "B", 302)]  # same source as proposed link
+    session = _StubSession([outgoing, incoming])
+
+    conflict = detect_many_to_many_conflict(
+        session,
+        item="A",
+        replace_item="B",
+        skip_item="A",
+    )
+
+    assert conflict is None
+
+
+def test_detect_many_to_many_conflict_requires_both_sides():
+    session = _StubSession([[], [_link("C", "B", 402)]])
+
+    conflict = detect_many_to_many_conflict(session, item="A", replace_item="B")
+
+    assert conflict is None

@@ -19,6 +19,7 @@ from ..utility.item_group import (
     BatchValidationError,
     BatchGroupPlanner,
 )
+from ..utility.node_check import CONFLICT_MANY_TO_MANY, detect_many_to_many_conflict
 
 """Stage name definitions (canonical only)."""
 
@@ -188,7 +189,33 @@ def update_item(item: str, replace_item: str):
 @bp.route("/conflicts")
 @login_required
 def conflicts():
-    return render_template("collector/conflicts.html")
+    limit = request.args.get("limit", type=int) or 200
+    limit = max(1, min(limit, 1000))
+    selected_type = request.args.get("type") or None
+
+    type_counts_rows = (
+        db.session.query(ConflictError.error_type, func.count(ConflictError.pkid))
+        .group_by(ConflictError.error_type)
+        .all()
+    )
+    type_counts = {row[0]: row[1] for row in type_counts_rows}
+    total_conflicts = sum(type_counts.values())
+
+    query = ConflictError.query.order_by(ConflictError.create_dt.desc(), ConflictError.pkid.desc())
+    if selected_type and selected_type in ConflictError.ERROR_TYPES:
+        query = query.filter(ConflictError.error_type == selected_type)
+
+    conflicts = query.limit(limit).all()
+
+    return render_template(
+        "collector/conflicts.html",
+        conflicts=conflicts,
+        limit=limit,
+        selected_type=selected_type,
+        type_counts=type_counts,
+        total_conflicts=total_conflicts,
+        error_types=ConflictError.ERROR_TYPES,
+    )
 
 
 # -------------------- API: Item search --------------------
@@ -431,14 +458,40 @@ def api_batch_item_links():
             assignment = planner.plan_group(src, normalized_replace)
 
             # Validate batch-level side consistency and historical constraints
-            register_batch_side(src, assignment.group_id, 'O')
-            ItemGroup.ensure_allowed_side(assignment.group_id, src, 'O', session=db.session)
-            if normalized_replace:
-                register_batch_side(normalized_replace, assignment.group_id, 'R')
-                ItemGroup.ensure_allowed_side(assignment.group_id, normalized_replace, 'R', session=db.session)
+            try:
+                register_batch_side(src, assignment.group_id, 'O')
+                ItemGroup.ensure_allowed_side(assignment.group_id, src, 'O', session=db.session)
+                if normalized_replace:
+                    register_batch_side(normalized_replace, assignment.group_id, 'R')
+                    ItemGroup.ensure_allowed_side(assignment.group_id, normalized_replace, 'R', session=db.session)
+            except ItemGroupConflictError as e:
+                db.session.rollback()
+                conflict_reports.append(
+                    {
+                        "item": src,
+                        "replace_item": normalized_replace,
+                        "error_type": "side_conflict",
+                        "message": str(e),
+                        "triggering_item_link_ids": [],
+                    }
+                )
+                return jsonify({
+                    "error": str(e),
+                    "conflicts": conflict_reports,
+                    "skipped": skipped + [[src, raw_replacement]],
+                }), 400
 
             graph = planner.graph_for(assignment)
             conflicts = graph.conflicts_for(src, normalized_replace)
+            if normalized_replace and not any(c.error_type == CONFLICT_MANY_TO_MANY for c in conflicts):
+                fallback_conflict = detect_many_to_many_conflict(
+                    db.session,
+                    item=src,
+                    replace_item=normalized_replace,
+                    skip_item=src,
+                )
+                if fallback_conflict:
+                    conflicts.append(fallback_conflict)
             if conflicts:
                 for conflict in conflicts:
                     # Ensure any triggering links have PKIDs before logging the conflict

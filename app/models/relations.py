@@ -181,7 +181,7 @@ class ItemGroup(db.Model):
 
 	item = db.Column("Item", db.String(10), nullable=False)
 	item_group = db.Column("Item Group", db.Integer, nullable=False)
-	side = db.Column("Side", db.String(1), nullable=False)  # 'O' or 'R'
+	side = db.Column("Side", db.String(1), nullable=False)  # 'O' or 'R' or 'D' (discontinued)
 	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
 	update_dt = db.Column("update_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive, onupdate=now_ny_naive)
 

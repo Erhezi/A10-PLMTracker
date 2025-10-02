@@ -200,3 +200,82 @@ def register_link_in_graph(graph: RelationGraph, link: ItemLink) -> None:
 	"""Helper to keep the relation graph in sync with freshly created links."""
 
 	graph.register_link(link)
+
+
+def detect_many_to_many_conflict(
+	session: Session,
+	*,
+	item: str,
+	replace_item: Optional[str],
+	skip_item: Optional[str] = None,
+	limit: int = 10,
+) -> Optional[ConflictResult]:
+	"""Return a many-to-many ConflictResult by inspecting existing ItemLink rows.
+
+	This helper is useful when conflict detection needs to consider global state
+	across groups beyond what an in-memory RelationGraph currently tracks.
+	"""
+
+	if not replace_item:
+		return None
+
+	outgoing_links = (
+		session.query(ItemLink)
+		.filter(
+			ItemLink.item == item,
+			ItemLink.replace_item.isnot(None),
+			ItemLink.replace_item != replace_item,
+		)
+		.order_by(
+			ItemLink.update_dt.desc().nullslast(),
+			ItemLink.create_dt.desc().nullslast(),
+		)
+		.limit(limit)
+		.all()
+	)
+	outgoing_links = [link for link in outgoing_links if link.replace_item and link.replace_item != replace_item]
+
+	incoming_links = (
+		session.query(ItemLink)
+		.filter(
+			ItemLink.replace_item == replace_item,
+			ItemLink.item != (skip_item or item),
+		)
+		.order_by(
+			ItemLink.update_dt.desc().nullslast(),
+			ItemLink.create_dt.desc().nullslast(),
+		)
+		.limit(limit)
+		.all()
+	)
+	incoming_links = [link for link in incoming_links if link.item != (skip_item or item)]
+
+	if not outgoing_links or not incoming_links:
+		return None
+
+	existing_replacements = ", ".join(sorted({link.replace_item for link in outgoing_links if link.replace_item}))
+	existing_sources = ", ".join(sorted({link.item for link in incoming_links if link.item}))
+	if not existing_replacements:
+		existing_replacements = "other replacements"
+	if not existing_sources:
+		existing_sources = "other source items"
+
+	message = (
+		f"Item {item} already has replacement(s) {existing_replacements}; "
+		f"replacement {replace_item} already belongs to {existing_sources}. "
+		"Creating this link would form a many-to-many relation."
+	)
+
+	seen_links: dict[int, ItemLink] = {}
+	for link in (*outgoing_links, *incoming_links):
+		if link is None:
+			continue
+		key = link.pkid if link.pkid is not None else id(link)
+		if key not in seen_links:
+			seen_links[key] = link
+
+	return ConflictResult(
+		error_type=CONFLICT_MANY_TO_MANY,
+		message=message,
+		triggering_links=tuple(seen_links.values()),
+	)

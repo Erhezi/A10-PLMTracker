@@ -85,6 +85,24 @@
   </div>
 </div>
 
+<div class="mt-4" id="skipped-results-wrapper" style="display:none;">
+  <h2 class="h6 fw-semibold">Skipped Links</h2>
+  <div class="table-responsive border rounded shadow-sm">
+    <table class="table table-sm table-hover align-middle mb-0" id="skipped-links-table">
+      <thead class="table-light small">
+        <tr>
+          <th>Item</th>
+          <th>Replace Item</th>
+          <th class="text-center">Error Type</th>
+          <th style="min-width:260px;">Reason</th>
+          <th class="text-center" style="width:90px;">Group</th>
+        </tr>
+      </thead>
+      <tbody class="small"></tbody>
+    </table>
+  </div>
+</div>
+
 <script id="allowed-stages-data" type="application/json">{{ allowed_stages|tojson }}</script>
 <script id="batch-limits-data" type="application/json">{{ {"max_combinations": max_combinations, "max_per_side": max_per_side}|tojson }}</script>
 <script>
@@ -99,12 +117,21 @@
   const wrikeInput = document.getElementById('wrike-id');
   const createdWrapper = document.getElementById('created-results-wrapper');
   const createdTableBody = document.querySelector('#created-links-table tbody');
+  const skippedWrapper = document.getElementById('skipped-results-wrapper');
+  const skippedTableBody = document.querySelector('#skipped-links-table tbody');
   const itemSearch = document.getElementById('item-search');
   const replSearch = document.getElementById('repl-search');
   const replResults = document.getElementById('repl-results');
   const ORIGINAL_REPL_ENDPOINT = '/api/items/search';
   const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
+  const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const escapeHtml = (value) => {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).replace(/[&<>"']/g, (ch) => escapeMap[ch] || ch);
+  };
 
   // Load batch limits from template data
   const batchLimitsData = document.getElementById('batch-limits-data');
@@ -339,6 +366,36 @@
           items = []; repls = [];
           document.querySelectorAll('input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
           renderSelections();
+        }
+        const skippedDetails = Array.isArray(json.skipped_details) ? json.skipped_details : [];
+        if(skippedDetails.length){
+          if(skippedWrapper){
+            skippedWrapper.style.display = '';
+          }
+          if(skippedTableBody){
+            const skippedRows = skippedDetails.map(detail => {
+              const safeItem = detail.item ? `<span class='font-monospace'>${escapeHtml(detail.item)}</span>` : '<span class="text-muted">—</span>';
+              const replaceDisplay = detail.replace_item ? `<span class='font-monospace'>${escapeHtml(detail.replace_item)}</span>` : '<span class="text-muted">—</span>';
+              const typeLabel = escapeHtml(detail.error_type || 'Unknown');
+              const typeHtml = `<span class='badge bg-light border text-dark fw-normal text-uppercase small'>${typeLabel}</span>`;
+              const reasonHtml = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '<span class="text-muted">—</span>';
+              const groupHtml = (detail.item_group !== null && detail.item_group !== undefined)
+                ? `<span class='fw-semibold'>${escapeHtml(String(detail.item_group))}</span>`
+                : '<span class="text-muted">—</span>';
+              return `<tr>
+                <td>${safeItem}</td>
+                <td>${replaceDisplay}</td>
+                <td class='text-center'>${typeHtml}</td>
+                <td>${reasonHtml}</td>
+                <td class='text-center'>${groupHtml}</td>
+              </tr>`;
+            }).join('');
+            skippedTableBody.insertAdjacentHTML('beforeend', skippedRows);
+          }
+        } else if(skippedTableBody && !skippedTableBody.querySelector('tr')){
+          if(skippedWrapper){
+            skippedWrapper.style.display = 'none';
+          }
         }
       }
     } catch(err){

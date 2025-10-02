@@ -20,7 +20,12 @@ from .item_group import (
     validate_batch_inputs,
     validate_stage_and_items,
 )
-from .node_check import CONFLICT_MANY_TO_MANY, CONFLICT_UNKNOWN, detect_many_to_many_conflict
+from .node_check import (
+    CONFLICT_MANY_TO_MANY,
+    CONFLICT_SELF_DIRECTED,
+    CONFLICT_UNKNOWN,
+    detect_many_to_many_conflict,
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,7 @@ class AddItemPairs:
         self.conflict_reports: List[Dict[str, object]] = []
         self.conflict_entries: List[ConflictError] = []
         self.skipped_pairs: List[Tuple[str, Optional[str]]] = []
+        self.skipped_details: List[Dict[str, object]] = []
         self.pending_items_to_create: List[Tuple[ItemLink, str, str]] = []
         self.merged_groups: List[int] = []
 
@@ -139,6 +145,7 @@ class AddItemPairs:
             "created": created_total,
             "reactivated": len(self.reused_links),
             "skipped": [[item, repl] for item, repl in self.skipped_pairs],
+            "skipped_details": self.skipped_details,
             "conflicts": self.conflict_reports,
             "stage": self.stage,
             "stage_locked": self.stage_locked,
@@ -197,7 +204,14 @@ class AddItemPairs:
         addition_type = candidate.addition_type
 
         if normalized_replace is not None and item == normalized_replace:
-            self.skipped_pairs.append((item, raw_replace))
+            reason = f"Item {item} cannot reference itself as a replacement."
+            self._record_skip(
+                item=item,
+                raw_replace=raw_replace,
+                normalized_replace=normalized_replace,
+                reason=reason,
+                error_type=CONFLICT_SELF_DIRECTED,
+            )
             return
 
         key = (item, normalized_replace)
@@ -208,14 +222,48 @@ class AddItemPairs:
                     existing_link.replace_item is None
                     and (existing_link.stage or "").strip().lower() == "tracking - discontinued".lower()
                 ):
-                    self.skipped_pairs.append((item, raw_replace))
+                    reason = (
+                        f"Item {item} already has a discontinued record in group {existing_link.item_group}."
+                    )
+                    self._record_skip(
+                        item=item,
+                        raw_replace=raw_replace,
+                        normalized_replace=normalized_replace,
+                        reason=reason,
+                        group_id=existing_link.item_group,
+                    )
                     return
-                if self._reactivate_existing_discontinue(existing_link, item, raw_replace):
+                success, failure_reason, failure_type = self._reactivate_existing_discontinue(
+                    existing_link,
+                    item,
+                )
+                if success:
                     return
-            self.skipped_pairs.append((item, raw_replace))
+                if failure_reason:
+                    self._record_skip(
+                        item=item,
+                        raw_replace=raw_replace,
+                        normalized_replace=normalized_replace,
+                        reason=failure_reason,
+                        error_type=failure_type or CONFLICT_UNKNOWN,
+                        group_id=existing_link.item_group,
+                    )
+                    return
+            display_target = normalized_replace or raw_replace or "NO REPLACEMENT"
+            reason = (
+                f"Link {item} -> {display_target} already exists in group {existing_link.item_group}."
+            )
+            self._record_skip(
+                item=item,
+                raw_replace=raw_replace,
+                normalized_replace=normalized_replace,
+                reason=reason,
+                group_id=existing_link.item_group,
+            )
             return
 
         assignment = self.planner.plan_group(item, normalized_replace)
+        graph = self.planner.graph_for(assignment)
 
         try:
             self._register_side(item, assignment.group_id, addition_type)
@@ -226,32 +274,48 @@ class AddItemPairs:
                     addition_type,
                 )
         except ItemGroupConflictError as err:
-            self._log_conflict(
-                group_id=assignment.group_id,
+            conflicts = self._detect_conflicts(graph, item, normalized_replace)
+            if conflicts:
+                messages: List[str] = []
+                for conflict in conflicts:
+                    messages.append(conflict.message)
+                    self._log_conflict(
+                        group_id=assignment.group_id,
+                        item=item,
+                        replace_item=normalized_replace,
+                        error_type=conflict.error_type,
+                        message=conflict.message,
+                        triggering_links=conflict.triggering_links,
+                    )
+                primary_type = conflicts[0].error_type
+                reason = "; ".join(messages)
+            else:
+                primary_type = CONFLICT_UNKNOWN
+                reason = str(err)
+                self._log_conflict(
+                    group_id=assignment.group_id,
+                    item=item,
+                    replace_item=normalized_replace,
+                    error_type=CONFLICT_UNKNOWN,
+                    message=reason,
+                    triggering_links=(),
+                )
+            self._record_skip(
                 item=item,
-                replace_item=normalized_replace,
-                error_type=CONFLICT_UNKNOWN,
-                message=str(err),
-                triggering_links=(),
+                raw_replace=raw_replace,
+                normalized_replace=normalized_replace,
+                reason=reason,
+                error_type=primary_type,
+                group_id=assignment.group_id,
             )
-            self.skipped_pairs.append((item, raw_replace))
             return
 
-        graph = self.planner.graph_for(assignment)
-        conflicts = graph.conflicts_for(item, normalized_replace)
-
-        if normalized_replace and not any(c.error_type == CONFLICT_MANY_TO_MANY for c in conflicts):
-            fallback = detect_many_to_many_conflict(
-                self.session,
-                item=item,
-                replace_item=normalized_replace,
-                skip_item=item,
-            )
-            if fallback:
-                conflicts.append(fallback)
+        conflicts = self._detect_conflicts(graph, item, normalized_replace)
 
         if conflicts:
+            messages: List[str] = []
             for conflict in conflicts:
+                messages.append(conflict.message)
                 self._log_conflict(
                     group_id=assignment.group_id,
                     item=item,
@@ -260,7 +324,15 @@ class AddItemPairs:
                     message=conflict.message,
                     triggering_links=conflict.triggering_links,
                 )
-            self.skipped_pairs.append((item, raw_replace))
+            reason = "; ".join(messages)
+            self._record_skip(
+                item=item,
+                raw_replace=raw_replace,
+                normalized_replace=normalized_replace,
+                reason=reason,
+                error_type=conflicts[0].error_type,
+                group_id=assignment.group_id,
+            )
             return
 
         link = self._build_item_link(
@@ -277,12 +349,53 @@ class AddItemPairs:
         self._existing_pairs.add((item, normalized_replace))
         self._existing_links[(item, normalized_replace)] = link
 
+    def _record_skip(
+        self,
+        *,
+        item: str,
+        raw_replace: Optional[str],
+        normalized_replace: Optional[str],
+        reason: str,
+        error_type: str = CONFLICT_UNKNOWN,
+        group_id: Optional[int] = None,
+    ) -> None:
+        self.skipped_pairs.append((item, raw_replace))
+        display_replace = raw_replace if raw_replace not in (None, "") else normalized_replace
+        self.skipped_details.append(
+            {
+                "item": item,
+                "replace_item": display_replace,
+                "raw_replace_item": raw_replace,
+                "normalized_replace_item": normalized_replace,
+                "reason": reason,
+                "error_type": error_type,
+                "item_group": group_id,
+            }
+        )
+
+    def _detect_conflicts(
+        self,
+        graph,
+        item: str,
+        normalized_replace: Optional[str],
+    ):
+        conflicts = graph.conflicts_for(item, normalized_replace)
+        if normalized_replace and not any(c.error_type == CONFLICT_MANY_TO_MANY for c in conflicts):
+            fallback = detect_many_to_many_conflict(
+                self.session,
+                item=item,
+                replace_item=normalized_replace,
+                skip_item=item,
+            )
+            if fallback:
+                conflicts.append(fallback)
+        return conflicts
+
     def _reactivate_existing_discontinue(
         self,
         existing_link: ItemLink,
         item: str,
-        raw_replace: Optional[str],
-    ) -> bool:
+    ) -> tuple[bool, Optional[str], Optional[str]]:
         group_id = existing_link.item_group
         try:
             self._register_side(
@@ -300,8 +413,7 @@ class AddItemPairs:
                 message=str(err),
                 triggering_links=(),
             )
-            self.skipped_pairs.append((item, raw_replace))
-            return False
+            return False, str(err), CONFLICT_UNKNOWN
 
         src_item = self.items_map[item]
         existing_link.stage = "Tracking - Discontinued"
@@ -324,7 +436,7 @@ class AddItemPairs:
         key = (existing_link.item, existing_link.replace_item)
         self._existing_links[key] = existing_link
         self._existing_pairs.add(key)
-        return True
+        return True, None, None
 
     def _register_side(
         self,

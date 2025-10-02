@@ -349,6 +349,7 @@ def api_batch_item_links():
         "group_id": result["records"][0]["item_group"] if result["records"] else None,
         "created": result["created"],
         "skipped": result["skipped"],
+        "skipped_details": result.get("skipped_details", []),
         "conflicts": result["conflicts"],
         "stage": result["stage"],
         "stage_locked": result["stage_locked"],

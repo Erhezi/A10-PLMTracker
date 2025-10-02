@@ -306,7 +306,12 @@
           createdWrapper.style.display = '';
           // Append rows
           const rowsHtml = json.records.map(r => {
-            const stageBadge = r.stage ? `<span class='badge stage-badge stage-${r.stage.toLowerCase().replace(/ /g,'-')}'>${r.stage}</span>` : '';
+            const stageSlug = r.stage ? r.stage
+              .toLowerCase()
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-')
+              .replace(/^-|-$/g, '') : '';
+            const stageBadge = r.stage ? `<span class='badge stage-badge stage-${stageSlug}'>${r.stage}</span>` : '';
             const goLive = r.expected_go_live_date ? r.expected_go_live_date : `<span class='text-muted fst-italic'>unknown</span>`;
             const wrikeDisp = r.wrike_id ? (r.wrike_id.match(/^\d{10}$/) ? `<a href='https://www.wrike.com/open.htm?id=${r.wrike_id}' target='_blank' rel='noopener' class='small'>${r.wrike_id}</a>` : `<span class='text-muted small'>${r.wrike_id}</span>`) : '<span class="text-muted small">—</span>';
             return `<tr>

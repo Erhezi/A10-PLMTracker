@@ -13,13 +13,8 @@ from ..models.relations import (
     ConflictError,
 )
 from ..models.inventory import Item, ContractItem
-from ..utility.item_group import (
-    validate_batch_inputs,
-    validate_stage_and_items,
-    BatchValidationError,
-    BatchGroupPlanner,
-)
-from ..utility.node_check import CONFLICT_MANY_TO_MANY, detect_many_to_many_conflict
+from ..utility.item_group import BatchValidationError
+from ..utility.add_pairs import AddItemPairs
 
 """Stage name definitions (canonical only)."""
 
@@ -322,347 +317,48 @@ def api_batch_item_links():
     if not items or not replace_items:
         return jsonify({"error": "Both items and replace_items required"}), 400
 
-    validated_wrike_id = None
-    validated_date = None
-    stage = None
-    locked = False
-    items_map = {}
-    missing = []
+    from flask import current_app
 
-    # Use utility functions for validation and group resolution
+    max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
+
     try:
-        # Get config value for max per side
-        from flask import current_app
-        max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
-        
-        # Validate and normalize inputs
-        items, replace_items, validated_wrike_id, validated_date = validate_batch_inputs(
+        processor = AddItemPairs(
             items=items,
             replace_items=replace_items,
-            wrike_id=wrike_id,
-            expected_go_live_date_raw=expected_go_live_date_raw,
-            sentinel_replacements=SENTINEL_REPLACEMENTS,
-            max_per_side=max_per_side
-        )
-        
-        # Validate stage and lookup items
-        stage, locked, items_map, missing = validate_stage_and_items(
-            items=items,
-            replace_items=replace_items,
+            pending_meta=pending_meta,
             explicit_stage=explicit_stage,
+            expected_go_live_date_raw=expected_go_live_date_raw,
+            wrike_id=wrike_id,
+            sentinel_replacements=SENTINEL_REPLACEMENTS,
             allowed_stages=ALLOWED_STAGES,
-            sentinel_replacements=SENTINEL_REPLACEMENTS
+            max_per_side=max_per_side,
+            session=db.session,
         )
-        
-        # Extract real codes for planning (exclude sentinel and dynamic pending placeholders)
-        real_codes = set(
-            items
-            + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))]
-        )
-
-        # Determine existing links touching involved codes to seed planner
-        max_group_value = db.session.query(func.coalesce(func.max(ItemLink.item_group), 0)).scalar() or 0
-        existing_links: list[ItemLink] = []
-        if real_codes:
-            group_rows = (
-                db.session.query(ItemLink.item_group)
-                .filter(
-                    or_(
-                        ItemLink.item.in_(real_codes),
-                        ItemLink.replace_item.in_(real_codes),
-                    )
-                )
-                .distinct()
-                .all()
-            )
-            group_ids = [row[0] for row in group_rows if row[0] is not None]
-            if group_ids:
-                existing_links = (
-                    ItemLink.query
-                    .options(noload('*'))
-                    .filter(ItemLink.item_group.in_(group_ids))
-                    .all()
-                )
-
-        planner = BatchGroupPlanner(existing_links, next_group_id=max_group_value + 1)
-
-        # Ensure batch does not assign conflicting sides for the same item/group combination
-        batch_side_tracker: dict[tuple[str, int], str] = {}
-
-        def register_batch_side(code: str | None, group_id: int, desired_side: str):
-            if not code:
-                return
-            key = (code, group_id)
-            prev = batch_side_tracker.get(key)
-            if prev and prev != desired_side:
-                raise BatchValidationError(
-                    f"Item {code} cannot be both side {prev} and {desired_side} within the same group"
-                )
-            batch_side_tracker[key] = desired_side
-
+        result = processor.execute()
     except BatchValidationError as e:
         db.session.rollback()
+        payload = {"error": e.message}
         if e.error_code == "missing_items":
-            return jsonify({"error": e.message, "missing": missing}), 400
-        return jsonify({"error": e.message}), 400
-
+            payload["missing"] = e.details.get("missing", [])
+        return jsonify(payload), 400
     except ItemGroupConflictError as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 400
 
-    # -------- Optimized creation to avoid per-pair queries --------
-    from sqlalchemy import and_ as _and
-
-    created = 0
-    skipped = []
-    created_records = []
-    pending_items_to_create = []  # Store info for PendingItems creation
-    conflict_entries: list[ConflictError] = []
-    conflict_reports: list[dict[str, object]] = []
-
-    # Prefetch existing pairs in one query (excluding self-pairs early)
-    candidate_src = items
-    candidate_repl = replace_items
-    if candidate_src and candidate_repl:
-        existing_rows = db.session.query(ItemLink.item, ItemLink.replace_item).filter(
-            ItemLink.item.in_(candidate_src),
-            ItemLink.replace_item.in_(candidate_repl),
-            ItemLink.item != ItemLink.replace_item
-        ).all()
-        existing_pairs = set(existing_rows)
-    else:
-        existing_pairs = set()
-
-    # Prefetch contract items for all pending placeholders
-    pending_parts = {r.split('***',1)[1] for r in candidate_repl if r.startswith('PENDING***') and '***' in r}
-    pending_ci_map = {}
-    if pending_parts:
-        for ci in ContractItem.query.filter(ContractItem.mfg_part_num.in_(pending_parts)).all():
-            pending_ci_map.setdefault(ci.mfg_part_num, ci)
-
-    ts_now = now_ny_naive()
-
-    for src in candidate_src:
-        src_item = items_map[src]
-        for repl in candidate_repl:
-            raw_replacement = repl
-            if src == raw_replacement:
-                skipped.append([src, raw_replacement])
-                continue
-            if (src, raw_replacement) in existing_pairs:
-                skipped.append([src, raw_replacement])
-                continue
-
-            normalized_replace = None if raw_replacement in SENTINEL_REPLACEMENTS else raw_replacement
-
-            assignment = planner.plan_group(src, normalized_replace)
-
-            # Validate batch-level side consistency and historical constraints
-            try:
-                register_batch_side(src, assignment.group_id, 'O')
-                ItemGroup.ensure_allowed_side(assignment.group_id, src, 'O', session=db.session)
-                if normalized_replace:
-                    register_batch_side(normalized_replace, assignment.group_id, 'R')
-                    ItemGroup.ensure_allowed_side(assignment.group_id, normalized_replace, 'R', session=db.session)
-            except ItemGroupConflictError as e:
-                db.session.rollback()
-                conflict_reports.append(
-                    {
-                        "item": src,
-                        "replace_item": normalized_replace,
-                        "error_type": "side_conflict",
-                        "message": str(e),
-                        "triggering_item_link_ids": [],
-                    }
-                )
-                return jsonify({
-                    "error": str(e),
-                    "conflicts": conflict_reports,
-                    "skipped": skipped + [[src, raw_replacement]],
-                }), 400
-
-            graph = planner.graph_for(assignment)
-            conflicts = graph.conflicts_for(src, normalized_replace)
-            if normalized_replace and not any(c.error_type == CONFLICT_MANY_TO_MANY for c in conflicts):
-                fallback_conflict = detect_many_to_many_conflict(
-                    db.session,
-                    item=src,
-                    replace_item=normalized_replace,
-                    skip_item=src,
-                )
-                if fallback_conflict:
-                    conflicts.append(fallback_conflict)
-            if conflicts:
-                for conflict in conflicts:
-                    # Ensure any triggering links have PKIDs before logging the conflict
-                    links_to_flush = [
-                        link for link in conflict.triggering_links if link is not None and link.pkid is None
-                    ]
-                    if links_to_flush:
-                        db.session.flush(links_to_flush)
-
-                    conflict_entries.extend(
-                        ConflictError.log(
-                            item_group=assignment.group_id,
-                            item=src,
-                            replace_item=normalized_replace,
-                            error_type=conflict.error_type,
-                            error_message=conflict.message,
-                            triggering_links=conflict.triggering_links,
-                            session=db.session,
-                        )
-                    )
-
-                    conflict_reports.append(
-                        {
-                            "item": src,
-                            "replace_item": normalized_replace,
-                            "error_type": conflict.error_type,
-                            "message": conflict.message,
-                            "triggering_item_link_ids": [
-                                link.pkid for link in conflict.triggering_links if link is not None and link.pkid is not None
-                            ],
-                        }
-                    )
-
-                skipped.append([src, raw_replacement])
-                continue
-
-            link_stage = stage
-            repl_value_for_model = normalized_replace
-            repl_mfg_part = None
-            repl_manufacturer = None
-            repl_desc = None
-
-            if raw_replacement in SENTINEL_REPLACEMENTS:
-                # Sentinel means intentionally no replacement item number; neutralize replacement metadata
-                link_stage = 'Tracking - Discontinued'
-                repl_value_for_model = None
-            elif raw_replacement and raw_replacement.startswith('PENDING***'):
-                part_num = raw_replacement.split('***',1)[1] if '***' in raw_replacement else None
-                link_stage = 'Pending Item Number'
-                ci = pending_ci_map.get(part_num)
-                if ci:
-                    repl_mfg_part = ci.mfg_part_num
-                    repl_manufacturer = ci.manufacturer
-                    repl_desc = ci.item_description or 'Pending replacement item description'
-                else:
-                    repl_mfg_part = part_num
-                    repl_manufacturer = '(Pending)'
-                    repl_desc = 'Pending replacement item'
-            elif repl_value_for_model:
-                repl_item = items_map[repl_value_for_model]
-                repl_mfg_part = repl_item.mfg_part_num
-                repl_manufacturer = repl_item.manufacturer
-                repl_desc = repl_item.item_description
-
-            link = ItemLink(
-                item_group=assignment.group_id,
-                item=src,
-                replace_item=repl_value_for_model,
-                mfg_part_num=src_item.mfg_part_num,
-                manufacturer=src_item.manufacturer,
-                item_description=src_item.item_description,
-                stage=link_stage,
-                expected_go_live_date=validated_date,
-                wrike_id=validated_wrike_id,
-                create_dt=ts_now,
-                update_dt=ts_now,
-                repl_mfg_part_num=repl_mfg_part,
-                repl_manufacturer=repl_manufacturer,
-                repl_item_description=repl_desc,
-            )
-            db.session.add(link)
-            planner.register_success(assignment, link)
-            created += 1
-            created_records.append(link)
-            
-            # If this is a 'Pending Item Number' stage, queue PendingItems creation
-            if (
-                link_stage == 'Pending Item Number'
-                and repl_value_for_model
-                and repl_value_for_model.startswith('PENDING***')
-            ):
-                meta = pending_meta.get(repl_value_for_model) or {}
-                contract_id_meta = meta.get('contract_id')
-                mfg_part_meta = meta.get('mfg_part_num') or repl_value_for_model.split('***',1)[1]
-                if contract_id_meta and mfg_part_meta:
-                    pending_items_to_create.append((link, contract_id_meta, mfg_part_meta))
-
-    pending_merges = planner.consume_pending_merges()
-
-    # Apply any required merges at the database level
-    merged_groups: list[int] = []
-    for canonical, groups_to_merge in pending_merges.items():
-        groups = sorted(g for g in groups_to_merge if g != canonical)
-        if not groups:
-            continue
-        (
-            ItemLink.query.filter(ItemLink.item_group.in_(groups))
-            .update({ItemLink.item_group: canonical}, synchronize_session=False)
-        )
-        (
-            ItemGroup.query.filter(ItemGroup.item_group.in_(groups))
-            .update({ItemGroup.item_group: canonical, ItemGroup.update_dt: now_ny_naive()}, synchronize_session=False)
-        )
-        merged_groups.extend(groups)
-
-    should_commit = bool(created_records or conflict_entries or merged_groups)
-
-    if created_records or merged_groups:
-        # Flush to assign PKIDs to ItemLink records before creating PendingItems
-        db.session.flush()
-
-        try:
-            for link in created_records:
-                ItemGroup.sync_from_item_link(link, session=db.session)
-        except ItemGroupConflictError as e:
-            db.session.rollback()
-            return jsonify({"error": str(e)}), 400
-        
-        # Create PendingItems for links with 'Pending Item Number' stage
-        for link, contract_id_meta, mfg_part_meta in pending_items_to_create:
-            pending_item = PendingItems.create_from_contract_item(
-                item_link_id=link.pkid,
-                contract_id=contract_id_meta,
-                mfg_part_num=mfg_part_meta
-            )
-            db.session.add(pending_item)
-
-    if should_commit:
-        db.session.commit()
-
-    # Build created record details for client display
-    records = []
-    if created_records:
-        for r in created_records:
-            records.append({
-                "item_group": r.item_group,
-                "item": r.item,
-                "replace_item": r.replace_item,
-                "mfg_part_num": r.mfg_part_num,
-                "manufacturer": r.manufacturer,
-                "item_description": r.item_description,
-                "repl_mfg_part_num": r.repl_mfg_part_num,
-                "repl_manufacturer": r.repl_manufacturer,
-                "repl_item_description": r.repl_item_description,
-                "stage": r.stage,
-                "expected_go_live_date": r.expected_go_live_date.isoformat() if r.expected_go_live_date else None,
-                "wrike_id": r.wrike_id,
-                "create_dt": r.create_dt.isoformat() if r.create_dt else None,
-                "update_dt": r.update_dt.isoformat() if r.update_dt else None,
-            })
-
-    return jsonify({
-        "group_id": created_records[0].item_group if created_records else None,
-        "created": created,
-        "skipped": skipped,
-        "conflicts": conflict_reports,
-        "stage": stage,
-        "stage_locked": locked,
-        "merged_groups": sorted(set(merged_groups)),
-        "records": records,
-    }), 201
+    response_body = {
+        "group_id": result["records"][0]["item_group"] if result["records"] else None,
+        "created": result["created"],
+        "skipped": result["skipped"],
+        "conflicts": result["conflicts"],
+        "stage": result["stage"],
+        "stage_locked": result["stage_locked"],
+        "merged_groups": result["merged_groups"],
+        "records": result["records"],
+    }
+    if result.get("reactivated"):
+        response_body["reactivated"] = result["reactivated"]
+    status_code = 201 if result["created"] else 200
+    return jsonify(response_body), status_code
 
 
 # -------------------- API: Delete single item link --------------------

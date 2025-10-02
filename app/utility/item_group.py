@@ -17,9 +17,11 @@ from .node_check import RelationGraph
 
 class BatchValidationError(Exception):
     """Exception raised for batch validation errors."""
-    def __init__(self, message: str, error_code: str = None):
+
+    def __init__(self, message: str, error_code: str = None, *, details: Optional[Dict[str, object]] = None):
         self.message = message
         self.error_code = error_code
+        self.details = details or {}
         super().__init__(self.message)
 
 
@@ -308,7 +310,7 @@ def validate_stage_and_items(
     missing = [c for c in real_codes if c not in items_map]
     
     if missing:
-        raise BatchValidationError("Some items not found", "missing_items")
+        raise BatchValidationError("Some items not found", "missing_items", details={"missing": missing})
     
     return stage, locked, items_map, missing
 

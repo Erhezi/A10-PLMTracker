@@ -224,9 +224,13 @@ class ItemGroup(db.Model):
 		if item_link.pkid is None:
 			raise ValueError("ItemLink must be flushed before syncing ItemGroup entries")
 		session = cls._resolve_session(session, item_link)
-		desired_pairs = [(item_link.item, "O")]
 		if item_link.replace_item:
-			desired_pairs.append((item_link.replace_item, "R"))
+			desired_pairs = [
+				(item_link.item, "O"),
+				(item_link.replace_item, "R"),
+			]
+		else:
+			desired_pairs = [(item_link.item, "D")]
 		desired_keys = {(code, side) for code, side in desired_pairs if code}
 
 		# Remove stale rows tied to this link that are no longer represented

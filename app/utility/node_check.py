@@ -4,6 +4,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from ..models.relations import ItemLink
@@ -219,16 +220,24 @@ def detect_many_to_many_conflict(
 	if not replace_item:
 		return None
 
-	outgoing_links = (
-		session.query(ItemLink)
-		.filter(
-			ItemLink.item == item,
-			ItemLink.replace_item.isnot(None),
-			ItemLink.replace_item != replace_item,
+	def _order_recent(q):
+		update_null_flag = case((ItemLink.update_dt.is_(None), 1), else_=0)
+		create_null_flag = case((ItemLink.create_dt.is_(None), 1), else_=0)
+		return q.order_by(
+			update_null_flag,
+			ItemLink.update_dt.desc(),
+			create_null_flag,
+			ItemLink.create_dt.desc(),
 		)
-		.order_by(
-			ItemLink.update_dt.desc().nullslast(),
-			ItemLink.create_dt.desc().nullslast(),
+
+	outgoing_links = (
+		_order_recent(
+			session.query(ItemLink)
+			.filter(
+				ItemLink.item == item,
+				ItemLink.replace_item.isnot(None),
+				ItemLink.replace_item != replace_item,
+			)
 		)
 		.limit(limit)
 		.all()
@@ -236,14 +245,12 @@ def detect_many_to_many_conflict(
 	outgoing_links = [link for link in outgoing_links if link.replace_item and link.replace_item != replace_item]
 
 	incoming_links = (
-		session.query(ItemLink)
-		.filter(
-			ItemLink.replace_item == replace_item,
-			ItemLink.item != (skip_item or item),
-		)
-		.order_by(
-			ItemLink.update_dt.desc().nullslast(),
-			ItemLink.create_dt.desc().nullslast(),
+		_order_recent(
+			session.query(ItemLink)
+			.filter(
+				ItemLink.replace_item == replace_item,
+				ItemLink.item != (skip_item or item),
+			)
 		)
 		.limit(limit)
 		.all()

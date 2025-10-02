@@ -402,6 +402,8 @@ class PLMTranckerHead(db.Model):
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=True, primary_key=True)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
 	Company = db.Column("Company", db.String(10), nullable=True)
+	create_dt = db.Column("CreateDT", db.DateTime(timezone=False), nullable=True)
+	update_dt = db.Column("UpdateDT", db.DateTime(timezone=False), nullable=True)
 
 	__mapper_args__ = {
 		"primary_key": [PKID_ItemLink, Group_Locations]

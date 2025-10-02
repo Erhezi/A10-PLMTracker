@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Iterable, Sequence
+
 from .. import db
 from . import now_ny_naive
 from sqlalchemy.orm import relationship, backref, object_session
@@ -69,7 +71,90 @@ class ItemLink(db.Model):
 
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
-    
+
+
+class ConflictError(db.Model):
+	"""Mapping to PLM.ConflictError table capturing invalid relation attempts."""
+
+	__tablename__ = "ConflictError"
+	__table_args__ = (
+		Index("IX_ConflictError_Item", "Item"),
+		Index("IX_ConflictError_ReplaceItem", "Replace Item"),
+		Index("IX_ConflictError_Type", "error_type"),
+		{"schema": "PLM"},
+	)
+
+	ERROR_TYPES: Sequence[str] = (
+		"many-to-many",
+		"self-directed",
+		"chaining",
+		"reciprocal",
+		"Unknown",
+	)
+
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+	item_link_id = db.Column(
+		"item_link_id",
+		db.BigInteger,
+		db.ForeignKey("PLM.ItemLink.PKID", ondelete="CASCADE"),
+		nullable=True,
+	)
+
+	item = db.Column("Item", db.String(10), nullable=False)
+	replace_item = db.Column("Replace Item", db.String(250), nullable=True)
+	item_group = db.Column("Item Group", db.Integer, nullable=False)
+	error_message = db.Column("error_message", db.String(1000), nullable=False)
+	error_type = db.Column("error_type", db.String(100), nullable=False)
+	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+
+	def __repr__(self):
+		return (
+			f"<ConflictError id={self.pkid} group={self.item_group} item={self.item} "
+			f"replace={self.replace_item} type={self.error_type}>"
+		)
+
+	@classmethod
+	def _validate_error_type(cls, error_type: str) -> str:
+		if error_type not in cls.ERROR_TYPES:
+			raise ValueError(f"Unsupported conflict error type: {error_type}")
+		return error_type
+
+	@classmethod
+	def log(
+		cls,
+		*,
+		item_group: int,
+		item: str,
+		replace_item: str | None,
+		error_type: str,
+		error_message: str,
+		triggering_links: Iterable[ItemLink | None] | None = None,
+		session=None,
+	) -> list["ConflictError"]:
+		"""Persist conflict rows referencing the offending relation and existing links."""
+
+		cls._validate_error_type(error_type)
+		session = session or db.session
+		links = list(triggering_links or [None])
+		results: list[ConflictError] = []
+
+		for link in links:
+			if link is not None and link.pkid is None:
+				session.flush([link])
+
+			record = cls(
+				item_link_id=getattr(link, "pkid", None),
+				item=item,
+				replace_item=replace_item,
+				item_group=item_group,
+				error_type=error_type,
+				error_message=error_message,
+			)
+			session.add(record)
+			results.append(record)
+
+		return results
+
 
 class ItemGroup(db.Model):
 	""" Mapping to PLM.ItemGroup table.

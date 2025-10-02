@@ -5,9 +5,20 @@ from sqlalchemy.orm import noload
 import re
 from .. import db
 from ..models import now_ny_naive
-from ..models.relations import ItemLink, ItemGroup, PendingItems, ItemGroupConflictError
+from ..models.relations import (
+    ItemLink,
+    ItemGroup,
+    PendingItems,
+    ItemGroupConflictError,
+    ConflictError,
+)
 from ..models.inventory import Item, ContractItem
-from ..utility.item_group import validate_batch_inputs, validate_stage_and_items, BatchValidationError
+from ..utility.item_group import (
+    validate_batch_inputs,
+    validate_stage_and_items,
+    BatchValidationError,
+    BatchGroupPlanner,
+)
 
 """Stage name definitions (canonical only)."""
 
@@ -94,7 +105,13 @@ def clear_deleted():
 @bp.route("/groups/<item>/<replace_item>/update", methods=["POST"])
 @login_required
 def update_item(item: str, replace_item: str):
+    # The template may render Python None as the string 'None' (or similar) into
+    # the data-replace-item attribute. Normalize common textual null
+    # representations to actual None so SQL queries match NULL values.
+    if isinstance(replace_item, str) and replace_item.lower() in ('none', 'null', 'nan', ''):
+        replace_item = None
     record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first_or_404()
+    print(record) #debugging
     stage = request.form.get("stage")
     expected_go_live_date = request.form.get("expected_go_live_date") or None
     wrike_id = request.form.get("wrike_id") or None
@@ -262,45 +279,6 @@ def api_search_contract_items():
         for r in rows
     ])
 
-
-# -------------------- Helpers --------------------
-def _resolve_group(all_codes: set[str]) -> tuple[int, list[int]]:
-    """Determine canonical group id for a new batch touching item codes.
-
-    Returns (canonical_group_id, merged_group_ids).
-    merged_group_ids is list of group ids that were merged into canonical (excluding canonical itself).
-    """
-    if not all_codes:
-        # create a new group anyway
-        max_group = db.session.query(func.coalesce(func.max(ItemLink.item_group), 0)).scalar() or 0
-        return max_group + 1, []
-
-    existing = (
-        ItemLink.query.filter(
-            or_(
-                ItemLink.item.in_(all_codes),
-                ItemLink.replace_item.in_(all_codes),
-            )
-        ).all()
-    )
-    groups = {row.item_group for row in existing if row.item_group is not None}
-    if not groups:
-        max_group = db.session.query(func.coalesce(func.max(ItemLink.item_group), 0)).scalar() or 0
-        return max_group + 1, []
-    canonical = min(groups)
-    to_merge = sorted(g for g in groups if g != canonical)
-    if to_merge:
-        (
-            ItemLink.query.filter(ItemLink.item_group.in_(to_merge))
-            .update({ItemLink.item_group: canonical}, synchronize_session=False)
-        )
-        (
-            ItemGroup.query.filter(ItemGroup.item_group.in_(to_merge))
-            .update({ItemGroup.item_group: canonical, ItemGroup.update_dt: now_ny_naive()}, synchronize_session=False)
-        )
-    return canonical, to_merge
-
-
 # -------------------- API: Batch create links --------------------
 @bp.post("/api/item-links/batch")
 @login_required
@@ -323,9 +301,6 @@ def api_batch_item_links():
     locked = False
     items_map = {}
     missing = []
-    real_codes: set[str] = set()
-    canonical_group: int | None = None
-    merged: list[int] = []
 
     # Use utility functions for validation and group resolution
     try:
@@ -352,34 +327,51 @@ def api_batch_item_links():
             sentinel_replacements=SENTINEL_REPLACEMENTS
         )
         
-        # Extract real codes for group resolution (exclude sentinel and dynamic pending placeholders)
-        real_codes = set(items + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))])
+        # Extract real codes for planning (exclude sentinel and dynamic pending placeholders)
+        real_codes = set(
+            items
+            + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))]
+        )
 
-        # Determine group id & merge groups
-        canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
+        # Determine existing links touching involved codes to seed planner
+        max_group_value = db.session.query(func.coalesce(func.max(ItemLink.item_group), 0)).scalar() or 0
+        existing_links: list[ItemLink] = []
+        if real_codes:
+            group_rows = (
+                db.session.query(ItemLink.item_group)
+                .filter(
+                    or_(
+                        ItemLink.item.in_(real_codes),
+                        ItemLink.replace_item.in_(real_codes),
+                    )
+                )
+                .distinct()
+                .all()
+            )
+            group_ids = [row[0] for row in group_rows if row[0] is not None]
+            if group_ids:
+                existing_links = (
+                    ItemLink.query
+                    .options(noload('*'))
+                    .filter(ItemLink.item_group.in_(group_ids))
+                    .all()
+                )
 
-        # Ensure batch does not assign conflicting sides for the same item
-        batch_side_tracker: dict[str, str] = {}
+        planner = BatchGroupPlanner(existing_links, next_group_id=max_group_value + 1)
 
-        def register_batch_side(code: str | None, desired_side: str):
+        # Ensure batch does not assign conflicting sides for the same item/group combination
+        batch_side_tracker: dict[tuple[str, int], str] = {}
+
+        def register_batch_side(code: str | None, group_id: int, desired_side: str):
             if not code:
                 return
-            prev = batch_side_tracker.get(code)
+            key = (code, group_id)
+            prev = batch_side_tracker.get(key)
             if prev and prev != desired_side:
                 raise BatchValidationError(
                     f"Item {code} cannot be both side {prev} and {desired_side} within the same group"
                 )
-            batch_side_tracker[code] = desired_side
-
-        for src in items:
-            register_batch_side(src, 'O')
-            ItemGroup.ensure_allowed_side(canonical_group, src, 'O', session=db.session)
-
-        for repl in replace_items:
-            if repl in SENTINEL_REPLACEMENTS:
-                continue
-            register_batch_side(repl, 'R')
-            ItemGroup.ensure_allowed_side(canonical_group, repl, 'R', session=db.session)
+            batch_side_tracker[key] = desired_side
 
     except BatchValidationError as e:
         db.session.rollback()
@@ -398,6 +390,8 @@ def api_batch_item_links():
     skipped = []
     created_records = []
     pending_items_to_create = []  # Store info for PendingItems creation
+    conflict_entries: list[ConflictError] = []
+    conflict_reports: list[dict[str, object]] = []
 
     # Prefetch existing pairs in one query (excluding self-pairs early)
     candidate_src = items
@@ -424,27 +418,75 @@ def api_batch_item_links():
     for src in candidate_src:
         src_item = items_map[src]
         for repl in candidate_repl:
-            if src == repl:
-                skipped.append([src, repl])
+            raw_replacement = repl
+            if src == raw_replacement:
+                skipped.append([src, raw_replacement])
                 continue
-            if (src, repl) in existing_pairs:
-                skipped.append([src, repl])
+            if (src, raw_replacement) in existing_pairs:
+                skipped.append([src, raw_replacement])
+                continue
+
+            normalized_replace = None if raw_replacement in SENTINEL_REPLACEMENTS else raw_replacement
+
+            assignment = planner.plan_group(src, normalized_replace)
+
+            # Validate batch-level side consistency and historical constraints
+            register_batch_side(src, assignment.group_id, 'O')
+            ItemGroup.ensure_allowed_side(assignment.group_id, src, 'O', session=db.session)
+            if normalized_replace:
+                register_batch_side(normalized_replace, assignment.group_id, 'R')
+                ItemGroup.ensure_allowed_side(assignment.group_id, normalized_replace, 'R', session=db.session)
+
+            graph = planner.graph_for(assignment)
+            conflicts = graph.conflicts_for(src, normalized_replace)
+            if conflicts:
+                for conflict in conflicts:
+                    # Ensure any triggering links have PKIDs before logging the conflict
+                    links_to_flush = [
+                        link for link in conflict.triggering_links if link is not None and link.pkid is None
+                    ]
+                    if links_to_flush:
+                        db.session.flush(links_to_flush)
+
+                    conflict_entries.extend(
+                        ConflictError.log(
+                            item_group=assignment.group_id,
+                            item=src,
+                            replace_item=normalized_replace,
+                            error_type=conflict.error_type,
+                            error_message=conflict.message,
+                            triggering_links=conflict.triggering_links,
+                            session=db.session,
+                        )
+                    )
+
+                    conflict_reports.append(
+                        {
+                            "item": src,
+                            "replace_item": normalized_replace,
+                            "error_type": conflict.error_type,
+                            "message": conflict.message,
+                            "triggering_item_link_ids": [
+                                link.pkid for link in conflict.triggering_links if link is not None and link.pkid is not None
+                            ],
+                        }
+                    )
+
+                skipped.append([src, raw_replacement])
                 continue
 
             link_stage = stage
+            repl_value_for_model = normalized_replace
             repl_mfg_part = None
             repl_manufacturer = None
             repl_desc = None
 
-            if repl in SENTINEL_REPLACEMENTS:
+            if raw_replacement in SENTINEL_REPLACEMENTS:
                 # Sentinel means intentionally no replacement item number; neutralize replacement metadata
                 link_stage = 'Tracking - Discontinued'
-                repl = None  # Set replace_item to None for discontinued items
-                repl_mfg_part = None
-                repl_manufacturer = None
-                repl_desc = None
-            elif repl.startswith('PENDING***'):
-                part_num = repl.split('***',1)[1] if '***' in repl else None
+                repl_value_for_model = None
+            elif raw_replacement and raw_replacement.startswith('PENDING***'):
+                part_num = raw_replacement.split('***',1)[1] if '***' in raw_replacement else None
                 link_stage = 'Pending Item Number'
                 ci = pending_ci_map.get(part_num)
                 if ci:
@@ -455,16 +497,16 @@ def api_batch_item_links():
                     repl_mfg_part = part_num
                     repl_manufacturer = '(Pending)'
                     repl_desc = 'Pending replacement item'
-            else:
-                repl_item = items_map[repl]
+            elif repl_value_for_model:
+                repl_item = items_map[repl_value_for_model]
                 repl_mfg_part = repl_item.mfg_part_num
                 repl_manufacturer = repl_item.manufacturer
                 repl_desc = repl_item.item_description
 
             link = ItemLink(
-                item_group=canonical_group,
+                item_group=assignment.group_id,
                 item=src,
-                replace_item=repl,
+                replace_item=repl_value_for_model,
                 mfg_part_num=src_item.mfg_part_num,
                 manufacturer=src_item.manufacturer,
                 item_description=src_item.item_description,
@@ -478,18 +520,43 @@ def api_batch_item_links():
                 repl_item_description=repl_desc,
             )
             db.session.add(link)
+            planner.register_success(assignment, link)
             created += 1
             created_records.append(link)
             
             # If this is a 'Pending Item Number' stage, queue PendingItems creation
-            if link_stage == 'Pending Item Number' and repl.startswith('PENDING***'):
-                meta = pending_meta.get(repl) or {}
+            if (
+                link_stage == 'Pending Item Number'
+                and repl_value_for_model
+                and repl_value_for_model.startswith('PENDING***')
+            ):
+                meta = pending_meta.get(repl_value_for_model) or {}
                 contract_id_meta = meta.get('contract_id')
-                mfg_part_meta = meta.get('mfg_part_num') or repl.split('***',1)[1]
+                mfg_part_meta = meta.get('mfg_part_num') or repl_value_for_model.split('***',1)[1]
                 if contract_id_meta and mfg_part_meta:
                     pending_items_to_create.append((link, contract_id_meta, mfg_part_meta))
 
-    if created or merged:
+    pending_merges = planner.consume_pending_merges()
+
+    # Apply any required merges at the database level
+    merged_groups: list[int] = []
+    for canonical, groups_to_merge in pending_merges.items():
+        groups = sorted(g for g in groups_to_merge if g != canonical)
+        if not groups:
+            continue
+        (
+            ItemLink.query.filter(ItemLink.item_group.in_(groups))
+            .update({ItemLink.item_group: canonical}, synchronize_session=False)
+        )
+        (
+            ItemGroup.query.filter(ItemGroup.item_group.in_(groups))
+            .update({ItemGroup.item_group: canonical, ItemGroup.update_dt: now_ny_naive()}, synchronize_session=False)
+        )
+        merged_groups.extend(groups)
+
+    should_commit = bool(created_records or conflict_entries or merged_groups)
+
+    if created_records or merged_groups:
         # Flush to assign PKIDs to ItemLink records before creating PendingItems
         db.session.flush()
 
@@ -508,7 +575,8 @@ def api_batch_item_links():
                 mfg_part_num=mfg_part_meta
             )
             db.session.add(pending_item)
-        
+
+    if should_commit:
         db.session.commit()
 
     # Build created record details for client display
@@ -533,12 +601,13 @@ def api_batch_item_links():
             })
 
     return jsonify({
-        "group_id": canonical_group,
+        "group_id": created_records[0].item_group if created_records else None,
         "created": created,
         "skipped": skipped,
+        "conflicts": conflict_reports,
         "stage": stage,
         "stage_locked": locked,
-        "merged_groups": merged,
+        "merged_groups": sorted(set(merged_groups)),
         "records": records,
     }), 201
 
@@ -547,6 +616,10 @@ def api_batch_item_links():
 @bp.delete('/api/item-links/<item>/<replace_item>')
 @login_required
 def api_delete_item_link(item: str, replace_item: str):
+    # Normalize textual null markers coming from client URLs to None so
+    # we can delete rows where replace_item IS NULL.
+    if isinstance(replace_item, str) and replace_item.lower() in ('none', 'null', 'nan', ''):
+        replace_item = None
     record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first()
     if not record:
         return jsonify({"error": "Not found"}), 404

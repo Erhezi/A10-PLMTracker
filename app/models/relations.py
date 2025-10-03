@@ -7,6 +7,13 @@ from sqlalchemy.orm import relationship, backref, object_session
 from sqlalchemy import Index, UniqueConstraint, text
 
 
+PENDING_PLACEHOLDER_PREFIX = "PENDING***"
+
+
+def _is_pending_placeholder(value: str | None) -> bool:
+	return bool(value) and str(value).startswith(PENDING_PLACEHOLDER_PREFIX)
+
+
 class ItemGroupConflictError(Exception):
 	"""Raised when attempting to assign an item to both sides within the same group."""
 
@@ -207,7 +214,7 @@ class ItemGroup(db.Model):
 	@classmethod
 	def ensure_allowed_side(cls, item_group: int, item_code: str | None, side: str, *, session=None, item_link_id: int | None = None):
 		"""Validate that an item within a group can take the requested side."""
-		if not item_code:
+		if not item_code or _is_pending_placeholder(item_code):
 			return
 		session = cls._resolve_session(session)
 		existing = (
@@ -224,13 +231,7 @@ class ItemGroup(db.Model):
 		if item_link.pkid is None:
 			raise ValueError("ItemLink must be flushed before syncing ItemGroup entries")
 		session = cls._resolve_session(session, item_link)
-		if item_link.replace_item:
-			desired_pairs = [
-				(item_link.item, "O"),
-				(item_link.replace_item, "R"),
-			]
-		else:
-			desired_pairs = [(item_link.item, "D")]
+		desired_pairs = cls._desired_pairs_for_link(item_link)
 		desired_keys = {(code, side) for code, side in desired_pairs if code}
 
 		# Remove stale rows tied to this link that are no longer represented
@@ -245,6 +246,18 @@ class ItemGroup(db.Model):
 
 		for code, side in desired_pairs:
 			cls._upsert(session, item_link, code, side)
+
+	@staticmethod
+	def _desired_pairs_for_link(item_link: ItemLink) -> list[tuple[str | None, str]]:
+		replace_value = item_link.replace_item
+		if replace_value and not _is_pending_placeholder(replace_value):
+			return [
+				(item_link.item, "O"),
+				(replace_value, "R"),
+			]
+		if replace_value:
+			return [(item_link.item, "O")]
+		return [(item_link.item, "D")]
 
 	@classmethod
 	def _upsert(cls, session, item_link: ItemLink, item_code: str | None, side: str):

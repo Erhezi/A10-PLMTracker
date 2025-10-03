@@ -282,6 +282,13 @@
 
   createBtn.addEventListener('click', async () => {
     if(createBtn.disabled) return;
+
+    if(skippedTableBody){
+      skippedTableBody.innerHTML = '';
+    }
+    if(skippedWrapper){
+      skippedWrapper.style.display = 'none';
+    }
     
     // Check per-side limits first
     if(items.length > MAX_PER_SIDE) {
@@ -328,7 +335,8 @@
       if(!res.ok){
         feedback.innerHTML = `<span class='text-danger'>Error: ${json.error||'Failed'}</span>`;
       } else {
-        feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${json.group_id}</span>`;
+        const groupDisplay = json.group_id !== null && json.group_id !== undefined ? json.group_id : '—';
+        feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${groupDisplay}</span>`;
         if(json.records && json.records.length){
           createdWrapper.style.display = '';
           // Append rows
@@ -368,6 +376,9 @@
           renderSelections();
         }
         const skippedDetails = Array.isArray(json.skipped_details) ? json.skipped_details : [];
+        if(skippedDetails.length && skippedTableBody){
+          skippedTableBody.innerHTML = '';
+        }
         if(skippedDetails.length){
           if(skippedWrapper){
             skippedWrapper.style.display = '';
@@ -392,6 +403,14 @@
             }).join('');
             skippedTableBody.insertAdjacentHTML('beforeend', skippedRows);
           }
+          const previewItems = skippedDetails.slice(0, 3).map(detail => {
+            const itemLabel = escapeHtml(detail.item || '—');
+            const replLabel = escapeHtml(detail.replace_item || '—');
+            const reasonText = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '(no details)';
+            return `<li>${itemLabel} → ${replLabel}<br><span class='text-muted'>${reasonText}</span></li>`;
+          }).join('');
+          const moreCount = skippedDetails.length > 3 ? `<li class='text-muted'>…and ${skippedDetails.length - 3} more</li>` : '';
+          feedback.insertAdjacentHTML('beforeend', `<ul class='mt-2 mb-0 small text-muted'>${previewItems}${moreCount}</ul>`);
         } else if(skippedTableBody && !skippedTableBody.querySelector('tr')){
           if(skippedWrapper){
             skippedWrapper.style.display = 'none';

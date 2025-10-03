@@ -14,6 +14,7 @@ from ..models.relations import (
     ItemGroupConflictError,
     ItemLink,
     PendingItems,
+    PENDING_PLACEHOLDER_PREFIX,
 )
 from .item_group import (
     BatchGroupPlanner,
@@ -204,13 +205,23 @@ class AddItemPairs:
         addition_type = candidate.addition_type
 
         if normalized_replace is not None and item == normalized_replace:
+            assignment = self.planner.plan_group(item, normalized_replace)
             reason = f"Item {item} cannot reference itself as a replacement."
+            self._log_conflict(
+                group_id=assignment.group_id,
+                item=item,
+                replace_item=normalized_replace,
+                error_type=CONFLICT_SELF_DIRECTED,
+                message=reason,
+                triggering_links=(),
+            )
             self._record_skip(
                 item=item,
                 raw_replace=raw_replace,
                 normalized_replace=normalized_replace,
                 reason=reason,
                 error_type=CONFLICT_SELF_DIRECTED,
+                group_id=assignment.group_id,
             )
             return
 
@@ -465,6 +476,8 @@ class AddItemPairs:
         desired_side = "R"
         if addition_type == "discontinue":
             raise ValueError("Discontinue addition should not register replacement side")
+        if replacement.startswith(PENDING_PLACEHOLDER_PREFIX):
+            return
         self._track_batch_side(replacement, group_id, desired_side)
         ItemGroup.ensure_allowed_side(
             group_id,

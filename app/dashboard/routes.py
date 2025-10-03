@@ -7,6 +7,37 @@ from ..models.relations import ItemLink, PLMTrackerBase, PLMQty
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
+
+TRI_STATE_VALUES = {"yes", "no", "blank"}
+
+
+def _normalize_tri_state(value: object) -> str:
+    """Normalize database values to 'yes', 'no', or 'blank'."""
+    if value is None:
+        return "blank"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (int, float)):
+        if value == 0:
+            return "no"
+        if value == 1:
+            return "yes"
+    text = str(value).strip().lower()
+    if text in ("", "na", "n/a", "none", "null"):
+        return "blank"
+    if text in ("yes", "y", "true", "t", "1", "active"):
+        return "yes"
+    if text in ("no", "n", "false", "f", "0", "inactive"):
+        return "no"
+    return "blank"
+
+
+def _apply_tri_state_filter(rows, key: str, desired: str | None):
+    target = (desired or "").strip().lower()
+    if target not in TRI_STATE_VALUES:
+        return rows
+    return [row for row in rows if _normalize_tri_state(row.get(key)) == target]
+
 @bp.route("/")
 @login_required
 def index():
@@ -94,6 +125,18 @@ def api_inventory():
             str(r.get("item_description") or "").lower().find(desc_search_lower) != -1 or
             str(r.get("item_description_ri") or "").lower().find(desc_search_lower) != -1
         )]
+    auto_state = request.args.get("auto_repl_state")
+    active_state = request.args.get("active_state")
+    disc_state = request.args.get("discontinued_state")
+    auto_state_ri = request.args.get("auto_repl_state_ri")
+    active_state_ri = request.args.get("active_state_ri")
+    disc_state_ri = request.args.get("discontinued_state_ri")
+    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", auto_state)
+    all_rows = _apply_tri_state_filter(all_rows, "active", active_state)
+    all_rows = _apply_tri_state_filter(all_rows, "discontinued", disc_state)
+    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", auto_state_ri)
+    all_rows = _apply_tri_state_filter(all_rows, "active_ri", active_state_ri)
+    all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", disc_state_ri)
     total = len(all_rows)
     start = (page - 1) * per_page
     end = start + per_page
@@ -219,6 +262,19 @@ def api_par():
             str(r.get("item_description") or "").lower().find(desc_search_lower) != -1 or
             str(r.get("item_description_ri") or "").lower().find(desc_search_lower) != -1
         )]
+
+    auto_state = request.args.get("auto_repl_state")
+    active_state = request.args.get("active_state")
+    disc_state = request.args.get("discontinued_state")
+    auto_state_ri = request.args.get("auto_repl_state_ri")
+    active_state_ri = request.args.get("active_state_ri")
+    disc_state_ri = request.args.get("discontinued_state_ri")
+    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", auto_state)
+    all_rows = _apply_tri_state_filter(all_rows, "active", active_state)
+    all_rows = _apply_tri_state_filter(all_rows, "discontinued", disc_state)
+    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", auto_state_ri)
+    all_rows = _apply_tri_state_filter(all_rows, "active_ri", active_state_ri)
+    all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", disc_state_ri)
 
     # Recompute weeks_reorder using reorder point instead of available qty
     for r in all_rows:

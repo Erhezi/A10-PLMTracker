@@ -40,7 +40,7 @@
           <option value="">All</option>
         </select>
       </div>
-      <div class="col-6 col-md-4">
+      <div class="col-12 col-md-4">
         <label class="form-label small text-uppercase text-muted mb-1">Desc Search</label>
         <input type="text" class="form-control form-control-sm" name="desc_search" placeholder="search description" />
       </div>
@@ -106,7 +106,7 @@
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
           <table class="table table-sm table-hover align-middle mb-0" id="table-inventory">
             <thead class="table-light sticky-top">
-              <tr class="small text-nowrap">
+              <tr class="small text-nowrap column-header-labels">
                 <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
@@ -129,6 +129,30 @@
                 <th id="inv-col-weeks-ri" data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+              </tr>
+              <tr class="column-filter-row text-nowrap">
+                <th class="col-stage column-filter-cell"></th>
+                <th class="col-group column-filter-cell"></th>
+                <th class="col-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-repl-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
               </tr>
             </thead>
             <tbody>
@@ -170,7 +194,7 @@
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
           <table class="table table-sm table-hover align-middle mb-0" id="table-par">
             <thead class="table-light sticky-top">
-              <tr class="small text-nowrap">
+              <tr class="small text-nowrap column-header-labels">
                 <th id="par-col-stage" data-field="stage" class="col-stage">Stage</th>
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
@@ -194,6 +218,31 @@
                 <th id="par-col-weeks-ri" data-field="weeks_reorder_ri" class="col-num">Weeks Reorder (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+              </tr>
+              <tr class="column-filter-row text-nowrap">
+                <th class="col-stage column-filter-cell"></th>
+                <th class="col-group column-filter-cell"></th>
+                <th class="col-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-group column-filter-cell"></th>
+                <th class="col-repl-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
               </tr>
             </thead>
             <tbody>
@@ -280,6 +329,48 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: {},
     par: {},
   };
+  const triStateOptions = [
+    { value: '', label: 'All' },
+    { value: 'yes', label: 'Yes' },
+    { value: 'no', label: 'No' },
+    { value: 'blank', label: 'Blank' },
+  ];
+  const columnFilters = {
+    inventory: {
+      auto_replenishment: '',
+      active: '',
+      discontinued: '',
+      auto_replenishment_ri: '',
+      active_ri: '',
+      discontinued_ri: '',
+    },
+    par: {
+      auto_replenishment: '',
+      active: '',
+      discontinued: '',
+      auto_replenishment_ri: '',
+      active_ri: '',
+      discontinued_ri: '',
+    },
+  };
+  const filterParamMap = {
+    inventory: {
+      auto_replenishment: 'auto_repl_state',
+      active: 'active_state',
+      discontinued: 'discontinued_state',
+      auto_replenishment_ri: 'auto_repl_state_ri',
+      active_ri: 'active_state_ri',
+      discontinued_ri: 'discontinued_state_ri',
+    },
+    par: {
+      auto_replenishment: 'auto_repl_state',
+      active: 'active_state',
+      discontinued: 'discontinued_state',
+      auto_replenishment_ri: 'auto_repl_state_ri',
+      active_ri: 'active_state_ri',
+      discontinued_ri: 'discontinued_state_ri',
+    },
+  };
   const lockedColumns = {
     inventory: new Set([
       'inv-col-group',
@@ -347,7 +438,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const colIndex = Array.from(headerRow.children).indexOf(header);
     if(colIndex < 0) return;
     const display = show ? '' : 'none';
-    header.style.display = display;
+    if(table.tHead){
+      Array.from(table.tHead.rows).forEach(row => {
+        const cell = row.children[colIndex];
+        if(cell) cell.style.display = display;
+      });
+    } else {
+      header.style.display = display;
+    }
     table.querySelectorAll('tbody tr').forEach(tr => {
       const cell = tr.children[colIndex];
       if(cell) cell.style.display = display;
@@ -356,7 +454,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyColumnState(table, state){
     if(!table || !state) return;
-    table.querySelectorAll('thead th').forEach((th, idx) => {
+    table.querySelectorAll('thead tr:first-child th').forEach(th => {
       const columnId = th.id;
       if(!columnId) return;
       const visible = state[columnId] !== false;
@@ -377,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function buildColumnMenu(table, menu, stateKey){
     if(!table || !menu) return;
-    const headers = Array.from(table.querySelectorAll('thead th'));
+  const headers = Array.from(table.querySelectorAll('thead tr:first-child th'));
     if(!headers.length){
       menu.innerHTML = '<div class="text-muted small px-2">No columns found</div>';
       return;
@@ -506,6 +604,132 @@ document.addEventListener('DOMContentLoaded', () => {
   buildColumnMenu(inventoryTable, inventoryColumnMenu, 'inventory');
   buildColumnMenu(parTable, parColumnMenu, 'par');
 
+  function updateColumnFilterButton(tableKey, field){
+    const btn = document.querySelector(`.column-filter-toggle[data-table="${tableKey}"][data-field="${field}"]`);
+    if(!btn) return;
+    const labelSpan = btn.querySelector('.filter-label');
+    const headerLabel = btn.dataset.headerLabel || field;
+    const value = (columnFilters[tableKey] && columnFilters[tableKey][field]) || '';
+    const option = triStateOptions.find(opt => opt.value === value) || triStateOptions[0];
+    if(labelSpan){
+      labelSpan.textContent = option.label;
+    }
+    const isActive = !!value;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('title', `${headerLabel} filter: ${option.label}`);
+    btn.setAttribute('aria-label', `${headerLabel} filter: ${option.label}`);
+  }
+
+  function refreshColumnFilterMenuState(tableKey, field){
+    const menu = document.querySelector(`.column-filter-menu[data-table="${tableKey}"][data-field="${field}"]`);
+    if(!menu) return;
+    const value = (columnFilters[tableKey] && columnFilters[tableKey][field]) || '';
+    menu.querySelectorAll('.column-filter-option').forEach(btn => {
+      const isActive = (btn.dataset.value || '') === value;
+      btn.classList.toggle('active', isActive);
+    });
+  }
+
+  function refreshFilterRowOffset(tableKey){
+    const tableEl = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
+    if(!tableEl) return;
+    const thead = tableEl.querySelector('thead');
+    if(!thead) return;
+    const labelRow = thead.querySelector('.column-header-labels');
+    if(!labelRow) return;
+    const height = labelRow.getBoundingClientRect().height;
+    if(height){
+      thead.style.setProperty('--label-row-height', `${height}px`);
+    }
+  }
+
+  function setupTriStateColumnFilters(){
+    const config = {
+      inventory: [
+        { labelCellId: 'inv-col-auto', filterCellId: 'inv-filter-auto', field: 'auto_replenishment', label: 'Auto-repl.' },
+        { labelCellId: 'inv-col-active', filterCellId: 'inv-filter-active', field: 'active', label: 'Active' },
+        { labelCellId: 'inv-col-disc', filterCellId: 'inv-filter-disc', field: 'discontinued', label: 'Discon.' },
+        { labelCellId: 'inv-col-auto-ri', filterCellId: 'inv-filter-auto-ri', field: 'auto_replenishment_ri', label: 'Auto-repl. (RI)' },
+        { labelCellId: 'inv-col-active-ri', filterCellId: 'inv-filter-active-ri', field: 'active_ri', label: 'Active (RI)' },
+        { labelCellId: 'inv-col-disc-ri', filterCellId: 'inv-filter-disc-ri', field: 'discontinued_ri', label: 'Discon. (RI)' },
+      ],
+      par: [
+        { labelCellId: 'par-col-auto', filterCellId: 'par-filter-auto', field: 'auto_replenishment', label: 'Auto-repl.' },
+        { labelCellId: 'par-col-active', filterCellId: 'par-filter-active', field: 'active', label: 'Active' },
+        { labelCellId: 'par-col-disc', filterCellId: 'par-filter-disc', field: 'discontinued', label: 'Discon.' },
+        { labelCellId: 'par-col-auto-ri', filterCellId: 'par-filter-auto-ri', field: 'auto_replenishment_ri', label: 'Auto-repl. (RI)' },
+        { labelCellId: 'par-col-active-ri', filterCellId: 'par-filter-active-ri', field: 'active_ri', label: 'Active (RI)' },
+        { labelCellId: 'par-col-disc-ri', filterCellId: 'par-filter-disc-ri', field: 'discontinued_ri', label: 'Discon. (RI)' },
+      ],
+    };
+    Object.entries(config).forEach(([tableKey, defs]) => {
+      defs.forEach(def => {
+        const labelCell = def.labelCellId ? document.getElementById(def.labelCellId) : null;
+        const targetCell = document.getElementById(def.filterCellId || def.labelCellId || def.columnId);
+        if(!targetCell) return;
+        const rawLabel = def.label || (labelCell ? (labelCell.textContent || '') : (targetCell.textContent || '')) || def.field;
+        const label = rawLabel.trim() || def.field;
+        targetCell.innerHTML = '';
+        targetCell.classList.add('column-filter-cell');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'column-filter-wrapper';
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'dropdown';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'column-filter-toggle';
+        button.dataset.table = tableKey;
+        button.dataset.field = def.field;
+        button.dataset.headerLabel = label;
+        button.setAttribute('data-bs-toggle', 'dropdown');
+        button.setAttribute('aria-expanded', 'false');
+        button.innerHTML = `<span class="filter-label">All</span><span class="filter-caret">▾</span>`;
+
+        const menu = document.createElement('div');
+        menu.className = 'dropdown-menu dropdown-menu-end column-filter-menu';
+        menu.dataset.table = tableKey;
+        menu.dataset.field = def.field;
+        triStateOptions.forEach(opt => {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'dropdown-item column-filter-option';
+          item.dataset.value = opt.value;
+          item.textContent = opt.label;
+          menu.appendChild(item);
+        });
+
+        dropdown.appendChild(button);
+        dropdown.appendChild(menu);
+        wrapper.appendChild(dropdown);
+        targetCell.dataset.hasFilter = '1';
+        targetCell.appendChild(wrapper);
+
+        updateColumnFilterButton(tableKey, def.field);
+        refreshColumnFilterMenuState(tableKey, def.field);
+      });
+      refreshFilterRowOffset(tableKey);
+    });
+  }
+
+  function resetColumnFiltersFor(tableKey){
+    const state = columnFilters[tableKey];
+    if(!state) return;
+    Object.keys(state).forEach(field => {
+      state[field] = '';
+      updateColumnFilterButton(tableKey, field);
+      refreshColumnFilterMenuState(tableKey, field);
+    });
+  }
+
+  setupTriStateColumnFilters();
+
+  window.addEventListener('resize', () => {
+    refreshFilterRowOffset('inventory');
+    refreshFilterRowOffset('par');
+  });
+
   // Fetch distinct filter options
   async function loadFilterOptions() {
     try {
@@ -592,6 +816,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if(selLocation.value) params.set('location', selLocation.value);
       if(selStage.value) params.set('stage', selStage.value);
       if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
+      const invState = columnFilters.inventory;
+      const invParamMap = filterParamMap.inventory;
+      Object.entries(invState).forEach(([field, value]) => {
+        if(value && invParamMap[field]){
+          params.set(invParamMap[field], value);
+        }
+      });
       const resp = await fetch(`/dashboard/api/inventory?${params.toString()}`);
       console.log('API response status:', resp.status, resp.statusText);
       
@@ -677,6 +908,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if(selItemGroup.value) params.set('item_group', selItemGroup.value);
       if(selLocation.value) params.set('location', selLocation.value);
       if(selStage.value) params.set('stage', selStage.value);
+      const parState = columnFilters.par;
+      const parParamMap = filterParamMap.par;
+      Object.entries(parState).forEach(([field, value]) => {
+        if(value && parParamMap[field]){
+          params.set(parParamMap[field], value);
+        }
+      });
       const resp = await fetch(`/dashboard/api/par?${params.toString()}`);
       if(!resp.ok) throw new Error('Failed par fetch');
       const data = await resp.json();
@@ -747,7 +985,31 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
   const autoApply = debounce(()=>{ loadInventory(1); loadPar(1); });
-  [selStage, inpDescSearch].forEach(sel => sel.addEventListener('change', autoApply));
+  [selStage, inpDescSearch].forEach(ctrl => {
+    if(ctrl){
+      ctrl.addEventListener('change', autoApply);
+    }
+  });
+
+  document.addEventListener('click', evt => {
+    const optionBtn = evt.target.closest('.column-filter-option');
+    if(!optionBtn) return;
+    const menu = optionBtn.closest('.column-filter-menu');
+    if(!menu) return;
+    const tableKey = menu.dataset.table;
+    const field = menu.dataset.field;
+    if(!columnFilters[tableKey]) return;
+    const value = optionBtn.dataset.value || '';
+    columnFilters[tableKey][field] = value;
+    updateColumnFilterButton(tableKey, field);
+    refreshColumnFilterMenuState(tableKey, field);
+    const toggle = menu.previousElementSibling;
+    if(toggle && window.bootstrap && window.bootstrap.Dropdown){
+      const dropdown = window.bootstrap.Dropdown.getOrCreateInstance(toggle);
+      dropdown.hide();
+    }
+    autoApply();
+  });
   // Multi-select handling
   function updateItemGroupSelection(triggerChange=true){
     const checked = Array.from(itemGroupMenu.querySelectorAll('.item-group-checkbox:checked')).map(cb => cb.value);
@@ -860,7 +1122,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
-  inpDescSearch.addEventListener('keyup', autoApply);
+  if(inpDescSearch){
+    inpDescSearch.addEventListener('keyup', autoApply);
+  }
 
   // Legacy form submit (no visible submit button now) still prevented
   filterForm.addEventListener('submit', evt => { evt.preventDefault(); });
@@ -881,8 +1145,13 @@ document.addEventListener('DOMContentLoaded', () => {
         locSearch.value='';
         locMenu.querySelectorAll('.location-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
       }
+      if(selStage) selStage.value = '';
+  resetColumnFiltersFor('inventory');
+  resetColumnFiltersFor('par');
       // Clear description search input explicitly (form reset usually does but ensure)
-      inpDescSearch.value='';
+      if(inpDescSearch){
+        inpDescSearch.value='';
+      }
       // Reload data
       loadInventory(1);
       loadPar(1);

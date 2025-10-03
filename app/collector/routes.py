@@ -76,7 +76,7 @@ def groups():
     items = (
         ItemLink.query
         .options(noload('*'))
-        .order_by(ItemLink.item_group, ItemLink.item)
+        .order_by(ItemLink.item_group.desc(), ItemLink.item)
         .all()
     )
     # Count rows currently flagged as deleted

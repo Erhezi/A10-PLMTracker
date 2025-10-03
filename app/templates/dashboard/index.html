@@ -86,8 +86,22 @@
       <!-- Inventory Table -->
       <div class="card shadow-sm mb-4">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">Inventory Items</h6>
-          <div class="small text-muted" id="inventory-count">0 rows</div>
+          <h6 class="mb-0">Inventory Locations</h6>
+          <div class="d-flex align-items-center gap-2 column-controls">
+            <div class="small text-muted" id="inventory-count">0 rows</div>
+            <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
+              <input class="form-check-input" type="checkbox" id="inventory-hide-r-toggle" checked>
+              <label class="form-check-label" for="inventory-hide-r-toggle">Hide R-Only Location</label>
+            </div>
+            <div class="dropdown">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="inventory-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                Columns Selector
+              </button>
+              <div class="dropdown-menu dropdown-menu-end p-2 column-menu" aria-labelledby="inventory-columns-btn" id="inventory-column-menu">
+                <div class="text-muted small px-2">Loading columns…</div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
           <table class="table table-sm table-hover align-middle mb-0" id="table-inventory">
@@ -97,19 +111,19 @@
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
-                <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-eplenishment</th>
+                <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="inv-col-active" data-field="active" class="col-active">Active</th>
-                <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discontinued</th>
+                <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
                 <th id="inv-col-current" data-field="current_qty" class="col-num">Current Qty</th>
                 <th id="inv-col-weekly" data-field="weekly_burn" class="col-num">Weekly Burn</th>
                 <th id="inv-col-weeks" data-field="weeks_on_hand" class="col-num">Weeks on Hand</th>
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
                 <th id="inv-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
-                <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Replacement Item</th>
+                <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
-                <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
+                <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
-                <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
+                <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="inv-col-current-ri" data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
                 <th id="inv-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Burn (RI)</th>
                 <th id="inv-col-weeks-ri" data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
@@ -137,7 +151,21 @@
       <div class="card shadow-sm">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
           <h6 class="mb-0">Par Locations</h6>
-          <div class="small text-muted" id="par-count">0 rows</div>
+          <div class="d-flex align-items-center gap-2 column-controls">
+            <div class="small text-muted" id="par-count">0 rows</div>
+            <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
+              <input class="form-check-input" type="checkbox" id="par-hide-r-toggle" checked>
+              <label class="form-check-label" for="par-hide-r-toggle">Hide R-Only Location</label>
+            </div>
+            <div class="dropdown">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="par-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                Columns Selector
+              </button>
+              <div class="dropdown-menu dropdown-menu-end p-2 column-menu" aria-labelledby="par-columns-btn" id="par-column-menu">
+                <div class="text-muted small px-2">Loading columns…</div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
           <table class="table table-sm table-hover align-middle mb-0" id="table-par">
@@ -147,20 +175,20 @@
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
-                <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-replenishment</th>
+                <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="par-col-active" data-field="active" class="col-active">Active</th>
-                <th id="par-col-disc" data-field="discontinued" class="col-disc">Discontinued</th>
+                <th id="par-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
                 <th id="par-col-reorder" data-field="reorder_point" class="col-num">Reorder Point</th>
                 <th id="par-col-weekly" data-field="weekly_burn" class="col-num">Weekly Demand</th>
                 <th id="par-col-weeks" data-field="weeks_reorder" class="col-num">Weeks Reorder</th>
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
                 <th id="par-col-group2" data-field="item_group" class="col-group">Item Group</th>
-                <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Replacement Item</th>
+                <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
-                <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
+                <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="par-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
-                <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
+                <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="par-col-reorder-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
                 <th id="par-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Demand (RI)</th>
                 <th id="par-col-weeks-ri" data-field="weeks_reorder_ri" class="col-num">Weeks Reorder (RI)</th>
@@ -242,8 +270,241 @@ document.addEventListener('DOMContentLoaded', () => {
   const locCount = document.getElementById('location-count');
   const selStage = filterForm.querySelector('select[name="stage"]');
   const inpDescSearch = filterForm.querySelector('input[name="desc_search"]');
+  const inventoryTable = document.getElementById('table-inventory');
+  const parTable = document.getElementById('table-par');
+  const inventoryColumnMenu = document.getElementById('inventory-column-menu');
+  const parColumnMenu = document.getElementById('par-column-menu');
+  const inventoryHideToggle = document.getElementById('inventory-hide-r-toggle');
+  const parHideToggle = document.getElementById('par-hide-r-toggle');
+  const columnState = {
+    inventory: {},
+    par: {},
+  };
+  const lockedColumns = {
+    inventory: new Set([
+      'inv-col-group',
+      'inv-col-item',
+      'inv-col-location',
+      'inv-col-repl-item',
+      'inv-col-location-ri',
+    ]),
+    par: new Set([
+      'par-col-group',
+      'par-col-group2',
+      'par-col-item',
+      'par-col-location',
+      'par-col-repl-item',
+      'par-col-location-ri',
+    ]),
+  };
+  let hideROnly = true;
+  let suppressHideSync = false;
+  function syncHideROnlyToggles(checked, { skipReload = false } = {}){
+    const normalized = !!checked;
+    hideROnly = normalized;
+    suppressHideSync = true;
+    if(inventoryHideToggle && inventoryHideToggle.checked !== normalized){
+      inventoryHideToggle.checked = normalized;
+    }
+    if(parHideToggle && parHideToggle.checked !== normalized){
+      parHideToggle.checked = normalized;
+    }
+    suppressHideSync = false;
+    if(!skipReload){
+      loadInventory(currentPage);
+      loadPar(parCurrentPage);
+    }
+  }
+  if(inventoryHideToggle){
+    hideROnly = inventoryHideToggle.checked;
+    inventoryHideToggle.addEventListener('change', () => {
+      if(suppressHideSync) return;
+      syncHideROnlyToggles(inventoryHideToggle.checked);
+    });
+  }
+  if(parHideToggle){
+    hideROnly = parHideToggle.checked;
+    parHideToggle.addEventListener('change', () => {
+      if(suppressHideSync) return;
+      syncHideROnlyToggles(parHideToggle.checked);
+    });
+  }
+  syncHideROnlyToggles(hideROnly, { skipReload: true });
+  const cssEscape = (value) => {
+    if(window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
+    }
+    return value.replace(/([\0-\x1F\x7F-\x9F!"#$%&'()*+,./:;<=>?@\[\\\]^`{|}~])/g, '\\$1');
+  };
   
   console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
+
+  function toggleColumnVisibility(table, columnId, show){
+    if(!table || !columnId) return;
+    const header = table.querySelector(`#${cssEscape(columnId)}`);
+    if(!header) return;
+    const headerRow = header.parentElement;
+    const colIndex = Array.from(headerRow.children).indexOf(header);
+    if(colIndex < 0) return;
+    const display = show ? '' : 'none';
+    header.style.display = display;
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      const cell = tr.children[colIndex];
+      if(cell) cell.style.display = display;
+    });
+  }
+
+  function applyColumnState(table, state){
+    if(!table || !state) return;
+    table.querySelectorAll('thead th').forEach((th, idx) => {
+      const columnId = th.id;
+      if(!columnId) return;
+      const visible = state[columnId] !== false;
+      toggleColumnVisibility(table, columnId, visible);
+    });
+  }
+
+  const normalizeText = (val) => String(val ?? '').trim().toLowerCase();
+  function isROnlyLocation(row){
+    if(!row || typeof row !== 'object') return false;
+    const loc = normalizeText(row.location);
+    const locType = normalizeText(row.location_type);
+    if(!loc) return true;
+    if(locType.includes('r-only')) return true;
+    const compactLoc = loc.replace(/\s+/g, ' ');
+    return compactLoc === 'r-only' || compactLoc === 'r only' || compactLoc === 'r-only location' || compactLoc === 'r only location';
+  }
+
+  function buildColumnMenu(table, menu, stateKey){
+    if(!table || !menu) return;
+    const headers = Array.from(table.querySelectorAll('thead th'));
+    if(!headers.length){
+      menu.innerHTML = '<div class="text-muted small px-2">No columns found</div>';
+      return;
+    }
+    menu.innerHTML = '';
+    const lockedSet = lockedColumns[stateKey] || new Set();
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'form-control form-control-sm mb-2 column-menu-search';
+    searchInput.placeholder = 'Search columns (use * wildcard)';
+    searchInput.setAttribute('autocomplete', 'off');
+    menu.appendChild(searchInput);
+
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'd-flex gap-2 mb-2';
+  const selectAllBtn = document.createElement('button');
+  selectAllBtn.type = 'button';
+  selectAllBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
+  selectAllBtn.textContent = 'All';
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
+  clearBtn.textContent = 'Clear';
+    controlsRow.appendChild(selectAllBtn);
+    controlsRow.appendChild(clearBtn);
+    menu.appendChild(controlsRow);
+
+    const divider = document.createElement('div');
+    divider.className = 'border-top mt-2 pt-2';
+    menu.appendChild(divider);
+
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'column-options-container';
+    menu.appendChild(optionsContainer);
+
+    headers.forEach((th, idx) => {
+      const columnId = th.id;
+      if(!columnId) return;
+      const label = (th.textContent || '').trim() || `Column ${idx+1}`;
+      if(!(columnId in columnState[stateKey])){
+        columnState[stateKey][columnId] = true;
+      }
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-check column-toggle-item column-option';
+      wrapper.setAttribute('data-label', label.toLowerCase());
+      const input = document.createElement('input');
+      input.className = 'form-check-input';
+      input.type = 'checkbox';
+      input.id = `${columnId}-toggle`;
+      const locked = lockedSet.has(columnId);
+      if(locked){
+        columnState[stateKey][columnId] = true;
+      }
+      const isVisible = locked ? true : columnState[stateKey][columnId] !== false;
+      input.checked = isVisible;
+      input.disabled = locked;
+      if(locked){
+        wrapper.classList.add('column-toggle-locked');
+      }
+      input.addEventListener('change', () => {
+        const show = input.checked;
+        columnState[stateKey][columnId] = show;
+        toggleColumnVisibility(table, columnId, show);
+      });
+      const labelEl = document.createElement('label');
+      labelEl.className = 'form-check-label';
+      labelEl.setAttribute('for', input.id);
+      labelEl.textContent = label;
+      wrapper.appendChild(input);
+      wrapper.appendChild(labelEl);
+      optionsContainer.appendChild(wrapper);
+    });
+    applyColumnState(table, columnState[stateKey]);
+
+    const applySelectAll = (checked) => {
+      optionsContainer.querySelectorAll('.column-toggle-item input:not(:disabled)').forEach(inputEl => {
+        const optionRow = inputEl.closest('.column-toggle-item');
+        if(optionRow && optionRow.getAttribute('data-hidden') === '1') return;
+        if(inputEl.checked !== checked){
+          inputEl.checked = checked;
+          inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    };
+    selectAllBtn.addEventListener('click', () => applySelectAll(true));
+    clearBtn.addEventListener('click', () => applySelectAll(false));
+
+    let lastFilter = '';
+    searchInput.addEventListener('input', () => {
+      const raw = searchInput.value.trim();
+      if(raw === lastFilter) return;
+      lastFilter = raw;
+      if(!raw){
+        optionsContainer.querySelectorAll('.column-option').forEach(option => {
+          option.style.display = '';
+          option.removeAttribute('data-hidden');
+        });
+        return;
+      }
+      let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+      patternEsc = patternEsc.replace(/\\\*/g, '.*');
+      if(!raw.includes('*')){
+        patternEsc = '.*' + patternEsc + '.*';
+      }
+      let regex = null;
+      try {
+        regex = new RegExp(patternEsc, 'i');
+      } catch {
+        regex = null;
+      }
+      optionsContainer.querySelectorAll('.column-option').forEach(option => {
+        const label = option.getAttribute('data-label') || '';
+        const match = !regex || regex.test(label);
+        if(match){
+          option.style.display = '';
+          option.removeAttribute('data-hidden');
+        } else {
+          option.style.display = 'none';
+          option.setAttribute('data-hidden', '1');
+        }
+      });
+    });
+  }
+
+  buildColumnMenu(inventoryTable, inventoryColumnMenu, 'inventory');
+  buildColumnMenu(parTable, parColumnMenu, 'par');
 
   // Fetch distinct filter options
   async function loadFilterOptions() {
@@ -342,21 +603,26 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const data = await resp.json();
       console.log('API data received:', data);
-      
+
       const rows = data.rows || [];
+      const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
+      const hiddenCount = rows.length - visibleRows.length;
       currentPage = data.page || 1;
       totalPages = data.pages || 1;
-      console.log('Number of rows:', rows.length);
+      console.log('Fetched rows:', rows.length, 'visible rows:', visibleRows.length);
       
       tbody.innerHTML = '';
-      for (const r of rows) {
+      for (const r of visibleRows) {
         const tr = document.createElement('tr');
         function fmt(val) { return (val === null || val === undefined || val === '') ? '' : val; }
-        function num(val, digits=2) { 
-          if(val===null||val===undefined||val==='') return ''; 
-          const n=Number(val); 
-          if(!isFinite(n)) return ''; 
-          return n.toFixed(digits); 
+        function num(val, digits=2) {
+          if(val===null||val===undefined||val==='') return '';
+          const n = Number(val);
+          if(!isFinite(n)) return '';
+          return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+          }).format(n);
         }
     tr.dataset.itemGroup = r.item_group;
     tr.dataset.item = r.item;
@@ -364,33 +630,36 @@ document.addEventListener('DOMContentLoaded', () => {
     tr.dataset.groupLocation = r.group_location || r.location || '';
     tr.dataset.replacementItem = r.replacement_item || '';
         tr.innerHTML = `
-          <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
-          <td>${fmt(r.item_group)}</td>
-          <td class="fw-semibold text-wrap col-item-cell">${fmt(r.item)}</td>
-          <td class="text-wrap">${fmt(r.location)}</td>
-          <td>${fmt(r.auto_replenishment)}</td>
-          <td>${fmt(r.active)}</td>
-          <td>${fmt(r.discontinued)}</td>
-          <td class="text-end">${num(r.current_qty,0)}</td>
-          <td class="text-end">${num(r.weekly_burn)}</td>
-          <td class="text-end">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
-          <td class="text-end">${num(r.po_90_qty,0)}</td>
-          <td class="text-end">${num(r.requesters_past_year,0)}</td>
-          <td class="fw-semibold text-wrap col-repl-item-cell">${fmt(r.replacement_item)}</td>
-          <td class="text-wrap">${fmt(r.location_ri)}</td>
-          <td>${fmt(r.auto_replenishment_ri)}</td>
-          <td>${fmt(r.active_ri)}</td>
-          <td>${fmt(r.discontinued_ri)}</td>
-          <td class="text-end">${num(r.current_qty_ri,0)}</td>
-          <td class="text-end">${num(r.weekly_burn_ri)}</td>
-          <td class="text-end">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
-          <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
-          <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
+          <td class="text-center">${fmt(r.item_group)}</td>
+          <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
+          <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
+          <td class="col-src text-center">${fmt(r.active)}</td>
+          <td class="col-src text-center">${fmt(r.discontinued)}</td>
+          <td class="col-src text-center">${num(r.current_qty,0)}</td>
+          <td class="col-src text-center">${num(r.weekly_burn)}</td>
+          <td class="col-src text-center">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
+          <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
+          <td class="col-src text-center">${num(r.requesters_past_year,0)}</td>
+          <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
+          <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.active_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
+          <td class="col-repl text-center">${num(r.current_qty_ri,0)}</td>
+          <td class="col-repl text-center">${num(r.weekly_burn_ri)}</td>
+          <td class="col-repl text-center">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
+          <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
+          <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         tbody.appendChild(tr);
       }
-    countEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
-    updatePager();
+      applyColumnState(inventoryTable, columnState.inventory);
+      const totalLabel = data.total ?? rows.length;
+      const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
+      countEl.textContent = `${totalLabel} total / ${visibleRows.length} this page${hiddenLabel}`;
+      updatePager();
       console.log('Table populated successfully');
       attachInventoryRowClick();
     } catch (e) {
@@ -410,44 +679,56 @@ document.addEventListener('DOMContentLoaded', () => {
       if(selStage.value) params.set('stage', selStage.value);
       const resp = await fetch(`/dashboard/api/par?${params.toString()}`);
       if(!resp.ok) throw new Error('Failed par fetch');
-  const data = await resp.json();
-  const rows = data.rows || [];
-  parCurrentPage = data.page || 1;
-  parTotalPages = data.pages || 1;
+      const data = await resp.json();
+      const rows = data.rows || [];
+      const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
+      const hiddenCount = rows.length - visibleRows.length;
+      parCurrentPage = data.page || 1;
+      parTotalPages = data.pages || 1;
       parTbody.innerHTML = '';
-      for(const r of rows){
+      for(const r of visibleRows){
         function fmt(val){ return (val===null||val===undefined||val==='') ? '' : val; }
-        function num(val, digits=2){ if(val===null||val===undefined||val==='') return ''; const n=Number(val); if(!isFinite(n)) return ''; return n.toFixed(digits); }
+        function num(val, digits=2){
+          if(val===null||val===undefined||val==='') return '';
+          const n = Number(val);
+          if(!isFinite(n)) return '';
+          return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+          }).format(n);
+        }
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
-          <td>${fmt(r.item_group)}</td>
-          <td class="fw-semibold text-wrap">${fmt(r.item)}</td>
-          <td class="text-wrap">${fmt(r.location)}</td>
-          <td>${fmt(r.auto_replenishment)}</td>
-            <td>${fmt(r.active)}</td>
-            <td>${fmt(r.discontinued)}</td>
-            <td class="text-end">${num(r.reorder_point,0)}</td>
-            <td class="text-end">${num(r.weekly_burn)}</td>
-            <td class="text-end">${typeof r.weeks_reorder === 'string' ? r.weeks_reorder : num(r.weeks_reorder,1)}</td>
-            <td class="text-end">${num(r.req_qty_ea,0)}</td>
-            <td class="text-end">${num(r.requesters_past_year,0)}</td>
-            <td>${fmt(r.item_group)}</td>
-            <td class="fw-semibold text-wrap">${fmt(r.replacement_item)}</td>
-            <td class="text-wrap">${fmt(r.location_ri)}</td>
-            <td>${fmt(r.auto_replenishment_ri)}</td>
-            <td>${fmt(r.active_ri)}</td>
-            <td>${fmt(r.discontinued_ri)}</td>
-            <td class="text-end">${num(r.reorder_point_ri,0)}</td>
-            <td class="text-end">${num(r.weekly_burn_ri)}</td>
-            <td class="text-end">${typeof r.weeks_reorder_ri === 'string' ? r.weeks_reorder_ri : num(r.weeks_reorder_ri,1) }</td>
-            <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
-            <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
+          <td class="text-center">${fmt(r.item_group)}</td>
+          <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
+          <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
+            <td class="col-src text-center">${fmt(r.active)}</td>
+            <td class="col-src text-center">${fmt(r.discontinued)}</td>
+            <td class="col-src text-center">${num(r.reorder_point,0)}</td>
+            <td class="col-src text-center">${num(r.weekly_burn)}</td>
+            <td class="col-src text-center">${typeof r.weeks_reorder === 'string' ? r.weeks_reorder : num(r.weeks_reorder,1)}</td>
+            <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
+            <td class="col-src text-center">${num(r.requesters_past_year,0)}</td>
+            <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
+            <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.active_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
+            <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
+            <td class="col-repl text-center">${num(r.weekly_burn_ri)}</td>
+            <td class="col-repl text-center">${typeof r.weeks_reorder_ri === 'string' ? r.weeks_reorder_ri : num(r.weeks_reorder_ri,1) }</td>
+            <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
+            <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         parTbody.appendChild(tr);
       }
-  parCountEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
-  updateParPager();
+      applyColumnState(parTable, columnState.par);
+      const totalLabel = data.total ?? rows.length;
+      const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
+      parCountEl.textContent = `${totalLabel} total / ${visibleRows.length} this page${hiddenLabel}`;
+    updateParPager();
     } catch(e){
       console.error('Failed loading par locations', e);
       parCountEl.textContent = 'error';
@@ -612,7 +893,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const chartContainer = document.getElementById('qty-chart');
   const chartHeaderSpan = document.getElementById('current-item-group');
   const chartHint = document.getElementById('chart-hint');
-  const inventoryTable = document.getElementById('table-inventory');
   const inventoryTableRegion = inventoryTable ? inventoryTable.parentElement : null;
   const defaultSelectionState = { itemGroup: null, location: null, primaryItem: null, replacementItem: null };
   let lastSelection = { ...defaultSelectionState };

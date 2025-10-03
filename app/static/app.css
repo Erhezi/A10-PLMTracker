@@ -143,10 +143,33 @@ footer { font-size: .75rem; }
 /* Ensure data cells inheriting .col-desc behave the same in both tables */
 #table-inventory td.col-desc, #table-par td.col-desc { white-space: nowrap; }
 
+#table-inventory th,
+#table-inventory td,
+#table-par th,
+#table-par td {
+  text-align: center;
+}
+
+#table-inventory th.text-start,
+#table-inventory td.text-start,
+#table-par th.text-start,
+#table-par td.text-start {
+  text-align: left;
+}
+
 /* Utility: allow a future .col-nowrap to apply ellipsis anywhere */
 .col-nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Boldness already applied via fw-semibold in HTML; ensure consistent */
 #table-inventory td.col-item-cell, #table-inventory td.col-repl-item-cell { font-weight: 600; }
+/* Source vs replacement color banding */
+#table-inventory tbody td.col-src,
+#table-par tbody td.col-src {
+  background: #fff9e6;
+}
+#table-inventory tbody td.col-repl,
+#table-par tbody td.col-repl {
+  background: #e9f7ff;
+}
 /* Stage badge already globally styled; ensure small size fits */
 #table-inventory .stage-badge { font-size: .65rem; letter-spacing: .25px; }
 
@@ -156,6 +179,76 @@ footer { font-size: .75rem; }
 #table-par th, #table-par td { vertical-align: middle; white-space: normal; }
 #table-par td.text-wrap { white-space: normal; }
 #table-par .stage-badge { font-size: .65rem; letter-spacing: .25px; }
+
+.column-controls {
+  gap: .5rem;
+}
+
+.column-controls .dropdown-toggle {
+  min-width: 150px;
+  font-size: .75rem;
+  padding: .25rem .75rem;
+}
+
+.column-menu {
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 2000;
+}
+
+.column-menu .column-menu-search {
+  font-size: .75rem;
+  padding: .25rem .5rem;
+}
+
+.column-menu .column-menu-action {
+  font-size: .7rem;
+  padding: .2rem .45rem;
+}
+
+.column-menu .column-options-container {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.hide-r-toggle .form-check-input {
+  width: 2.2em;
+  height: 1.1em;
+  cursor: pointer;
+}
+
+.hide-r-toggle .form-check-label {
+  font-size: .75rem;
+  cursor: pointer;
+  margin-left: .25rem;
+  white-space: nowrap;
+}
+
+.column-menu .form-check {
+  margin-bottom: .35rem;
+}
+
+.column-menu .form-check-label {
+  font-size: .8rem;
+}
+
+.column-menu .form-check-input {
+  margin-top: .2rem;
+}
+
+.column-menu .column-toggle-locked {
+  opacity: .65;
+}
+
+.column-menu .column-toggle-locked .form-check-input,
+.column-menu .column-toggle-locked .form-check-label {
+  cursor: not-allowed;
+}
+
+.column-menu .form-check:last-child {
+  margin-bottom: 0;
+}
 
 /* Par table inherits shared column width helpers above */
 

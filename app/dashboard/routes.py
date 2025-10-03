@@ -232,8 +232,7 @@ def api_par():
                 if val is None:
                     r["weeks_reorder"] = "unknown"
                 else:
-                    # Keep sign convention consistent (inventory negates weeks_on_hand)
-                    r["weeks_reorder"] = -1 * val if val is not None else "unknown"
+                    r["weeks_reorder"] = val
             except Exception:
                 r["weeks_reorder"] = "unknown"
 

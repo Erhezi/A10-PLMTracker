@@ -60,12 +60,6 @@ def build_location_pairs(
         weekly_repl = repl_burn["weekly_burn"]
         weeks_src = _weeks_on_hand(getattr(r, "AvailableQty", None), weekly_src)
         weeks_repl = _weeks_on_hand(getattr(r, "AvailableQty_ri", None), weekly_repl)
-        def negate(v):
-            if isinstance(v, (int, float)):
-                return v * -1
-            return v
-        weeks_src = negate(weeks_src)
-        weeks_repl = negate(weeks_repl)
 
         out.append({
             "stage": r.Stage,
@@ -164,16 +158,7 @@ def burnrate_estimator(
 
 
 def _weeks_on_hand(available_qty: Optional[float], weekly_burn: float) -> str | float:
-    """Return naive weeks-on-hand (qty / weekly_burn) allowing for negative burns.
-
-    The source data burn rates appear as negative numbers to indicate consumption.
-    Upstream caller will multiply numeric result by -1 to present a positive value.
-
-    Rules:
-      - If qty or burn is None -> unknown
-      - If burn == 0 -> unknown (avoid divide-by-zero / infinite)
-      - Accept negative burn values (consumption); return raw ratio (will be negative)
-    """
+    """Return naive weeks-on-hand (qty / weekly_burn)."""
     try:  # pragma: no cover - defensive block
         if available_qty is None or weekly_burn is None:
             return "unknown"

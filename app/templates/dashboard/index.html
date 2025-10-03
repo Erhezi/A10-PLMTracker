@@ -101,6 +101,8 @@
                 <div class="text-muted small px-2">Loading columns…</div>
               </div>
             </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="inventory-reset-filters" title="Reset inventory column filters to All">Reset Column Filters</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="inventory-export-excel" title="Download inventory table as Excel">Export to Excel</button>
           </div>
         </div>
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
@@ -189,6 +191,8 @@
                 <div class="text-muted small px-2">Loading columns…</div>
               </div>
             </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="par-reset-filters" title="Reset par column filters to All">Reset Column Filters</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="par-export-excel" title="Download par table as Excel">Export to Excel</button>
           </div>
         </div>
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
@@ -325,6 +329,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const parColumnMenu = document.getElementById('par-column-menu');
   const inventoryHideToggle = document.getElementById('inventory-hide-r-toggle');
   const parHideToggle = document.getElementById('par-hide-r-toggle');
+  const inventoryResetBtn = document.getElementById('inventory-reset-filters');
+  const parResetBtn = document.getElementById('par-reset-filters');
+  const inventoryExportBtn = document.getElementById('inventory-export-excel');
+  const parExportBtn = document.getElementById('par-export-excel');
   const columnState = {
     inventory: {},
     par: {},
@@ -783,6 +791,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function buildSharedQueryParams(){
+    const params = new URLSearchParams();
+    if(selItemGroup.value) params.set('item_group', selItemGroup.value);
+    if(selLocation.value) params.set('location', selLocation.value);
+    if(selStage.value) params.set('stage', selStage.value);
+    if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
+    return params;
+  }
+
+  function appendColumnFilterParams(params, tableKey){
+    const state = columnFilters[tableKey];
+    const paramMap = filterParamMap[tableKey];
+    if(!state || !paramMap) return;
+    Object.entries(state).forEach(([field, value]) => {
+      if(value && paramMap[field]){
+        params.set(paramMap[field], value);
+      }
+    });
+  }
+
   function updatePager() {
     if(totalPages <= 1){
       pager.style.display = 'none';
@@ -808,21 +836,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       console.log('Fetching inventory data...');
       countEl.textContent = 'loading...';
-      const params = new URLSearchParams();
+      const params = buildSharedQueryParams();
       params.set('page', page);
       params.set('per_page', perPage);
-      // selected filters
-      if(selItemGroup.value) params.set('item_group', selItemGroup.value);
-      if(selLocation.value) params.set('location', selLocation.value);
-      if(selStage.value) params.set('stage', selStage.value);
-      if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
-      const invState = columnFilters.inventory;
-      const invParamMap = filterParamMap.inventory;
-      Object.entries(invState).forEach(([field, value]) => {
-        if(value && invParamMap[field]){
-          params.set(invParamMap[field], value);
-        }
-      });
+      appendColumnFilterParams(params, 'inventory');
       const resp = await fetch(`/dashboard/api/inventory?${params.toString()}`);
       console.log('API response status:', resp.status, resp.statusText);
       
@@ -902,19 +919,10 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadPar(page=1) {
     try {
       parCountEl.textContent = 'loading...';
-      const params = new URLSearchParams();
+      const params = buildSharedQueryParams();
       params.set('page', page);
       params.set('per_page', parPerPage);
-      if(selItemGroup.value) params.set('item_group', selItemGroup.value);
-      if(selLocation.value) params.set('location', selLocation.value);
-      if(selStage.value) params.set('stage', selStage.value);
-      const parState = columnFilters.par;
-      const parParamMap = filterParamMap.par;
-      Object.entries(parState).forEach(([field, value]) => {
-        if(value && parParamMap[field]){
-          params.set(parParamMap[field], value);
-        }
-      });
+      appendColumnFilterParams(params, 'par');
       const resp = await fetch(`/dashboard/api/par?${params.toString()}`);
       if(!resp.ok) throw new Error('Failed par fetch');
       const data = await resp.json();
@@ -973,6 +981,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function exportTable(tableKey){
+    const button = tableKey === 'inventory' ? inventoryExportBtn : parExportBtn;
+    if(button){
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+    }
+    try {
+      const params = buildSharedQueryParams();
+      appendColumnFilterParams(params, tableKey);
+      if(hideROnly){
+        params.set('hide_r_only', 'true');
+      }
+      const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
+      if(!resp.ok){
+        throw new Error(`Export failed (${resp.status})`);
+      }
+      const blob = await resp.blob();
+      let filename = `${tableKey}-export.xlsx`;
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|\"?)([^";]+)/i);
+      if(match && match[1]){
+        const raw = match[1].replace(/^"|"$/g, '');
+        try {
+          filename = decodeURIComponent(raw);
+        } catch {
+          filename = raw;
+        }
+      }
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(url);
+      link.remove();
+    } catch (err){
+      console.error('Failed exporting table', tableKey, err);
+    } finally {
+      if(button){
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+    }
+  }
+
   btnFirst.addEventListener('click', () => { if(currentPage>1) loadInventory(1); });
   btnPrev.addEventListener('click', () => { if(currentPage>1) loadInventory(currentPage-1); });
   btnNext.addEventListener('click', () => { if(currentPage<totalPages) loadInventory(currentPage+1); });
@@ -985,6 +1039,28 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
   const autoApply = debounce(()=>{ loadInventory(1); loadPar(1); });
+  if(inventoryResetBtn){
+    inventoryResetBtn.addEventListener('click', () => {
+      resetColumnFiltersFor('inventory');
+      autoApply();
+    });
+  }
+  if(parResetBtn){
+    parResetBtn.addEventListener('click', () => {
+      resetColumnFiltersFor('par');
+      autoApply();
+    });
+  }
+  if(inventoryExportBtn){
+    inventoryExportBtn.addEventListener('click', () => {
+      exportTable('inventory');
+    });
+  }
+  if(parExportBtn){
+    parExportBtn.addEventListener('click', () => {
+      exportTable('par');
+    });
+  }
   [selStage, inpDescSearch].forEach(ctrl => {
     if(ctrl){
       ctrl.addEventListener('change', autoApply);

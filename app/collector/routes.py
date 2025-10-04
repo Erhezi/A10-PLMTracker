@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.orm import noload
+from datetime import date, datetime, timedelta
 import re
 from .. import db
 from ..models import now_ny_naive
@@ -39,7 +40,6 @@ bp = Blueprint("collector", __name__, url_prefix="")
 def collect():
     # Fetch a small sample set to verify Item view connectivity
     sample_items = Item.query.order_by(Item.item).limit(25).all()
-    from datetime import date
     from calendar import monthrange
 
     def add_months(d: date, months: int) -> date:
@@ -202,6 +202,10 @@ def conflicts():
 
     conflicts = query.limit(limit).all()
 
+    today = date.today()
+    purge_min_date = (today - timedelta(days=365)).isoformat()
+    purge_max_date = today.isoformat()
+
     return render_template(
         "collector/conflicts.html",
         conflicts=conflicts,
@@ -210,7 +214,75 @@ def conflicts():
         type_counts=type_counts,
         total_conflicts=total_conflicts,
         error_types=ConflictError.ERROR_TYPES,
+        purge_min_date=purge_min_date,
+        purge_max_date=purge_max_date,
     )
+
+
+@bp.post("/conflicts/<int:pkid>/delete")
+@login_required
+def delete_conflict(pkid: int):
+    conflict = ConflictError.query.get_or_404(pkid)
+    db.session.delete(conflict)
+    db.session.commit()
+    flash("Conflict entry cleared", "success")
+
+    redirect_params: dict[str, str] = {}
+    type_param = request.form.get("type") or None
+    limit_param = request.form.get("limit") or None
+    if type_param:
+        redirect_params["type"] = type_param
+    if limit_param:
+        redirect_params["limit"] = limit_param
+
+    return redirect(url_for("collector.conflicts", **redirect_params))
+
+
+@bp.post("/conflicts/purge")
+@login_required
+def purge_conflicts():
+    raw_date = request.form.get("purge_date") or ""
+    params: dict[str, str] = {}
+    type_param = request.form.get("type") or None
+    limit_param = request.form.get("limit") or None
+    if type_param:
+        params["type"] = type_param
+    if limit_param:
+        params["limit"] = limit_param
+
+    if not raw_date:
+        flash("Select a date to purge conflicts.", "warning")
+        return redirect(url_for("collector.conflicts", **params))
+
+    try:
+        target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Invalid purge date format.", "danger")
+        return redirect(url_for("collector.conflicts", **params))
+
+    today = date.today()
+    min_allowed = today - timedelta(days=365)
+    if target_date < min_allowed or target_date > today:
+        flash(
+            f"Purge date must be between {min_allowed.isoformat()} and {today.isoformat()}.",
+            "warning",
+        )
+        return redirect(url_for("collector.conflicts", **params))
+
+    cutoff = datetime.combine(target_date, datetime.min.time())
+    deleted = (
+        ConflictError.query
+        .filter(ConflictError.create_dt < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+
+    if deleted:
+        flash(f"Purged {deleted} conflict record(s) before {target_date.isoformat()}.", "success")
+    else:
+        flash("No conflict records found before the selected date.", "info")
+
+    return redirect(url_for("collector.conflicts", **params))
 
 
 # -------------------- API: Item search --------------------

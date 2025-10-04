@@ -110,13 +110,19 @@ class RelationGraph:
 		chain_links: list[ItemLink] = []
 		incoming = list(self._incoming.get(item, {}).values())
 		outgoing = list(self._outgoing.get(replace_item, {}).values())
-		if incoming:
-			chain_links.extend(incoming)
-		if outgoing:
-			chain_links.extend(outgoing)
-		if incoming or outgoing:
-			upstream = ", ".join(sorted({link.item for link in incoming})) or "existing items"
-			downstream = ", ".join(sorted({link.replace_item for link in outgoing})) or "existing replacements"
+		if reciprocal:
+			incoming_filtered = [link for link in incoming if link is not reciprocal]
+			outgoing_filtered = [link for link in outgoing if link is not reciprocal]
+		else:
+			incoming_filtered = incoming
+			outgoing_filtered = outgoing
+		if incoming_filtered:
+			chain_links.extend(incoming_filtered)
+		if outgoing_filtered:
+			chain_links.extend(outgoing_filtered)
+		if incoming_filtered or outgoing_filtered:
+			upstream = ", ".join(sorted({link.item for link in incoming_filtered})) or "existing items"
+			downstream = ", ".join(sorted({link.replace_item for link in outgoing_filtered})) or "existing replacements"
 			message = (
 				f"Adding {item} -> {replace_item} would create a chain"
 				f" (upstream: {upstream}; downstream: {downstream})."
@@ -162,6 +168,68 @@ class RelationGraph:
 					_dedupe_links((*existing_outgoing, *existing_incoming)),
 				)
 			)
+
+		if not any(c.error_type == CONFLICT_MANY_TO_MANY for c in results):
+			# Evaluate the entire group to ensure no combination of multi-outgoing sources and
+			# multi-incoming replacements would exist after adding this relation.
+			pre_multi_source = {
+				src for src, links in self._outgoing.items() if len(links) > 1
+			}
+			pre_multi_replace = {
+				repl for repl, links in self._incoming.items() if len(links) > 1
+			}
+
+			projected_sources = set(self._outgoing).union({item})
+			projected_replacements = set(self._incoming).union({replace_item})
+
+			def _project_out_degree(node: str) -> int:
+				current = len(self._outgoing.get(node, {}))
+				if node == item and replace_item not in self._outgoing.get(item, {}):
+					current += 1
+				return current
+
+			def _project_in_degree(node: str) -> int:
+				current = len(self._incoming.get(node, {}))
+				if node == replace_item and item not in self._incoming.get(replace_item, {}):
+					current += 1
+				return current
+
+			sources_over_limit = {
+				src for src in projected_sources if _project_out_degree(src) > 1
+			}
+			replacements_over_limit = {
+				repl for repl in projected_replacements if _project_in_degree(repl) > 1
+			}
+
+			if sources_over_limit and replacements_over_limit:
+				# Include links from both perspective sets to help downstream logging.
+				trigger_links = []
+				for src in sources_over_limit:
+					trigger_links.extend(self._outgoing.get(src, {}).values())
+				for repl in replacements_over_limit:
+					trigger_links.extend(self._incoming.get(repl, {}).values())
+
+				source_list = ", ".join(sorted(sources_over_limit)) or "source items"
+				replace_list = ", ".join(sorted(replacements_over_limit)) or "replacement items"
+				if sources_over_limit != pre_multi_source or replacements_over_limit != pre_multi_replace:
+					message = (
+						f"Adding {item} -> {replace_item} would create a many-to-many relation "
+						f"because source items {source_list} would have multiple replacements and"
+						f" replacement items {replace_list} would have multiple sources."
+					)
+				else:
+					message = (
+						f"Group already contains multiple replacements for {source_list} and multiple "
+						f"sources for {replace_list}; adding {item} -> {replace_item} would continue the many-to-many relation."
+					)
+
+				results.append(
+					ConflictResult(
+						CONFLICT_MANY_TO_MANY,
+						message,
+						_dedupe_links(trigger_links),
+					)
+				)
 
 		return results
 

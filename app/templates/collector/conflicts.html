@@ -17,25 +17,42 @@
 	</div>
 </div>
 
-<form method="get" class="row g-3 align-items-end mb-4">
-	<div class="col-md-4 col-lg-3">
-		<label for="conflict-type" class="form-label small text-uppercase text-muted">Conflict type</label>
-		<select id="conflict-type" name="type" class="form-select form-select-sm">
-			<option value="" {% if not selected_type %}selected{% endif %}>All types</option>
-			{% for t in error_types %}
-				<option value="{{ t }}" {% if selected_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
-			{% endfor %}
-		</select>
+<div class="row g-3 mb-4 align-items-end">
+	<div class="col-lg-8">
+		<form method="get" class="row g-3 align-items-end">
+			<div class="col-md-5 col-lg-4">
+				<label for="conflict-type" class="form-label small text-uppercase text-muted">Conflict type</label>
+				<select id="conflict-type" name="type" class="form-select form-select-sm">
+					<option value="" {% if not selected_type %}selected{% endif %}>All types</option>
+					{% for t in error_types %}
+						<option value="{{ t }}" {% if selected_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
+					{% endfor %}
+				</select>
+			</div>
+			<div class="col-md-3 col-lg-3">
+				<label for="conflict-limit" class="form-label small text-uppercase text-muted">Max rows</label>
+				<input id="conflict-limit" type="number" name="limit" min="1" max="1000" value="{{ limit }}" class="form-control form-control-sm">
+			</div>
+			<div class="col-md-4 col-lg-5 d-flex align-items-end gap-2">
+				<button type="submit" class="btn btn-primary btn-sm">Apply filters</button>
+				<a href="{{ url_for('collector.conflicts') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
+			</div>
+		</form>
 	</div>
-	<div class="col-md-3 col-lg-2">
-		<label for="conflict-limit" class="form-label small text-uppercase text-muted">Max rows</label>
-		<input id="conflict-limit" type="number" name="limit" min="1" max="1000" value="{{ limit }}" class="form-control form-control-sm">
+	<div class="col-lg-4">
+		<form method="post" action="{{ url_for('collector.purge_conflicts') }}" class="d-flex flex-column flex-lg-row align-items-lg-end gap-2 justify-content-lg-end">
+			<div>
+				<label for="purge-date" class="form-label small text-uppercase text-muted">Purge through</label>
+				<input id="purge-date" type="date" name="purge_date" class="form-control form-control-sm" min="{{ purge_min_date }}" max="{{ purge_max_date }}" value="{{ purge_max_date }}">
+			</div>
+			{% if selected_type %}
+				<input type="hidden" name="type" value="{{ selected_type }}">
+			{% endif %}
+			<input type="hidden" name="limit" value="{{ limit }}">
+			<button type="submit" class="btn btn-sm btn-outline-danger" title="Deletes conflicts logged before (<) selected date." onclick="return confirm('Purge all conflict records before the selected date? This cannot be undone.');">Purge</button>
+		</form>
 	</div>
-	<div class="col-md-3 col-lg-2 d-flex align-items-end gap-2">
-		<button type="submit" class="btn btn-primary btn-sm">Apply filters</button>
-		<a href="{{ url_for('collector.conflicts') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
-	</div>
-</form>
+</div>
 
 {% if conflicts %}
 <div class="table-responsive shadow-sm rounded-3 border">
@@ -49,6 +66,7 @@
 				<th scope="col">Group</th>
 				<th scope="col">Details</th>
 				<th scope="col" style="width: 6rem;">Link ID</th>
+				<th scope="col" class="text-end" style="width: 6rem;">Actions</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -82,6 +100,17 @@
 					{% else %}
 						<span class="text-muted">—</span>
 					{% endif %}
+				</td>
+				<td class="text-end">
+					<form method="post" action="{{ url_for('collector.delete_conflict', pkid=conflict.pkid) }}" class="d-inline">
+						{% if selected_type %}
+							<input type="hidden" name="type" value="{{ selected_type }}">
+						{% endif %}
+						<input type="hidden" name="limit" value="{{ limit }}">
+						<button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this error entry? This cannot be undone.');">
+							<span class="small">Clear</span>
+						</button>
+					</form>
 				</td>
 			</tr>
 			{% endfor %}

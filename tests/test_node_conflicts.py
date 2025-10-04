@@ -71,6 +71,21 @@ def test_many_to_many_conflict_reference_links():
     assert {link.pkid for link in mm_conflict.triggering_links} == {21, 22}
 
 
+def test_many_to_many_conflict_detects_groupwide_violation():
+    graph = RelationGraph()
+    first = _link("A", "B", 31)
+    second = _link("A", "C", 32)
+    register_link_in_graph(graph, first)
+    register_link_in_graph(graph, second)
+
+    conflicts = graph.conflicts_for("D", "C")
+    types = {c.error_type for c in conflicts}
+    assert CONFLICT_MANY_TO_MANY in types
+
+    mm_conflict = next(c for c in conflicts if c.error_type == CONFLICT_MANY_TO_MANY)
+    assert {link.pkid for link in mm_conflict.triggering_links} == {31, 32}
+
+
 def test_conflict_error_log_rejects_unknown_type():
     with pytest.raises(ValueError):
         ConflictError.log(

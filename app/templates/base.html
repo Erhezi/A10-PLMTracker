@@ -23,6 +23,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.groups') }}">Groups</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.conflicts') }}">Conflicts</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('playground.index') }}">Playground</a></li>
           {% if current_user.is_authenticated and current_user.user_role == 'admin' %}
           <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.user_control') }}">User Control</a></li>
           {% endif %}

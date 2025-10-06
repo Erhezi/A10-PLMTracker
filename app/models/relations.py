@@ -349,6 +349,7 @@ class PendingItems(db.Model):
 	def mark_as_error(self):
 		self.status = "ERROR"
 
+
 class PLMItemGroupLocation(db.Model):
 	"""Read-only mapping to PLM.vw_PLMItemGroupLocation view.
 
@@ -374,6 +375,7 @@ class PLMItemGroupLocation(db.Model):
 
 	def __repr__(self):
 		return f"<PLMItemGroupLocation group={self.Item_Group} company={self.Company} location={self.Group_Locations}>"
+
 
 class PLMTranckerHead(db.Model):
 	"""Read-only mapping to PLM.vw_PLMTrackerHead view.
@@ -442,13 +444,23 @@ class PLMTrackerBase(db.Model):
 	# __tablename__ = "PLMTrackerBase"
 	__table_args__ = {"schema": "PLM"}
 
-	# Columns (use exact names where provided)
+
+	# Major grouping fields
 	Stage = db.Column("Stage", db.String(100), nullable=False)
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False)
+	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
-	
+
+	# rolling burn rate and rolling BR related meta data fields
+	br_calc_status = db.Column("br_calc_status", db.String(12), nullable=True)
+	br_calc_type = db.Column("br_calc_type", db.String(12), nullable=True)
+	br7_rolling_itemgroup = db.Column("br7_rolling_itemgroup", db.Numeric, nullable=True)
+	br60_rolling_itemgroup = db.Column("br60_rolling_itemgroup", db.Numeric, nullable=True)
+
+    # Original Item side fields	
 	Item = db.Column("Item", db.String(10), nullable=False)
+
 	Location = db.Column("Location", db.String(20), nullable=True)
 	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=True)
@@ -465,6 +477,8 @@ class PLMTrackerBase(db.Model):
 	MinOrderQty = db.Column("MinOrderQty", db.Integer, nullable=True)
 	AvailableQty = db.Column("AvailableQty", db.Integer, nullable=True)
 	UnitCostInStockUOM = db.Column("UnitCostInStockUOM", db.Numeric, nullable=True)
+	br7_rolling_item = db.Column("br7_rolling_item", db.Numeric, nullable=True)
+	br60_rolling_item = db.Column("br60_rolling_item", db.Numeric, nullable=True)
 	br7 = db.Column("br7", db.Numeric, nullable=True)
 	br35 = db.Column("br35", db.Numeric, nullable=True)
 	br91 = db.Column("br91", db.Numeric, nullable=True)
@@ -472,10 +486,10 @@ class PLMTrackerBase(db.Model):
 	issued_count_365 = db.Column("issued_count_365", db.Integer, nullable=True)
 	OrderQty90_EA = db.Column("OrderQty90_EA", db.Numeric, nullable=True)
 	ReqQty90_EA = db.Column("ReqQty90_EA", db.Numeric, nullable=True)
-	
-	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
 
 	# Replace Item side (ri) fields
+	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
+
 	Location_ri = db.Column("Location_ri", db.String(20), nullable=True)
 	LocationText_ri = db.Column("LocationText_ri", db.String(255), nullable=True)
 	Inventory_base_ID_ri = db.Column("Inventory_base_ID_ri", db.BIGINT, nullable=True)
@@ -492,6 +506,8 @@ class PLMTrackerBase(db.Model):
 	MinOrderQty_ri = db.Column("MinOrderQty_ri", db.Integer, nullable=True)
 	AvailableQty_ri = db.Column("AvailableQty_ri", db.Integer, nullable=True)
 	UnitCostInStockUOM_ri = db.Column("UnitCostInStockUOM_ri", db.Numeric, nullable=True)
+	br7_rolling_item_ri = db.Column("br7_rolling_item_ri", db.Numeric, nullable=True)
+	br60_rolling_item_ri = db.Column("br60_rolling_item_ri", db.Numeric, nullable=True)
 	br7_ri = db.Column("br7_ri", db.Numeric, nullable=True)
 	br35_ri = db.Column("br35_ri", db.Numeric, nullable=True)
 	br91_ri = db.Column("br91_ri", db.Numeric, nullable=True)
@@ -505,7 +521,7 @@ class PLMTrackerBase(db.Model):
 	# Provide a synthetic composite primary key for the mapper so SQLAlchemy can
 	# work with result objects. Adjust if your view has a better natural key.
 	__mapper_args__ = {
-		"primary_key": [Group_Locations, Item, Replace_Item]
+		"primary_key": [PKID_ItemLink, Group_Locations, Item, Replace_Item, Item_Group]
 	}
 
 
@@ -519,15 +535,47 @@ class PLMQty(db.Model):
 	__tablename__ = "vw_PLMQty"
 	__table_args__ = {"schema": "PLM"}
 
+	# Composite primary key
+	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=False, primary_key=True)
+	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False, primary_key=True)
+	report_stamp = db.Column("update stamp", db.DateTime, nullable=False, primary_key = True) # this is mapped to update stamp on inventory location, not the report stamp
+
 	# Columns
-	Location = db.Column("Location", db.String(20), nullable=False, primary_key=True)
-	Item = db.Column("Item", db.String(10), nullable=False, primary_key=True)
-	report_stamp = db.Column("update stamp", db.DateTime, nullable=False, primary_key=True) # this is mapped to update stamp on inventory location, not the report stamp
-	z_stamp = db.Column("z_stamp", db.DateTime, nullable=True)
+	Location = db.Column("Location", db.String(20), nullable=False)
+	Item = db.Column("Item", db.String(10), nullable=False)
+	Item_Group = db.Column("Item Group", db.Integer, nullable=False)
+	
+	PLM_Zdate = db.Column("PLM_Zdate", db.Date, nullable=True)
 
 	AvailableQty = db.Column("AvailableQty", db.Integer, nullable=True)
-	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
 
 	__mapper_args__ = {
-		"primary_key": [Location, Item, report_stamp]
+		"primary_key": [Inventory_base_ID, PKID_ItemLink, report_stamp]
+	}
+
+
+class PLMDailyIssueOutQty(db.Model):
+	"""Read-only mapping to PLM.vw_PLMDailyIssueOutQty view.
+
+	Synthetic composite primary key uses Location, Item, and report_date so
+	the ORM can work with result objects.
+	"""
+
+	__tablename__ = "vw_PLMDailyIssueOutQty"
+	__table_args__ = {"schema": "PLM"}
+
+	# Composite primary key
+	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=False, primary_key=True)
+	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False, primary_key=True)
+	trx_date = db.Column("trx_date", db.Date, nullable=False, primary_key=True)
+
+	# Columns
+	Location = db.Column("Location", db.String(20), nullable=False)
+	Item = db.Column("Item", db.String(10), nullable=False)
+	Item_Group = db.Column("Item Group", db.Integer, nullable=False)
+
+	IssuedQty = db.Column("QtyInLum", db.Integer, nullable=True)
+
+	__mapper_args__ = {
+		"primary_key": [Inventory_base_ID, PKID_ItemLink, trx_date]
 	}

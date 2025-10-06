@@ -53,11 +53,13 @@ def build_location_pairs(
 
     out: List[Dict] = []
     for r in rows_raw:
-        # Burn estimation (source)
-        src_burn = burnrate_estimator(r.br7, r.br35, r.br91, r.br365, r.issued_count_365)
-        repl_burn = burnrate_estimator(r.br7_ri, r.br35_ri, r.br91_ri, r.br365_ri, r.issued_count_365_ri)
+        # Burn estimation (source, replacement, and group/location aggregate)
+        src_burn = burnrate_estimator(getattr(r, "br7_rolling_item", None), r.issued_count_365)
+        repl_burn = burnrate_estimator(getattr(r, "br7_rolling_item_ri", None), r.issued_count_365_ri)
+        group_loc_burn = burnrate_estimator(getattr(r, "br7_rolling_itemgroup", None))
         weekly_src = src_burn["weekly_burn"]
         weekly_repl = repl_burn["weekly_burn"]
+        weekly_group = group_loc_burn["weekly_burn"]
         weeks_src = _weeks_on_hand(getattr(r, "AvailableQty", None), weekly_src)
         weeks_repl = _weeks_on_hand(getattr(r, "AvailableQty_ri", None), weekly_repl)
 
@@ -76,6 +78,7 @@ def build_location_pairs(
             "current_qty": r.AvailableQty,
             "reorder_point": r.ReorderPoint,
             "weekly_burn": weekly_src,
+            "weekly_burn_group_location": weekly_group,
             "weeks_on_hand": weeks_src,
             "po_90_qty": r.OrderQty90_EA,
             "req_qty_ea": r.ReqQty90_EA,
@@ -106,52 +109,29 @@ def build_location_pairs(
 # Burn rate estimation helper
 # ---------------------------------------------------------------------------
 PeriodValue = Optional[float]
-WeightMapping = Mapping[str, float]
+
 
 def burnrate_estimator(
-    br7: PeriodValue,
-    br35: PeriodValue,
-    br91: PeriodValue,
-    br365: PeriodValue,
+    br7_rolling: PeriodValue,
     issued_count_365: Optional[int] = None,
-    weights: Optional[WeightMapping] = None,
 ) -> Dict[str, float]:
-    """
-    Compute a weighted average *daily* burn rate across multiple lookback windows
-    (7, 35, 91, 365 day trailing averages already provided as *daily* burn rates)
-    and derive a weekly burn.
+    """Compute burn rate using 7-day rolling averages.
 
-    Rules:
-    - Default weights: equal for all provided periods (0.25 each).
-    - If some period values are None, drop them and re-normalize remaining weights.
-    - If after dropping Nones no values remain, return zeros.
-    - The weekly burn = daily_avg * 7.
-    - Inputs may be Decimal; we coerce to float for arithmetic.
-    - issued_count_365 if <= 4 then the final burn rate is scaled up by *2 to accommodate for data sparsity.
+    The view provides a 7-day rolling daily burn rate for the primary and
+    replacement items. We interpret the incoming value as the *daily* average
+    and convert it to a weekly burn by multiplying by 7.
 
-    Returns dict with keys: daily_avg, weekly_burn.
+    If ``issued_count_365`` is provided and indicates sparse usage (<= 4
+    requesters in the past year), we continue to apply the historical uplift of
+    doubling the projected burn rate to avoid under-estimating demand.
     """
-    if weights is None:
-        weights = {"br7": 0.25, "br35": 0.25, "br91": 0.25, "br365": 0.25}
-    values: List[Tuple[str, PeriodValue]] = [
-        ("br7", br7),
-        ("br35", br35),
-        ("br91", br91),
-        ("br365", br365),
-    ]
-    used = [(name, float(v)) for name, v in values if v is not None]
-    if not used:
-        return {"daily_avg": 0.0, "weekly_burn": 0.0}
-    weight_sum = sum(weights.get(name, 0.0) for name, _ in used)
-    if weight_sum <= 0:
-        # fallback: equal weights among used
-        equal_w = 1 / len(used)
-        daily = sum(val * equal_w for _, val in used)
+    if br7_rolling is None:
+        daily = 0.0
     else:
-        daily = sum(val * (weights.get(name, 0.0) / weight_sum) for name, val in used)
+        daily = float(br7_rolling)
+
     weekly = daily * 7
     if issued_count_365 is not None and issued_count_365 <= 4:
-        # sparse data; scale up burn rate to accommodate
         daily *= 2
         weekly *= 2
     return {"daily_avg": daily, "weekly_burn": weekly}

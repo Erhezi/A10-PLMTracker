@@ -111,6 +111,7 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
                 <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
@@ -135,11 +136,13 @@
               <tr class="column-filter-row text-nowrap">
                 <th class="col-stage column-filter-cell"></th>
                 <th class="col-group column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
                 <th class="col-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
@@ -201,6 +204,7 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="par-col-stage" data-field="stage" class="col-stage">Stage</th>
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
                 <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
@@ -211,7 +215,6 @@
                 <th id="par-col-weeks" data-field="weeks_reorder" class="col-num">Weeks Reorder</th>
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
-                <th id="par-col-group2" data-field="item_group" class="col-group">Item Group</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
@@ -226,6 +229,7 @@
               <tr class="column-filter-row text-nowrap">
                 <th class="col-stage column-filter-cell"></th>
                 <th class="col-group column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
                 <th class="col-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
@@ -236,7 +240,6 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
-                <th class="col-group column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
@@ -389,7 +392,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ]),
     par: new Set([
       'par-col-group',
-      'par-col-group2',
       'par-col-item',
       'par-col-location',
       'par-col-repl-item',
@@ -880,6 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center">${fmt(r.item_group)}</td>
+          <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
@@ -947,6 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center">${fmt(r.item_group)}</td>
+          <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>

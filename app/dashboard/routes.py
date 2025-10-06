@@ -225,6 +225,7 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Discon.", "discontinued"),
     ("Current Qty", "current_qty"),
     ("Weekly Burn", "weekly_burn"),
+    ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Weeks on Hand", "weeks_on_hand"),
     ("90-day PO Qty", "po_90_qty"),
     ("Requesters (Past Year)", "requesters_past_year"),
@@ -244,6 +245,7 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
 PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
     ("Item Group", "item_group"),
+    ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Item", "item"),
     ("Location", "location"),
     ("Auto-repl.", "auto_replenishment"),

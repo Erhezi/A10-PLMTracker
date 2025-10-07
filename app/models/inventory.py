@@ -156,41 +156,43 @@ class ItemLocations(db.Model):
         {'schema': 'PLM', 'extend_existing': True},
     )
 
-    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True) # sarrogate PK
+    Inventory_base_ID           = db.Column(db.BIGINT, primary_key=True, nullable=True) # sarrogate PK
 
-    Company             = db.Column(db.String(10),   nullable=False)
-    Location            = db.Column(db.String(20),   nullable=False)
-    LocationText        = db.Column(db.String(255),  nullable=True)
-    LocationType        = db.Column(db.String(40),   nullable=True)
-    PreferredBin        = db.Column(db.String(40),   nullable=True)
+    Company                     = db.Column(db.String(10),   nullable=False)
+    Location                    = db.Column(db.String(20),   nullable=False)
+    LocationText                = db.Column(db.String(255),  nullable=True)
+    LocationType                = db.Column(db.String(40),   nullable=True)
+    PreferredBin                = db.Column(db.String(40),   nullable=True)
 
-    Item                = db.Column(db.String(10),   nullable=False)
-    ItemDescription     = db.Column(db.String(255),  nullable=True)
-    ItemType            = db.Column(db.String(40),   nullable=True)
-    Active              = db.Column(db.String(5),    nullable=True)
-    Discontinued        = db.Column(db.String(5),    nullable=True)
-    VendorItem          = db.Column(db.String(100),  nullable=True)
-    ManufacturerNumber  = db.Column(db.String(100),  nullable=True)
+    Item                        = db.Column(db.String(10),   nullable=False)
+    ItemDescription             = db.Column(db.String(255),  nullable=True)
+    ItemType                    = db.Column(db.String(40),   nullable=True)
+    Active                      = db.Column(db.String(5),    nullable=True)
+    Discontinued                = db.Column(db.String(5),    nullable=True)
+    VendorItem                  = db.Column(db.String(100),  nullable=True)
+    ManufacturerNumber          = db.Column(db.String(100),  nullable=True)
 
-    DefaultBuyUOM       = db.Column(db.String(20),   nullable=True)
-    BuyUOMMultiplier    = db.Column(db.Numeric,      nullable=True)
-    AutomaticPO         = db.Column(db.String(5),    nullable=True)
-    StockUOM            = db.Column(db.String(20),   nullable=False)
-    UOMConversion       = db.Column(db.Numeric,      nullable=True)
-    ReorderQuantityCode = db.Column(db.String(40),   nullable=True)
-    ReorderPoint        = db.Column(db.Integer,      nullable=True)
+    DefaultBuyUOM               = db.Column(db.String(10),   nullable=True)
+    BuyUOMMultiplier            = db.Column(db.Numeric,      nullable=True)
+    DefaultTransactionUOM       = db.Column(db.String(10),   nullable=True)
+    TransactionUOMMultiplier    = db.Column("InventoryTransactionUOMMultiplier", db.Numeric, nullable=True)
+    AutomaticPO                 = db.Column(db.String(5),    nullable=True)
+    StockUOM                    = db.Column(db.String(10),   nullable=False)
+    UOMConversion               = db.Column(db.Numeric,      nullable=True)
+    ReorderQuantityCode         = db.Column(db.String(40),   nullable=True)
+    ReorderPoint                = db.Column(db.Integer,      nullable=True)
 
-    MaxOrderQty         = db.Column(db.Integer,      nullable=True)
-    MinOrderQty         = db.Column(db.Integer,      nullable=True)
-    OnHandQty           = db.Column(db.Integer,      nullable=True)
-    AvailableQty        = db.Column(db.Integer,      nullable=True)
-    OnOrderQty          = db.Column(db.Integer,      nullable=True)
+    MaxOrderQty                 = db.Column(db.Integer,      nullable=True)
+    MinOrderQty                 = db.Column(db.Integer,      nullable=True)
+    OnHandQty                   = db.Column(db.Integer,      nullable=True)
+    AvailableQty                = db.Column(db.Integer,      nullable=True)
+    OnOrderQty                  = db.Column(db.Integer,      nullable=True)
 
-    UnitCostInStockUOM  = db.Column(db.Numeric,      nullable=True)
-    DerivedAverageCost  = db.Column(db.Numeric,      nullable=True)
+    UnitCostInStockUOM          = db.Column(db.Numeric,      nullable=True)
+    DerivedAverageCost          = db.Column(db.Numeric,      nullable=True)
 
-    report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
-    create_stamp        = db.Column("create stamp", db.DateTime, nullable=False)
+    report_stamp                = db.Column("report stamp", db.DateTime, nullable=False)
+    create_stamp                = db.Column("create stamp", db.DateTime, nullable=False)
 
     # ----------------------- Relations -----------------------
     def __repr__(self):

@@ -6,7 +6,7 @@ from flask_login import login_required
 from sqlalchemy import select, func
 from ..utility.item_locations import build_location_pairs
 from .. import db
-from ..models.relations import ItemLink, PLMTrackerBase, PLMQty
+from ..models.relations import ItemLink, PLMTrackerBase, PLMQty, PLMDailyIssueOutQty
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
@@ -218,6 +218,7 @@ def _filtered_par_rows(args) -> list[dict]:
 INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
     ("Item Group", "item_group"),
+    ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Item", "item"),
     ("Location", "location"),
     ("Auto-repl.", "auto_replenishment"),
@@ -225,7 +226,6 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Discon.", "discontinued"),
     ("Current Qty", "current_qty"),
     ("Weekly Burn", "weekly_burn"),
-    ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Weeks on Hand", "weeks_on_hand"),
     ("90-day PO Qty", "po_90_qty"),
     ("Requesters (Past Year)", "requesters_past_year"),
@@ -256,7 +256,6 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Weeks Reorder", "weeks_reorder"),
     ("90-day Req Qty", "req_qty_ea"),
     ("Requesters (Past Year)", "requesters_past_year"),
-    ("Item Group (RI)", "item_group"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
@@ -466,6 +465,7 @@ def api_qty(item_group: int):
             PLMQty.Location.label("location"),
             PLMQty.report_stamp.label("stamp"),
             PLMQty.AvailableQty.label("qty"),
+            PLMQty.PLM_Zdate.label("z_date"),
         )
         .where(PLMQty.Item_Group == item_group)
         .order_by(PLMQty.Item, PLMQty.Location, PLMQty.report_stamp)
@@ -481,22 +481,26 @@ def api_qty(item_group: int):
         for item, location, group_loc in db.session.execute(gl_query).all():
             bucket = gl_map.setdefault(item, {})
             bucket[location] = group_loc
-    series_map = {}
-    for item, location, stamp, qty in rows:
+    series_map: dict[tuple[str, str], dict[str, object]] = {}
+    for item, location, stamp, qty, z_date in rows:
         key = (item, location)
-        bucket = series_map.setdefault(key, [])
-        bucket.append({
+        bucket = series_map.setdefault(key, {"points": [], "z_date": None})
+        points = bucket.setdefault("points", [])
+        points.append({
             "t": stamp.isoformat() if stamp else None,
             "qty": int(qty) if qty is not None else None,
         })
+        if z_date and bucket.get("z_date") is None:
+            bucket["z_date"] = z_date.isoformat()
     series = [
         {
             "item": item_key,
             "location": loc_key,
             "group_location": gl_map.get(item_key, {}).get(loc_key) or gl_map.get(item_key, {}).get(None) or loc_key,
-            "points": points,
+            "points": entry.get("points", []),
+            "z_date": entry.get("z_date"),
         }
-        for (item_key, loc_key), points in series_map.items()
+        for (item_key, loc_key), entry in series_map.items()
     ]
 
     return jsonify({
@@ -505,3 +509,69 @@ def api_qty(item_group: int):
         "series_count": len(series),
         "point_count": sum(len(s["points"]) for s in series),
     })
+
+
+@bp.route("/api/issue/<int:item_group>")
+@login_required
+def api_issue(item_group: int):
+    """Return daily issue-out quantities per (Item, Location) for a given item_group.
+
+    Response structure mirrors qty endpoint for easier client reuse.
+    """
+    stmt = (
+        select(
+            PLMDailyIssueOutQty.Item.label("item"),
+            PLMDailyIssueOutQty.Location.label("location"),
+            PLMDailyIssueOutQty.trx_date.label("stamp"),
+            PLMDailyIssueOutQty.IssuedQty.label("qty"),
+        )
+        .where(PLMDailyIssueOutQty.Item_Group == item_group)
+        .order_by(
+            PLMDailyIssueOutQty.Item,
+            PLMDailyIssueOutQty.Location,
+            PLMDailyIssueOutQty.trx_date,
+        )
+    )
+    rows = db.session.execute(stmt).all()
+
+    gl_map = {}
+    if rows:
+        gl_query = (
+            select(PLMTrackerBase.Item, PLMTrackerBase.Location, PLMTrackerBase.Group_Locations)
+            .where(PLMTrackerBase.Item_Group == item_group)
+        )
+        for item, location, group_loc in db.session.execute(gl_query).all():
+            bucket = gl_map.setdefault(item, {})
+            bucket[location] = group_loc
+
+    series_map = {}
+    for item, location, stamp, qty in rows:
+        key = (item, location)
+        bucket = series_map.setdefault(key, [])
+        bucket.append(
+            {
+                "t": stamp.isoformat() if stamp else None,
+                "qty": int(qty) if qty is not None else None,
+            }
+        )
+
+    series = [
+        {
+            "item": item_key,
+            "location": loc_key,
+            "group_location": gl_map.get(item_key, {}).get(loc_key)
+            or gl_map.get(item_key, {}).get(None)
+            or loc_key,
+            "points": points,
+        }
+        for (item_key, loc_key), points in series_map.items()
+    ]
+
+    return jsonify(
+        {
+            "item_group": item_group,
+            "series": series,
+            "series_count": len(series),
+            "point_count": sum(len(s["points"]) for s in series),
+        }
+    )

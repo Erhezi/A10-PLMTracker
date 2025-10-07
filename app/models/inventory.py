@@ -170,6 +170,7 @@ class ItemLocations(db.Model):
     Active              = db.Column(db.String(5),    nullable=True)
     Discontinued        = db.Column(db.String(5),    nullable=True)
     VendorItem          = db.Column(db.String(100),  nullable=True)
+    ManufacturerNumber  = db.Column(db.String(100),  nullable=True)
 
     DefaultBuyUOM       = db.Column(db.String(20),   nullable=True)
     BuyUOMMultiplier    = db.Column(db.Numeric,      nullable=True)

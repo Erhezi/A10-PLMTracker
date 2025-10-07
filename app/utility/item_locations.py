@@ -82,7 +82,7 @@ def build_location_pairs(
             "weeks_on_hand": weeks_src,
             "po_90_qty": r.OrderQty90_EA,
             "req_qty_ea": r.ReqQty90_EA,
-            "requesters_past_year": r.issued_count_365,
+            "requesters_past_year": r.requester_count or 0,
             "item_description": r.ItemDescription,
             # replacement side
             "auto_replenishment_ri": r.AutomaticPO_ri,
@@ -94,7 +94,6 @@ def build_location_pairs(
             "weeks_on_hand_ri": weeks_repl,
             "po_90_qty_ri": r.OrderQty90_EA_ri,
             "req_qty_ea_ri": r.ReqQty90_EA_ri,
-            "requesters_past_year_ri": r.issued_count_365_ri,
             "item_description_ri": r.ItemDescription_ri,
         })
     # Stable sort by item_group then location for display

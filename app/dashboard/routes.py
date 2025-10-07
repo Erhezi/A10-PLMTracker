@@ -6,6 +6,7 @@ from flask_login import login_required
 from sqlalchemy import select, func
 from ..utility.item_locations import build_location_pairs
 from .. import db
+from ..models.inventory import Requesters365Day
 from ..models.relations import ItemLink, PLMTrackerBase, PLMQty, PLMDailyIssueOutQty
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -383,6 +384,74 @@ def api_par():
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page else 1,
     })
+
+
+@bp.route("/api/requesters")
+@login_required
+def api_requesters():
+    item = (request.args.get("item") or "").strip()
+    location = (request.args.get("location") or "").strip()
+    alt_location = (request.args.get("alt_location") or "").strip()
+    if not item:
+        return jsonify({"error": "Missing required parameter: item"}), 400
+
+    candidates: list[str] = []
+    if location:
+        candidates.append(location)
+    if alt_location and not any(alt_location.lower() == existing.lower() for existing in candidates):
+        candidates.append(alt_location)
+    if not candidates:
+        return jsonify({"error": "Missing required parameter: location"}), 400
+
+    matched_location: str | None = None
+    rows_payload: list[dict] = []
+
+    for candidate in candidates:
+        normalized_candidate = candidate.upper()
+        query = (
+            select(Requesters365Day)
+            .where(Requesters365Day.Item == item)
+            .where(func.upper(Requesters365Day.RequestingLocation) == normalized_candidate)
+        )
+        records = db.session.execute(query).scalars().all()
+        if not records:
+            continue
+
+        deduped: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+        for record in records:
+            name_raw = (record.RequesterName or "").strip()
+            email_raw = (record.EmailAddress or "").strip()
+            requester_id_raw = (record.Requester or "").strip()
+            key = (
+                name_raw.lower(),
+                email_raw.lower(),
+                requester_id_raw.lower(),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append({
+                "requester_id": requester_id_raw or None,
+                "name": name_raw or None,
+                "email": email_raw or None,
+            })
+        if not deduped:
+            continue
+        deduped.sort(key=lambda row: ((row["name"] or "").lower(), (row["email"] or "").lower()))
+        matched_location = (records[0].RequestingLocation or candidate) if records else candidate
+        rows_payload = deduped
+        break
+
+    payload = {
+        "item": item,
+        "requested_location": location,
+        "matched_location": matched_location,
+        "candidate_locations": candidates,
+        "count": len(rows_payload),
+        "rows": rows_payload,
+    }
+    return jsonify(payload)
 
 
 @bp.route("/export/<string:table_key>")

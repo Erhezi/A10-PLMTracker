@@ -296,6 +296,27 @@
     </div>
   </div>
 </div>
+  <!-- Requester contacts modal -->
+  <div class="modal fade" id="requester-modal" tabindex="-1" aria-labelledby="requester-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content shadow-lg">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-semibold" id="requester-modal-title">Requester Contacts</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <div class="small text-muted mb-3" id="requester-modal-meta"></div>
+          <div id="requester-modal-body">
+            <div class="text-muted small">Select an item to view requester contacts.</div>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="requester-batch-email" disabled>Batch Email</button>
+        </div>
+      </div>
+    </div>
+  </div>
 {% endblock %}
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -349,6 +370,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const parResetBtn = document.getElementById('par-reset-filters');
   const inventoryExportBtn = document.getElementById('inventory-export-excel');
   const parExportBtn = document.getElementById('par-export-excel');
+  const requesterModalEl = document.getElementById('requester-modal');
+  const requesterModalTitle = document.getElementById('requester-modal-title');
+  const requesterModalBody = document.getElementById('requester-modal-body');
+  const requesterModalMeta = document.getElementById('requester-modal-meta');
+  const requesterBatchEmailBtn = document.getElementById('requester-batch-email');
+  const requesterModal = requesterModalEl && typeof bootstrap !== 'undefined'
+    ? bootstrap.Modal.getOrCreateInstance(requesterModalEl)
+    : null;
+  const requesterDetailCache = new Map();
+  const htmlEscapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '`': '&#96;',
+  };
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"'`]/g, ch => htmlEscapeMap[ch] || ch);
+  const escapeAttr = (value) => escapeHtml(value);
+  const mailIconSvg = `
+    <svg class="requester-mail-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      <path d="M4.75 5h14.5A2.75 2.75 0 0 1 22 7.75v8.5A2.75 2.75 0 0 1 19.25 19H4.75A2.75 2.75 0 0 1 2 16.25v-8.5A2.75 2.75 0 0 1 4.75 5Zm0 1.5A1.25 1.25 0 0 0 3.5 7.75v.388l7.94 5.172a1.5 1.5 0 0 0 1.12.222 1.5 1.5 0 0 0 1.12-.222l7.94-5.172V7.75A1.25 1.25 0 0 0 19.25 6.5H4.75Zm15.75 3.079-6.898 4.495a3 3 0 0 1-3.204 0L3.5 9.579v6.671A1.25 1.25 0 0 0 4.75 17.5h14.5a1.25 1.25 0 0 0 1.25-1.25V9.579Z" />
+    </svg>
+  `.trim();
   const columnState = {
     inventory: {},
     par: {},
@@ -395,6 +440,278 @@ document.addEventListener('DOMContentLoaded', () => {
       discontinued_ri: 'discontinued_state_ri',
     },
   };
+  function renderRequesterCell(row, tableKey){
+    const rawCount = row && row.requesters_past_year;
+    const hasValue = rawCount !== null && rawCount !== undefined && rawCount !== '';
+    const numericCount = hasValue ? Number(rawCount) : 0;
+    const isFiniteCount = Number.isFinite(numericCount);
+    const hasContacts = isFiniteCount && numericCount > 0;
+    const countDisplay = hasValue
+      ? (isFiniteCount ? numericCount.toLocaleString('en-US', { maximumFractionDigits: 0 }) : String(rawCount))
+      : '';
+    const safeCount = escapeHtml(countDisplay);
+    const safeTableKey = escapeAttr(tableKey || '');
+    const safeItem = escapeAttr(row?.item ?? '');
+    const safePrimaryLocation = escapeAttr(row?.group_location ?? row?.location ?? '');
+    const safeSecondaryLocation = escapeAttr(row?.location ?? '');
+    const countValue = hasValue && isFiniteCount ? numericCount : 0;
+    const title = hasContacts
+      ? `View ${numericCount === 1 ? 'requester' : 'requesters'}`
+      : (hasValue ? 'No requester contacts' : 'Requester contacts unavailable');
+    const ariaLabel = hasContacts
+      ? `View ${numericCount} requester${numericCount === 1 ? '' : 's'}`
+      : 'Requester contacts unavailable';
+    const disabledAttr = hasContacts ? '' : ' disabled';
+    const buttonClasses = `requester-mail-btn${hasContacts ? '' : ' disabled'}`;
+    return `
+      <div class="requester-cell">
+        <span class="requester-count">${safeCount}</span>
+        <button type="button" class="${buttonClasses}" data-table="${safeTableKey}" data-item="${safeItem}" data-location="${safePrimaryLocation}" data-alt-location="${safeSecondaryLocation}" data-count="${String(countValue)}" title="${escapeAttr(title)}" aria-label="${escapeAttr(ariaLabel)}"${disabledAttr}>
+          ${mailIconSvg}
+        </button>
+      </div>
+    `;
+  }
+
+  function attachRequesterButtons(scope){
+    if(!scope) return;
+    scope.querySelectorAll('.requester-mail-btn').forEach(btn => {
+      if(btn.dataset.requesterBound === '1') return;
+      btn.dataset.requesterBound = '1';
+      if(btn.disabled) return;
+      btn.addEventListener('click', evt => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        const item = btn.dataset.item || '';
+        const location = btn.dataset.location || '';
+        const altLocation = btn.dataset.altLocation || '';
+        const sourceLabel = btn.dataset.table || '';
+        const countHint = Number.parseInt(btn.dataset.count || '0', 10) || 0;
+        openRequesterModal({ item, location, altLocation, sourceLabel, countHint });
+      });
+    });
+  }
+
+  function closeFilterDropdowns(){
+    const dropdowns = [
+      { button: itemGroupButton, menu: itemGroupMenu },
+      { button: locButton, menu: locMenu },
+    ];
+    dropdowns.forEach(({ button, menu }) => {
+      if(!button) return;
+      button.blur();
+      button.classList.remove('show');
+      button.setAttribute('aria-expanded', 'false');
+      if(menu){
+        menu.classList.remove('show');
+      }
+      if(typeof bootstrap !== 'undefined' && bootstrap.Dropdown){
+        const dropdownInstance = bootstrap.Dropdown.getInstance(button);
+        if(dropdownInstance){
+          dropdownInstance.hide();
+        }
+      }
+    });
+  }
+
+  function updateRequesterBatchEmailButton(rows = [], meta = {}){
+    if(!requesterBatchEmailBtn) return;
+    const uniqueEmails = [];
+    const seen = new Set();
+    (rows || []).forEach(row => {
+      const emailRaw = (row && (row.email || row.email_address)) ? String(row.email || row.email_address).trim() : '';
+      if(!emailRaw) return;
+      const normalized = emailRaw.toLowerCase();
+      if(seen.has(normalized)) return;
+      seen.add(normalized);
+      uniqueEmails.push(emailRaw);
+    });
+    if(uniqueEmails.length){
+      requesterBatchEmailBtn.disabled = false;
+      requesterBatchEmailBtn.dataset.emails = uniqueEmails.join(';');
+    } else {
+      requesterBatchEmailBtn.disabled = true;
+      requesterBatchEmailBtn.dataset.emails = '';
+    }
+    requesterBatchEmailBtn.dataset.item = meta.itemLabel || '';
+    requesterBatchEmailBtn.dataset.location = meta.location || '';
+    requesterBatchEmailBtn.dataset.source = meta.sourceLabel || '';
+  }
+
+  if(requesterBatchEmailBtn){
+    requesterBatchEmailBtn.addEventListener('click', () => {
+      if(requesterBatchEmailBtn.disabled) return;
+      const rawEmails = requesterBatchEmailBtn.dataset.emails || '';
+      const emailList = rawEmails
+        .split(';')
+        .map(email => email.trim())
+        .filter(Boolean);
+      if(!emailList.length){
+        requesterBatchEmailBtn.disabled = true;
+        requesterBatchEmailBtn.dataset.emails = '';
+        return;
+      }
+      const subjectParts = [];
+      const itemLabel = requesterBatchEmailBtn.dataset.item || '';
+      const locationLabel = requesterBatchEmailBtn.dataset.location || '';
+      if(itemLabel) subjectParts.push(`Item ${itemLabel}`);
+      if(locationLabel) subjectParts.push(`Location ${locationLabel}`);
+      const subjectText = subjectParts.length
+        ? `Requester outreach – ${subjectParts.join(' • ')}`
+        : 'Requester outreach';
+      const bccValue = encodeURIComponent(emailList.join(';'));
+      const subjectValue = encodeURIComponent(subjectText);
+      window.location.href = `mailto:?bcc=${bccValue}&subject=${subjectValue}`;
+    });
+  }
+
+  async function openRequesterModal({ item, location, altLocation, sourceLabel, countHint }){
+    if(!requesterModal || !requesterModalBody){
+      console.warn('Requester modal unavailable in DOM.');
+      return;
+    }
+    const displayLocation = location || altLocation || '';
+    closeFilterDropdowns();
+    if(requesterModalTitle){
+      requesterModalTitle.textContent = 'Requester Contacts';
+    }
+    if(requesterModalMeta){
+      const prelim = [];
+      if(item) prelim.push(`Item ${item}`);
+      if(displayLocation) prelim.push(`Location ${displayLocation}`);
+      if(sourceLabel){
+        prelim.push(sourceLabel === 'inventory' ? 'Inventory table' : (sourceLabel === 'par' ? 'Par table' : sourceLabel));
+      }
+      requesterModalMeta.textContent = prelim.filter(Boolean).join(' • ');
+    }
+    updateRequesterBatchEmailButton([], {
+      itemLabel: item,
+      location: displayLocation,
+      sourceLabel,
+    });
+    requesterModalBody.innerHTML = `
+      <div class="d-flex align-items-center gap-2 text-muted small">
+        <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+        <span>Loading requester contacts…</span>
+      </div>
+    `;
+    requesterModal.show();
+    const cacheKey = [item, location, altLocation].join('||');
+    try {
+      let payload;
+      if(requesterDetailCache.has(cacheKey)){
+        payload = requesterDetailCache.get(cacheKey);
+      } else {
+        const params = new URLSearchParams();
+        if(item) params.set('item', item);
+        if(location) params.set('location', location);
+        if(altLocation && (!location || altLocation.toLowerCase() !== location.toLowerCase())){
+          params.set('alt_location', altLocation);
+        }
+        const resp = await fetch(`/dashboard/api/requesters?${params.toString()}`);
+        if(!resp.ok){
+          const text = await resp.text();
+          throw new Error(text || `Request failed (${resp.status})`);
+        }
+        payload = await resp.json();
+        requesterDetailCache.set(cacheKey, payload);
+      }
+      renderRequesterModalContent(payload, { countHint, sourceLabel });
+    } catch(err){
+      requesterModalBody.innerHTML = `<div class="text-danger small">Unable to load requester contacts: ${escapeHtml(err.message || 'Unexpected error')}.</div>`;
+      updateRequesterBatchEmailButton([], {
+        itemLabel: item,
+        location: displayLocation,
+        sourceLabel,
+      });
+    }
+  }
+
+  function renderRequesterModalContent(payload, { countHint = 0, sourceLabel = '' } = {}){
+    if(!requesterModalBody) return;
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const matchedLocation = payload?.matched_location || payload?.location || '';
+    const itemLabel = payload?.item || '';
+    const count = Number.isFinite(payload?.count) ? payload.count : rows.length;
+    const friendlySource = sourceLabel === 'inventory' ? 'Inventory table' : (sourceLabel === 'par' ? 'Par table' : (sourceLabel || ''));
+    if(requesterModalTitle){
+      const baseTitle = 'Requester Contacts';
+      requesterModalTitle.textContent = count ? `${baseTitle} (${count})` : baseTitle;
+    }
+    if(requesterModalMeta){
+      const metaParts = [];
+      if(itemLabel) metaParts.push(`Item ${itemLabel}`);
+      if(matchedLocation) metaParts.push(`Location ${matchedLocation}`);
+      if(friendlySource) metaParts.push(friendlySource);
+      const fallbackCount = count || countHint || 0;
+      metaParts.push(`${fallbackCount} contact${fallbackCount === 1 ? '' : 's'}`);
+      requesterModalMeta.textContent = metaParts.filter(Boolean).join(' • ');
+    }
+    if(!rows.length){
+      requesterModalBody.innerHTML = `
+        <div class="alert alert-light border text-center mb-0 py-4">
+          <div class="fw-semibold mb-1">No requester contacts on file.</div>
+          <div class="text-muted small">We couldn't find distinct requester names or emails for this item and location in the last year.</div>
+        </div>
+      `;
+      updateRequesterBatchEmailButton([], {
+        itemLabel,
+        location: matchedLocation,
+        sourceLabel: friendlySource,
+      });
+      return;
+    }
+    const rowsHtml = rows.map((row, idx) => {
+      const requesterId = row.requester_id || row.requester || '';
+      const nameValue = row.name || requesterId;
+      let nameCell;
+      if(nameValue){
+        const safeName = escapeHtml(nameValue);
+        if(requesterId && requesterId !== nameValue){
+          nameCell = `<div>${safeName}</div><div class="text-muted small">ID: ${escapeHtml(requesterId)}</div>`;
+        } else {
+          nameCell = safeName;
+        }
+      } else if(requesterId){
+        nameCell = `<span class="text-muted">ID: ${escapeHtml(requesterId)}</span>`;
+      } else {
+        nameCell = '<span class="text-muted fst-italic">Unknown</span>';
+      }
+      const emailValue = row.email || row.email_address || '';
+      const emailCell = emailValue
+        ? `<a href="mailto:${escapeAttr(emailValue)}" class="text-decoration-none">${escapeHtml(emailValue)}</a>`
+        : '<span class="text-muted fst-italic">Not provided</span>';
+      return `
+        <tr>
+          <td class="text-muted">${idx + 1}</td>
+          <td>${nameCell}</td>
+          <td>${emailCell}</td>
+        </tr>
+      `;
+    }).join('');
+    requesterModalBody.innerHTML = `
+      <div class="table-responsive requester-modal-table">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th scope="col" style="width: 60px;">#</th>
+              <th scope="col">Requester Name</th>
+              <th scope="col">Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+    `;
+    updateRequesterBatchEmailButton(rows, {
+      itemLabel,
+      location: matchedLocation,
+      sourceLabel: friendlySource,
+    });
+  }
+
   const lockedColumns = {
     inventory: new Set([
       'inv-col-group',
@@ -905,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.weekly_burn)}</td>
           <td class="col-src text-center">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
-          <td class="col-src text-center">${num(r.requesters_past_year,0)}</td>
+          <td class="col-src text-center">${renderRequesterCell(r, 'inventory')}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
@@ -919,6 +1236,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         tbody.appendChild(tr);
       }
+      attachRequesterButtons(tbody);
       applyColumnState(inventoryTable, columnState.inventory);
       const totalLabel = data.total ?? rows.length;
       const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
@@ -979,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.weekly_burn)}</td>
             <td class="col-src text-center">${typeof r.weeks_reorder === 'string' ? r.weeks_reorder : num(r.weeks_reorder,1)}</td>
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
-            <td class="col-src text-center">${num(r.requesters_past_year,0)}</td>
+            <td class="col-src text-center">${renderRequesterCell(r, 'par')}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
@@ -993,6 +1311,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         parTbody.appendChild(tr);
       }
+      attachRequesterButtons(parTbody);
       applyColumnState(parTable, columnState.par);
       attachParRowClick();
       const totalLabel = data.total ?? rows.length;

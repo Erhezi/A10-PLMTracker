@@ -1076,17 +1076,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await fetch('/dashboard/api/filter-options');
       if(!resp.ok) throw new Error('Failed loading filter options');
       const data = await resp.json();
-      // Item Groups -> build checkbox list
+      // Item Groups -> build checkbox list with search
       const groups = data.item_groups || [];
       if(!groups.length){
         itemGroupMenu.innerHTML = '<div class="px-2 py-1 text-muted">No item groups found</div>';
       } else {
-        const itemsHtml = groups.map(g => `
-          <div class="form-check">
-            <input class="form-check-input item-group-checkbox" type="checkbox" value="${g}" id="ig-${g}">
-            <label class="form-check-label" for="ig-${g}">${g}</label>
-          </div>`).join('');
+        const itemsHtml = groups.map(obj => {
+          const val = obj.value;
+          const label = obj.label || val;
+          const safeId = String(val).replace(/[^a-zA-Z0-9_-]/g,'');
+          return `<div class="form-check item-group-option" data-label="${escapeAttr(label.toLowerCase())}">
+  <input class="form-check-input item-group-checkbox" type="checkbox" value="${val}" id="ig-${safeId}">
+  <label class="form-check-label" for="ig-${safeId}">${escapeHtml(label)}</label>
+</div>`;
+        }).join('');
         itemGroupMenu.innerHTML = `
+          <input type="text" class="form-control form-control-sm mb-2" id="ig-search" placeholder="Search (use * wildcard)" autocomplete="off" />
           <div class="d-flex gap-2 mb-2">
             <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-select-all">Select All</button>
             <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-clear">Clear</button>
@@ -1162,6 +1167,42 @@ document.addEventListener('DOMContentLoaded', () => {
     parBtnFirst.disabled = parBtnPrev.disabled = parCurrentPage <= 1;
     parBtnNext.disabled = parBtnLast.disabled = parCurrentPage >= parTotalPages;
     parPageInfo.textContent = `Page ${parCurrentPage} / ${parTotalPages}`;
+  }
+
+  async function loadKpiStats() {
+    try {
+      const kpiGroups = document.getElementById('kpi-groups');
+      const kpiItems = document.getElementById('kpi-items');
+      const kpiReady = document.getElementById('kpi-ready');
+      
+      // Set loading state
+      if (kpiGroups) kpiGroups.textContent = '...';
+      if (kpiItems) kpiItems.textContent = '...';
+      if (kpiReady) kpiReady.textContent = '...';
+
+      const params = buildSharedQueryParams();
+      appendColumnFilterParams(params, 'inventory');
+      const resp = await fetch(`/dashboard/api/stats?${params.toString()}`);
+      
+      if (!resp.ok) {
+        throw new Error('Failed to fetch stats');
+      }
+      
+      const data = await resp.json();
+      
+      // Update KPI cards with the stats
+      if (kpiGroups) kpiGroups.textContent = data.distinct_groups || 0;
+      if (kpiItems) kpiItems.textContent = data.distinct_items || 0;
+      if (kpiReady) kpiReady.textContent = data.distinct_locations || 0;
+    } catch (e) {
+      console.error('Failed loading KPI stats', e);
+      const kpiGroups = document.getElementById('kpi-groups');
+      const kpiItems = document.getElementById('kpi-items');
+      const kpiReady = document.getElementById('kpi-ready');
+      if (kpiGroups) kpiGroups.textContent = '—';
+      if (kpiItems) kpiItems.textContent = '—';
+      if (kpiReady) kpiReady.textContent = '—';
+    }
   }
 
   async function loadInventory(page=1) {
@@ -1381,7 +1422,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
-  const autoApply = debounce(()=>{ loadInventory(1); loadPar(1); });
+  const autoApply = debounce(()=>{ loadKpiStats(); loadInventory(1); loadPar(1); });
   if(inventoryResetBtn){
     inventoryResetBtn.addEventListener('click', () => {
       resetColumnFiltersFor('inventory');
@@ -1451,9 +1492,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function attachItemGroupEvents(){
     const selectAllBtn = itemGroupMenu.querySelector('#ig-select-all');
     const clearBtn = itemGroupMenu.querySelector('#ig-clear');
+    const searchInput = itemGroupMenu.querySelector('#ig-search');
     if(selectAllBtn){
       selectAllBtn.addEventListener('click', () => {
-        itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => { cb.checked = true; });
+        // Only select visible options
+        itemGroupMenu.querySelectorAll('.item-group-option:not([data-hidden="1"]) .item-group-checkbox').forEach(cb => { cb.checked = true; });
         updateItemGroupSelection();
       });
     }
@@ -1466,6 +1509,40 @@ document.addEventListener('DOMContentLoaded', () => {
     itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => {
       cb.addEventListener('change', () => updateItemGroupSelection());
     });
+    if(searchInput){
+      let lastFilter = '';
+      searchInput.addEventListener('input', () => {
+        const raw = searchInput.value.trim();
+        if(raw === lastFilter) return;
+        lastFilter = raw;
+        if(!raw){
+          // reset all
+          itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
+          return;
+        }
+        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
+        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
+        // After escaping, literal '*' became \*; replace with '.*'
+        patternEsc = patternEsc.replace(/\\\*/g, '.*');
+        if(!raw.includes('*')){
+          // Implicit contains match
+          patternEsc = '.*' + patternEsc + '.*';
+        }
+        let regex = null;
+        try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => {
+          const label = (div.getAttribute('data-label') || '').toLowerCase();
+          const match = !regex || regex.test(label);
+          if(match){
+            div.style.display='';
+            div.removeAttribute('data-hidden');
+          } else {
+            div.style.display='none';
+            div.setAttribute('data-hidden','1');
+          }
+        });
+      });
+    }
   }
   // Location multi-select handling
   function updateLocationSelection(triggerChange=true){
@@ -1572,6 +1649,7 @@ document.addEventListener('DOMContentLoaded', () => {
         inpDescSearch.value='';
       }
       // Reload data
+      loadKpiStats();
       loadInventory(1);
       loadPar(1);
     });
@@ -2945,7 +3023,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateIssueAggregationTitle(aggregation);
   }
 
-  loadFilterOptions().then(() => { loadInventory(1); loadPar(1); });
+  loadFilterOptions().then(() => { loadKpiStats(); loadInventory(1); loadPar(1); });
 });
 </script>
 {% endblock %}

@@ -319,13 +319,39 @@ def api_filter_options():
     """Return distinct lists for dashboard filters.
 
     - item_groups: from ItemLink.item_group (exclude NULL, sorted ascending)
+      with associated item numbers formatted as {group_id: [item1, item2, ...]}
     - locations: distinct (LocationType, Location) from PLMTrackerBase limited to inventory location types
       formatted as "{LocationType} - {Location}" and include raw location for querying.
     - stages: allowed stage values (static list)
     """
-    # Item Groups
+    # Item Groups with associated items
+    from ..models.relations import ItemGroup
+    
+    # Get all item groups first
     item_groups_query = select(func.distinct(ItemLink.item_group)).where(ItemLink.item_group.isnot(None)).order_by(ItemLink.item_group)
-    item_groups = [row[0] for row in db.session.execute(item_groups_query).all()]
+    group_ids = [row[0] for row in db.session.execute(item_groups_query).all()]
+    
+    # Build item groups data structure: [{value: group_id, items: [item1, item2, ...], label: "123 - item1, item2, item3"}]
+    item_groups = []
+    for group_id in group_ids:
+        # Query ItemGroup table to get all distinct items for this group
+        items_query = (
+            select(func.distinct(ItemGroup.item))
+            .where(ItemGroup.item_group == group_id)
+            .where(ItemGroup.item.isnot(None))
+            .order_by(ItemGroup.item)
+        )
+        items = [row[0] for row in db.session.execute(items_query).all()]
+        
+        # Format label as "Group ID - item1, item2, item3"
+        items_str = ", ".join(items) if items else ""
+        label = f"{group_id} - {items_str}" if items_str else str(group_id)
+        
+        item_groups.append({
+            "value": group_id,
+            "items": items,
+            "label": label
+        })
 
     # Locations (pull from view)
     v = PLMTrackerBase
@@ -452,6 +478,59 @@ def api_requesters():
         "rows": rows_payload,
     }
     return jsonify(payload)
+
+
+@bp.route("/api/stats")
+@login_required
+def api_stats():
+    """Return KPI statistics based on applied filters.
+
+    Returns:
+    - distinct_groups: count of distinct item_group values
+    - distinct_items: count of distinct items (including replacement_item)
+    - distinct_locations: count of distinct locations (from both inventory and par)
+    """
+    inventory_rows = _filtered_inventory_rows(request.args)
+    par_rows = _filtered_par_rows(request.args)
+
+    # Collect distinct item groups
+    groups_set = set()
+    for row in inventory_rows:
+        if row.get("item_group"):
+            groups_set.add(row.get("item_group"))
+    for row in par_rows:
+        if row.get("item_group"):
+            groups_set.add(row.get("item_group"))
+
+    # Collect distinct items (including replacement items)
+    items_set = set()
+    for row in inventory_rows:
+        if row.get("item"):
+            items_set.add(row.get("item"))
+        if row.get("replacement_item"):
+            items_set.add(row.get("replacement_item"))
+    for row in par_rows:
+        if row.get("item"):
+            items_set.add(row.get("item"))
+        if row.get("replacement_item"):
+            items_set.add(row.get("replacement_item"))
+
+    # Collect distinct locations (using group_location as the canonical location identifier)
+    locations_set = set()
+    for row in inventory_rows:
+        loc = row.get("group_location") or row.get("location")
+        if loc:
+            locations_set.add(loc)
+    for row in par_rows:
+        loc = row.get("group_location") or row.get("location")
+        if loc:
+            locations_set.add(loc)
+
+    return jsonify({
+        "distinct_groups": len(groups_set),
+        "distinct_items": len(items_set),
+        "distinct_locations": len(locations_set),
+    })
 
 
 @bp.route("/export/<string:table_key>")

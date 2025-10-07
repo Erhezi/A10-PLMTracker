@@ -832,14 +832,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const controlsRow = document.createElement('div');
     controlsRow.className = 'd-flex gap-2 mb-2';
-  const selectAllBtn = document.createElement('button');
-  selectAllBtn.type = 'button';
-  selectAllBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
-  selectAllBtn.textContent = 'All';
-  const clearBtn = document.createElement('button');
-  clearBtn.type = 'button';
-  clearBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
-  clearBtn.textContent = 'Clear';
+    const selectAllBtn = document.createElement('button');
+    selectAllBtn.type = 'button';
+    selectAllBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
+    selectAllBtn.textContent = 'All';
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
+    clearBtn.textContent = 'Clear';
     controlsRow.appendChild(selectAllBtn);
     controlsRow.appendChild(clearBtn);
     menu.appendChild(controlsRow);

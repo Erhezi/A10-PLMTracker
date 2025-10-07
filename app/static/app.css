@@ -208,6 +208,21 @@ footer { font-size: .75rem; }
   text-align: center;
 }
 
+#table-inventory td.item-group-cell,
+#table-par td.item-group-cell {
+  white-space: normal;
+}
+
+#table-inventory td.item-group-cell .item-group-label,
+#table-par td.item-group-cell .item-group-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.6rem !important;
+  line-height: 1.6rem !important;
+  white-space: normal;
+}
+
 .column-filter-cell {
   min-height: 32px;
 }

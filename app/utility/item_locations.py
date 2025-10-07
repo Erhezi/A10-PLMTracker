@@ -84,6 +84,17 @@ def build_location_pairs(
             "req_qty_ea": r.ReqQty90_EA,
             "requesters_past_year": r.requester_count or 0,
             "item_description": r.ItemDescription,
+            # UOM and reorder policy fields for original item
+            "stock_uom": r.StockUOM,
+            "uom_conversion": r.UOMConversion,
+            "buy_uom": r.DefaultBuyUOM,
+            "buy_uom_multiplier": r.BuyUOMMultiplier,
+            "transaction_uom": r.DefaultTransactionUOM,
+            "transaction_uom_multiplier": r.TransactionUOMMultiplier,
+            "reorder_quantity_code": r.ReorderQuantityCode,
+            "min_order_qty": r.MinOrderQty,
+            "max_order_qty": r.MaxOrderQty,
+            "manufacturer_number": r.ManufacturerNumber,
             # replacement side
             "auto_replenishment_ri": r.AutomaticPO_ri,
             "active_ri": r.Active_ri,
@@ -95,6 +106,17 @@ def build_location_pairs(
             "po_90_qty_ri": r.OrderQty90_EA_ri,
             "req_qty_ea_ri": r.ReqQty90_EA_ri,
             "item_description_ri": r.ItemDescription_ri,
+            # UOM and reorder policy fields for replacement item
+            "stock_uom_ri": r.StockUOM_ri,
+            "uom_conversion_ri": r.UOMConversion_ri,
+            "buy_uom_ri": r.DefaultBuyUOM_ri,
+            "buy_uom_multiplier_ri": r.BuyUOMMultiplier_ri,
+            "transaction_uom_ri": r.DefaultTransactionUOM_ri,
+            "transaction_uom_multiplier_ri": r.TransactionUOMMultiplier_ri,
+            "reorder_quantity_code_ri": r.ReorderQuantityCode_ri,
+            "min_order_qty_ri": r.MinOrderQty_ri,
+            "max_order_qty_ri": r.MaxOrderQty_ri,
+            "manufacturer_number_ri": r.ManufacturerNumber_ri,
         })
     # Stable sort by item_group then location for display
     out.sort(key=lambda d: (
@@ -140,14 +162,14 @@ def _weeks_on_hand(available_qty: Optional[float], weekly_burn: float) -> str | 
     """Return naive weeks-on-hand (qty / weekly_burn)."""
     try:  # pragma: no cover - defensive block
         if available_qty is None or weekly_burn is None:
-            return "unknown"
+            return "n/a"
         wb = float(weekly_burn)
         if wb == 0:
-            return "unknown"
+            return "n/a"
         qty = float(available_qty)
         return qty / wb
     except Exception:
-        return "unknown"
+        return "n/a"
 
 
 __all__ = [

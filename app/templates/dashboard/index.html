@@ -75,6 +75,15 @@
         </div>
       </div>
     </div>
+    <div class="col-12 col-lg-3">
+      <button type="button" class="btn btn-outline-primary w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3 location-setup-toggle-btn" id="location-setup-toggle" style="min-height: 80px; border-width: 2px;">
+        <div class="small text-uppercase fw-semibold mb-1">Prepare Location Set-up</div>
+        <div class="small text-muted">Toggle column presets</div>
+        <div class="mt-2">
+          <span class="badge bg-secondary" id="location-setup-status">OFF</span>
+        </div>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -120,6 +129,17 @@
                 <th id="inv-col-current" data-field="current_qty" class="col-num">Current Qty</th>
                 <th id="inv-col-weekly" data-field="weekly_burn" class="col-num">Weekly Burn</th>
                 <th id="inv-col-weeks" data-field="weeks_on_hand" class="col-num">Weeks on Hand</th>
+                <th id="inv-col-stock-uom" data-field="stock_uom" class="col-text">Stock UOM</th>
+                <th id="inv-col-uom-conversion" data-field="uom_conversion" class="col-num">UOM Mult.</th>
+                <th id="inv-col-buy-uom" data-field="buy_uom" class="col-text">Buy UOM</th>
+                <th id="inv-col-buy-uom-mult" data-field="buy_uom_multiplier" class="col-num">Buy UOM Mult.</th>
+                <th id="inv-col-trans-uom" data-field="transaction_uom" class="col-text">Trans. UOM</th>
+                <th id="inv-col-trans-uom-mult" data-field="transaction_uom_multiplier" class="col-num">Trans. UOM Mult.</th>
+                <th id="inv-col-reorder-policy" data-field="reorder_quantity_code" class="col-text">Reorder Policy</th>
+                <th id="inv-col-reorder-pt" data-field="reorder_point" class="col-num">Reorder Point</th>
+                <th id="inv-col-min-order" data-field="min_order_qty" class="col-num">Min Order Qty</th>
+                <th id="inv-col-max-order" data-field="max_order_qty" class="col-num">Max Order Qty</th>
+                <th id="inv-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
                 <th id="inv-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
@@ -130,6 +150,17 @@
                 <th id="inv-col-current-ri" data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
                 <th id="inv-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Burn (RI)</th>
                 <th id="inv-col-weeks-ri" data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
+                <th id="inv-col-stock-uom-ri" data-field="stock_uom_ri" class="col-text">Stock UOM (RI)</th>
+                <th id="inv-col-uom-conversion-ri" data-field="uom_conversion_ri" class="col-num">UOM Mult. (RI)</th>
+                <th id="inv-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
+                <th id="inv-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
+                <th id="inv-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="inv-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="inv-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
+                <th id="inv-col-reorder-pt-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
+                <th id="inv-col-min-order-ri" data-field="min_order_qty_ri" class="col-num">Min Order Qty (RI)</th>
+                <th id="inv-col-max-order-ri" data-field="max_order_qty_ri" class="col-num">Max Order Qty (RI)</th>
+                <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
@@ -145,7 +176,17 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
@@ -156,6 +197,17 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
               </tr>
@@ -213,6 +265,16 @@
                 <th id="par-col-reorder" data-field="reorder_point" class="col-num">Reorder Point</th>
                 <th id="par-col-weekly" data-field="weekly_burn" class="col-num">Weekly Demand</th>
                 <th id="par-col-weeks" data-field="weeks_reorder" class="col-num">Weeks Reorder</th>
+                <th id="par-col-stock-uom" data-field="stock_uom" class="col-text">Stock UOM</th>
+                <th id="par-col-uom-conversion" data-field="uom_conversion" class="col-num">UOM Mult.</th>
+                <th id="par-col-buy-uom" data-field="buy_uom" class="col-text">Buy UOM</th>
+                <th id="par-col-buy-uom-mult" data-field="buy_uom_multiplier" class="col-num">Buy UOM Mult.</th>
+                <th id="par-col-trans-uom" data-field="transaction_uom" class="col-text">Trans. UOM</th>
+                <th id="par-col-trans-uom-mult" data-field="transaction_uom_multiplier" class="col-num">Trans. UOM Mult.</th>
+                <th id="par-col-reorder-policy" data-field="reorder_quantity_code" class="col-text">Reorder Policy</th>
+                <th id="par-col-min-order" data-field="min_order_qty" class="col-num">Min Order Qty</th>
+                <th id="par-col-max-order" data-field="max_order_qty" class="col-num">Max Order Qty</th>
+                <th id="par-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
@@ -223,6 +285,16 @@
                 <th id="par-col-reorder-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
                 <th id="par-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Demand (RI)</th>
                 <th id="par-col-weeks-ri" data-field="weeks_reorder_ri" class="col-num">Weeks Reorder (RI)</th>
+                <th id="par-col-stock-uom-ri" data-field="stock_uom_ri" class="col-text">Stock UOM (RI)</th>
+                <th id="par-col-uom-conversion-ri" data-field="uom_conversion_ri" class="col-num">UOM Mult. (RI)</th>
+                <th id="par-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
+                <th id="par-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
+                <th id="par-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="par-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="par-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
+                <th id="par-col-min-order-ri" data-field="min_order_qty_ri" class="col-num">Min Order Qty (RI)</th>
+                <th id="par-col-max-order-ri" data-field="max_order_qty_ri" class="col-num">Max Order Qty (RI)</th>
+                <th id="par-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
@@ -238,6 +310,16 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
@@ -248,6 +330,16 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
               </tr>
@@ -944,6 +1036,170 @@ document.addEventListener('DOMContentLoaded', () => {
   buildColumnMenu(inventoryTable, inventoryColumnMenu, 'inventory');
   buildColumnMenu(parTable, parColumnMenu, 'par');
 
+  // Initialize new UOM/reorder columns as hidden
+  const setupColumns = [
+    'stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+    'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+    'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+    'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+    'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'
+  ];
+  ['inventory', 'par'].forEach(tableKey => {
+    const table = tableKey === 'inventory' ? inventoryTable : parTable;
+    setupColumns.forEach(field => {
+      const th = table.querySelector(`th[data-field="${field}"]`);
+      if(th && th.id){
+        columnState[tableKey][th.id] = false;
+        toggleColumnVisibility(table, th.id, false);
+      }
+    });
+  });
+
+  // Location Setup Toggle Handler
+  const locationSetupToggle = document.getElementById('location-setup-toggle');
+  const locationSetupStatus = document.getElementById('location-setup-status');
+  let setupMode = false;
+  
+  if(locationSetupToggle){
+    locationSetupToggle.addEventListener('click', () => {
+      setupMode = !setupMode;
+      
+      // Update button appearance
+      if(setupMode){
+        locationSetupToggle.classList.remove('btn-outline-primary');
+        locationSetupToggle.classList.add('btn-primary');
+        if(locationSetupStatus) locationSetupStatus.textContent = 'ON';
+        if(locationSetupStatus) locationSetupStatus.classList.replace('bg-secondary', 'bg-light');
+        if(locationSetupStatus) locationSetupStatus.classList.add('text-dark');
+      } else {
+        locationSetupToggle.classList.remove('btn-primary');
+        locationSetupToggle.classList.add('btn-outline-primary');
+        if(locationSetupStatus) locationSetupStatus.textContent = 'OFF';
+        if(locationSetupStatus) locationSetupStatus.classList.replace('bg-light', 'bg-secondary');
+        if(locationSetupStatus) locationSetupStatus.classList.remove('text-dark');
+      }
+      
+      if(setupMode){
+        // Inventory table: hide operational columns, show setup columns
+        const invHide = ['active', 'discontinued', 'current_qty', 'weeks_on_hand', 'po_90_qty', 'requesters_past_year',
+                         'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
+        const invShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+                         'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+                         'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+        
+        invHide.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = false;
+            toggleColumnVisibility(inventoryTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+        invShow.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = true;
+            toggleColumnVisibility(inventoryTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+
+        // PAR table: hide operational columns, show setup columns
+        const parHide = ['active', 'discontinued', 'weeks_reorder', 'req_qty_ea', 'requesters_past_year',
+                         'active_ri', 'discontinued_ri', 'weeks_reorder_ri'];
+        const parShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+                         'min_order_qty', 'max_order_qty', 'manufacturer_number',
+                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+                         'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+        
+        parHide.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = false;
+            toggleColumnVisibility(parTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+        parShow.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = true;
+            toggleColumnVisibility(parTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+      } else {
+        // Revert to default view: show operational columns, hide setup columns
+        const invShow = ['active', 'discontinued', 'current_qty', 'weeks_on_hand', 'po_90_qty', 'requesters_past_year',
+                         'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
+        const invHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+                         'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+                         'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+        
+        invShow.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = true;
+            toggleColumnVisibility(inventoryTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+        invHide.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = false;
+            toggleColumnVisibility(inventoryTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+
+        // PAR table: show operational columns, hide setup columns
+        const parShow = ['active', 'discontinued', 'weeks_reorder', 'req_qty_ea', 'requesters_past_year',
+                         'active_ri', 'discontinued_ri', 'weeks_reorder_ri'];
+        const parHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+                         'min_order_qty', 'max_order_qty', 'manufacturer_number',
+                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+                         'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+        
+        parShow.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = true;
+            toggleColumnVisibility(parTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+        parHide.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = false;
+            toggleColumnVisibility(parTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+      }
+    });
+  }
+
   function updateColumnFilterButton(tableKey, field){
     const btn = document.querySelector(`.column-filter-toggle[data-table="${tableKey}"][data-field="${field}"]`);
     if(!btn) return;
@@ -1245,6 +1501,13 @@ document.addEventListener('DOMContentLoaded', () => {
             maximumFractionDigits: digits,
           }).format(n);
         }
+        function reorderCode(val) {
+          if(val === null || val === undefined || val === '') return '';
+          const normalized = String(val).trim();
+          if(normalized === 'Order Up To Maximum Level') return 'OTM';
+          if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
+          return normalized;
+        }
     tr.dataset.itemGroup = r.item_group;
     tr.dataset.item = r.item;
     tr.dataset.location = r.location || '';
@@ -1252,7 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tr.dataset.replacementItem = r.replacement_item || '';
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
-          <td class="text-center">${fmt(r.item_group)}</td>
+          <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
@@ -1262,6 +1525,17 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.current_qty,0)}</td>
           <td class="col-src text-center">${num(r.weekly_burn)}</td>
           <td class="col-src text-center">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
+          <td class="col-src text-center">${fmt(r.stock_uom)}</td>
+          <td class="col-src text-center">${num(r.uom_conversion, 0)}</td>
+          <td class="col-src text-center">${fmt(r.buy_uom)}</td>
+          <td class="col-src text-center">${num(r.buy_uom_multiplier, 0)}</td>
+          <td class="col-src text-center">${fmt(r.transaction_uom)}</td>
+          <td class="col-src text-center">${num(r.transaction_uom_multiplier, 0)}</td>
+          <td class="col-src text-center">${reorderCode(r.reorder_quantity_code)}</td>
+          <td class="col-src text-center">${num(r.reorder_point,0)}</td>
+          <td class="col-src text-center">${num(r.min_order_qty,0)}</td>
+          <td class="col-src text-center">${num(r.max_order_qty,0)}</td>
+          <td class="col-src text-center">${fmt(r.manufacturer_number)}</td>
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
           <td class="col-src text-center">${renderRequesterCell(r, 'inventory')}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
@@ -1272,6 +1546,17 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${num(r.current_qty_ri,0)}</td>
           <td class="col-repl text-center">${num(r.weekly_burn_ri)}</td>
           <td class="col-repl text-center">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
+          <td class="col-repl text-center">${fmt(r.stock_uom_ri)}</td>
+          <td class="col-repl text-center">${num(r.uom_conversion_ri, 0)}</td>
+          <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
+          <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
+          <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+          <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+          <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
+          <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
+          <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
+          <td class="col-repl text-center">${num(r.max_order_qty_ri,0)}</td>
+          <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
@@ -1318,6 +1603,13 @@ document.addEventListener('DOMContentLoaded', () => {
             maximumFractionDigits: digits,
           }).format(n);
         }
+        function reorderCode(val) {
+          if(val === null || val === undefined || val === '') return '';
+          const normalized = String(val).trim();
+          if(normalized === 'Order Up To Maximum Level') return 'OTM';
+          if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
+          return normalized;
+        }
         const tr = document.createElement('tr');
   tr.dataset.itemGroup = r.item_group || '';
   tr.dataset.item = r.item || '';
@@ -1327,7 +1619,7 @@ document.addEventListener('DOMContentLoaded', () => {
   tr.dataset.stage = r.stage || '';
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
-          <td class="text-center">${fmt(r.item_group)}</td>
+          <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
@@ -1337,6 +1629,16 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.reorder_point,0)}</td>
             <td class="col-src text-center">${num(r.weekly_burn)}</td>
             <td class="col-src text-center">${typeof r.weeks_reorder === 'string' ? r.weeks_reorder : num(r.weeks_reorder,1)}</td>
+            <td class="col-src text-center">${fmt(r.stock_uom)}</td>
+            <td class="col-src text-center">${num(r.uom_conversion, 0)}</td>
+            <td class="col-src text-center">${fmt(r.buy_uom)}</td>
+            <td class="col-src text-center">${num(r.buy_uom_multiplier, 0)}</td>
+            <td class="col-src text-center">${fmt(r.transaction_uom)}</td>
+            <td class="col-src text-center">${num(r.transaction_uom_multiplier, 0)}</td>
+            <td class="col-src text-center">${reorderCode(r.reorder_quantity_code)}</td>
+            <td class="col-src text-center">${num(r.min_order_qty,0)}</td>
+            <td class="col-src text-center">${num(r.max_order_qty,0)}</td>
+            <td class="col-src text-center">${fmt(r.manufacturer_number)}</td>
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
             <td class="col-src text-center">${renderRequesterCell(r, 'par')}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
@@ -1347,6 +1649,16 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
             <td class="col-repl text-center">${num(r.weekly_burn_ri)}</td>
             <td class="col-repl text-center">${typeof r.weeks_reorder_ri === 'string' ? r.weeks_reorder_ri : num(r.weeks_reorder_ri,1) }</td>
+            <td class="col-repl text-center">${fmt(r.stock_uom_ri)}</td>
+            <td class="col-repl text-center">${num(r.uom_conversion_ri, 0)}</td>
+            <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
+            <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
+            <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+            <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+            <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
+            <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
+            <td class="col-repl text-center">${num(r.max_order_qty_ri,0)}</td>
+            <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
             <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
             <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;

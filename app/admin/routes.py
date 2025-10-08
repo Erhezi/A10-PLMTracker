@@ -7,9 +7,15 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 @admin_bp.before_request
 def restrict_to_admin():
-    if not current_user.is_authenticated or current_user.user_role != 'admin':
-        flash('Access denied: Admins only.', 'danger')
+    if not current_user.is_authenticated:
+        flash('Access denied: Please log in.', 'danger')
         return redirect(url_for('auth.login'))
+
+    # Allow the current user to stay logged in even if their role changes
+    if current_user.user_role != 'admin':
+        if current_user.email != request.view_args.get('user_email', None):
+            flash('Access denied: Admins only.', 'danger')
+            return redirect(url_for('auth.login'))
 
 @admin_bp.route('/user-control')
 @login_required
@@ -17,38 +23,35 @@ def user_control():
     users = User.query.all()
     return render_template('admin/user_control.html', users=users)
 
-@admin_bp.route('/update-user-role/<int:user_id>', methods=['POST'])
+@admin_bp.route('/update-user-role/<string:user_email>', methods=['POST'])
 @login_required
-def update_user_role(user_id):
-    if current_user.user_role != 'admin':
-        flash('Access denied: Admins only.', 'danger')
-        return redirect(url_for('auth.login'))
-
-    user = User.query.get_or_404(user_id)
+def update_user_role(user_email):
+    user = User.query.filter_by(email=user_email).first_or_404()
     new_role = request.form.get('user_role')
     if new_role in ['admin', 'user', 'view-only']:
         user.user_role = new_role
         db.session.commit()
         flash(f"Updated role for {user.email} to {new_role}.", 'success')
-        if user_id == current_user.id:
-            return redirect(url_for('main.index'))
+        # Prevent kicking out the current user by skipping redirect to login
+        if user_email == current_user.email:
+            print(user_email, current_user.email)
+            return redirect(url_for('admin.user_control'))
     else:
         flash('Invalid role selected.', 'danger')
 
     return redirect(url_for('admin.user_control'))
 
-@admin_bp.route('/delete-user/<int:user_id>', methods=['POST'])
+@admin_bp.route('/delete-user/<string:user_email>', methods=['POST'])
 @login_required
-def delete_user(user_id):
+def delete_user(user_email):
     if current_user.user_role != 'admin':
         flash('Access denied: Admins only.', 'danger')
         return redirect(url_for('auth.login'))
 
-    user = User.query.get_or_404(user_id)
-    confirm_email = request.form.get('confirm_email')
+    user = User.query.filter_by(email=user_email).first_or_404()
 
-    if confirm_email != user.email:
-        flash('Email confirmation does not match.', 'danger')
+    if user_email == current_user.email:
+        flash('You cannot delete your own account.', 'danger')
         return redirect(url_for('admin.user_control'))
 
     db.session.delete(user)

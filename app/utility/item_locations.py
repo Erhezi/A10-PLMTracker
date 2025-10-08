@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import List, Dict, Optional, Mapping, Tuple
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from typing import List, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
@@ -82,7 +84,6 @@ def build_location_pairs(
             "weeks_on_hand": weeks_src,
             "po_90_qty": r.OrderQty90_EA,
             "req_qty_ea": r.ReqQty90_EA,
-            "requesters_past_year": r.requester_count or 0,
             "item_description": r.ItemDescription,
             # UOM and reorder policy fields for original item
             "stock_uom": r.StockUOM,
@@ -118,6 +119,7 @@ def build_location_pairs(
             "max_order_qty_ri": r.MaxOrderQty_ri,
             "manufacturer_number_ri": r.ManufacturerNumber_ri,
         })
+    _annotate_replacement_setups(out)
     # Stable sort by item_group then location for display
     out.sort(key=lambda d: (
         d.get("item_group") or 0,
@@ -143,7 +145,7 @@ def burnrate_estimator(
     and convert it to a weekly burn by multiplying by 7.
 
     If ``issued_count_365`` is provided and indicates sparse usage (<= 4
-    requesters in the past year), we continue to apply the historical uplift of
+    requests in the past year), we continue to apply the historical uplift of
     doubling the projected burn rate to avoid under-estimating demand.
     """
     if br7_rolling is None:
@@ -170,6 +172,118 @@ def _weeks_on_hand(available_qty: Optional[float], weekly_burn: float) -> str | 
         return qty / wb
     except Exception:
         return "n/a"
+
+
+def _annotate_replacement_setups(rows: List[Dict]) -> None:
+    """Attach relationship classification and recommended RI quantities."""
+    groups: Dict[tuple, List[Dict]] = defaultdict(list)
+    for row in rows:
+        key = (
+            row.get("item_group"),
+            row.get("group_location") or row.get("location"),
+        )
+        groups[key].append(row)
+
+    for group_rows in groups.values():
+        items = {r.get("item") for r in group_rows if r.get("item")}
+        replacements = {r.get("replacement_item") for r in group_rows if r.get("replacement_item")}
+
+        if len(items) == 1 and len(replacements) == 1:
+            relation = "1-1"
+        elif len(items) <= 1 and len(replacements) > 1:
+            relation = "1-many"
+        elif len(items) > 1 and len(replacements) <= 1:
+            relation = "many-1"
+        elif not items and not replacements:
+            relation = "unknown"
+        else:
+            relation = "many-many"
+
+        for row in group_rows:
+            row["item_replace_relation"] = relation
+
+        if relation != "1-1":
+            continue
+
+        base = next(
+            (r for r in group_rows if r.get("item") and r.get("replacement_item")),
+            group_rows[0],
+        )
+        calculations = _compute_replacement_quantities(base)
+        for row in group_rows:
+            row.update(calculations)
+
+
+def _compute_replacement_quantities(row: Dict) -> Dict[str, Optional[float]]:
+    src_reorder = _to_decimal(row.get("reorder_point"))
+    src_min = _to_decimal(row.get("min_order_qty"))
+    src_max = _to_decimal(row.get("max_order_qty"))
+    src_mult = _to_decimal(row.get("buy_uom_multiplier"))
+    repl_mult = _to_decimal(row.get("buy_uom_multiplier_ri"))
+
+    result: Dict[str, Optional[float]] = {
+        "recommended_reorder_point_ri": _to_native(src_reorder),
+        "recommended_min_order_qty_ri": _to_native(_max_positive([src_min, src_mult, repl_mult])),
+        "recommended_max_order_qty_ri": _to_native(src_max),
+        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
+        "recommended_setup_source": "copy",
+    }
+
+    if repl_mult is None or repl_mult <= 0:
+        return result
+
+    if src_mult is not None and src_mult > 0 and src_mult == repl_mult:
+        result.update({
+            "recommended_reorder_point_ri": _to_native(src_reorder),
+            "recommended_min_order_qty_ri": _to_native(_max_positive([src_min, repl_mult])),
+            "recommended_max_order_qty_ri": _to_native(src_max),
+            "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
+            "recommended_setup_source": "uom-match",
+        })
+        return result
+
+    result.update({
+        "recommended_reorder_point_ri": _to_native(_ceil_to_multiple(src_reorder, repl_mult)),
+        "recommended_min_order_qty_ri": _to_native(repl_mult),
+        "recommended_max_order_qty_ri": _to_native(_ceil_to_multiple(src_max, repl_mult)),
+        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
+        "recommended_setup_source": "uom-adjust",
+    })
+    return result
+
+
+def _to_decimal(value: object | None) -> Optional[Decimal]:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _ceil_to_multiple(value: Optional[Decimal], multiple: Decimal) -> Optional[Decimal]:
+    if value is None or multiple is None or multiple == 0:
+        return value
+    quotient = (value / multiple).to_integral_value(rounding=ROUND_CEILING)
+    return quotient * multiple
+
+
+def _max_positive(values: List[Optional[Decimal]]) -> Optional[Decimal]:
+    positives = [v for v in values if v is not None and v > 0]
+    if not positives:
+        return None
+    return max(positives)
+
+
+def _to_native(value: Optional[Decimal]) -> Optional[float]:
+    if value is None:
+        return None
+    normalized = value
+    if normalized == normalized.to_integral():
+        return int(normalized)
+    return float(normalized)
 
 
 __all__ = [

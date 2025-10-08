@@ -141,7 +141,6 @@
                 <th id="inv-col-max-order" data-field="max_order_qty" class="col-num">Max Order Qty</th>
                 <th id="inv-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
-                <th id="inv-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
                 <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
@@ -157,9 +156,13 @@
                 <th id="inv-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
                 <th id="inv-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
                 <th id="inv-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
+                <th id="inv-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
                 <th id="inv-col-reorder-pt-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
+                <th id="inv-col-reorder-pt-rec" data-field="recommended_reorder_point_ri" class="col-num col-recom">Reorder Point (Recom.)</th>
                 <th id="inv-col-min-order-ri" data-field="min_order_qty_ri" class="col-num">Min Order Qty (RI)</th>
+                <th id="inv-col-min-order-rec" data-field="recommended_min_order_qty_ri" class="col-num col-recom">Min Order Qty (Recom.)</th>
                 <th id="inv-col-max-order-ri" data-field="max_order_qty_ri" class="col-num">Max Order Qty (RI)</th>
+                <th id="inv-col-max-order-rec" data-field="recommended_max_order_qty_ri" class="col-num col-recom">Max Order Qty (Recom.)</th>
                 <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
@@ -188,7 +191,6 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
@@ -204,14 +206,17 @@
                 <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-text column-filter-cell"></th>
+                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-pt-rec"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
                 <th class="col-text column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
               </tr>
-            </thead>
             <tbody>
               <!-- dynamic rows inserted by JS -->
             </tbody>
@@ -276,7 +281,6 @@
                 <th id="par-col-max-order" data-field="max_order_qty" class="col-num">Max Order Qty</th>
                 <th id="par-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
-                <th id="par-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
@@ -292,8 +296,12 @@
                 <th id="par-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
                 <th id="par-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
                 <th id="par-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
+                <th id="par-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
+                <th id="par-col-reorder-rec" data-field="recommended_reorder_point_ri" class="col-num col-recom">Reorder Point (Recom.)</th>
                 <th id="par-col-min-order-ri" data-field="min_order_qty_ri" class="col-num">Min Order Qty (RI)</th>
+                <th id="par-col-min-order-rec" data-field="recommended_min_order_qty_ri" class="col-num col-recom">Min Order Qty (Recom.)</th>
                 <th id="par-col-max-order-ri" data-field="max_order_qty_ri" class="col-num">Max Order Qty (RI)</th>
+                <th id="par-col-max-order-rec" data-field="recommended_max_order_qty_ri" class="col-num col-recom">Max Order Qty (Recom.)</th>
                 <th id="par-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
@@ -321,7 +329,6 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
@@ -337,8 +344,12 @@
                 <th class="col-text column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-text column-filter-cell"></th>
+                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-rec"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
                 <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
                 <th class="col-text column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
                 <th class="col-desc column-filter-cell"></th>
@@ -388,27 +399,9 @@
     </div>
   </div>
 </div>
-  <!-- Requester contacts modal -->
-  <div class="modal fade" id="requester-modal" tabindex="-1" aria-labelledby="requester-modal-title" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content shadow-lg">
-        <div class="modal-header border-0 pb-0">
-          <h5 class="modal-title fw-semibold" id="requester-modal-title">Requester Contacts</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body pt-3">
-          <div class="small text-muted mb-3" id="requester-modal-meta"></div>
-          <div id="requester-modal-body">
-            <div class="text-muted small">Select an item to view requester contacts.</div>
-          </div>
-        </div>
-        <div class="modal-footer border-0 pt-0">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="button" class="btn btn-primary" id="requester-batch-email" disabled>Batch Email</button>
-        </div>
-      </div>
-    </div>
-  </div>
+
+<!-- Requester contacts modal -->
+  
 {% endblock %}
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -462,15 +455,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const parResetBtn = document.getElementById('par-reset-filters');
   const inventoryExportBtn = document.getElementById('inventory-export-excel');
   const parExportBtn = document.getElementById('par-export-excel');
-  const requesterModalEl = document.getElementById('requester-modal');
-  const requesterModalTitle = document.getElementById('requester-modal-title');
-  const requesterModalBody = document.getElementById('requester-modal-body');
-  const requesterModalMeta = document.getElementById('requester-modal-meta');
-  const requesterBatchEmailBtn = document.getElementById('requester-batch-email');
-  const requesterModal = requesterModalEl && typeof bootstrap !== 'undefined'
-    ? bootstrap.Modal.getOrCreateInstance(requesterModalEl)
-    : null;
-  const requesterDetailCache = new Map();
   const htmlEscapeMap = {
     '&': '&amp;',
     '<': '&lt;',
@@ -481,11 +465,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"'`]/g, ch => htmlEscapeMap[ch] || ch);
   const escapeAttr = (value) => escapeHtml(value);
-  const mailIconSvg = `
-    <svg class="requester-mail-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
-      <path d="M4.75 5h14.5A2.75 2.75 0 0 1 22 7.75v8.5A2.75 2.75 0 0 1 19.25 19H4.75A2.75 2.75 0 0 1 2 16.25v-8.5A2.75 2.75 0 0 1 4.75 5Zm0 1.5A1.25 1.25 0 0 0 3.5 7.75v.388l7.94 5.172a1.5 1.5 0 0 0 1.12.222 1.5 1.5 0 0 0 1.12-.222l7.94-5.172V7.75A1.25 1.25 0 0 0 19.25 6.5H4.75Zm15.75 3.079-6.898 4.495a3 3 0 0 1-3.204 0L3.5 9.579v6.671A1.25 1.25 0 0 0 4.75 17.5h14.5a1.25 1.25 0 0 0 1.25-1.25V9.579Z" />
-    </svg>
-  `.trim();
   const columnState = {
     inventory: {},
     par: {},
@@ -532,57 +511,9 @@ document.addEventListener('DOMContentLoaded', () => {
       discontinued_ri: 'discontinued_state_ri',
     },
   };
-  function renderRequesterCell(row, tableKey){
-    const rawCount = row && row.requesters_past_year;
-    const hasValue = rawCount !== null && rawCount !== undefined && rawCount !== '';
-    const numericCount = hasValue ? Number(rawCount) : 0;
-    const isFiniteCount = Number.isFinite(numericCount);
-    const hasContacts = isFiniteCount && numericCount > 0;
-    const countDisplay = hasValue
-      ? (isFiniteCount ? numericCount.toLocaleString('en-US', { maximumFractionDigits: 0 }) : String(rawCount))
-      : '';
-    const safeCount = escapeHtml(countDisplay);
-    const safeTableKey = escapeAttr(tableKey || '');
-    const safeItem = escapeAttr(row?.item ?? '');
-    const safePrimaryLocation = escapeAttr(row?.group_location ?? row?.location ?? '');
-    const safeSecondaryLocation = escapeAttr(row?.location ?? '');
-    const countValue = hasValue && isFiniteCount ? numericCount : 0;
-    const title = hasContacts
-      ? `View ${numericCount === 1 ? 'requester' : 'requesters'}`
-      : (hasValue ? 'No requester contacts' : 'Requester contacts unavailable');
-    const ariaLabel = hasContacts
-      ? `View ${numericCount} requester${numericCount === 1 ? '' : 's'}`
-      : 'Requester contacts unavailable';
-    const disabledAttr = hasContacts ? '' : ' disabled';
-    const buttonClasses = `requester-mail-btn${hasContacts ? '' : ' disabled'}`;
-    return `
-      <div class="requester-cell">
-        <span class="requester-count">${safeCount}</span>
-        <button type="button" class="${buttonClasses}" data-table="${safeTableKey}" data-item="${safeItem}" data-location="${safePrimaryLocation}" data-alt-location="${safeSecondaryLocation}" data-count="${String(countValue)}" title="${escapeAttr(title)}" aria-label="${escapeAttr(ariaLabel)}"${disabledAttr}>
-          ${mailIconSvg}
-        </button>
-      </div>
-    `;
-  }
 
-  function attachRequesterButtons(scope){
-    if(!scope) return;
-    scope.querySelectorAll('.requester-mail-btn').forEach(btn => {
-      if(btn.dataset.requesterBound === '1') return;
-      btn.dataset.requesterBound = '1';
-      if(btn.disabled) return;
-      btn.addEventListener('click', evt => {
-        evt.preventDefault();
-        evt.stopPropagation();
-        const item = btn.dataset.item || '';
-        const location = btn.dataset.location || '';
-        const altLocation = btn.dataset.altLocation || '';
-        const sourceLabel = btn.dataset.table || '';
-        const countHint = Number.parseInt(btn.dataset.count || '0', 10) || 0;
-        openRequesterModal({ item, location, altLocation, sourceLabel, countHint });
-      });
-    });
-  }
+  let setupMode = false;
+
 
   function closeFilterDropdowns(){
     const dropdowns = [
@@ -606,203 +537,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function updateRequesterBatchEmailButton(rows = [], meta = {}){
-    if(!requesterBatchEmailBtn) return;
-    const uniqueEmails = [];
-    const seen = new Set();
-    (rows || []).forEach(row => {
-      const emailRaw = (row && (row.email || row.email_address)) ? String(row.email || row.email_address).trim() : '';
-      if(!emailRaw) return;
-      const normalized = emailRaw.toLowerCase();
-      if(seen.has(normalized)) return;
-      seen.add(normalized);
-      uniqueEmails.push(emailRaw);
-    });
-    if(uniqueEmails.length){
-      requesterBatchEmailBtn.disabled = false;
-      requesterBatchEmailBtn.dataset.emails = uniqueEmails.join(';');
-    } else {
-      requesterBatchEmailBtn.disabled = true;
-      requesterBatchEmailBtn.dataset.emails = '';
-    }
-    requesterBatchEmailBtn.dataset.item = meta.itemLabel || '';
-    requesterBatchEmailBtn.dataset.location = meta.location || '';
-    requesterBatchEmailBtn.dataset.source = meta.sourceLabel || '';
-  }
-
-  if(requesterBatchEmailBtn){
-    requesterBatchEmailBtn.addEventListener('click', () => {
-      if(requesterBatchEmailBtn.disabled) return;
-      const rawEmails = requesterBatchEmailBtn.dataset.emails || '';
-      const emailList = rawEmails
-        .split(';')
-        .map(email => email.trim())
-        .filter(Boolean);
-      if(!emailList.length){
-        requesterBatchEmailBtn.disabled = true;
-        requesterBatchEmailBtn.dataset.emails = '';
-        return;
-      }
-      const subjectParts = [];
-      const itemLabel = requesterBatchEmailBtn.dataset.item || '';
-      const locationLabel = requesterBatchEmailBtn.dataset.location || '';
-      if(itemLabel) subjectParts.push(`Item ${itemLabel}`);
-      if(locationLabel) subjectParts.push(`Location ${locationLabel}`);
-      const subjectText = subjectParts.length
-        ? `Requester outreach – ${subjectParts.join(' • ')}`
-        : 'Requester outreach';
-      const bccValue = encodeURIComponent(emailList.join(';'));
-      const subjectValue = encodeURIComponent(subjectText);
-      window.location.href = `mailto:?bcc=${bccValue}&subject=${subjectValue}`;
-    });
-  }
-
-  async function openRequesterModal({ item, location, altLocation, sourceLabel, countHint }){
-    if(!requesterModal || !requesterModalBody){
-      console.warn('Requester modal unavailable in DOM.');
-      return;
-    }
-    const displayLocation = location || altLocation || '';
-    closeFilterDropdowns();
-    if(requesterModalTitle){
-      requesterModalTitle.textContent = 'Requester Contacts';
-    }
-    if(requesterModalMeta){
-      const prelim = [];
-      if(item) prelim.push(`Item ${item}`);
-      if(displayLocation) prelim.push(`Location ${displayLocation}`);
-      if(sourceLabel){
-        prelim.push(sourceLabel === 'inventory' ? 'Inventory table' : (sourceLabel === 'par' ? 'Par table' : sourceLabel));
-      }
-      requesterModalMeta.textContent = prelim.filter(Boolean).join(' • ');
-    }
-    updateRequesterBatchEmailButton([], {
-      itemLabel: item,
-      location: displayLocation,
-      sourceLabel,
-    });
-    requesterModalBody.innerHTML = `
-      <div class="d-flex align-items-center gap-2 text-muted small">
-        <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
-        <span>Loading requester contacts…</span>
-      </div>
-    `;
-    requesterModal.show();
-    const cacheKey = [item, location, altLocation].join('||');
-    try {
-      let payload;
-      if(requesterDetailCache.has(cacheKey)){
-        payload = requesterDetailCache.get(cacheKey);
-      } else {
-        const params = new URLSearchParams();
-        if(item) params.set('item', item);
-        if(location) params.set('location', location);
-        if(altLocation && (!location || altLocation.toLowerCase() !== location.toLowerCase())){
-          params.set('alt_location', altLocation);
-        }
-        const resp = await fetch(`/dashboard/api/requesters?${params.toString()}`);
-        if(!resp.ok){
-          const text = await resp.text();
-          throw new Error(text || `Request failed (${resp.status})`);
-        }
-        payload = await resp.json();
-        requesterDetailCache.set(cacheKey, payload);
-      }
-      renderRequesterModalContent(payload, { countHint, sourceLabel });
-    } catch(err){
-      requesterModalBody.innerHTML = `<div class="text-danger small">Unable to load requester contacts: ${escapeHtml(err.message || 'Unexpected error')}.</div>`;
-      updateRequesterBatchEmailButton([], {
-        itemLabel: item,
-        location: displayLocation,
-        sourceLabel,
-      });
-    }
-  }
-
-  function renderRequesterModalContent(payload, { countHint = 0, sourceLabel = '' } = {}){
-    if(!requesterModalBody) return;
-    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
-    const matchedLocation = payload?.matched_location || payload?.location || '';
-    const itemLabel = payload?.item || '';
-    const count = Number.isFinite(payload?.count) ? payload.count : rows.length;
-    const friendlySource = sourceLabel === 'inventory' ? 'Inventory table' : (sourceLabel === 'par' ? 'Par table' : (sourceLabel || ''));
-    if(requesterModalTitle){
-      const baseTitle = 'Requester Contacts';
-      requesterModalTitle.textContent = count ? `${baseTitle} (${count})` : baseTitle;
-    }
-    if(requesterModalMeta){
-      const metaParts = [];
-      if(itemLabel) metaParts.push(`Item ${itemLabel}`);
-      if(matchedLocation) metaParts.push(`Location ${matchedLocation}`);
-      if(friendlySource) metaParts.push(friendlySource);
-      const fallbackCount = count || countHint || 0;
-      metaParts.push(`${fallbackCount} contact${fallbackCount === 1 ? '' : 's'}`);
-      requesterModalMeta.textContent = metaParts.filter(Boolean).join(' • ');
-    }
-    if(!rows.length){
-      requesterModalBody.innerHTML = `
-        <div class="alert alert-light border text-center mb-0 py-4">
-          <div class="fw-semibold mb-1">No requester contacts on file.</div>
-          <div class="text-muted small">We couldn't find distinct requester names or emails for this item and location in the last year.</div>
-        </div>
-      `;
-      updateRequesterBatchEmailButton([], {
-        itemLabel,
-        location: matchedLocation,
-        sourceLabel: friendlySource,
-      });
-      return;
-    }
-    const rowsHtml = rows.map((row, idx) => {
-      const requesterId = row.requester_id || row.requester || '';
-      const nameValue = row.name || requesterId;
-      let nameCell;
-      if(nameValue){
-        const safeName = escapeHtml(nameValue);
-        if(requesterId && requesterId !== nameValue){
-          nameCell = `<div>${safeName}</div><div class="text-muted small">ID: ${escapeHtml(requesterId)}</div>`;
-        } else {
-          nameCell = safeName;
-        }
-      } else if(requesterId){
-        nameCell = `<span class="text-muted">ID: ${escapeHtml(requesterId)}</span>`;
-      } else {
-        nameCell = '<span class="text-muted fst-italic">Unknown</span>';
-      }
-      const emailValue = row.email || row.email_address || '';
-      const emailCell = emailValue
-        ? `<a href="mailto:${escapeAttr(emailValue)}" class="text-decoration-none">${escapeHtml(emailValue)}</a>`
-        : '<span class="text-muted fst-italic">Not provided</span>';
-      return `
-        <tr>
-          <td class="text-muted">${idx + 1}</td>
-          <td>${nameCell}</td>
-          <td>${emailCell}</td>
-        </tr>
-      `;
-    }).join('');
-    requesterModalBody.innerHTML = `
-      <div class="table-responsive requester-modal-table">
-        <table class="table table-sm align-middle mb-0">
-          <thead class="table-light">
-            <tr>
-              <th scope="col" style="width: 60px;">#</th>
-              <th scope="col">Requester Name</th>
-              <th scope="col">Email</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-        </table>
-      </div>
-    `;
-    updateRequesterBatchEmailButton(rows, {
-      itemLabel,
-      location: matchedLocation,
-      sourceLabel: friendlySource,
-    });
-  }
 
   const lockedColumns = {
     inventory: new Set([
@@ -881,6 +615,46 @@ document.addEventListener('DOMContentLoaded', () => {
     table.querySelectorAll('tbody tr').forEach(tr => {
       const cell = tr.children[colIndex];
       if(cell) cell.style.display = display;
+    });
+  }
+
+  function moveTableColumn(table, columnId, targetColumnId, position = 'before'){
+    if(!table || !columnId || !targetColumnId) return;
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return;
+    const headerCells = Array.from(headerRow.children);
+    const sourceHeader = headerRow.querySelector(`#${cssEscape(columnId)}`);
+    const targetHeader = headerRow.querySelector(`#${cssEscape(targetColumnId)}`);
+    if(!sourceHeader || !targetHeader) return;
+    const sourceIndex = headerCells.indexOf(sourceHeader);
+    let targetIndex = headerCells.indexOf(targetHeader);
+    if(sourceIndex < 0 || targetIndex < 0) return;
+    if(position === 'after'){
+      targetIndex += 1;
+    }
+    if(targetIndex === sourceIndex || (position === 'after' && targetIndex === sourceIndex + 1)){
+      return;
+    }
+
+    const moveCell = (row) => {
+      if(!row) return;
+      const cells = Array.from(row.children);
+      if(sourceIndex >= cells.length) return;
+      const cell = cells[sourceIndex];
+      if(!cell) return;
+      const reference = targetIndex >= cells.length ? null : row.children[targetIndex];
+      if(reference){
+        row.insertBefore(cell, reference);
+      } else {
+        row.appendChild(cell);
+      }
+    };
+
+    if(table.tHead){
+      Array.from(table.tHead.rows).forEach(moveCell);
+    }
+    Array.from(table.tBodies || []).forEach(tbody => {
+      Array.from(tbody.rows).forEach(moveCell);
     });
   }
 
@@ -1037,13 +811,20 @@ document.addEventListener('DOMContentLoaded', () => {
   buildColumnMenu(parTable, parColumnMenu, 'par');
 
   // Initialize new UOM/reorder columns as hidden
+  const recommendedColumns = [
+    'recommended_reorder_quantity_code_ri',
+    'recommended_reorder_point_ri',
+    'recommended_min_order_qty_ri',
+    'recommended_max_order_qty_ri',
+  ];
   const setupColumns = [
     'stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
     'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
-    'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+    'min_order_qty', 'max_order_qty', 'manufacturer_number',
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'
+    'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    ...recommendedColumns,
   ];
   ['inventory', 'par'].forEach(tableKey => {
     const table = tableKey === 'inventory' ? inventoryTable : parTable;
@@ -1052,14 +833,30 @@ document.addEventListener('DOMContentLoaded', () => {
       if(th && th.id){
         columnState[tableKey][th.id] = false;
         toggleColumnVisibility(table, th.id, false);
+        const checkbox = document.querySelector(`#${th.id}-toggle`);
+        if(checkbox){
+          checkbox.checked = false;
+        }
       }
     });
   });
 
+  applyParColumnArrangement();
+
   // Location Setup Toggle Handler
   const locationSetupToggle = document.getElementById('location-setup-toggle');
   const locationSetupStatus = document.getElementById('location-setup-status');
-  let setupMode = false;
+
+  function applyParColumnArrangement(){
+    if(!parTable) return;
+    if(setupMode){
+      moveTableColumn(parTable, 'par-col-reorder', 'par-col-reorder-policy', 'after');
+      moveTableColumn(parTable, 'par-col-reorder-ri', 'par-col-reorder-rec', 'before');
+    } else {
+      moveTableColumn(parTable, 'par-col-reorder', 'par-col-weekly', 'before');
+      moveTableColumn(parTable, 'par-col-reorder-ri', 'par-col-weekly-ri', 'before');
+    }
+  }
   
   if(locationSetupToggle){
     locationSetupToggle.addEventListener('click', () => {
@@ -1082,14 +879,15 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if(setupMode){
         // Inventory table: hide operational columns, show setup columns
-        const invHide = ['active', 'discontinued', 'current_qty', 'weeks_on_hand', 'po_90_qty', 'requesters_past_year',
-                         'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
-        const invShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
-                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
-                         'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
-                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
-                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-                         'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+  const invHide = ['active', 'discontinued', 'current_qty', 'weeks_on_hand', 'po_90_qty', 
+       'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
+  const invShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+       'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+       'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+       'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+       'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+       ...recommendedColumns];
         
         invHide.forEach(field => {
           const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
@@ -1111,14 +909,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // PAR table: hide operational columns, show setup columns
-        const parHide = ['active', 'discontinued', 'weeks_reorder', 'req_qty_ea', 'requesters_past_year',
+        const parHide = ['active', 'discontinued', 'weeks_reorder', 'req_qty_ea', 
                          'active_ri', 'discontinued_ri', 'weeks_reorder_ri'];
-        const parShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
-                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
-                         'min_order_qty', 'max_order_qty', 'manufacturer_number',
-                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
-                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-                         'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+  const parShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+    'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+    'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+    'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+    'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    ...recommendedColumns];
         
         parHide.forEach(field => {
           const th = parTable.querySelector(`th[data-field="${field}"]`);
@@ -1138,16 +937,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if(checkbox) checkbox.checked = true;
           }
         });
+        applyParColumnArrangement();
       } else {
         // Revert to default view: show operational columns, hide setup columns
-        const invShow = ['active', 'discontinued', 'current_qty', 'weeks_on_hand', 'po_90_qty', 'requesters_past_year',
-                         'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
-        const invHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
-                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
-                         'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
-                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
-                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-                         'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+  const invShow = ['active', 'discontinued', 'current_qty', 'weeks_on_hand',
+       'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
+  const invHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+       'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+       'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+       'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+       'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+       ...recommendedColumns];
         
         invShow.forEach(field => {
           const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
@@ -1169,14 +970,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // PAR table: show operational columns, hide setup columns
-        const parShow = ['active', 'discontinued', 'weeks_reorder', 'req_qty_ea', 'requesters_past_year',
-                         'active_ri', 'discontinued_ri', 'weeks_reorder_ri'];
-        const parHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
-                         'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
-                         'min_order_qty', 'max_order_qty', 'manufacturer_number',
-                         'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
-                         'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-                         'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri'];
+        const parShow = ['active', 'discontinued', 'reorder_point', 'weeks_reorder', 'req_qty_ea', 
+                               'active_ri', 'discontinued_ri', 'reorder_point_ri', 'weeks_reorder_ri'];
+  const parHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+       'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+       'min_order_qty', 'max_order_qty', 'manufacturer_number',
+       'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+       'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+       'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+       ...recommendedColumns];
         
         parShow.forEach(field => {
           const th = parTable.querySelector(`th[data-field="${field}"]`);
@@ -1196,6 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if(checkbox) checkbox.checked = false;
           }
         });
+        applyParColumnArrangement();
       }
     });
   }
@@ -1537,7 +1340,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.max_order_qty,0)}</td>
           <td class="col-src text-center">${fmt(r.manufacturer_number)}</td>
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
-          <td class="col-src text-center">${renderRequesterCell(r, 'inventory')}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
@@ -1553,16 +1355,19 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
           <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
           <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
+          <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
           <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
           <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_min_order_qty_ri,0)}</td>
           <td class="col-repl text-center">${num(r.max_order_qty_ri,0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_max_order_qty_ri,0)}</td>
           <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         tbody.appendChild(tr);
       }
-      attachRequesterButtons(tbody);
       applyColumnState(inventoryTable, columnState.inventory);
       const totalLabel = data.total ?? rows.length;
       const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
@@ -1640,7 +1445,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.max_order_qty,0)}</td>
             <td class="col-src text-center">${fmt(r.manufacturer_number)}</td>
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
-            <td class="col-src text-center">${renderRequesterCell(r, 'par')}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
@@ -1656,15 +1460,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
             <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
             <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
+            <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
             <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_min_order_qty_ri,0)}</td>
             <td class="col-repl text-center">${num(r.max_order_qty_ri,0)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_max_order_qty_ri,0)}</td>
             <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
             <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
             <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         parTbody.appendChild(tr);
       }
-      attachRequesterButtons(parTbody);
+      applyParColumnArrangement();
       applyColumnState(parTable, columnState.par);
       attachParRowClick();
       const totalLabel = data.total ?? rows.length;
@@ -1675,6 +1483,26 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Failed loading par locations', e);
       parCountEl.textContent = 'error';
     }
+  }
+
+  function collectVisibleColumnFields(tableKey){
+    const table = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
+    if(!table) return [];
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return [];
+    const state = columnState[tableKey] || {};
+    const fields = [];
+    Array.from(headerRow.children).forEach(th => {
+      const field = th.dataset.field;
+      if(!field) return;
+      const columnId = th.id || '';
+      const isStateVisible = columnId ? state[columnId] !== false : true;
+      const styleHidden = th.style && th.style.display === 'none';
+      if(isStateVisible && !styleHidden){
+        fields.push(field);
+      }
+    });
+    return fields;
   }
 
   async function exportTable(tableKey){
@@ -1688,6 +1516,10 @@ document.addEventListener('DOMContentLoaded', () => {
       appendColumnFilterParams(params, tableKey);
       if(hideROnly){
         params.set('hide_r_only', 'true');
+      }
+      const visibleFields = collectVisibleColumnFields(tableKey);
+      if(visibleFields.length){
+        params.set('visible_columns', visibleFields.join(','));
       }
       const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
       if(!resp.ok){

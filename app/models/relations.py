@@ -491,7 +491,6 @@ class PLMTrackerBase(db.Model):
 	issued_count_365 = db.Column("issued_count_365", db.Integer, nullable=True)
 	OrderQty90_EA = db.Column("OrderQty90_EA", db.Numeric, nullable=True)
 	ReqQty90_EA = db.Column("ReqQty90_EA", db.Numeric, nullable=True)
-	requester_count = db.Column("requester_count", db.Integer, nullable=True) # only available to original item side
 
 	# Replace Item side (ri) fields
 	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)

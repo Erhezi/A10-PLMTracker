@@ -240,7 +240,6 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Max Order Qty", "max_order_qty"),
     ("Manufacturer Number", "manufacturer_number"),
     ("90-day PO Qty", "po_90_qty"),
-    ("Requesters (Past Year)", "requesters_past_year"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
@@ -256,9 +255,13 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Transaction UOM (RI)", "transaction_uom_ri"),
     ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
+    ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
     ("Reorder Point (RI)", "reorder_point_ri"),
+    ("Reorder Point (Recom.)", "recommended_reorder_point_ri"),
     ("Min Order Qty (RI)", "min_order_qty_ri"),
+    ("Min Order Qty (Recom.)", "recommended_min_order_qty_ri"),
     ("Max Order Qty (RI)", "max_order_qty_ri"),
+    ("Max Order Qty (Recom.)", "recommended_max_order_qty_ri"),
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
@@ -288,13 +291,13 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Max Order Qty", "max_order_qty"),
     ("Manufacturer Number", "manufacturer_number"),
     ("90-day Req Qty", "req_qty_ea"),
-    ("Requesters (Past Year)", "requesters_past_year"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
     ("Active (RI)", "active_ri"),
     ("Discon. (RI)", "discontinued_ri"),
     ("Reorder Point (RI)", "reorder_point_ri"),
+    ("Reorder Point (Recom.)", "recommended_reorder_point_ri"),
     ("Weekly Demand (RI)", "weekly_burn_ri"),
     ("Weeks Reorder (RI)", "weeks_reorder_ri"),
     ("Stock UOM (RI)", "stock_uom_ri"),
@@ -304,8 +307,11 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Transaction UOM (RI)", "transaction_uom_ri"),
     ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
+    ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
     ("Min Order Qty (RI)", "min_order_qty_ri"),
+    ("Min Order Qty (Recom.)", "recommended_min_order_qty_ri"),
     ("Max Order Qty (RI)", "max_order_qty_ri"),
+    ("Max Order Qty (Recom.)", "recommended_max_order_qty_ri"),
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
@@ -457,69 +463,7 @@ def api_par():
 @bp.route("/api/requesters")
 @login_required
 def api_requesters():
-    item = (request.args.get("item") or "").strip()
-    location = (request.args.get("location") or "").strip()
-    alt_location = (request.args.get("alt_location") or "").strip()
-    if not item:
-        return jsonify({"error": "Missing required parameter: item"}), 400
-
-    candidates: list[str] = []
-    if location:
-        candidates.append(location)
-    if alt_location and not any(alt_location.lower() == existing.lower() for existing in candidates):
-        candidates.append(alt_location)
-    if not candidates:
-        return jsonify({"error": "Missing required parameter: location"}), 400
-
-    matched_location: str | None = None
-    rows_payload: list[dict] = []
-
-    for candidate in candidates:
-        normalized_candidate = candidate.upper()
-        query = (
-            select(Requesters365Day)
-            .where(Requesters365Day.Item == item)
-            .where(func.upper(Requesters365Day.RequestingLocation) == normalized_candidate)
-        )
-        records = db.session.execute(query).scalars().all()
-        if not records:
-            continue
-
-        deduped: list[dict] = []
-        seen: set[tuple[str, str, str]] = set()
-        for record in records:
-            name_raw = (record.RequesterName or "").strip()
-            email_raw = (record.EmailAddress or "").strip()
-            requester_id_raw = (record.Requester or "").strip()
-            key = (
-                name_raw.lower(),
-                email_raw.lower(),
-                requester_id_raw.lower(),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append({
-                "requester_id": requester_id_raw or None,
-                "name": name_raw or None,
-                "email": email_raw or None,
-            })
-        if not deduped:
-            continue
-        deduped.sort(key=lambda row: ((row["name"] or "").lower(), (row["email"] or "").lower()))
-        matched_location = (records[0].RequestingLocation or candidate) if records else candidate
-        rows_payload = deduped
-        break
-
-    payload = {
-        "item": item,
-        "requested_location": location,
-        "matched_location": matched_location,
-        "candidate_locations": candidates,
-        "count": len(rows_payload),
-        "rows": rows_payload,
-    }
-    return jsonify(payload)
+    pass
 
 
 @bp.route("/api/stats")
@@ -593,6 +537,15 @@ def export_table(table_key: str):
     hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
     if hide_r_only:
         rows = [row for row in rows if not _is_r_only_location(row)]
+
+    visible_param = request.args.get("visible_columns")
+    if visible_param:
+        requested_fields = [part.strip() for part in visible_param.split(",") if part.strip()]
+        if requested_fields:
+            lookup = {field: (header, field) for header, field in columns}
+            filtered_columns = [lookup[field] for field in requested_fields if field in lookup]
+            if filtered_columns:
+                columns = filtered_columns
 
     workbook = Workbook()
     worksheet = workbook.active

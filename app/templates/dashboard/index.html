@@ -176,7 +176,7 @@
                 <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
-                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current" data-field="current_qty_state"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-text column-filter-cell"></th>
@@ -196,7 +196,7 @@
                 <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
-                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current-ri" data-field="current_qty_ri_state"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-text column-filter-cell"></th>
@@ -475,14 +475,29 @@ document.addEventListener('DOMContentLoaded', () => {
     { value: 'no', label: 'No' },
     { value: 'blank', label: 'Blank' },
   ];
+  const qtyStateOptions = [
+    { value: '', label: 'All' },
+    { value: 'zero', label: '= 0' },
+    { value: 'positive', label: '> 0' },
+  ];
+  const columnFilterOptionsMap = {};
+  const getColumnFilterOptionsKey = (tableKey, field) => `${tableKey}:${field}`;
+  function setColumnFilterOptions(tableKey, field, options){
+    columnFilterOptionsMap[getColumnFilterOptionsKey(tableKey, field)] = options;
+  }
+  function getColumnFilterOptions(tableKey, field){
+    return columnFilterOptionsMap[getColumnFilterOptionsKey(tableKey, field)] || triStateOptions;
+  }
   const columnFilters = {
     inventory: {
       auto_replenishment: '',
       active: '',
       discontinued: '',
+      current_qty_state: '',
       auto_replenishment_ri: '',
       active_ri: '',
       discontinued_ri: '',
+      current_qty_ri_state: '',
     },
     par: {
       auto_replenishment: '',
@@ -498,9 +513,11 @@ document.addEventListener('DOMContentLoaded', () => {
       auto_replenishment: 'auto_repl_state',
       active: 'active_state',
       discontinued: 'discontinued_state',
+      current_qty_state: 'current_qty_filter',
       auto_replenishment_ri: 'auto_repl_state_ri',
       active_ri: 'active_state_ri',
       discontinued_ri: 'discontinued_state_ri',
+      current_qty_ri_state: 'current_qty_ri_filter',
     },
     par: {
       auto_replenishment: 'auto_repl_state',
@@ -1009,7 +1026,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const labelSpan = btn.querySelector('.filter-label');
     const headerLabel = btn.dataset.headerLabel || field;
     const value = (columnFilters[tableKey] && columnFilters[tableKey][field]) || '';
-    const option = triStateOptions.find(opt => opt.value === value) || triStateOptions[0];
+    const options = getColumnFilterOptions(tableKey, field);
+    const option = options.find(opt => opt.value === value) || options[0] || { value: '', label: 'All' };
     if(labelSpan){
       labelSpan.textContent = option.label;
     }
@@ -1023,6 +1041,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const menu = document.querySelector(`.column-filter-menu[data-table="${tableKey}"][data-field="${field}"]`);
     if(!menu) return;
     const value = (columnFilters[tableKey] && columnFilters[tableKey][field]) || '';
+    const options = getColumnFilterOptions(tableKey, field);
+    if(menu.childElementCount !== options.length){
+      menu.innerHTML = '';
+      options.forEach(opt => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'dropdown-item column-filter-option';
+        item.dataset.value = opt.value;
+        item.textContent = opt.label;
+        menu.appendChild(item);
+      });
+    }
     menu.querySelectorAll('.column-filter-option').forEach(btn => {
       const isActive = (btn.dataset.value || '') === value;
       btn.classList.toggle('active', isActive);
@@ -1048,9 +1078,11 @@ document.addEventListener('DOMContentLoaded', () => {
         { labelCellId: 'inv-col-auto', filterCellId: 'inv-filter-auto', field: 'auto_replenishment', label: 'Auto-repl.' },
         { labelCellId: 'inv-col-active', filterCellId: 'inv-filter-active', field: 'active', label: 'Active' },
         { labelCellId: 'inv-col-disc', filterCellId: 'inv-filter-disc', field: 'discontinued', label: 'Discon.' },
+        { labelCellId: 'inv-col-current', filterCellId: 'inv-filter-current', field: 'current_qty_state', label: 'Current Qty', options: qtyStateOptions },
         { labelCellId: 'inv-col-auto-ri', filterCellId: 'inv-filter-auto-ri', field: 'auto_replenishment_ri', label: 'Auto-repl. (RI)' },
         { labelCellId: 'inv-col-active-ri', filterCellId: 'inv-filter-active-ri', field: 'active_ri', label: 'Active (RI)' },
         { labelCellId: 'inv-col-disc-ri', filterCellId: 'inv-filter-disc-ri', field: 'discontinued_ri', label: 'Discon. (RI)' },
+        { labelCellId: 'inv-col-current-ri', filterCellId: 'inv-filter-current-ri', field: 'current_qty_ri_state', label: 'Current Qty (RI)', options: qtyStateOptions },
       ],
       par: [
         { labelCellId: 'par-col-auto', filterCellId: 'par-filter-auto', field: 'auto_replenishment', label: 'Auto-repl.' },
@@ -1090,7 +1122,9 @@ document.addEventListener('DOMContentLoaded', () => {
         menu.className = 'dropdown-menu dropdown-menu-end column-filter-menu';
         menu.dataset.table = tableKey;
         menu.dataset.field = def.field;
-        triStateOptions.forEach(opt => {
+        const effectiveOptions = def.options || triStateOptions;
+        setColumnFilterOptions(tableKey, def.field, effectiveOptions);
+        effectiveOptions.forEach(opt => {
           const item = document.createElement('button');
           item.type = 'button';
           item.className = 'dropdown-item column-filter-option';

@@ -1,5 +1,6 @@
 import io
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, request, jsonify, send_file, abort
 from flask_login import login_required
@@ -115,6 +116,38 @@ def _coerce_excel_value(value):
     return value
 
 
+def _to_decimal(value) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        return Decimal(str(value))
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return Decimal(text.replace(',', ''))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _apply_quantity_filter(rows, field: str, desired: str | None):
+    target = (desired or "").strip().lower()
+    if target not in {"zero", "positive"}:
+        return rows
+    filtered: list[dict] = []
+    for row in rows:
+        val = _to_decimal(row.get(field))
+        if val is None:
+            continue
+        if target == "zero" and val == 0:
+            filtered.append(row)
+        elif target == "positive" and val > 0:
+            filtered.append(row)
+    return filtered
+
+
 def _filtered_inventory_rows(args) -> list[dict]:
     stages_list = _parse_stage_values(args)
     item_group_filters = _parse_item_group_filters(args.get("item_group"))
@@ -154,6 +187,8 @@ def _filtered_inventory_rows(args) -> list[dict]:
     all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
     all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
     all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
+    all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
+    all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
     return all_rows
 
 

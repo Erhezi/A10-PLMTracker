@@ -326,17 +326,9 @@ footer { font-size: .75rem; }
   background: var(--plm-accent-purple-mid);
 }
 #table-inventory thead tr.column-filter-row th.col-recom,
-#table-par thead tr.column-filter-row th.col-recom {
-  background: var(--plm-accent-purple-mid);
-}
-#table-inventory thead tr.column-filter-row th:nth-child(40),
-#table-inventory thead tr.column-filter-row th:nth-child(42),
-#table-inventory thead tr.column-filter-row th:nth-child(44),
-#table-inventory thead tr.column-filter-row th:nth-child(46),
-#table-par thead tr.column-filter-row th:nth-child(39),
-#table-par thead tr.column-filter-row th:nth-child(40),
-#table-par thead tr.column-filter-row th:nth-child(42),
-#table-par thead tr.column-filter-row th:nth-child(44) {
+#table-par thead tr.column-filter-row th.col-recom,
+#table-inventory thead tr.column-filter-row th[data-recom-col],
+#table-par thead tr.column-filter-row th[data-recom-col] {
   background: var(--plm-accent-purple-mid);
 }
 #table-inventory tbody td.col-weekly-group,

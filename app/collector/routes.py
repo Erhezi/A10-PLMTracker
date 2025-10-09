@@ -2,11 +2,20 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.orm import noload
+from datetime import date, datetime, timedelta
 import re
 from .. import db
-from ..models.relations import ItemLink, PendingItems
+from ..models import now_ny_naive
+from ..models.relations import (
+    ItemLink,
+    ItemGroup,
+    PendingItems,
+    ItemGroupConflictError,
+    ConflictError,
+)
 from ..models.inventory import Item, ContractItem
-from ..utility.item_group import validate_batch_inputs, validate_stage_and_items, BatchValidationError
+from ..utility.item_group import BatchValidationError
+from ..utility.add_pairs import AddItemPairs
 
 """Stage name definitions (canonical only)."""
 
@@ -31,7 +40,6 @@ bp = Blueprint("collector", __name__, url_prefix="")
 def collect():
     # Fetch a small sample set to verify Item view connectivity
     sample_items = Item.query.order_by(Item.item).limit(25).all()
-    from datetime import date
     from calendar import monthrange
 
     def add_months(d: date, months: int) -> date:
@@ -68,7 +76,7 @@ def groups():
     items = (
         ItemLink.query
         .options(noload('*'))
-        .order_by(ItemLink.item_group, ItemLink.item)
+        .order_by(ItemLink.item_group.desc(), ItemLink.item)
         .all()
     )
     # Count rows currently flagged as deleted
@@ -93,7 +101,13 @@ def clear_deleted():
 @bp.route("/groups/<item>/<replace_item>/update", methods=["POST"])
 @login_required
 def update_item(item: str, replace_item: str):
+    # The template may render Python None as the string 'None' (or similar) into
+    # the data-replace-item attribute. Normalize common textual null
+    # representations to actual None so SQL queries match NULL values.
+    if isinstance(replace_item, str) and replace_item.lower() in ('none', 'null', 'nan', ''):
+        replace_item = None
     record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first_or_404()
+    print(record) #debugging
     stage = request.form.get("stage")
     expected_go_live_date = request.form.get("expected_go_live_date") or None
     wrike_id = request.form.get("wrike_id") or None
@@ -146,7 +160,6 @@ def update_item(item: str, replace_item: str):
         record.expected_go_live_date = None
 
     record.wrike_id = wrike_id
-    from ..models import now_ny_naive
     record.update_dt = now_ny_naive()
     db.session.commit()
     if wants_json:
@@ -171,7 +184,105 @@ def update_item(item: str, replace_item: str):
 @bp.route("/conflicts")
 @login_required
 def conflicts():
-    return render_template("collector/conflicts.html")
+    limit = request.args.get("limit", type=int) or 200
+    limit = max(1, min(limit, 1000))
+    selected_type = request.args.get("type") or None
+
+    type_counts_rows = (
+        db.session.query(ConflictError.error_type, func.count(ConflictError.pkid))
+        .group_by(ConflictError.error_type)
+        .all()
+    )
+    type_counts = {row[0]: row[1] for row in type_counts_rows}
+    total_conflicts = sum(type_counts.values())
+
+    query = ConflictError.query.order_by(ConflictError.create_dt.desc(), ConflictError.pkid.desc())
+    if selected_type and selected_type in ConflictError.ERROR_TYPES:
+        query = query.filter(ConflictError.error_type == selected_type)
+
+    conflicts = query.limit(limit).all()
+
+    today = date.today()
+    purge_min_date = (today - timedelta(days=365)).isoformat()
+    purge_max_date = today.isoformat()
+
+    return render_template(
+        "collector/conflicts.html",
+        conflicts=conflicts,
+        limit=limit,
+        selected_type=selected_type,
+        type_counts=type_counts,
+        total_conflicts=total_conflicts,
+        error_types=ConflictError.ERROR_TYPES,
+        purge_min_date=purge_min_date,
+        purge_max_date=purge_max_date,
+    )
+
+
+@bp.post("/conflicts/<int:pkid>/delete")
+@login_required
+def delete_conflict(pkid: int):
+    conflict = ConflictError.query.get_or_404(pkid)
+    db.session.delete(conflict)
+    db.session.commit()
+    flash("Conflict entry cleared", "success")
+
+    redirect_params: dict[str, str] = {}
+    type_param = request.form.get("type") or None
+    limit_param = request.form.get("limit") or None
+    if type_param:
+        redirect_params["type"] = type_param
+    if limit_param:
+        redirect_params["limit"] = limit_param
+
+    return redirect(url_for("collector.conflicts", **redirect_params))
+
+
+@bp.post("/conflicts/purge")
+@login_required
+def purge_conflicts():
+    raw_date = request.form.get("purge_date") or ""
+    params: dict[str, str] = {}
+    type_param = request.form.get("type") or None
+    limit_param = request.form.get("limit") or None
+    if type_param:
+        params["type"] = type_param
+    if limit_param:
+        params["limit"] = limit_param
+
+    if not raw_date:
+        flash("Select a date to purge conflicts.", "warning")
+        return redirect(url_for("collector.conflicts", **params))
+
+    try:
+        target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Invalid purge date format.", "danger")
+        return redirect(url_for("collector.conflicts", **params))
+
+    today = date.today()
+    min_allowed = today - timedelta(days=365)
+    if target_date < min_allowed or target_date > today:
+        flash(
+            f"Purge date must be between {min_allowed.isoformat()} and {today.isoformat()}.",
+            "warning",
+        )
+        return redirect(url_for("collector.conflicts", **params))
+
+    cutoff = datetime.combine(target_date, datetime.min.time())
+    deleted = (
+        ConflictError.query
+        .filter(ConflictError.create_dt < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+
+    if deleted:
+        flash(f"Purged {deleted} conflict record(s) before {target_date.isoformat()}.", "success")
+    else:
+        flash("No conflict records found before the selected date.", "info")
+
+    return redirect(url_for("collector.conflicts", **params))
 
 
 # -------------------- API: Item search --------------------
@@ -262,41 +373,6 @@ def api_search_contract_items():
         for r in rows
     ])
 
-
-# -------------------- Helpers --------------------
-def _resolve_group(all_codes: set[str]) -> tuple[int, list[int]]:
-    """Determine canonical group id for a new batch touching item codes.
-
-    Returns (canonical_group_id, merged_group_ids).
-    merged_group_ids is list of group ids that were merged into canonical (excluding canonical itself).
-    """
-    if not all_codes:
-        # create a new group anyway
-        max_group = db.session.query(func.coalesce(func.max(ItemLink.item_group), 0)).scalar() or 0
-        return max_group + 1, []
-
-    existing = (
-        ItemLink.query.filter(
-            or_(
-                ItemLink.item.in_(all_codes),
-                ItemLink.replace_item.in_(all_codes),
-            )
-        ).all()
-    )
-    groups = {row.item_group for row in existing if row.item_group is not None}
-    if not groups:
-        max_group = db.session.query(func.coalesce(func.max(ItemLink.item_group), 0)).scalar() or 0
-        return max_group + 1, []
-    canonical = min(groups)
-    to_merge = sorted(g for g in groups if g != canonical)
-    if to_merge:
-        (
-            ItemLink.query.filter(ItemLink.item_group.in_(to_merge))
-            .update({ItemLink.item_group: canonical}, synchronize_session=False)
-        )
-    return canonical, to_merge
-
-
 # -------------------- API: Batch create links --------------------
 @bp.post("/api/item-links/batch")
 @login_required
@@ -313,192 +389,59 @@ def api_batch_item_links():
     if not items or not replace_items:
         return jsonify({"error": "Both items and replace_items required"}), 400
 
-    # Use utility functions for validation
+    from flask import current_app
+
+    max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
+
     try:
-        # Get config value for max per side
-        from flask import current_app
-        max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
-        
-        # Validate and normalize inputs
-        items, replace_items, validated_wrike_id, validated_date = validate_batch_inputs(
+        processor = AddItemPairs(
             items=items,
             replace_items=replace_items,
-            wrike_id=wrike_id,
-            expected_go_live_date_raw=expected_go_live_date_raw,
-            sentinel_replacements=SENTINEL_REPLACEMENTS,
-            max_per_side=max_per_side
-        )
-        
-        # Validate stage and lookup items
-        stage, locked, items_map, missing = validate_stage_and_items(
-            items=items,
-            replace_items=replace_items,
+            pending_meta=pending_meta,
             explicit_stage=explicit_stage,
+            expected_go_live_date_raw=expected_go_live_date_raw,
+            wrike_id=wrike_id,
+            sentinel_replacements=SENTINEL_REPLACEMENTS,
             allowed_stages=ALLOWED_STAGES,
-            sentinel_replacements=SENTINEL_REPLACEMENTS
+            max_per_side=max_per_side,
+            session=db.session,
         )
-        
+        result = processor.execute()
     except BatchValidationError as e:
+        db.session.rollback()
+        payload = {"error": e.message}
         if e.error_code == "missing_items":
-            return jsonify({"error": e.message, "missing": missing}), 400
-        return jsonify({"error": e.message}), 400
+            payload["missing"] = e.details.get("missing", [])
+        return jsonify(payload), 400
+    except ItemGroupConflictError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
 
-    # Extract real codes for group resolution (exclude sentinel and dynamic pending placeholders)
-    real_codes = set(items + [r for r in replace_items if (r not in SENTINEL_REPLACEMENTS and not r.startswith("PENDING***"))])
-
-    # Determine group id & merge groups
-    canonical_group, merged = _resolve_group(real_codes | {r for r in replace_items if not r.startswith("PENDING***")})
-
-    # -------- Optimized creation to avoid per-pair queries --------
-    from sqlalchemy import and_ as _and
-    from ..models import now_ny_naive
-
-    created = 0
-    skipped = []
-    created_records = []
-    pending_items_to_create = []  # Store info for PendingItems creation
-
-    # Prefetch existing pairs in one query (excluding self-pairs early)
-    candidate_src = items
-    candidate_repl = replace_items
-    if candidate_src and candidate_repl:
-        existing_rows = db.session.query(ItemLink.item, ItemLink.replace_item).filter(
-            ItemLink.item.in_(candidate_src),
-            ItemLink.replace_item.in_(candidate_repl),
-            ItemLink.item != ItemLink.replace_item
-        ).all()
-        existing_pairs = set(existing_rows)
-    else:
-        existing_pairs = set()
-
-    # Prefetch contract items for all pending placeholders
-    pending_parts = {r.split('***',1)[1] for r in candidate_repl if r.startswith('PENDING***') and '***' in r}
-    pending_ci_map = {}
-    if pending_parts:
-        for ci in ContractItem.query.filter(ContractItem.mfg_part_num.in_(pending_parts)).all():
-            pending_ci_map.setdefault(ci.mfg_part_num, ci)
-
-    ts_now = now_ny_naive()
-
-    for src in candidate_src:
-        src_item = items_map[src]
-        for repl in candidate_repl:
-            if src == repl:
-                skipped.append([src, repl])
-                continue
-            if (src, repl) in existing_pairs:
-                skipped.append([src, repl])
-                continue
-
-            link_stage = stage
-            repl_mfg_part = None
-            repl_manufacturer = None
-            repl_desc = None
-
-            if repl in SENTINEL_REPLACEMENTS:
-                # Sentinel means intentionally no replacement item number; neutralize replacement metadata
-                link_stage = 'Tracking - Discontinued'
-                repl = None  # Set replace_item to None for discontinued items
-                repl_mfg_part = None
-                repl_manufacturer = None
-                repl_desc = None
-            elif repl.startswith('PENDING***'):
-                part_num = repl.split('***',1)[1] if '***' in repl else None
-                link_stage = 'Pending Item Number'
-                ci = pending_ci_map.get(part_num)
-                if ci:
-                    repl_mfg_part = ci.mfg_part_num
-                    repl_manufacturer = ci.manufacturer
-                    repl_desc = ci.item_description or 'Pending replacement item description'
-                else:
-                    repl_mfg_part = part_num
-                    repl_manufacturer = '(Pending)'
-                    repl_desc = 'Pending replacement item'
-            else:
-                repl_item = items_map[repl]
-                repl_mfg_part = repl_item.mfg_part_num
-                repl_manufacturer = repl_item.manufacturer
-                repl_desc = repl_item.item_description
-
-            link = ItemLink(
-                item_group=canonical_group,
-                item=src,
-                replace_item=repl,
-                mfg_part_num=src_item.mfg_part_num,
-                manufacturer=src_item.manufacturer,
-                item_description=src_item.item_description,
-                stage=link_stage,
-                expected_go_live_date=validated_date,
-                wrike_id=validated_wrike_id,
-                create_dt=ts_now,
-                update_dt=ts_now,
-                repl_mfg_part_num=repl_mfg_part,
-                repl_manufacturer=repl_manufacturer,
-                repl_item_description=repl_desc,
-            )
-            db.session.add(link)
-            created += 1
-            created_records.append(link)
-            
-            # If this is a 'Pending Item Number' stage, queue PendingItems creation
-            if link_stage == 'Pending Item Number' and repl.startswith('PENDING***'):
-                meta = pending_meta.get(repl) or {}
-                contract_id_meta = meta.get('contract_id')
-                mfg_part_meta = meta.get('mfg_part_num') or repl.split('***',1)[1]
-                if contract_id_meta and mfg_part_meta:
-                    pending_items_to_create.append((link, contract_id_meta, mfg_part_meta))
-
-    if created or merged:
-        # Flush to assign PKIDs to ItemLink records before creating PendingItems
-        db.session.flush()
-        
-        # Create PendingItems for links with 'Pending Item Number' stage
-        for link, contract_id_meta, mfg_part_meta in pending_items_to_create:
-            pending_item = PendingItems.create_from_contract_item(
-                item_link_id=link.pkid,
-                contract_id=contract_id_meta,
-                mfg_part_num=mfg_part_meta
-            )
-            db.session.add(pending_item)
-        
-        db.session.commit()
-
-    # Build created record details for client display
-    records = []
-    if created_records:
-        for r in created_records:
-            records.append({
-                "item_group": r.item_group,
-                "item": r.item,
-                "replace_item": r.replace_item,
-                "mfg_part_num": r.mfg_part_num,
-                "manufacturer": r.manufacturer,
-                "item_description": r.item_description,
-                "repl_mfg_part_num": r.repl_mfg_part_num,
-                "repl_manufacturer": r.repl_manufacturer,
-                "repl_item_description": r.repl_item_description,
-                "stage": r.stage,
-                "expected_go_live_date": r.expected_go_live_date.isoformat() if r.expected_go_live_date else None,
-                "wrike_id": r.wrike_id,
-                "create_dt": r.create_dt.isoformat() if r.create_dt else None,
-                "update_dt": r.update_dt.isoformat() if r.update_dt else None,
-            })
-
-    return jsonify({
-        "group_id": canonical_group,
-        "created": created,
-        "skipped": skipped,
-        "stage": stage,
-        "stage_locked": locked,
-        "merged_groups": merged,
-        "records": records,
-    }), 201
+    response_body = {
+        "group_id": result["records"][0]["item_group"] if result["records"] else None,
+        "created": result["created"],
+        "skipped": result["skipped"],
+        "skipped_details": result.get("skipped_details", []),
+        "conflicts": result["conflicts"],
+        "stage": result["stage"],
+        "stage_locked": result["stage_locked"],
+        "merged_groups": result["merged_groups"],
+        "records": result["records"],
+    }
+    if result.get("reactivated"):
+        response_body["reactivated"] = result["reactivated"]
+    status_code = 201 if result["created"] else 200
+    return jsonify(response_body), status_code
 
 
 # -------------------- API: Delete single item link --------------------
 @bp.delete('/api/item-links/<item>/<replace_item>')
 @login_required
 def api_delete_item_link(item: str, replace_item: str):
+    # Normalize textual null markers coming from client URLs to None so
+    # we can delete rows where replace_item IS NULL.
+    if isinstance(replace_item, str) and replace_item.lower() in ('none', 'null', 'nan', ''):
+        replace_item = None
     record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first()
     if not record:
         return jsonify({"error": "Not found"}), 404

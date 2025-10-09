@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import List, Dict, Optional, Mapping, Tuple
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from typing import List, Dict, Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
@@ -53,19 +55,15 @@ def build_location_pairs(
 
     out: List[Dict] = []
     for r in rows_raw:
-        # Burn estimation (source)
-        src_burn = burnrate_estimator(r.br7, r.br35, r.br91, r.br365, r.issued_count_365)
-        repl_burn = burnrate_estimator(r.br7_ri, r.br35_ri, r.br91_ri, r.br365_ri, r.issued_count_365_ri)
+        # Burn estimation (source, replacement, and group/location aggregate)
+        src_burn = burnrate_estimator(getattr(r, "br7_rolling_item", None), r.issued_count_365)
+        repl_burn = burnrate_estimator(getattr(r, "br7_rolling_item_ri", None), r.issued_count_365_ri)
+        group_loc_burn = burnrate_estimator(getattr(r, "br7_rolling_itemgroup", None))
         weekly_src = src_burn["weekly_burn"]
         weekly_repl = repl_burn["weekly_burn"]
+        weekly_group = group_loc_burn["weekly_burn"]
         weeks_src = _weeks_on_hand(getattr(r, "AvailableQty", None), weekly_src)
         weeks_repl = _weeks_on_hand(getattr(r, "AvailableQty_ri", None), weekly_repl)
-        def negate(v):
-            if isinstance(v, (int, float)):
-                return v * -1
-            return v
-        weeks_src = negate(weeks_src)
-        weeks_repl = negate(weeks_repl)
 
         out.append({
             "stage": r.Stage,
@@ -73,6 +71,7 @@ def build_location_pairs(
             "item": r.Item,
             "replacement_item": r.Replace_Item,
             "location": r.Location,  # unified location label (view-level logic)
+            "group_location": r.Group_Locations or r.Location,
             "location_ri": r.Location_ri or r.Location,  # fallback
             "location_type": r.LocationType,
             "auto_replenishment": r.AutomaticPO,
@@ -81,11 +80,22 @@ def build_location_pairs(
             "current_qty": r.AvailableQty,
             "reorder_point": r.ReorderPoint,
             "weekly_burn": weekly_src,
+            "weekly_burn_group_location": weekly_group,
             "weeks_on_hand": weeks_src,
             "po_90_qty": r.OrderQty90_EA,
             "req_qty_ea": r.ReqQty90_EA,
-            "requesters_past_year": r.issued_count_365,
             "item_description": r.ItemDescription,
+            # UOM and reorder policy fields for original item
+            "stock_uom": r.StockUOM,
+            "uom_conversion": r.UOMConversion,
+            "buy_uom": r.DefaultBuyUOM,
+            "buy_uom_multiplier": r.BuyUOMMultiplier,
+            "transaction_uom": r.DefaultTransactionUOM,
+            "transaction_uom_multiplier": r.TransactionUOMMultiplier,
+            "reorder_quantity_code": r.ReorderQuantityCode,
+            "min_order_qty": r.MinOrderQty,
+            "max_order_qty": r.MaxOrderQty,
+            "manufacturer_number": r.ManufacturerNumber,
             # replacement side
             "auto_replenishment_ri": r.AutomaticPO_ri,
             "active_ri": r.Active_ri,
@@ -96,11 +106,25 @@ def build_location_pairs(
             "weeks_on_hand_ri": weeks_repl,
             "po_90_qty_ri": r.OrderQty90_EA_ri,
             "req_qty_ea_ri": r.ReqQty90_EA_ri,
-            "requesters_past_year_ri": r.issued_count_365_ri,
             "item_description_ri": r.ItemDescription_ri,
+            # UOM and reorder policy fields for replacement item
+            "stock_uom_ri": r.StockUOM_ri,
+            "uom_conversion_ri": r.UOMConversion_ri,
+            "buy_uom_ri": r.DefaultBuyUOM_ri,
+            "buy_uom_multiplier_ri": r.BuyUOMMultiplier_ri,
+            "transaction_uom_ri": r.DefaultTransactionUOM_ri,
+            "transaction_uom_multiplier_ri": r.TransactionUOMMultiplier_ri,
+            "reorder_quantity_code_ri": r.ReorderQuantityCode_ri,
+            "min_order_qty_ri": r.MinOrderQty_ri,
+            "max_order_qty_ri": r.MaxOrderQty_ri,
+            "manufacturer_number_ri": r.ManufacturerNumber_ri,
         })
+    _annotate_replacement_setups(out)
     # Stable sort by item_group then location for display
-    out.sort(key=lambda d: (d.get("item_group") or 0, d.get("location") or ""))
+    out.sort(key=lambda d: (
+        d.get("item_group") or 0,
+        (d.get("group_location") or d.get("location") or "")
+    ))
     return out
 
 
@@ -108,78 +132,158 @@ def build_location_pairs(
 # Burn rate estimation helper
 # ---------------------------------------------------------------------------
 PeriodValue = Optional[float]
-WeightMapping = Mapping[str, float]
+
 
 def burnrate_estimator(
-    br7: PeriodValue,
-    br35: PeriodValue,
-    br91: PeriodValue,
-    br365: PeriodValue,
+    br7_rolling: PeriodValue,
     issued_count_365: Optional[int] = None,
-    weights: Optional[WeightMapping] = None,
 ) -> Dict[str, float]:
-    """
-    Compute a weighted average *daily* burn rate across multiple lookback windows
-    (7, 35, 91, 365 day trailing averages already provided as *daily* burn rates)
-    and derive a weekly burn.
+    """Compute burn rate using 7-day rolling averages.
 
-    Rules:
-    - Default weights: equal for all provided periods (0.25 each).
-    - If some period values are None, drop them and re-normalize remaining weights.
-    - If after dropping Nones no values remain, return zeros.
-    - The weekly burn = daily_avg * 7.
-    - Inputs may be Decimal; we coerce to float for arithmetic.
-    - issued_count_365 if <= 4 then the final burn rate is scaled up by *2 to accommodate for data sparsity.
+    The view provides a 7-day rolling daily burn rate for the primary and
+    replacement items. We interpret the incoming value as the *daily* average
+    and convert it to a weekly burn by multiplying by 7.
 
-    Returns dict with keys: daily_avg, weekly_burn.
+    If ``issued_count_365`` is provided and indicates sparse usage (<= 4
+    requests in the past year), we continue to apply the historical uplift of
+    doubling the projected burn rate to avoid under-estimating demand.
     """
-    if weights is None:
-        weights = {"br7": 0.25, "br35": 0.25, "br91": 0.25, "br365": 0.25}
-    values: List[Tuple[str, PeriodValue]] = [
-        ("br7", br7),
-        ("br35", br35),
-        ("br91", br91),
-        ("br365", br365),
-    ]
-    used = [(name, float(v)) for name, v in values if v is not None]
-    if not used:
-        return {"daily_avg": 0.0, "weekly_burn": 0.0}
-    weight_sum = sum(weights.get(name, 0.0) for name, _ in used)
-    if weight_sum <= 0:
-        # fallback: equal weights among used
-        equal_w = 1 / len(used)
-        daily = sum(val * equal_w for _, val in used)
+    if br7_rolling is None:
+        daily = 0.0
     else:
-        daily = sum(val * (weights.get(name, 0.0) / weight_sum) for name, val in used)
+        daily = float(br7_rolling)
+
     weekly = daily * 7
     if issued_count_365 is not None and issued_count_365 <= 4:
-        # sparse data; scale up burn rate to accommodate
         daily *= 2
         weekly *= 2
     return {"daily_avg": daily, "weekly_burn": weekly}
 
 
 def _weeks_on_hand(available_qty: Optional[float], weekly_burn: float) -> str | float:
-    """Return naive weeks-on-hand (qty / weekly_burn) allowing for negative burns.
-
-    The source data burn rates appear as negative numbers to indicate consumption.
-    Upstream caller will multiply numeric result by -1 to present a positive value.
-
-    Rules:
-      - If qty or burn is None -> unknown
-      - If burn == 0 -> unknown (avoid divide-by-zero / infinite)
-      - Accept negative burn values (consumption); return raw ratio (will be negative)
-    """
+    """Return naive weeks-on-hand (qty / weekly_burn)."""
     try:  # pragma: no cover - defensive block
         if available_qty is None or weekly_burn is None:
-            return "unknown"
+            return "n/a"
         wb = float(weekly_burn)
         if wb == 0:
-            return "unknown"
+            return "n/a"
         qty = float(available_qty)
         return qty / wb
     except Exception:
-        return "unknown"
+        return "n/a"
+
+
+def _annotate_replacement_setups(rows: List[Dict]) -> None:
+    """Attach relationship classification and recommended RI quantities."""
+    groups: Dict[tuple, List[Dict]] = defaultdict(list)
+    for row in rows:
+        key = (
+            row.get("item_group"),
+            row.get("group_location") or row.get("location"),
+        )
+        groups[key].append(row)
+
+    for group_rows in groups.values():
+        items = {r.get("item") for r in group_rows if r.get("item")}
+        replacements = {r.get("replacement_item") for r in group_rows if r.get("replacement_item")}
+
+        if len(items) == 1 and len(replacements) == 1:
+            relation = "1-1"
+        elif len(items) <= 1 and len(replacements) > 1:
+            relation = "1-many"
+        elif len(items) > 1 and len(replacements) <= 1:
+            relation = "many-1"
+        elif not items and not replacements:
+            relation = "unknown"
+        else:
+            relation = "many-many"
+
+        for row in group_rows:
+            row["item_replace_relation"] = relation
+
+        if relation != "1-1":
+            continue
+
+        base = next(
+            (r for r in group_rows if r.get("item") and r.get("replacement_item")),
+            group_rows[0],
+        )
+        calculations = _compute_replacement_quantities(base)
+        for row in group_rows:
+            row.update(calculations)
+
+
+def _compute_replacement_quantities(row: Dict) -> Dict[str, Optional[float]]:
+    src_reorder = _to_decimal(row.get("reorder_point"))
+    src_min = _to_decimal(row.get("min_order_qty"))
+    src_max = _to_decimal(row.get("max_order_qty"))
+    src_mult = _to_decimal(row.get("buy_uom_multiplier"))
+    repl_mult = _to_decimal(row.get("buy_uom_multiplier_ri"))
+
+    result: Dict[str, Optional[float]] = {
+        "recommended_reorder_point_ri": _to_native(src_reorder),
+        "recommended_min_order_qty_ri": _to_native(_max_positive([src_min, src_mult, repl_mult])),
+        "recommended_max_order_qty_ri": _to_native(src_max),
+        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
+        "recommended_setup_source": "copy",
+    }
+
+    if repl_mult is None or repl_mult <= 0:
+        return result
+
+    if src_mult is not None and src_mult > 0 and src_mult == repl_mult:
+        result.update({
+            "recommended_reorder_point_ri": _to_native(src_reorder),
+            "recommended_min_order_qty_ri": _to_native(_max_positive([src_min, repl_mult])),
+            "recommended_max_order_qty_ri": _to_native(src_max),
+            "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
+            "recommended_setup_source": "uom-match",
+        })
+        return result
+
+    result.update({
+        "recommended_reorder_point_ri": _to_native(_ceil_to_multiple(src_reorder, repl_mult)),
+        "recommended_min_order_qty_ri": _to_native(repl_mult),
+        "recommended_max_order_qty_ri": _to_native(_ceil_to_multiple(src_max, repl_mult)),
+        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
+        "recommended_setup_source": "uom-adjust",
+    })
+    return result
+
+
+def _to_decimal(value: object | None) -> Optional[Decimal]:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _ceil_to_multiple(value: Optional[Decimal], multiple: Decimal) -> Optional[Decimal]:
+    if value is None or multiple is None or multiple == 0:
+        return value
+    quotient = (value / multiple).to_integral_value(rounding=ROUND_CEILING)
+    return quotient * multiple
+
+
+def _max_positive(values: List[Optional[Decimal]]) -> Optional[Decimal]:
+    positives = [v for v in values if v is not None and v > 0]
+    if not positives:
+        return None
+    return max(positives)
+
+
+def _to_native(value: Optional[Decimal]) -> Optional[float]:
+    if value is None:
+        return None
+    normalized = value
+    if normalized == normalized.to_integral():
+        return int(normalized)
+    return float(normalized)
 
 
 __all__ = [

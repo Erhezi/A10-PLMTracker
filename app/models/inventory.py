@@ -4,12 +4,14 @@ from .. import db
 from sqlalchemy.orm import relationship, foreign
 from sqlalchemy import and_, or_, Index, UniqueConstraint
 
-
+#-------------------------------------------------------
+# View Mappings - non-PLM ItemLink specific
+#-------------------------------------------------------
 class Item(db.Model):
     """Read-only mapping of the PLM.vw_Item view."""
 
     __tablename__ = "vw_Item"  # underlying view name inside PLM schema
-    __table_args__ = {"schema": "PLM"}  # Specify the schema explicitly
+    __table_args__ = {"schema": "PLM", "extend_existing": True}  # Specify the schema explicitly
 
     # Use the actual view column names (after AS in the view definition)
     item = db.Column("item", db.String(50), primary_key=True)
@@ -32,7 +34,7 @@ class ContractItem(db.Model):
     """
 
     __tablename__ = "vw_ContractItem"
-    __table_args__ = {"schema": "PLM"}
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
 
     contract_id = db.Column("contract_id", db.String(50), primary_key=True)
     manufacturer = db.Column("manufacturer", db.String(255), primary_key=True)
@@ -60,7 +62,7 @@ class Requesters365Day(db.Model):
     """
 
     __tablename__ = "vw_365Day_Requesters"
-    __table_args__ = {"schema": "PLM"}
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
 
     # no natural PK in your schema, so we mark all columns as nullable
     # and rely on SQLAlchemy's requirement for *some* PK surrogate.
@@ -86,12 +88,14 @@ class PO90Day(db.Model):
     """
 
     __tablename__ = "vw_90Day_PO"
-    __table_args__ = {"schema": "PLM"}
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
 
     POReleaseDate      = db.Column(db.Date, primary_key = True, nullable=True)
     PO                 = db.Column(db.String(20),  primary_key=True, nullable=False)
     POLine             = db.Column(db.String(10),  primary_key=True, nullable=False)
     PurchaseOrderLine  = db.Column(db.String(10),  nullable=False)
+
+    Company            = db.Column(db.String(10),  nullable=False)
 
     OrderToStoreroom   = db.Column(db.String(13),  nullable=False)
     Location           = db.Column(db.String(40),  nullable=True)
@@ -131,6 +135,146 @@ class PO90Day(db.Model):
                 f"Vendor={self.Vendor}, Item={self.Item})>")
 
 
+#-------------------------------------------------------
+# Table Mappings - pre-aggregated / summary tables with that company == '3000' and location like 'P%' or 'I%', non-PLM ItemLink specific
+#-------------------------------------------------------
+class ItemLocations(db.Model):
+    """
+    Mapping to PLM.ItemLocations (SQL Server table).
+    Holds the canonical (Company, Location) setup for each Item and its Inventory_base_ID.
+    Refresh using stored procedure PLM.sp_PLM_MakeItemLocations_FullRefresh
+    Currently we only extracted company == '3000' and LocationType of ('Inventory Location', 'Par Location')
+    """
+
+    __tablename__ = "ItemLocations"
+    # include schema plus explicit UniqueConstraint and Index definitions
+    __table_args__ = (
+        UniqueConstraint('Location', 'Item', name='UQ_ItemLocations_Location_Item'),
+        Index('IX_ItemLocations_Item', 'Item'),
+        Index('IX_ItemLocations_Location', 'Location'),
+        Index('IX_ItemLocations_LocationType', 'LocationType'),
+        {'schema': 'PLM', 'extend_existing': True},
+    )
+
+    Inventory_base_ID           = db.Column(db.BIGINT, primary_key=True, nullable=True) # sarrogate PK
+
+    Company                     = db.Column(db.String(10),   nullable=False)
+    Location                    = db.Column(db.String(20),   nullable=False)
+    LocationText                = db.Column(db.String(255),  nullable=True)
+    LocationType                = db.Column(db.String(40),   nullable=True)
+    PreferredBin                = db.Column(db.String(40),   nullable=True)
+
+    Item                        = db.Column(db.String(10),   nullable=False)
+    ItemDescription             = db.Column(db.String(255),  nullable=True)
+    ItemType                    = db.Column(db.String(40),   nullable=True)
+    Active                      = db.Column(db.String(5),    nullable=True)
+    Discontinued                = db.Column(db.String(5),    nullable=True)
+    VendorItem                  = db.Column(db.String(100),  nullable=True)
+    ManufacturerNumber          = db.Column(db.String(100),  nullable=True)
+
+    DefaultBuyUOM               = db.Column(db.String(10),   nullable=True)
+    BuyUOMMultiplier            = db.Column(db.Numeric,      nullable=True)
+    DefaultTransactionUOM       = db.Column(db.String(10),   nullable=True)
+    TransactionUOMMultiplier    = db.Column("InventoryTransactionUOMMultiplier", db.Numeric, nullable=True)
+    AutomaticPO                 = db.Column(db.String(5),    nullable=True)
+    StockUOM                    = db.Column(db.String(10),   nullable=False)
+    UOMConversion               = db.Column(db.Numeric,      nullable=True)
+    ReorderQuantityCode         = db.Column(db.String(40),   nullable=True)
+    ReorderPoint                = db.Column(db.Integer,      nullable=True)
+
+    MaxOrderQty                 = db.Column(db.Integer,      nullable=True)
+    MinOrderQty                 = db.Column(db.Integer,      nullable=True)
+    OnHandQty                   = db.Column(db.Integer,      nullable=True)
+    AvailableQty                = db.Column(db.Integer,      nullable=True)
+    OnOrderQty                  = db.Column(db.Integer,      nullable=True)
+
+    UnitCostInStockUOM          = db.Column(db.Numeric,      nullable=True)
+    DerivedAverageCost          = db.Column(db.Numeric,      nullable=True)
+
+    report_stamp                = db.Column("report stamp", db.DateTime, nullable=False)
+    create_stamp                = db.Column("create stamp", db.DateTime, nullable=False)
+
+    # ----------------------- Relations -----------------------
+    def __repr__(self):
+        return f"<ItemLocations Item={self.Item} {self.Company}/{self.Location}>"
+    
+
+class ItemStartEndDate(db.Model):
+    """
+    Mapping to PLM.ItemStartEndDate.
+    Table holds the transaction start and end date for each (Company, Location, Item).
+    To aid in join with other inventory location based table, we also include Inventory_base_ID.
+    Refresh using stored procedure PLM.sp_PLM_MakeInvItemStartEndDate_FullRefresh
+    We will need to use those date to help calculate burn rates for items.
+    Here the Z-date is the date where the item showing zero balance after having a non-zero balance.
+    e.g. if we see balance like this : [0,0,5,10,7,3,0,0,0], the start date is the date of [create stamp]
+    of the item from ItemLocations, z_date is the the 7th date in the sequence.
+    """
+
+    __tablename__ = "ItemStartEndDate"
+    __table_args__ = (
+        UniqueConstraint('Company', 'Location', 'Item', name='UQ_InvItemStartEndDate_Company_Location_Item'),
+        Index('IX_InvItemStartEndDate_Item', 'Item'),
+        Index('IX_InvItemStartEndDate_Location', 'Location'),
+        Index('IX_InvItemStartEndDate_Company', 'Company'),
+        {"schema": "PLM", "extend_existing": True},
+    )
+
+    Inventory_base_ID = db.Column(db.BIGINT, primary_key=True, nullable=False) # surrogate PK
+
+    Company        = db.Column(db.String(10), nullable=False)
+    Location       = db.Column(db.String(20), nullable=False)
+    Item           = db.Column(db.String(10), nullable=False)
+    CreateDate     = db.Column("create_date", db.Date, nullable=False)
+    ZDate          = db.Column("z_date", db.Date, nullable=False)
+
+    def __repr__(self):
+        return f"<PLMItemStartEndDate Location={self.Location} Item={self.Item} Start={self.StartDate} End={self.EndDate}>"
+    
+
+class DailyIssueOutQty(db.Model):
+    """
+    Mapping to PLM.DailyIssueOutQty.
+    Built by PLM.sp_PLM_extractDailyIssueOutQty (truncate & reload).
+    PK: (Inventory_base_ID, trx_date)
+    Unique: (Company, Location, Item, trx_date)
+    Indexes: trx_date, item, location, (location, item)
+    Currently it extracts past 365 days of data
+    """
+
+    __tablename__ = "DailyIssueOutQty"
+    __table_args__ = (
+        UniqueConstraint('Company', 'Location', 'Item', 'trx_date',
+                         name='UQ_DailyIssueOutQty_Company_Location_Item_trxdate'),
+        # Indexes
+        Index('IX_DailyIssueOutQty_trx_date', 'trx_date'),
+        Index('IX_DailyIssueOutQty_item', 'Item'),
+        Index('IX_DailyIssueOutQty_location', 'Location'),
+        Index('IX_DailyIssueOutQty_location_item', 'Location', 'Item'),
+        {"schema": "PLM", "extend_existing": True},
+    )
+
+    # Columns
+    Inventory_base_ID = db.Column(db.BIGINT, primary_key=True, nullable=False) # surrogate PK
+    trx_date       = db.Column(db.Date, nullable=False)
+
+    Company        = db.Column(db.String(10),  nullable=False)
+    Location       = db.Column(db.String(20),  nullable=False)
+    Item           = db.Column(db.String(10),  nullable=False)
+
+    Lum       = db.Column(db.String(10),  nullable=False)
+    QtyInLum  = db.Column(db.Integer)
+
+    CreateDate    = db.Column("create_date", db.Date)
+    ZDate         = db.Column("z_date", db.Date)
+    existing_days  = db.Column(db.Integer)
+
+    def __repr__(self):
+        return (f"<DailyIssueOutQty inv_id={self.Inventory_base_ID} "
+                f"item={self.Item} loc={self.Location} date={self.trx_date} "
+                f"qty={self.QtyInLum}>")
+
+
 class ItemLocationsBR(db.Model):
     """
     Mapping to PLM.ItemLocationsBR (SQL Server table).
@@ -140,6 +284,7 @@ class ItemLocationsBR(db.Model):
     2. 90-day Purchase Order Qty (EA converted) -- for Inventory Locations
     3. 90-day Requesition Qty (EA converted) -- for Par Locations
     Refresh using stored procedure PLM.sp_PLM_MakeItemLocationsBR_FullRefresh
+    Currently the burn is based on z-date
     """
     __tablename__ = "ItemLocationsBR"
     # include schema plus explicit UniqueConstraint and Index definitions
@@ -148,13 +293,13 @@ class ItemLocationsBR(db.Model):
         Index('IX_ItemLocationsBR_Item', 'Item'),
         Index('IX_ItemLocationsBR_Location', 'Location'),
         Index('IX_ItemLocationsBR_LocationType', 'LocationType'),
-        {'schema': 'PLM'},
+        {'schema': 'PLM', 'extend_existing': True},
     )
 
-    Inventory_base_ID    = db.Column(db.Integer, primary_key=True, nullable=False)
+    Inventory_base_ID    = db.Column(db.BIGINT, primary_key=True, nullable=False)
     LocationType         = db.Column(db.String(40),  nullable=True)
     Company              = db.Column(db.String(10),  nullable=False)
-    Location             = db.Column(db.String(255), nullable=False)
+    Location             = db.Column(db.String(20), nullable=False)
     Item                 = db.Column(db.String(255), nullable=False)
 
     br7                  = db.Column(db.Numeric(17), nullable=True)
@@ -173,66 +318,138 @@ class ItemLocationsBR(db.Model):
         return f"<ItemLocationsBR Item={self.Item} {self.Company}/{self.Location}>"
 
 
-
-class ItemLocations(db.Model):
+#-------------------------------------------------------
+# View Mappings - PLM ItemLink specific
+#-------------------------------------------------------
+class PLMZDate(db.Model):
     """
-    Mapping to PLM.ItemLocations (SQL Server table).
-    Holds the canonical (Company, Location) setup for each Item and its Inventory_base_ID.
-    Refresh using stored procedure PLM.sp_PLM_MakeItemLocations_FullRefresh
+    Mapping to PLM.vw_PLMZDate (SQL Server VIEW).
+    View holds the PLM z-date for each pair of PLM ItemLink items (original, replacement)
+    Read-only
     """
 
-    __tablename__ = "ItemLocations"
-    # include schema plus explicit UniqueConstraint and Index definitions
+    __tablename__ = "vw_PLMZDate"
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
+
+    # Columns based on provided DB schema
+    Inventory_base_ID = db.Column(db.Integer, nullable=True, primary_key=True)  # part of PK
+    item_link_id = db.Column(db.BigInteger, nullable=False, primary_key=True)  # part of PK
+
+    Location = db.Column(db.String(255), nullable=True)
+    item_group = db.Column("Item Group", db.Integer, nullable=False)
+    Item = db.Column(db.String(250), nullable=True)
+    LocationType = db.Column(db.String(40), nullable=True)
+    Company = db.Column(db.String(10), nullable=True)
+
+    br_calc_type = db.Column("BRCalcType",     db.String(12), nullable=False)
+    br_calc_status = db.Column("BRCalcStatus", db.String(12), nullable=False)
+    
+    days_overlap = db.Column(db.Integer, nullable=True)  # days of O side natural z-date - R side create date (overlap, expect to be negative value if overlapping)
+    days_to_start = db.Column(db.Integer, nullable=True) # days of R side create date - (current date go back 365 days), measures when replacement started compared to 1 year
+
+    PLM_Zdate = db.Column("PLM_Zdate", db.Date, nullable=True)
+
+    def __repr__(self):  # pragma: no cover - debug aid
+        return (
+            f"<PLMZDate PKID={self.PKID} inv_id={self.Inventory_base_ID} "
+            f"company={self.Company} loc={self.Location} item={self.Item} "
+            f"plm_zdate={self.PLM_Zdate} status={self.br_calc_status}>"
+        )
+    
+#-------------------------------------------------------
+# Table Mappings - PLM ItemLink specific (only contains ItemLink items)
+#-------------------------------------------------------
+class PLMItemGroupBRRoling(db.Model):
+    """
+    Mapping to PLM.PLMItemGroupBRRolling (SQL Server Table).
+    View holds (Company, Location, ItemGroup) specific pre-calculated 
+    rolling 7, 60 days burn rate based on DailyIssueOutQty join to available PLM items' Location x ItemGroup
+      - this very limited scope is to save some computation time since compute rolling burn rate is expensive
+    rolling stop date is up until today
+    """
+
+    __tablename__ = "PLMItemGroupBRRolling"
     __table_args__ = (
-        UniqueConstraint('Location', 'Item', name='UQ_ItemLocations_Location_Item'),
-        Index('IX_ItemLocations_Item', 'Item'),
-        Index('IX_ItemLocations_Location', 'Location'),
-        Index('IX_ItemLocations_LocationType', 'LocationType'),
-        {'schema': 'PLM'},
+        UniqueConstraint('Item Group', 'Location', 'Company', name='UQ_PLMItemGroupBRRolling_ItemGroup_Location_Company'),
+        Index('IX_PLMItemGroupBRRolling_ItemGroup', 'Item Group'),
+        Index('IX_PLMItemGroupBRRolling_Location', 'Location'),
+        {'schema': 'PLM', 'extend_existing': True},
     )
 
-    Inventory_base_ID   = db.Column(db.BIGINT, primary_key=True, nullable=True) # sarrogate PK
+    item_group                 = db.Column("Item Group", db.Integer,  nullable=False, primary_key=True)
+    Location                   = db.Column(db.String(20),   nullable=False, primary_key=True)
+    Company                    = db.Column(db.String(10),   nullable=False)
 
-    Company             = db.Column(db.String(10),   nullable=False)
-    Location            = db.Column(db.String(20),   nullable=False)
-    LocationText        = db.Column(db.String(255),  nullable=True)
-    LocationType        = db.Column(db.String(40),   nullable=True)
-    PreferredBin        = db.Column(db.String(40),   nullable=True)
+    LocationType               = db.Column(db.String(40),   nullable=True)
 
-    Item                = db.Column(db.String(10),   nullable=False)
-    ItemDescription     = db.Column(db.String(255),  nullable=True)
-    ItemType            = db.Column(db.String(40),   nullable=True)
-    Active              = db.Column(db.String(5),    nullable=True)
-    Discontinued        = db.Column(db.String(5),    nullable=True)
-    VendorItem          = db.Column(db.String(100),  nullable=True)
+    br_rolling_avg_7           = db.Column("rolling_daily_avg_7", db.Numeric(17), nullable=True)
+    br_rolling_avg_60          = db.Column("rolling_daily_avg_60", db.Numeric(17), nullable=True)
+    br_rolling_median_7        = db.Column("rolling_daily_median_7", db.Float(8), nullable=True)
+    br_rolling_median_60       = db.Column("rolling_daily_median_60", db.Float(8), nullable=True)
 
-    defaultBuyUOM       = db.Column(db.String(20),   nullable=True)
-    BuyUOMMultiplier    = db.Column(db.Numeric,      nullable=True)
-    AutomaticPO         = db.Column(db.String(5),    nullable=True)
-    StockUOM            = db.Column(db.String(20),   nullable=False)
-    UOMConversion       = db.Column(db.Numeric,      nullable=True)
-    ReorderQuantityCode = db.Column(db.String(40),   nullable=True)
-    ReorderPoint        = db.Column(db.Integer,      nullable=True)
-
-    MaxOrderQty         = db.Column(db.Integer,      nullable=True)
-    MinOrderQty         = db.Column(db.Integer,      nullable=True)
-    OnHandQty           = db.Column(db.Integer,      nullable=True)
-    AvailableQty        = db.Column(db.Integer,      nullable=True)
-    OnOrderQty          = db.Column(db.Integer,      nullable=True)
-
-    UnitCostInStockUOM  = db.Column(db.Numeric,      nullable=True)
-    DerivedAverageCost  = db.Column(db.Numeric,      nullable=True)
-
-    report_stamp        = db.Column("report stamp", db.DateTime, nullable=False)
-
-    # ----------------------- Relations -----------------------
-
+    create_stamp               = db.Column("create_ts", db.DateTime, nullable=False)
 
     def __repr__(self):
-        return f"<ItemLocations Item={self.Item} {self.Company}/{self.Location}>"
+        return (f"<PLMItemGroupBRRolling ItemGroup={self.item_group} "
+                f"loc={self.Location} br7={self.br_rolling_avg_7} "
+                f"br60={self.br_rolling_avg_60}>")
+
+class PLMItemBRRolling(db.Model):
+    """
+    Mapping to PLM.PLMItemBRRolling (SQL Server Table).
+    View holds (Company, Location, Item) specific pre-calculated 
+    rolling 7, 60 days burn rate based on DailyIssueOutQty join to available PLM items using their PLM specific Z-date (different from natural z-date)
+      - this very limited scope is to save some computation time since compute rolling burn rate is expensive
+    rolling stop date is the PLMZdate when applicable (original item z-date exist, replace item create date <= 90 days ago)
+    """
+
+    __tablename__ = "PLMItemBRRolling"
+    __table_args__ = (
+        UniqueConstraint('Inventory_base_ID', 'PKID', name='UQ_PLMItemBRRolling_item_link_id'),
+        Index('IX_PLMItemBRRolling_item_link_id', 'PKID'),
+        Index('IX_PLMItemBRRolling_InventoryBaseID', 'Inventory_base_ID'),
+        Index('IX_PLMItemBRRolling_Item', 'Item'),
+        Index('IX_PLMItemBRRolling_Location', 'Location'),
+        {'schema': 'PLM', 'extend_existing': True},
+    )
+
+    Inventory_base_ID            = db.Column(db.BIGINT, nullable=False, primary_key=True)
+    item_link_id                 = db.Column("PKID", db.BIGINT, nullable=False, primary_key=True)
+
+    Company                      = db.Column(db.String(10),  nullable=False)
+    Location                     = db.Column(db.String(20),  nullable=False)
+    Item                         = db.Column(db.String(10),  nullable=False)
+
+    LocationType                 = db.Column(db.String(40),  nullable=True)
+    item_group                   = db.Column("Item Group", db.Integer,  nullable=False)
+    side                         = db.Column("Side", db.String(1),  nullable=False) # e.g. 'O', 'R', 'D'
+    
+    z_date                       = db.Column("z_date", db.Date, nullable=True)  #natural z-date attach to the item
+    esixting_days                = db.Column("existing_days", db.Integer, nullable=True)
+    z_date_to_use                = db.Column("Z_date_to_use", db.Date, nullable=True) # PLM specific z-date to use for this burn rate calc
+    br_calc_status               = db.Column("BRCalcStatus", db.String(12),  nullable=False) # e.g. "Existing", "Pending"
+    br_calc_type                 = db.Column("BRCalcType", db.String(12),  nullable=False) # e.g. "ReplaceZCDR", "GroupBR", "KeepZ"
+    days_overlap                 = db.Column("days_overlap", db.Integer,  nullable=True) # days overlap between original and replacement item
+
+    br7_rolling_avg              = db.Column("rolling_daily_avg_7", db.Numeric(17), nullable=True)
+    br60_rolling_avg             = db.Column("rolling_daily_avg_60", db.Numeric(17), nullable=True)
+    br7_rolling_median           = db.Column("rolling_daily_median_7", db.Float(8), nullable=True)
+    br60_rolling_median          = db.Column("rolling_daily_median_60", db.Float(8), nullable=True)
+    
+    create_stamp                 = db.Column("create_ts", db.DateTime, nullable=False)
+
+    def __repr__(self):
+        return (f"<PLMItemBRRolling ItemLinkID={self.item_link_id} "
+                f"Item={self.Item} loc={self.Location} side={self.side} "
+                f"br7={self.br7_rolling_avg} br60={self.br60_rolling_avg}>")
+
+
 
 __all__ = ["Item", 
            "ContractItem", 
-           "ItemLocations", 
            "Requesters365Day", 
-           "PO90Day"]
+           "PO90Day",
+           "ItemLocations", 
+           "ItemLocationsBR",
+           "ItemStartEndDate",
+           "DailyIssueOutQty",]

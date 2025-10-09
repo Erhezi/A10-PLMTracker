@@ -52,15 +52,21 @@ try:
         Item,
         ContractItem,
         ItemLocations,
+        ItemLocationsBR,
         Requesters365Day,
         PO90Day,
+        ItemStartEndDate,
+        DailyIssueOutQty,
     )
     __all__.extend([
-        "Item",
-        "ContractItem",
-        "ItemLocations",
-        "Requesters365Day",
-        "PO90Day",
+           "Item", 
+           "ContractItem", 
+           "ItemLocations", 
+           "ItemLocationsBR",
+           "Requesters365Day", 
+           "PO90Day",
+           "ItemStartEndDate",
+           "DailyIssueOutQty",
     ])
 except Exception:
     # If inventory can't be imported at package-import time (e.g. missing

@@ -85,6 +85,24 @@
   </div>
 </div>
 
+<div class="mt-4" id="skipped-results-wrapper" style="display:none;">
+  <h2 class="h6 fw-semibold">Skipped Links</h2>
+  <div class="table-responsive border rounded shadow-sm">
+    <table class="table table-sm table-hover align-middle mb-0" id="skipped-links-table">
+      <thead class="table-light small">
+        <tr>
+          <th>Item</th>
+          <th>Replace Item</th>
+          <th class="text-center">Error Type</th>
+          <th style="min-width:260px;">Reason</th>
+          <th class="text-center" style="width:90px;">Group</th>
+        </tr>
+      </thead>
+      <tbody class="small"></tbody>
+    </table>
+  </div>
+</div>
+
 <script id="allowed-stages-data" type="application/json">{{ allowed_stages|tojson }}</script>
 <script id="batch-limits-data" type="application/json">{{ {"max_combinations": max_combinations, "max_per_side": max_per_side}|tojson }}</script>
 <script>
@@ -99,12 +117,21 @@
   const wrikeInput = document.getElementById('wrike-id');
   const createdWrapper = document.getElementById('created-results-wrapper');
   const createdTableBody = document.querySelector('#created-links-table tbody');
+  const skippedWrapper = document.getElementById('skipped-results-wrapper');
+  const skippedTableBody = document.querySelector('#skipped-links-table tbody');
   const itemSearch = document.getElementById('item-search');
   const replSearch = document.getElementById('repl-search');
   const replResults = document.getElementById('repl-results');
   const ORIGINAL_REPL_ENDPOINT = '/api/items/search';
   const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
+  const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const escapeHtml = (value) => {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).replace(/[&<>"']/g, (ch) => escapeMap[ch] || ch);
+  };
 
   // Load batch limits from template data
   const batchLimitsData = document.getElementById('batch-limits-data');
@@ -255,6 +282,13 @@
 
   createBtn.addEventListener('click', async () => {
     if(createBtn.disabled) return;
+
+    if(skippedTableBody){
+      skippedTableBody.innerHTML = '';
+    }
+    if(skippedWrapper){
+      skippedWrapper.style.display = 'none';
+    }
     
     // Check per-side limits first
     if(items.length > MAX_PER_SIDE) {
@@ -301,12 +335,18 @@
       if(!res.ok){
         feedback.innerHTML = `<span class='text-danger'>Error: ${json.error||'Failed'}</span>`;
       } else {
-        feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${json.group_id}</span>`;
+        const groupDisplay = json.group_id !== null && json.group_id !== undefined ? json.group_id : '—';
+        feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${groupDisplay}</span>`;
         if(json.records && json.records.length){
           createdWrapper.style.display = '';
           // Append rows
           const rowsHtml = json.records.map(r => {
-            const stageBadge = r.stage ? `<span class='badge stage-badge stage-${r.stage.toLowerCase().replace(/ /g,'-')}'>${r.stage}</span>` : '';
+            const stageSlug = r.stage ? r.stage
+              .toLowerCase()
+              .replace(/\s+/g, '-')
+              .replace(/-+/g, '-')
+              .replace(/^-|-$/g, '') : '';
+            const stageBadge = r.stage ? `<span class='badge stage-badge stage-${stageSlug}'>${r.stage}</span>` : '';
             const goLive = r.expected_go_live_date ? r.expected_go_live_date : `<span class='text-muted fst-italic'>unknown</span>`;
             const wrikeDisp = r.wrike_id ? (r.wrike_id.match(/^\d{10}$/) ? `<a href='https://www.wrike.com/open.htm?id=${r.wrike_id}' target='_blank' rel='noopener' class='small'>${r.wrike_id}</a>` : `<span class='text-muted small'>${r.wrike_id}</span>`) : '<span class="text-muted small">—</span>';
             return `<tr>
@@ -314,14 +354,14 @@
                 <button type='button' class='btn btn-sm btn-outline-danger py-0 px-1' title='Remove link' data-remove-link data-item='${r.item}' data-replace-item='${r.replace_item}'>&times;</button>
               </td>
               <td class='text-center fw-semibold'>${r.item_group}</td>
-              <td class='font-monospace'>${r.item}</td>
-              <td class='text-truncate' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
-              <td class='text-truncate' style='max-width:120px;'>${r.manufacturer||''}</td>
-              <td class='text-truncate' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
-              <td class='font-monospace'>${r.replace_item||''}</td>
-              <td class='text-truncate' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
-              <td class='text-truncate' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
-              <td class='text-truncate' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
+              <td class='font-monospace col-src'>${r.item}</td>
+              <td class='text-truncate col-src' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
+              <td class='text-truncate col-src' style='max-width:120px;'>${r.manufacturer||''}</td>
+              <td class='text-truncate col-src' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
+              <td class='font-monospace col-repl'>${r.replace_item||''}</td>
+              <td class='text-truncate col-repl' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
+              <td class='text-truncate col-repl' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
+              <td class='text-truncate col-repl' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
               <td class='text-center'>${stageBadge}</td>
               <td>${goLive}</td>
               <td>${wrikeDisp}</td>
@@ -334,6 +374,47 @@
           items = []; repls = [];
           document.querySelectorAll('input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
           renderSelections();
+        }
+        const skippedDetails = Array.isArray(json.skipped_details) ? json.skipped_details : [];
+        if(skippedDetails.length && skippedTableBody){
+          skippedTableBody.innerHTML = '';
+        }
+        if(skippedDetails.length){
+          if(skippedWrapper){
+            skippedWrapper.style.display = '';
+          }
+          if(skippedTableBody){
+            const skippedRows = skippedDetails.map(detail => {
+              const safeItem = detail.item ? `<span class='font-monospace'>${escapeHtml(detail.item)}</span>` : '<span class="text-muted">—</span>';
+              const replaceDisplay = detail.replace_item ? `<span class='font-monospace'>${escapeHtml(detail.replace_item)}</span>` : '<span class="text-muted">—</span>';
+              const typeLabel = escapeHtml(detail.error_type || 'Unknown');
+              const typeHtml = `<span class='badge bg-light border text-dark fw-normal text-uppercase small'>${typeLabel}</span>`;
+              const reasonHtml = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '<span class="text-muted">—</span>';
+              const groupHtml = (detail.item_group !== null && detail.item_group !== undefined)
+                ? `<span class='fw-semibold'>${escapeHtml(String(detail.item_group))}</span>`
+                : '<span class="text-muted">—</span>';
+              return `<tr>
+                <td>${safeItem}</td>
+                <td>${replaceDisplay}</td>
+                <td class='text-center'>${typeHtml}</td>
+                <td>${reasonHtml}</td>
+                <td class='text-center'>${groupHtml}</td>
+              </tr>`;
+            }).join('');
+            skippedTableBody.insertAdjacentHTML('beforeend', skippedRows);
+          }
+          const previewItems = skippedDetails.slice(0, 3).map(detail => {
+            const itemLabel = escapeHtml(detail.item || '—');
+            const replLabel = escapeHtml(detail.replace_item || '—');
+            const reasonText = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '(no details)';
+            return `<li>${itemLabel} → ${replLabel}<br><span class='text-muted'>${reasonText}</span></li>`;
+          }).join('');
+          const moreCount = skippedDetails.length > 3 ? `<li class='text-muted'>…and ${skippedDetails.length - 3} more</li>` : '';
+          feedback.insertAdjacentHTML('beforeend', `<ul class='mt-2 mb-0 small text-muted'>${previewItems}${moreCount}</ul>`);
+        } else if(skippedTableBody && !skippedTableBody.querySelector('tr')){
+          if(skippedWrapper){
+            skippedWrapper.style.display = 'none';
+          }
         }
       }
     } catch(err){
@@ -410,4 +491,9 @@
   }
 })();
 </script>
+<style>
+  /* created-links-table: color source and replacement tbody cells like groups table */
+  #created-links-table tbody td.col-src { background: #fff9e6; }
+  #created-links-table tbody td.col-repl { background: #e9f7ff; }
+</style>
 {% endblock %}

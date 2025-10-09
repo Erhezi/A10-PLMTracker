@@ -6,11 +6,16 @@ body { font-feature-settings: "tnum"; }
 
 /* Light utility palette for supply chain dashboard feel */
 :root {
-  --plm-accent: #0d6efd;
+  --plm-accent: #074377;  /* Montefiore blue */
+  --plm-accent-pink: #ca006c; /* Montefiore pink */
   --plm-accent-soft: #e7f1ff;
+  --plm-accent-soft-pink: #ffe4f1;
+  --plm-accent-dark: #3c4d5c;
   --plm-warn: #ffc107;
   --plm-danger: #dc3545;
   --plm-success: #198754;
+  --plm-accent-purple-soft: #f3e8ff;
+  --plm-accent-purple-mid: #e5d4ff;
 }
 
 .bg-soft-accent { background: var(--plm-accent-soft); }
@@ -24,6 +29,33 @@ footer { font-size: .75rem; }
   background: var(--plm-accent-soft);
   border-bottom: 1px solid rgba(13,110,253,0.06);
 }
+
+.palette-orange {
+  --orange-50:  #fff7ed;
+  --orange-100: #ffedd5;
+  --orange-200: #fed7aa;
+  --orange-300: #fdba74;
+  --orange-400: #fb923c;
+  --orange-500: #f97316;
+  --orange-600: #ea580c;
+  --orange-700: #c2410c;
+  --orange-800: #9a3412;
+  --orange-900: #7c2d12;
+}
+
+.palette-blue {
+  --blue-50:  #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-300: #93c5fd;
+  --blue-400: #60a5fa;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+  --blue-900: #1c367e;
+}
+
 
 /* flash toast base: span full width, lighter shades, close on far right */
 .flash-toast {
@@ -98,10 +130,52 @@ footer { font-size: .75rem; }
 
 /* Inventory table specific tweaks */
 #table-inventory { font-size: .8rem; }
-#table-inventory thead th { position: sticky; top: 0; background: #f8f9fa; }
+#table-inventory thead tr.column-header-labels th,
+#table-par thead tr.column-header-labels th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8f9fa;
+  padding-top: .6rem;
+  padding-bottom: .35rem;
+  border-bottom: 0;
+}
+
+#table-inventory thead tr.column-filter-row th,
+#table-par thead tr.column-filter-row th {
+  position: sticky;
+  top: var(--label-row-height, 36px);
+  z-index: 2;
+  background: #f8f9fa;
+  padding-top: .2rem;
+  padding-bottom: .25rem;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  vertical-align: bottom;
+}
 #table-inventory th, #table-inventory td { vertical-align: middle; }
 #table-inventory td.text-wrap { white-space: normal; }
 #table-inventory td, #table-inventory th { white-space: normal; }
+#table-inventory tbody tr.inventory-row-selected td,
+#table-inventory tbody tr.inventory-row-selected th,
+#table-par tbody tr.inventory-row-selected td,
+#table-par tbody tr.inventory-row-selected th {
+  background: var(--plm-accent-soft) !important;
+}
+#table-inventory tbody tr.inventory-row-selected td:first-child,
+#table-par tbody tr.inventory-row-selected td:first-child {
+  border-left: 3px solid var(--plm-accent) !important;
+}
+#table-inventory tbody tr.inventory-row-selected:hover td,
+#table-inventory tbody tr.inventory-row-selected:hover th,
+#table-par tbody tr.inventory-row-selected:hover td,
+#table-par tbody tr.inventory-row-selected:hover th {
+  background: var(--plm-accent-soft) !important;
+}
+#table-inventory tbody tr.inventory-row-selected,
+#table-par tbody tr.inventory-row-selected {
+  transition: background-color 120ms ease-in;
+}
 /* ---------------------------------------------- */
 /* Shared column sizing & overflow helpers        */
 /* ---------------------------------------------- */
@@ -129,19 +203,217 @@ footer { font-size: .75rem; }
 /* Ensure data cells inheriting .col-desc behave the same in both tables */
 #table-inventory td.col-desc, #table-par td.col-desc { white-space: nowrap; }
 
+#table-inventory th,
+#table-inventory td,
+#table-par th,
+#table-par td {
+  text-align: center;
+}
+
+#table-inventory td.item-group-cell,
+#table-par td.item-group-cell {
+  white-space: normal;
+}
+
+#table-inventory td.item-group-cell .item-group-label,
+#table-par td.item-group-cell .item-group-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.6rem !important;
+  line-height: 1.6rem !important;
+  white-space: normal;
+}
+
+.column-filter-cell {
+  min-height: 32px;
+}
+
+.column-filter-wrapper {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: .25rem;
+  width: 100%;
+  height: 100%;
+}
+
+.column-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .15rem;
+  color: #6c757d;
+  line-height: 1;
+  font-size: .7rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.column-filter-toggle:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.column-filter-toggle:hover,
+.column-filter-toggle.active {
+  color: var(--plm-accent);
+}
+
+.column-filter-toggle .filter-label {
+  min-width: 1.9rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.column-filter-toggle .filter-caret {
+  font-size: .55rem;
+}
+
+.column-filter-toggle:not(.active) .filter-label {
+  font-weight: 500;
+  color: inherit;
+}
+
+.column-filter-toggle.active .filter-label {
+  color: var(--plm-accent);
+}
+
+.column-filter-menu {
+  min-width: 120px;
+  font-size: .8rem;
+}
+
+.column-filter-menu .dropdown-item {
+  padding: .25rem .75rem;
+}
+
+.column-filter-option.active {
+  font-weight: 600;
+}
+
+#table-inventory th.text-start,
+#table-inventory td.text-start,
+#table-par th.text-start,
+#table-par td.text-start {
+  text-align: left;
+}
+
 /* Utility: allow a future .col-nowrap to apply ellipsis anywhere */
 .col-nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Boldness already applied via fw-semibold in HTML; ensure consistent */
 #table-inventory td.col-item-cell, #table-inventory td.col-repl-item-cell { font-weight: 600; }
+/* Source vs replacement color banding */
+#table-inventory tbody td.col-src,
+#table-par tbody td.col-src {
+  background: #fff9e6;
+}
+#table-inventory tbody td.col-repl,
+#table-par tbody td.col-repl {
+  background: #e9f7ff;
+}
+#table-inventory tbody td.col-recom,
+#table-par tbody td.col-recom {
+  background: var(--plm-accent-purple-soft);
+  border-left: 1px solid rgba(129, 61, 214, 0.18);
+  border-right: 1px solid rgba(129, 61, 214, 0.18);
+}
+#table-inventory thead tr.column-header-labels th.col-recom,
+#table-par thead tr.column-header-labels th.col-recom {
+  background: var(--plm-accent-purple-mid);
+}
+#table-inventory thead tr.column-filter-row th.col-recom,
+#table-par thead tr.column-filter-row th.col-recom,
+#table-inventory thead tr.column-filter-row th[data-recom-col],
+#table-par thead tr.column-filter-row th[data-recom-col] {
+  background: var(--plm-accent-purple-mid);
+}
+#table-inventory tbody td.col-weekly-group,
+#table-par tbody td.col-weekly-group {
+  background: transparent;
+}
 /* Stage badge already globally styled; ensure small size fits */
 #table-inventory .stage-badge { font-size: .65rem; letter-spacing: .25px; }
 
 /* Par table styling mirrors inventory for consistency */
 #table-par { font-size: .8rem; }
-#table-par thead th { position: sticky; top: 0; background: #f8f9fa; }
 #table-par th, #table-par td { vertical-align: middle; white-space: normal; }
 #table-par td.text-wrap { white-space: normal; }
 #table-par .stage-badge { font-size: .65rem; letter-spacing: .25px; }
+
+
+.column-controls {
+  gap: .5rem;
+}
+
+.column-controls .dropdown-toggle {
+  min-width: 150px;
+  font-size: .75rem;
+  padding: .25rem .75rem;
+}
+
+.column-menu {
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 2000;
+}
+
+.column-menu .column-menu-search {
+  font-size: .75rem;
+  padding: .25rem .5rem;
+}
+
+.column-menu .column-menu-action {
+  font-size: .7rem;
+  padding: .2rem .45rem;
+}
+
+.column-menu .column-options-container {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+
+.hide-r-toggle .form-check-input {
+  width: 2.2em;
+  height: 1.1em;
+  cursor: pointer;
+}
+
+.hide-r-toggle .form-check-label {
+  font-size: .75rem;
+  cursor: pointer;
+  margin-left: .25rem;
+  white-space: nowrap;
+}
+
+.column-menu .form-check {
+  margin-bottom: .35rem;
+}
+
+.column-menu .form-check-label {
+  font-size: .8rem;
+}
+
+.column-menu .form-check-input {
+  margin-top: .2rem;
+}
+
+.column-menu .column-toggle-locked {
+  opacity: .65;
+}
+
+.column-menu .column-toggle-locked .form-check-input,
+.column-menu .column-toggle-locked .form-check-label {
+  cursor: not-allowed;
+}
+
+.column-menu .form-check:last-child {
+  margin-bottom: 0;
+}
 
 /* Par table inherits shared column width helpers above */
 
@@ -150,10 +422,10 @@ footer { font-size: .75rem; }
 /* Ensure dropdown overlays sticky table headers  */
 /* ---------------------------------------------- */
 #item-group-multiselect .dropdown-menu {
-  z-index: 1055; /* higher than .table thead (default 10) and Bootstrap dropdown (1000) */
+  z-index: 1040; /* higher than .table thead (default 10) and Bootstrap dropdown (1000), but lower than modal (1055) */
 }
 /* If parent stacking context interferes, raise container */
-#item-group-multiselect { position: relative; z-index: 1060; }
+#item-group-multiselect { position: relative; z-index: 1040; }
 
 /* Make dropdown menu span full input width */
 #item-group-multiselect .dropdown-menu {
@@ -168,8 +440,8 @@ footer { font-size: .75rem; }
 }
 
 /* Location multi-select mirrors item group */
-#location-multiselect { position: relative; z-index: 1060; }
-#location-multiselect .dropdown-menu { z-index: 1055; width:100% !important; min-width:100% !important; box-sizing:border-box; }
+#location-multiselect { position: relative; z-index: 1040; }
+#location-multiselect .dropdown-menu { z-index: 1040; width:100% !important; min-width:100% !important; box-sizing:border-box; }
 #location-multiselect .dropdown-menu { font-size: 0.8rem; }
 /* Compact search input inside location dropdown */
 #location-multiselect #loc-search { font-size: .7rem; padding: .25rem .5rem; }
@@ -198,6 +470,113 @@ footer { font-size: .75rem; }
 .user-control-table th {
     background-color: #f4f4f4;
     font-weight: bold;
+}
+
+/* ---------------------------------------------- */
+/* Playground graph dark caption + legend styling */
+/* ---------------------------------------------- */
+
+.playground-visual-stack {
+  gap: 0;
+}
+
+.playground-legend-root {
+  background: #ffffff;
+  color: inherit;
+  min-height: 100%;
+  border-radius: 0 0 .75rem .75rem;
+}
+
+.playground-legend-shell {
+  background: #ffffff;
+}
+
+.playground-legend-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 clamp(200px, 21vw, 180px);
+  max-width: clamp(200px, 21vw, 260px);
+  min-width: 0;
+  align-self: stretch;
+}
+
+.playground-legend-wrapper .playground-legend-shell {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.playground-legend-card {
+  background-color: #ffffff;
+  color: inherit;
+  border-color: rgba(0, 0, 0, 0.05);
+  box-shadow: none;
+}
+
+.playground-legend-card .playground-legend-title {
+  color: #6c757d !important;
+  letter-spacing: 0.08em;
+}
+
+.playground-legend-card .playground-legend-row {
+  color: inherit;
+}
+
+.playground-legend-card .playground-legend-row .small {
+  color: #6c757d;
+}
+
+.playground-legend-group-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 440px;
+  margin-right: -0.5rem;
+  padding-right: 0.5rem;
+}
+
+.playground-legend-group-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.playground-legend-group-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.6);
+  border-radius: 3px;
+}
+
+@media (min-width: 992px) {
+  .playground-visual-stack .playground-legend-root {
+    border-radius: 0 .75rem .75rem 0;
+  }
+}
+
+@media (max-width: 1200px) {
+  .playground-legend-wrapper {
+    flex-basis: clamp(200px, 32vw, 240px);
+    max-width: clamp(200px, 32vw, 240px);
+  }
+}
+
+@media (max-width: 992px) {
+  .playground-legend-wrapper {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .playground-legend-wrapper .playground-legend-shell {
+    height: auto;
+  }
+}
+
+.playground-tooltip.card {
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.45);
+}
+
+.playground-tooltip .text-muted {
+  color: rgba(203, 213, 225, 0.82) !important;
 }
 
 .user-control-table tr:nth-child(even) {

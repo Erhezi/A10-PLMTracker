@@ -1,8 +1,10 @@
 from __future__ import annotations
-from typing import List, Dict, Optional, Set, Tuple
+from typing import List, Dict, Optional, Set, Tuple, Iterable
 import re
 from datetime import date, datetime
 from calendar import monthrange
+from dataclasses import dataclass
+from collections import defaultdict
 
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import aliased
@@ -10,14 +12,159 @@ from sqlalchemy.orm import aliased
 from .. import db
 from ..models.relations import ItemLink  # new consolidated view
 from ..models.inventory import Item
+from .node_check import RelationGraph
 
 
 class BatchValidationError(Exception):
     """Exception raised for batch validation errors."""
-    def __init__(self, message: str, error_code: str = None):
+
+    def __init__(self, message: str, error_code: str = None, *, details: Optional[Dict[str, object]] = None):
         self.message = message
         self.error_code = error_code
+        self.details = details or {}
         super().__init__(self.message)
+
+
+@dataclass(frozen=True)
+class GroupAssignment:
+    """Result describing the group mapping for a proposed link."""
+
+    group_id: int
+    relevant_groups: frozenset[int]
+
+    @property
+    def groups_to_merge(self) -> Set[int]:
+        return set(self.relevant_groups) - {self.group_id}
+
+
+class BatchGroupPlanner:
+    """In-memory coordinator for assigning Item Group ids within a batch."""
+
+    def __init__(self, existing_links: Iterable[ItemLink], *, next_group_id: int):
+        self._next_group_id = max(next_group_id, 1)
+        self._item_to_groups: Dict[str, Set[int]] = defaultdict(set)
+        self._group_to_items: Dict[int, Set[str]] = defaultdict(set)
+        self._group_links: Dict[int, List[ItemLink]] = defaultdict(list)
+        self._group_graphs: Dict[int, RelationGraph] = {}
+        self._pending_merges: Dict[int, Set[int]] = defaultdict(set)
+
+        for link in existing_links:
+            if link.item_group is None:
+                continue
+            self._ingest_existing_link(link)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def plan_group(self, item: str, replacement: Optional[str]) -> GroupAssignment:
+        """Return the canonical group mapping for a prospective link."""
+
+        candidate_groups = set(self._item_to_groups.get(item, set()))
+        if replacement:
+            candidate_groups.update(self._item_to_groups.get(replacement, set()))
+
+        if not candidate_groups:
+            group_id = self._allocate_new_group()
+            return GroupAssignment(group_id=group_id, relevant_groups=frozenset({group_id}))
+
+        group_id = min(candidate_groups)
+        return GroupAssignment(group_id=group_id, relevant_groups=frozenset(candidate_groups))
+
+    def graph_for(self, assignment: GroupAssignment) -> RelationGraph:
+        """Provide a relation graph covering all relevant groups for conflict checks."""
+
+        groups = assignment.relevant_groups
+        if len(groups) == 1:
+            group = assignment.group_id
+            return self._group_graphs.get(group, RelationGraph())
+
+        graph = RelationGraph()
+        for group in groups:
+            for link in self._group_links.get(group, []):
+                graph.register_link(link)
+        return graph
+
+    def register_success(self, assignment: GroupAssignment, link: ItemLink) -> None:
+        """Update planner state after successfully creating a link."""
+
+        group_id = assignment.group_id
+        self._group_links[group_id].append(link)
+        graph = self._group_graphs.get(group_id)
+        if graph is None:
+            graph = RelationGraph()
+            self._group_graphs[group_id] = graph
+        graph.register_link(link)
+
+        self._register_code(group_id, link.item)
+        if link.replace_item:
+            self._register_code(group_id, link.replace_item)
+
+        if assignment.groups_to_merge:
+            self._merge_into(group_id, assignment.groups_to_merge)
+
+    def consume_pending_merges(self) -> Dict[int, Set[int]]:
+        """Return and clear pending merge directives for persistence."""
+
+        merges = {canonical: set(groups) for canonical, groups in self._pending_merges.items() if groups}
+        self._pending_merges.clear()
+        return merges
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _allocate_new_group(self) -> int:
+        group_id = self._next_group_id
+        self._next_group_id += 1
+        # Ensure basic containers exist for the new group
+        self._group_links.setdefault(group_id, [])
+        self._group_graphs.setdefault(group_id, RelationGraph())
+        return group_id
+
+    def _register_code(self, group_id: int, code: Optional[str]) -> None:
+        if not code:
+            return
+        self._group_to_items[group_id].add(code)
+        self._item_to_groups[code].add(group_id)
+
+    def _ingest_existing_link(self, link: ItemLink) -> None:
+        group = link.item_group
+        self._group_links[group].append(link)
+        self._register_code(group, link.item)
+        if link.replace_item:
+            self._register_code(group, link.replace_item)
+
+        graph = self._group_graphs.get(group)
+        if graph is None:
+            graph = RelationGraph()
+            self._group_graphs[group] = graph
+        graph.register_link(link)
+
+    def _merge_into(self, canonical: int, to_merge: Set[int]) -> None:
+        for group in sorted(to_merge):
+            if group == canonical:
+                continue
+            # Update item-to-group mappings
+            for code in self._group_to_items.get(group, set()):
+                groups = self._item_to_groups.get(code)
+                if groups and group in groups:
+                    groups.remove(group)
+                    groups.add(canonical)
+                self._group_to_items[canonical].add(code)
+            self._group_to_items.pop(group, None)
+
+            # Move existing links and rebuild canonical graph
+            links = self._group_links.pop(group, [])
+            if links:
+                self._group_links[canonical].extend(links)
+            old_graph = self._group_graphs.pop(group, None)
+            if old_graph is not None:
+                # Rebuild canonical graph to avoid duplicate edges
+                new_graph = RelationGraph()
+                for link in self._group_links[canonical]:
+                    new_graph.register_link(link)
+                self._group_graphs[canonical] = new_graph
+
+            self._pending_merges[canonical].add(group)
 
 
 def dedupe_preserve_order(seq: List[str]) -> List[str]:
@@ -163,7 +310,7 @@ def validate_stage_and_items(
     missing = [c for c in real_codes if c not in items_map]
     
     if missing:
-        raise BatchValidationError("Some items not found", "missing_items")
+        raise BatchValidationError("Some items not found", "missing_items", details={"missing": missing})
     
     return stage, locked, items_map, missing
 

@@ -13,16 +13,21 @@
   <option value="stage">By Stage</option>
     </select>
   </div>
-  <div class="flex-grow-1" style="max-width:380px;">
+  <div class="flex-grow-1" style="max-width:720px;">
     <label for="filter-input" class="form-label small mb-1 text-muted">Quick Filter</label>
-    <input id="filter-input" type="text" class="form-control form-control-sm" placeholder="Type to filter..." autocomplete="off" />
+  <div class="d-flex align-items-end gap-2 flex-nowrap">
+      <input id="filter-input" type="text" class="form-control form-control-sm flex-grow-1" placeholder="Type to filter..." autocomplete="off" />
+      <span id="filter-hint" class="small text-muted flex-shrink-0">Use ";" to search multiple terms (max 10).</span>
+    </div>
   </div>
-  <div class="small text-muted">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
-  <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');">
-    <button id="clear-deleted-btn" type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
-      Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
-    </button>
-  </form>
+  <div class="ms-auto d-flex align-items-end gap-2 flex-wrap justify-content-end text-end">
+    <div class="small text-muted">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
+    <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');" class="m-0">
+      <button id="clear-deleted-btn" type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
+        Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
+      </button>
+    </form>
+  </div>
 </div>
 
 <div class="table-responsive position-relative border rounded shadow-sm" style="max-height:700px; overflow:auto;">
@@ -30,17 +35,17 @@
     <thead class="table-light small sticky-top shadow-sm" style="z-index:5;">
       <tr>
         <th style="width:58px;" class="text-center sortable" data-sort="none" data-type="none">Edit <span class="sort-indicator"></span></th>
-        <th class="text-center sortable" data-type="number">Item Group <span class="sort-indicator"></span></th>
+        <th class="text-center sortable" data-type="number" style="min-width:50px; width:50px;">Item Group <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text" style="min-width:70px;">Item <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text">Mfg Part # <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text">Mfg <span class="sort-indicator"></span></th>
-        <th class="sortable col-src" data-type="text" style="min-width:240px;">Item Description <span class="sort-indicator"></span></th>
+        <th class="sortable col-src col-desc" data-type="text" style="min-width:240px;">Item Description <span class="sort-indicator"></span></th>
         <th class="sortable col-repl" data-type="text" style="width:70px; min-width:70px; max-width:70px;">Replace Item <span class="sort-indicator"></span></th>
         <th class="sortable col-repl" data-type="text">Repl Mfg # <span class="sort-indicator"></span></th>
         <th class="sortable col-repl" data-type="text">Repl Mfg <span class="sort-indicator"></span></th>
         <th class="sortable col-repl" data-type="text" style="min-width:240px;">Repl Description <span class="sort-indicator"></span></th>
         <th class="text-center sortable" data-type="stage">Stage <span class="sort-indicator"></span></th>
-  <th class="sortable text-center" data-type="date" style="min-width:110px;">Go Live <span class="sort-indicator"></span></th>
+  <th class="sortable text-center go-live-col" data-type="date" style="min-width:90px; width:90px;">Go Live <span class="sort-indicator"></span></th>
   <th class="sortable text-center" data-type="wrike">Wrike ID <span class="sort-indicator"></span></th>
   <th class="sortable text-center" data-type="date">CreateDT <span class="sort-indicator"></span></th>
   <th class="sortable text-center" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
@@ -57,11 +62,11 @@
               <button class="btn btn-secondary btn-sm cancel-btn" type="button" title="Cancel edits">Cancel</button>
             </div>
           </td>
-          <td class="text-center fw-semibold">{{ r.item_group }}</td>
+          <td class="text-center fw-semibold" style="min-width:50px;">{{ r.item_group }}</td>
           <td class="font-monospace col-src">{{ r.item }}</td>
           <td title="{{ r.mfg_part_num }}" class="text-truncate col-src" style="max-width:140px;">{{ r.mfg_part_num }}</td>
           <td class="text-truncate col-src" style="max-width:120px;">{{ r.manufacturer }}</td>
-          <td class="text-truncate col-src" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
+          <td class="text-truncate col-src col-desc" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
           <td class="font-monospace ellipsis col-70 col-repl" title="{% if r.replace_item is not none %}{{ r.replace_item }}{% endif %}">
             {% if r.stage == 'Tracking - Discontinued' and (r.replace_item is none or r.replace_item|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
@@ -95,7 +100,7 @@
               {% endfor %}
             </select>
           </td>
-          <td class="date-cell" data-value="{{ r.expected_go_live_date }}">
+          <td class="date-cell text-center" data-value="{{ r.expected_go_live_date }}" style="width:90px; min-width:90px;">
             <span class="read-value">
               {% if not r.expected_go_live_date or r.expected_go_live_date|string|lower in ['nan','none',''] %}
                 <span class="text-muted fst-italic">unknown</span>
@@ -136,6 +141,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const table = document.getElementById('itemlink-table');
   const filterInput = document.getElementById('filter-input');
   const filterMode = document.getElementById('filter-mode');
+  const filterHint = document.getElementById('filter-hint');
+  const hintDefaultText = 'Use ";" to search multiple terms (max 10).';
+  const hintOverflowText = 'Use ";" to search multiple terms (max 10). Only the first 10 terms are applied.';
   const visibleCountEl = document.getElementById('visible-count');
   if(!table) return;
 
@@ -167,33 +175,55 @@ document.addEventListener('DOMContentLoaded', () => {
   // Filter logic (client side)
   function applyFilter(){
     const qRaw = filterInput.value.trim();
-    const q = qRaw.toLowerCase();
+    const rawTokens = qRaw
+      .split(';')
+      .map(part => part.trim().toLowerCase())
+      .filter(Boolean);
+    const tokens = rawTokens.slice(0, 10);
+    const truncated = rawTokens.length > tokens.length;
+    if(filterHint){
+      if(truncated){
+        filterHint.classList.remove('text-muted');
+        filterHint.classList.add('text-danger');
+        filterHint.textContent = hintOverflowText;
+      } else {
+        filterHint.classList.add('text-muted');
+        filterHint.classList.remove('text-danger');
+        filterHint.textContent = hintDefaultText;
+      }
+    }
     const mode = filterMode.value;
     const rows = table.tBodies[0].rows;
     let visible = 0;
+
     for(const tr of rows){
       if(tr.dataset.item === undefined){
         continue;
       }
       let match = true;
-      if(q){
+
+      if(tokens.length){
         if(mode === 'contains'){
-          match = tr.innerText.toLowerCase().includes(q);
+          const rowText = tr.innerText.toLowerCase();
+          match = tokens.some(token => rowText.includes(token));
         } else if(mode === 'not-contains'){
-          match = !tr.innerText.toLowerCase().includes(q);
+          const rowText = tr.innerText.toLowerCase();
+          match = tokens.every(token => !rowText.includes(token));
         } else if(mode === 'item-group'){
           const cell = tr.children[1]; // Item Group column
-            const cellText = (cell ? cell.innerText : '').trim().toLowerCase();
-            match = cellText === q; // exact match on item group
+          const cellText = (cell ? cell.innerText : '').trim().toLowerCase();
+          match = tokens.some(token => cellText === token);
         } else if(mode === 'stage'){
           const stageCell = tr.querySelector('.stage-cell .stage-badge');
           const stageText = stageCell ? stageCell.innerText.trim().toLowerCase() : '';
-          match = stageText.includes(q); // allow partial match
+          match = tokens.some(token => stageText.includes(token));
         }
       }
+
       tr.classList.toggle('d-none', !match);
       if(match) visible++;
     }
+
     if(visibleCountEl) visibleCountEl.textContent = visible;
   }
   if(filterInput && filterMode){
@@ -509,5 +539,11 @@ document.addEventListener('DOMContentLoaded', () => {
   tbody td.col-src { background: #fff9e6; }
   /* Replacement columns - pale blue (tbody only) */
   tbody td.col-repl { background: #e9f7ff; }
+  #itemlink-table th.col-desc,
+  #itemlink-table td.col-desc { padding-right:15px; }
+  #itemlink-table th.go-live-col,
+  #itemlink-table td.date-cell { text-align:center; }
+  #itemlink-table td.date-cell .form-control { min-width:0; max-width:100%; text-align:center; }
+  #filter-hint { white-space:nowrap; }
 </style>
 {% endblock %}

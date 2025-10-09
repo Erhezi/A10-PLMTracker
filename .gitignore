@@ -138,3 +138,9 @@ waitress.log
 
 # VSCode tasks
 .vscode/tasks.json
+
+# Ignore everything under _ref/ except .html files
+_ref/**
+!_ref/**/*.html
+!_ref/
+!_ref/**/

@@ -33,12 +33,14 @@ def create_app(env: str | None = None):
     from .auth.routes import bp as auth_bp
     from .collector.routes import bp as collector_bp
     from .dashboard.routes import bp as dashboard_bp
+    from .playground.routes import bp as playground_bp
     from .main.routes import bp as main_bp
     from .admin.routes import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(collector_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(playground_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
 

@@ -40,7 +40,7 @@
           <option value="">All</option>
         </select>
       </div>
-      <div class="col-6 col-md-4">
+      <div class="col-12 col-md-4">
         <label class="form-label small text-uppercase text-muted mb-1">Desc Search</label>
         <input type="text" class="form-control form-control-sm" name="desc_search" placeholder="search description" />
       </div>
@@ -75,6 +75,15 @@
         </div>
       </div>
     </div>
+    <div class="col-12 col-lg-3">
+      <button type="button" class="btn btn-outline-primary w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3 location-setup-toggle-btn" id="location-setup-toggle" style="min-height: 80px; border-width: 2px;">
+        <div class="small text-uppercase fw-semibold mb-1">Prepare Location Set-up</div>
+        <div class="small text-muted">Toggle column presets</div>
+        <div class="mt-2">
+          <span class="badge bg-secondary" id="location-setup-status">OFF</span>
+        </div>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -86,37 +95,128 @@
       <!-- Inventory Table -->
       <div class="card shadow-sm mb-4">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">Inventory Items</h6>
-          <div class="small text-muted" id="inventory-count">0 rows</div>
+          <h6 class="mb-0">Inventory Locations</h6>
+          <div class="d-flex align-items-center gap-2 column-controls">
+            <div class="small text-muted" id="inventory-count">0 rows</div>
+            <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
+              <input class="form-check-input" type="checkbox" id="inventory-hide-r-toggle" checked>
+              <label class="form-check-label" for="inventory-hide-r-toggle">Hide R-Only Location</label>
+            </div>
+            <div class="dropdown">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="inventory-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                Columns Selector
+              </button>
+              <div class="dropdown-menu dropdown-menu-end p-2 column-menu" aria-labelledby="inventory-columns-btn" id="inventory-column-menu">
+                <div class="text-muted small px-2">Loading columns…</div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="inventory-reset-filters" title="Reset inventory column filters to All">Reset Column Filters</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="inventory-export-excel" title="Download inventory table as Excel">Export to Excel</button>
+          </div>
         </div>
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
           <table class="table table-sm table-hover align-middle mb-0" id="table-inventory">
             <thead class="table-light sticky-top">
-              <tr class="small text-nowrap">
+              <tr class="small text-nowrap column-header-labels">
                 <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
-                <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-eplenishment</th>
+                <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="inv-col-active" data-field="active" class="col-active">Active</th>
-                <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discontinued</th>
+                <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
                 <th id="inv-col-current" data-field="current_qty" class="col-num">Current Qty</th>
                 <th id="inv-col-weekly" data-field="weekly_burn" class="col-num">Weekly Burn</th>
                 <th id="inv-col-weeks" data-field="weeks_on_hand" class="col-num">Weeks on Hand</th>
+                <th id="inv-col-stock-uom" data-field="stock_uom" class="col-text">Stock UOM</th>
+                <th id="inv-col-uom-conversion" data-field="uom_conversion" class="col-num">UOM Mult.</th>
+                <th id="inv-col-buy-uom" data-field="buy_uom" class="col-text">Buy UOM</th>
+                <th id="inv-col-buy-uom-mult" data-field="buy_uom_multiplier" class="col-num">Buy UOM Mult.</th>
+                <th id="inv-col-trans-uom" data-field="transaction_uom" class="col-text">Trans. UOM</th>
+                <th id="inv-col-trans-uom-mult" data-field="transaction_uom_multiplier" class="col-num">Trans. UOM Mult.</th>
+                <th id="inv-col-reorder-policy" data-field="reorder_quantity_code" class="col-text">Reorder Policy</th>
+                <th id="inv-col-reorder-pt" data-field="reorder_point" class="col-num">Reorder Point</th>
+                <th id="inv-col-min-order" data-field="min_order_qty" class="col-num">Min Order Qty</th>
+                <th id="inv-col-max-order" data-field="max_order_qty" class="col-num">Max Order Qty</th>
+                <th id="inv-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
-                <th id="inv-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
-                <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Replacement Item</th>
+                <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
-                <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
+                <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
-                <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
+                <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="inv-col-current-ri" data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
                 <th id="inv-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Burn (RI)</th>
                 <th id="inv-col-weeks-ri" data-field="weeks_on_hand_ri" class="col-num">Weeks on Hand (RI)</th>
+                <th id="inv-col-stock-uom-ri" data-field="stock_uom_ri" class="col-text">Stock UOM (RI)</th>
+                <th id="inv-col-uom-conversion-ri" data-field="uom_conversion_ri" class="col-num">UOM Mult. (RI)</th>
+                <th id="inv-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
+                <th id="inv-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
+                <th id="inv-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="inv-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="inv-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
+                <th id="inv-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
+                <th id="inv-col-reorder-pt-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
+                <th id="inv-col-reorder-pt-rec" data-field="recommended_reorder_point_ri" class="col-num col-recom">Reorder Point (Recom.)</th>
+                <th id="inv-col-min-order-ri" data-field="min_order_qty_ri" class="col-num">Min Order Qty (RI)</th>
+                <th id="inv-col-min-order-rec" data-field="recommended_min_order_qty_ri" class="col-num col-recom">Min Order Qty (Recom.)</th>
+                <th id="inv-col-max-order-ri" data-field="max_order_qty_ri" class="col-num">Max Order Qty (RI)</th>
+                <th id="inv-col-max-order-rec" data-field="recommended_max_order_qty_ri" class="col-num col-recom">Max Order Qty (Recom.)</th>
+                <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
-            </thead>
+              <tr class="column-filter-row text-nowrap">
+                <th class="col-stage column-filter-cell"></th>
+                <th class="col-group column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current" data-field="current_qty_state"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-repl-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current-ri" data-field="current_qty_ri_state"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-pt-rec"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
+              </tr>
             <tbody>
               <!-- dynamic rows inserted by JS -->
             </tbody>
@@ -137,35 +237,122 @@
       <div class="card shadow-sm">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
           <h6 class="mb-0">Par Locations</h6>
-          <div class="small text-muted" id="par-count">0 rows</div>
+          <div class="d-flex align-items-center gap-2 column-controls">
+            <div class="small text-muted" id="par-count">0 rows</div>
+            <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
+              <input class="form-check-input" type="checkbox" id="par-hide-r-toggle" checked>
+              <label class="form-check-label" for="par-hide-r-toggle">Hide R-Only Location</label>
+            </div>
+            <div class="dropdown">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="par-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
+                Columns Selector
+              </button>
+              <div class="dropdown-menu dropdown-menu-end p-2 column-menu" aria-labelledby="par-columns-btn" id="par-column-menu">
+                <div class="text-muted small px-2">Loading columns…</div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="par-reset-filters" title="Reset par column filters to All">Reset Column Filters</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="par-export-excel" title="Download par table as Excel">Export to Excel</button>
+          </div>
         </div>
         <div class="table-responsive" style="max-height:420px; overflow:auto;">
           <table class="table table-sm table-hover align-middle mb-0" id="table-par">
             <thead class="table-light sticky-top">
-              <tr class="small text-nowrap">
+              <tr class="small text-nowrap column-header-labels">
                 <th id="par-col-stage" data-field="stage" class="col-stage">Stage</th>
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
-                <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-replenishment</th>
+                <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="par-col-active" data-field="active" class="col-active">Active</th>
-                <th id="par-col-disc" data-field="discontinued" class="col-disc">Discontinued</th>
+                <th id="par-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
                 <th id="par-col-reorder" data-field="reorder_point" class="col-num">Reorder Point</th>
                 <th id="par-col-weekly" data-field="weekly_burn" class="col-num">Weekly Demand</th>
                 <th id="par-col-weeks" data-field="weeks_reorder" class="col-num">Weeks Reorder</th>
+                <th id="par-col-stock-uom" data-field="stock_uom" class="col-text">Stock UOM</th>
+                <th id="par-col-uom-conversion" data-field="uom_conversion" class="col-num">UOM Mult.</th>
+                <th id="par-col-buy-uom" data-field="buy_uom" class="col-text">Buy UOM</th>
+                <th id="par-col-buy-uom-mult" data-field="buy_uom_multiplier" class="col-num">Buy UOM Mult.</th>
+                <th id="par-col-trans-uom" data-field="transaction_uom" class="col-text">Trans. UOM</th>
+                <th id="par-col-trans-uom-mult" data-field="transaction_uom_multiplier" class="col-num">Trans. UOM Mult.</th>
+                <th id="par-col-reorder-policy" data-field="reorder_quantity_code" class="col-text">Reorder Policy</th>
+                <th id="par-col-min-order" data-field="min_order_qty" class="col-num">Min Order Qty</th>
+                <th id="par-col-max-order" data-field="max_order_qty" class="col-num">Max Order Qty</th>
+                <th id="par-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
-                <th id="par-col-requesters" data-field="requesters_past_year" class="col-num">Requesters (Past Year)</th>
-                <th id="par-col-group2" data-field="item_group" class="col-group">Item Group</th>
-                <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Replacement Item</th>
+                <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
-                <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-replenishment (RI)</th>
+                <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="par-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
-                <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discontinued (RI)</th>
+                <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="par-col-reorder-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
                 <th id="par-col-weekly-ri" data-field="weekly_burn_ri" class="col-num">Weekly Demand (RI)</th>
                 <th id="par-col-weeks-ri" data-field="weeks_reorder_ri" class="col-num">Weeks Reorder (RI)</th>
+                <th id="par-col-stock-uom-ri" data-field="stock_uom_ri" class="col-text">Stock UOM (RI)</th>
+                <th id="par-col-uom-conversion-ri" data-field="uom_conversion_ri" class="col-num">UOM Mult. (RI)</th>
+                <th id="par-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
+                <th id="par-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
+                <th id="par-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="par-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="par-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
+                <th id="par-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
+                <th id="par-col-reorder-rec" data-field="recommended_reorder_point_ri" class="col-num col-recom">Reorder Point (Recom.)</th>
+                <th id="par-col-min-order-ri" data-field="min_order_qty_ri" class="col-num">Min Order Qty (RI)</th>
+                <th id="par-col-min-order-rec" data-field="recommended_min_order_qty_ri" class="col-num col-recom">Min Order Qty (Recom.)</th>
+                <th id="par-col-max-order-ri" data-field="max_order_qty_ri" class="col-num">Max Order Qty (RI)</th>
+                <th id="par-col-max-order-rec" data-field="recommended_max_order_qty_ri" class="col-num col-recom">Max Order Qty (Recom.)</th>
+                <th id="par-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+              </tr>
+              <tr class="column-filter-row text-nowrap">
+                <th class="col-stage column-filter-cell"></th>
+                <th class="col-group column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-repl-item column-filter-cell"></th>
+                <th class="col-location column-filter-cell"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-rec"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
+                <th class="col-num column-filter-cell"></th>
+                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
+                <th class="col-text column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
+                <th class="col-desc column-filter-cell"></th>
               </tr>
             </thead>
             <tbody>
@@ -189,16 +376,32 @@
     <div class="col-12 col-xl-5 col-xxl-4" id="section-chart">
       <div class="card shadow-sm h-100">
         <div class="card-header bg-white py-2">
-          <h6 class="mb-0">Inventory Daily Balance (Item Group: <span id="current-item-group">Not Selected</span>)</h6>
+          <h6 class="mb-0">Inventory Daily Balance & Issued Qty (Item Group: <span id="current-item-group">Not Selected</span>)</h6>
         </div>
         <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0 text-uppercase small text-muted">Daily Available Qty</h6>
+          </div>
           <div id="qty-chart" style="height:360px; position:relative;"></div>
           <div class="text-muted small mt-2" id="chart-hint">&nbsp;</div>
+          <hr class="my-4">
+          <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+            <h6 class="mb-0 text-uppercase small text-muted" id="issue-chart-title" data-daily-label="Daily Issued-Out Qty" data-weekly-label="Weekly Issued-Out Qty">Daily Issued-Out Qty</h6>
+            <div class="form-check form-switch form-switch-sm ms-auto text-muted">
+              <input class="form-check-input" type="checkbox" role="switch" id="issue-weekly-toggle" aria-label="Toggle weekly issued-out totals">
+              <label class="form-check-label small" for="issue-weekly-toggle">Weekly totals</label>
+            </div>
+          </div>
+          <div id="issue-chart" style="height:320px; position:relative;"></div>
+          <div class="text-muted small mt-2" id="issue-chart-hint">&nbsp;</div>
         </div>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Requester contacts modal -->
+  
 {% endblock %}
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -242,8 +445,723 @@ document.addEventListener('DOMContentLoaded', () => {
   const locCount = document.getElementById('location-count');
   const selStage = filterForm.querySelector('select[name="stage"]');
   const inpDescSearch = filterForm.querySelector('input[name="desc_search"]');
+  const inventoryTable = document.getElementById('table-inventory');
+  const parTable = document.getElementById('table-par');
+  const inventoryColumnMenu = document.getElementById('inventory-column-menu');
+  const parColumnMenu = document.getElementById('par-column-menu');
+  const inventoryHideToggle = document.getElementById('inventory-hide-r-toggle');
+  const parHideToggle = document.getElementById('par-hide-r-toggle');
+  const inventoryResetBtn = document.getElementById('inventory-reset-filters');
+  const parResetBtn = document.getElementById('par-reset-filters');
+  const inventoryExportBtn = document.getElementById('inventory-export-excel');
+  const parExportBtn = document.getElementById('par-export-excel');
+  const htmlEscapeMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '`': '&#96;',
+  };
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"'`]/g, ch => htmlEscapeMap[ch] || ch);
+  const escapeAttr = (value) => escapeHtml(value);
+  const columnState = {
+    inventory: {},
+    par: {},
+  };
+  const triStateOptions = [
+    { value: '', label: 'All' },
+    { value: 'yes', label: 'Yes' },
+    { value: 'no', label: 'No' },
+    { value: 'blank', label: 'Blank' },
+  ];
+  const qtyStateOptions = [
+    { value: '', label: 'All' },
+    { value: 'zero', label: '= 0' },
+    { value: 'positive', label: '> 0' },
+  ];
+  const columnFilterOptionsMap = {};
+  const getColumnFilterOptionsKey = (tableKey, field) => `${tableKey}:${field}`;
+  function setColumnFilterOptions(tableKey, field, options){
+    columnFilterOptionsMap[getColumnFilterOptionsKey(tableKey, field)] = options;
+  }
+  function getColumnFilterOptions(tableKey, field){
+    return columnFilterOptionsMap[getColumnFilterOptionsKey(tableKey, field)] || triStateOptions;
+  }
+  const columnFilters = {
+    inventory: {
+      auto_replenishment: '',
+      active: '',
+      discontinued: '',
+      current_qty_state: '',
+      auto_replenishment_ri: '',
+      active_ri: '',
+      discontinued_ri: '',
+      current_qty_ri_state: '',
+    },
+    par: {
+      auto_replenishment: '',
+      active: '',
+      discontinued: '',
+      auto_replenishment_ri: '',
+      active_ri: '',
+      discontinued_ri: '',
+    },
+  };
+  const filterParamMap = {
+    inventory: {
+      auto_replenishment: 'auto_repl_state',
+      active: 'active_state',
+      discontinued: 'discontinued_state',
+      current_qty_state: 'current_qty_filter',
+      auto_replenishment_ri: 'auto_repl_state_ri',
+      active_ri: 'active_state_ri',
+      discontinued_ri: 'discontinued_state_ri',
+      current_qty_ri_state: 'current_qty_ri_filter',
+    },
+    par: {
+      auto_replenishment: 'auto_repl_state',
+      active: 'active_state',
+      discontinued: 'discontinued_state',
+      auto_replenishment_ri: 'auto_repl_state_ri',
+      active_ri: 'active_state_ri',
+      discontinued_ri: 'discontinued_state_ri',
+    },
+  };
+
+  let setupMode = false;
+
+
+  function closeFilterDropdowns(){
+    const dropdowns = [
+      { button: itemGroupButton, menu: itemGroupMenu },
+      { button: locButton, menu: locMenu },
+    ];
+    dropdowns.forEach(({ button, menu }) => {
+      if(!button) return;
+      button.blur();
+      button.classList.remove('show');
+      button.setAttribute('aria-expanded', 'false');
+      if(menu){
+        menu.classList.remove('show');
+      }
+      if(typeof bootstrap !== 'undefined' && bootstrap.Dropdown){
+        const dropdownInstance = bootstrap.Dropdown.getInstance(button);
+        if(dropdownInstance){
+          dropdownInstance.hide();
+        }
+      }
+    });
+  }
+
+
+  const lockedColumns = {
+    inventory: new Set([
+      'inv-col-group',
+      'inv-col-item',
+      'inv-col-location',
+      'inv-col-repl-item',
+      'inv-col-location-ri',
+    ]),
+    par: new Set([
+      'par-col-group',
+      'par-col-item',
+      'par-col-location',
+      'par-col-repl-item',
+      'par-col-location-ri',
+    ]),
+  };
+  let hideROnly = true;
+  let suppressHideSync = false;
+  function syncHideROnlyToggles(checked, { skipReload = false } = {}){
+    const normalized = !!checked;
+    hideROnly = normalized;
+    suppressHideSync = true;
+    if(inventoryHideToggle && inventoryHideToggle.checked !== normalized){
+      inventoryHideToggle.checked = normalized;
+    }
+    if(parHideToggle && parHideToggle.checked !== normalized){
+      parHideToggle.checked = normalized;
+    }
+    suppressHideSync = false;
+    if(!skipReload){
+      loadInventory(currentPage);
+      loadPar(parCurrentPage);
+    }
+  }
+  if(inventoryHideToggle){
+    hideROnly = inventoryHideToggle.checked;
+    inventoryHideToggle.addEventListener('change', () => {
+      if(suppressHideSync) return;
+      syncHideROnlyToggles(inventoryHideToggle.checked);
+    });
+  }
+  if(parHideToggle){
+    hideROnly = parHideToggle.checked;
+    parHideToggle.addEventListener('change', () => {
+      if(suppressHideSync) return;
+      syncHideROnlyToggles(parHideToggle.checked);
+    });
+  }
+  syncHideROnlyToggles(hideROnly, { skipReload: true });
+  const cssEscape = (value) => {
+    if(window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
+    }
+    return value.replace(/([\0-\x1F\x7F-\x9F!"#$%&'()*+,./:;<=>?@\[\\\]^`{|}~])/g, '\\$1');
+  };
   
   console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
+
+  function toggleColumnVisibility(table, columnId, show){
+    if(!table || !columnId) return;
+    const header = table.querySelector(`#${cssEscape(columnId)}`);
+    if(!header) return;
+    const headerRow = header.parentElement;
+    const colIndex = Array.from(headerRow.children).indexOf(header);
+    if(colIndex < 0) return;
+    const display = show ? '' : 'none';
+    if(table.tHead){
+      Array.from(table.tHead.rows).forEach(row => {
+        const cell = row.children[colIndex];
+        if(cell) cell.style.display = display;
+      });
+    } else {
+      header.style.display = display;
+    }
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      const cell = tr.children[colIndex];
+      if(cell) cell.style.display = display;
+    });
+  }
+
+  function moveTableColumn(table, columnId, targetColumnId, position = 'before'){
+    if(!table || !columnId || !targetColumnId) return;
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return;
+    const headerCells = Array.from(headerRow.children);
+    const sourceHeader = headerRow.querySelector(`#${cssEscape(columnId)}`);
+    const targetHeader = headerRow.querySelector(`#${cssEscape(targetColumnId)}`);
+    if(!sourceHeader || !targetHeader) return;
+    const sourceIndex = headerCells.indexOf(sourceHeader);
+    let targetIndex = headerCells.indexOf(targetHeader);
+    if(sourceIndex < 0 || targetIndex < 0) return;
+    if(position === 'after'){
+      targetIndex += 1;
+    }
+    if(targetIndex === sourceIndex || (position === 'after' && targetIndex === sourceIndex + 1)){
+      return;
+    }
+
+    const moveCell = (row) => {
+      if(!row) return;
+      const cells = Array.from(row.children);
+      if(sourceIndex >= cells.length) return;
+      const cell = cells[sourceIndex];
+      if(!cell) return;
+      const reference = targetIndex >= cells.length ? null : row.children[targetIndex];
+      if(reference){
+        row.insertBefore(cell, reference);
+      } else {
+        row.appendChild(cell);
+      }
+    };
+
+    if(table.tHead){
+      Array.from(table.tHead.rows).forEach(moveCell);
+    }
+    Array.from(table.tBodies || []).forEach(tbody => {
+      Array.from(tbody.rows).forEach(moveCell);
+    });
+  }
+
+  function applyColumnState(table, state){
+    if(!table || !state) return;
+    table.querySelectorAll('thead tr:first-child th').forEach(th => {
+      const columnId = th.id;
+      if(!columnId) return;
+      const visible = state[columnId] !== false;
+      toggleColumnVisibility(table, columnId, visible);
+    });
+  }
+
+  const normalizeText = (val) => String(val ?? '').trim().toLowerCase();
+  function isROnlyLocation(row){
+    if(!row || typeof row !== 'object') return false;
+    const loc = normalizeText(row.location);
+    const locType = normalizeText(row.location_type);
+    if(!loc) return true;
+    if(locType.includes('r-only')) return true;
+    const compactLoc = loc.replace(/\s+/g, ' ');
+    return compactLoc === 'r-only' || compactLoc === 'r only' || compactLoc === 'r-only location' || compactLoc === 'r only location';
+  }
+
+  function buildColumnMenu(table, menu, stateKey){
+    if(!table || !menu) return;
+  const headers = Array.from(table.querySelectorAll('thead tr:first-child th'));
+    if(!headers.length){
+      menu.innerHTML = '<div class="text-muted small px-2">No columns found</div>';
+      return;
+    }
+    menu.innerHTML = '';
+    const lockedSet = lockedColumns[stateKey] || new Set();
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'form-control form-control-sm mb-2 column-menu-search';
+    searchInput.placeholder = 'Search columns (use * wildcard)';
+    searchInput.setAttribute('autocomplete', 'off');
+    menu.appendChild(searchInput);
+
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'd-flex gap-2 mb-2';
+    const selectAllBtn = document.createElement('button');
+    selectAllBtn.type = 'button';
+    selectAllBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
+    selectAllBtn.textContent = 'All';
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn btn-sm btn-outline-secondary flex-grow-1 column-menu-action';
+    clearBtn.textContent = 'Clear';
+    controlsRow.appendChild(selectAllBtn);
+    controlsRow.appendChild(clearBtn);
+    menu.appendChild(controlsRow);
+
+    const divider = document.createElement('div');
+    divider.className = 'border-top mt-2 pt-2';
+    menu.appendChild(divider);
+
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'column-options-container';
+    menu.appendChild(optionsContainer);
+
+    headers.forEach((th, idx) => {
+      const columnId = th.id;
+      if(!columnId) return;
+      const label = (th.textContent || '').trim() || `Column ${idx+1}`;
+      if(!(columnId in columnState[stateKey])){
+        columnState[stateKey][columnId] = true;
+      }
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-check column-toggle-item column-option';
+      wrapper.setAttribute('data-label', label.toLowerCase());
+      const input = document.createElement('input');
+      input.className = 'form-check-input';
+      input.type = 'checkbox';
+      input.id = `${columnId}-toggle`;
+      const locked = lockedSet.has(columnId);
+      if(locked){
+        columnState[stateKey][columnId] = true;
+      }
+      const isVisible = locked ? true : columnState[stateKey][columnId] !== false;
+      input.checked = isVisible;
+      input.disabled = locked;
+      if(locked){
+        wrapper.classList.add('column-toggle-locked');
+      }
+      input.addEventListener('change', () => {
+        const show = input.checked;
+        columnState[stateKey][columnId] = show;
+        toggleColumnVisibility(table, columnId, show);
+      });
+      const labelEl = document.createElement('label');
+      labelEl.className = 'form-check-label';
+      labelEl.setAttribute('for', input.id);
+      labelEl.textContent = label;
+      wrapper.appendChild(input);
+      wrapper.appendChild(labelEl);
+      optionsContainer.appendChild(wrapper);
+    });
+    applyColumnState(table, columnState[stateKey]);
+
+    const applySelectAll = (checked) => {
+      optionsContainer.querySelectorAll('.column-toggle-item input:not(:disabled)').forEach(inputEl => {
+        const optionRow = inputEl.closest('.column-toggle-item');
+        if(optionRow && optionRow.getAttribute('data-hidden') === '1') return;
+        if(inputEl.checked !== checked){
+          inputEl.checked = checked;
+          inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    };
+    selectAllBtn.addEventListener('click', () => applySelectAll(true));
+    clearBtn.addEventListener('click', () => applySelectAll(false));
+
+    let lastFilter = '';
+    searchInput.addEventListener('input', () => {
+      const raw = searchInput.value.trim();
+      if(raw === lastFilter) return;
+      lastFilter = raw;
+      if(!raw){
+        optionsContainer.querySelectorAll('.column-option').forEach(option => {
+          option.style.display = '';
+          option.removeAttribute('data-hidden');
+        });
+        return;
+      }
+      let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+      patternEsc = patternEsc.replace(/\\\*/g, '.*');
+      if(!raw.includes('*')){
+        patternEsc = '.*' + patternEsc + '.*';
+      }
+      let regex = null;
+      try {
+        regex = new RegExp(patternEsc, 'i');
+      } catch {
+        regex = null;
+      }
+      optionsContainer.querySelectorAll('.column-option').forEach(option => {
+        const label = option.getAttribute('data-label') || '';
+        const match = !regex || regex.test(label);
+        if(match){
+          option.style.display = '';
+          option.removeAttribute('data-hidden');
+        } else {
+          option.style.display = 'none';
+          option.setAttribute('data-hidden', '1');
+        }
+      });
+    });
+  }
+
+  buildColumnMenu(inventoryTable, inventoryColumnMenu, 'inventory');
+  buildColumnMenu(parTable, parColumnMenu, 'par');
+
+  // Initialize new UOM/reorder columns as hidden
+  const recommendedColumns = [
+    'recommended_reorder_quantity_code_ri',
+    'recommended_reorder_point_ri',
+    'recommended_min_order_qty_ri',
+    'recommended_max_order_qty_ri',
+  ];
+  const setupColumns = [
+    'stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+    'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+    'min_order_qty', 'max_order_qty', 'manufacturer_number',
+    'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+    'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+    'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    ...recommendedColumns,
+  ];
+  ['inventory', 'par'].forEach(tableKey => {
+    const table = tableKey === 'inventory' ? inventoryTable : parTable;
+    setupColumns.forEach(field => {
+      const th = table.querySelector(`th[data-field="${field}"]`);
+      if(th && th.id){
+        columnState[tableKey][th.id] = false;
+        toggleColumnVisibility(table, th.id, false);
+        const checkbox = document.querySelector(`#${th.id}-toggle`);
+        if(checkbox){
+          checkbox.checked = false;
+        }
+      }
+    });
+  });
+
+  applyParColumnArrangement();
+
+  // Location Setup Toggle Handler
+  const locationSetupToggle = document.getElementById('location-setup-toggle');
+  const locationSetupStatus = document.getElementById('location-setup-status');
+
+  function applyParColumnArrangement(){
+    if(!parTable) return;
+    if(setupMode){
+      moveTableColumn(parTable, 'par-col-reorder', 'par-col-reorder-policy', 'after');
+      moveTableColumn(parTable, 'par-col-reorder-ri', 'par-col-reorder-rec', 'before');
+    } else {
+      moveTableColumn(parTable, 'par-col-reorder', 'par-col-weekly', 'before');
+      moveTableColumn(parTable, 'par-col-reorder-ri', 'par-col-weekly-ri', 'before');
+    }
+  }
+  
+  if(locationSetupToggle){
+    locationSetupToggle.addEventListener('click', () => {
+      setupMode = !setupMode;
+      
+      // Update button appearance
+      if(setupMode){
+        locationSetupToggle.classList.remove('btn-outline-primary');
+        locationSetupToggle.classList.add('btn-primary');
+        if(locationSetupStatus) locationSetupStatus.textContent = 'ON';
+        if(locationSetupStatus) locationSetupStatus.classList.replace('bg-secondary', 'bg-light');
+        if(locationSetupStatus) locationSetupStatus.classList.add('text-dark');
+      } else {
+        locationSetupToggle.classList.remove('btn-primary');
+        locationSetupToggle.classList.add('btn-outline-primary');
+        if(locationSetupStatus) locationSetupStatus.textContent = 'OFF';
+        if(locationSetupStatus) locationSetupStatus.classList.replace('bg-light', 'bg-secondary');
+        if(locationSetupStatus) locationSetupStatus.classList.remove('text-dark');
+      }
+      
+      if(setupMode){
+        // Inventory table: hide operational columns, show setup columns
+  const invHide = ['active', 'discontinued', 'current_qty', 'weeks_on_hand', 'po_90_qty', 
+       'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
+  const invShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+       'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+       'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+       'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+       'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+       ...recommendedColumns];
+        
+        invHide.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = false;
+            toggleColumnVisibility(inventoryTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+        invShow.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = true;
+            toggleColumnVisibility(inventoryTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+
+        // PAR table: hide operational columns, show setup columns
+        const parHide = ['active', 'discontinued', 'weeks_reorder', 'req_qty_ea', 
+                         'active_ri', 'discontinued_ri', 'weeks_reorder_ri'];
+  const parShow = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+    'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+    'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+    'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+    'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    ...recommendedColumns];
+        
+        parHide.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = false;
+            toggleColumnVisibility(parTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+        parShow.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = true;
+            toggleColumnVisibility(parTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+        applyParColumnArrangement();
+      } else {
+        // Revert to default view: show operational columns, hide setup columns
+  const invShow = ['active', 'discontinued', 'current_qty', 'weeks_on_hand',
+       'active_ri', 'discontinued_ri', 'current_qty_ri', 'weeks_on_hand_ri'];
+  const invHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+       'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+       'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
+       'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+       'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+       ...recommendedColumns];
+        
+        invShow.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = true;
+            toggleColumnVisibility(inventoryTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+        invHide.forEach(field => {
+          const th = inventoryTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.inventory[th.id] = false;
+            toggleColumnVisibility(inventoryTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+
+        // PAR table: show operational columns, hide setup columns
+        const parShow = ['active', 'discontinued', 'reorder_point', 'weeks_reorder', 'req_qty_ea', 
+                               'active_ri', 'discontinued_ri', 'reorder_point_ri', 'weeks_reorder_ri'];
+  const parHide = ['stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
+       'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+       'min_order_qty', 'max_order_qty', 'manufacturer_number',
+       'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
+       'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
+       'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+       ...recommendedColumns];
+        
+        parShow.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = true;
+            toggleColumnVisibility(parTable, th.id, true);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = true;
+          }
+        });
+        parHide.forEach(field => {
+          const th = parTable.querySelector(`th[data-field="${field}"]`);
+          if(th && th.id){
+            columnState.par[th.id] = false;
+            toggleColumnVisibility(parTable, th.id, false);
+            const checkbox = document.querySelector(`#${th.id}-toggle`);
+            if(checkbox) checkbox.checked = false;
+          }
+        });
+        applyParColumnArrangement();
+      }
+    });
+  }
+
+  function updateColumnFilterButton(tableKey, field){
+    const btn = document.querySelector(`.column-filter-toggle[data-table="${tableKey}"][data-field="${field}"]`);
+    if(!btn) return;
+    const labelSpan = btn.querySelector('.filter-label');
+    const headerLabel = btn.dataset.headerLabel || field;
+    const value = (columnFilters[tableKey] && columnFilters[tableKey][field]) || '';
+    const options = getColumnFilterOptions(tableKey, field);
+    const option = options.find(opt => opt.value === value) || options[0] || { value: '', label: 'All' };
+    if(labelSpan){
+      labelSpan.textContent = option.label;
+    }
+    const isActive = !!value;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('title', `${headerLabel} filter: ${option.label}`);
+    btn.setAttribute('aria-label', `${headerLabel} filter: ${option.label}`);
+  }
+
+  function refreshColumnFilterMenuState(tableKey, field){
+    const menu = document.querySelector(`.column-filter-menu[data-table="${tableKey}"][data-field="${field}"]`);
+    if(!menu) return;
+    const value = (columnFilters[tableKey] && columnFilters[tableKey][field]) || '';
+    const options = getColumnFilterOptions(tableKey, field);
+    if(menu.childElementCount !== options.length){
+      menu.innerHTML = '';
+      options.forEach(opt => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'dropdown-item column-filter-option';
+        item.dataset.value = opt.value;
+        item.textContent = opt.label;
+        menu.appendChild(item);
+      });
+    }
+    menu.querySelectorAll('.column-filter-option').forEach(btn => {
+      const isActive = (btn.dataset.value || '') === value;
+      btn.classList.toggle('active', isActive);
+    });
+  }
+
+  function refreshFilterRowOffset(tableKey){
+    const tableEl = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
+    if(!tableEl) return;
+    const thead = tableEl.querySelector('thead');
+    if(!thead) return;
+    const labelRow = thead.querySelector('.column-header-labels');
+    if(!labelRow) return;
+    const height = labelRow.getBoundingClientRect().height;
+    if(height){
+      thead.style.setProperty('--label-row-height', `${height}px`);
+    }
+  }
+
+  function setupTriStateColumnFilters(){
+    const config = {
+      inventory: [
+        { labelCellId: 'inv-col-auto', filterCellId: 'inv-filter-auto', field: 'auto_replenishment', label: 'Auto-repl.' },
+        { labelCellId: 'inv-col-active', filterCellId: 'inv-filter-active', field: 'active', label: 'Active' },
+        { labelCellId: 'inv-col-disc', filterCellId: 'inv-filter-disc', field: 'discontinued', label: 'Discon.' },
+        { labelCellId: 'inv-col-current', filterCellId: 'inv-filter-current', field: 'current_qty_state', label: 'Current Qty', options: qtyStateOptions },
+        { labelCellId: 'inv-col-auto-ri', filterCellId: 'inv-filter-auto-ri', field: 'auto_replenishment_ri', label: 'Auto-repl. (RI)' },
+        { labelCellId: 'inv-col-active-ri', filterCellId: 'inv-filter-active-ri', field: 'active_ri', label: 'Active (RI)' },
+        { labelCellId: 'inv-col-disc-ri', filterCellId: 'inv-filter-disc-ri', field: 'discontinued_ri', label: 'Discon. (RI)' },
+        { labelCellId: 'inv-col-current-ri', filterCellId: 'inv-filter-current-ri', field: 'current_qty_ri_state', label: 'Current Qty (RI)', options: qtyStateOptions },
+      ],
+      par: [
+        { labelCellId: 'par-col-auto', filterCellId: 'par-filter-auto', field: 'auto_replenishment', label: 'Auto-repl.' },
+        { labelCellId: 'par-col-active', filterCellId: 'par-filter-active', field: 'active', label: 'Active' },
+        { labelCellId: 'par-col-disc', filterCellId: 'par-filter-disc', field: 'discontinued', label: 'Discon.' },
+        { labelCellId: 'par-col-auto-ri', filterCellId: 'par-filter-auto-ri', field: 'auto_replenishment_ri', label: 'Auto-repl. (RI)' },
+        { labelCellId: 'par-col-active-ri', filterCellId: 'par-filter-active-ri', field: 'active_ri', label: 'Active (RI)' },
+        { labelCellId: 'par-col-disc-ri', filterCellId: 'par-filter-disc-ri', field: 'discontinued_ri', label: 'Discon. (RI)' },
+      ],
+    };
+    Object.entries(config).forEach(([tableKey, defs]) => {
+      defs.forEach(def => {
+        const labelCell = def.labelCellId ? document.getElementById(def.labelCellId) : null;
+        const targetCell = document.getElementById(def.filterCellId || def.labelCellId || def.columnId);
+        if(!targetCell) return;
+        const rawLabel = def.label || (labelCell ? (labelCell.textContent || '') : (targetCell.textContent || '')) || def.field;
+        const label = rawLabel.trim() || def.field;
+        targetCell.innerHTML = '';
+        targetCell.classList.add('column-filter-cell');
+        const wrapper = document.createElement('div');
+        wrapper.className = 'column-filter-wrapper';
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'dropdown';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'column-filter-toggle';
+        button.dataset.table = tableKey;
+        button.dataset.field = def.field;
+        button.dataset.headerLabel = label;
+        button.setAttribute('data-bs-toggle', 'dropdown');
+        button.setAttribute('aria-expanded', 'false');
+        button.innerHTML = `<span class="filter-label">All</span><span class="filter-caret">▾</span>`;
+
+        const menu = document.createElement('div');
+        menu.className = 'dropdown-menu dropdown-menu-end column-filter-menu';
+        menu.dataset.table = tableKey;
+        menu.dataset.field = def.field;
+        const effectiveOptions = def.options || triStateOptions;
+        setColumnFilterOptions(tableKey, def.field, effectiveOptions);
+        effectiveOptions.forEach(opt => {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'dropdown-item column-filter-option';
+          item.dataset.value = opt.value;
+          item.textContent = opt.label;
+          menu.appendChild(item);
+        });
+
+        dropdown.appendChild(button);
+        dropdown.appendChild(menu);
+        wrapper.appendChild(dropdown);
+        targetCell.dataset.hasFilter = '1';
+        targetCell.appendChild(wrapper);
+
+        updateColumnFilterButton(tableKey, def.field);
+        refreshColumnFilterMenuState(tableKey, def.field);
+      });
+      refreshFilterRowOffset(tableKey);
+    });
+  }
+
+  function resetColumnFiltersFor(tableKey){
+    const state = columnFilters[tableKey];
+    if(!state) return;
+    Object.keys(state).forEach(field => {
+      state[field] = '';
+      updateColumnFilterButton(tableKey, field);
+      refreshColumnFilterMenuState(tableKey, field);
+    });
+  }
+
+  setupTriStateColumnFilters();
+
+  window.addEventListener('resize', () => {
+    refreshFilterRowOffset('inventory');
+    refreshFilterRowOffset('par');
+  });
 
   // Fetch distinct filter options
   async function loadFilterOptions() {
@@ -251,17 +1169,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await fetch('/dashboard/api/filter-options');
       if(!resp.ok) throw new Error('Failed loading filter options');
       const data = await resp.json();
-      // Item Groups -> build checkbox list
+      // Item Groups -> build checkbox list with search
       const groups = data.item_groups || [];
       if(!groups.length){
         itemGroupMenu.innerHTML = '<div class="px-2 py-1 text-muted">No item groups found</div>';
       } else {
-        const itemsHtml = groups.map(g => `
-          <div class="form-check">
-            <input class="form-check-input item-group-checkbox" type="checkbox" value="${g}" id="ig-${g}">
-            <label class="form-check-label" for="ig-${g}">${g}</label>
-          </div>`).join('');
+        const itemsHtml = groups.map(obj => {
+          const val = obj.value;
+          const label = obj.label || val;
+          const safeId = String(val).replace(/[^a-zA-Z0-9_-]/g,'');
+          return `<div class="form-check item-group-option" data-label="${escapeAttr(label.toLowerCase())}">
+  <input class="form-check-input item-group-checkbox" type="checkbox" value="${val}" id="ig-${safeId}">
+  <label class="form-check-label" for="ig-${safeId}">${escapeHtml(label)}</label>
+</div>`;
+        }).join('');
         itemGroupMenu.innerHTML = `
+          <input type="text" class="form-control form-control-sm mb-2" id="ig-search" placeholder="Search (use * wildcard)" autocomplete="off" />
           <div class="d-flex gap-2 mb-2">
             <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-select-all">Select All</button>
             <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-clear">Clear</button>
@@ -298,6 +1221,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function buildSharedQueryParams(){
+    const params = new URLSearchParams();
+    if(selItemGroup.value) params.set('item_group', selItemGroup.value);
+    if(selLocation.value) params.set('location', selLocation.value);
+    if(selStage.value) params.set('stage', selStage.value);
+    if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
+    return params;
+  }
+
+  function appendColumnFilterParams(params, tableKey){
+    const state = columnFilters[tableKey];
+    const paramMap = filterParamMap[tableKey];
+    if(!state || !paramMap) return;
+    Object.entries(state).forEach(([field, value]) => {
+      if(value && paramMap[field]){
+        params.set(paramMap[field], value);
+      }
+    });
+  }
+
   function updatePager() {
     if(totalPages <= 1){
       pager.style.display = 'none';
@@ -319,18 +1262,50 @@ document.addEventListener('DOMContentLoaded', () => {
     parPageInfo.textContent = `Page ${parCurrentPage} / ${parTotalPages}`;
   }
 
+  async function loadKpiStats() {
+    try {
+      const kpiGroups = document.getElementById('kpi-groups');
+      const kpiItems = document.getElementById('kpi-items');
+      const kpiReady = document.getElementById('kpi-ready');
+      
+      // Set loading state
+      if (kpiGroups) kpiGroups.textContent = '...';
+      if (kpiItems) kpiItems.textContent = '...';
+      if (kpiReady) kpiReady.textContent = '...';
+
+      const params = buildSharedQueryParams();
+      appendColumnFilterParams(params, 'inventory');
+      const resp = await fetch(`/dashboard/api/stats?${params.toString()}`);
+      
+      if (!resp.ok) {
+        throw new Error('Failed to fetch stats');
+      }
+      
+      const data = await resp.json();
+      
+      // Update KPI cards with the stats
+      if (kpiGroups) kpiGroups.textContent = data.distinct_groups || 0;
+      if (kpiItems) kpiItems.textContent = data.distinct_items || 0;
+      if (kpiReady) kpiReady.textContent = data.distinct_locations || 0;
+    } catch (e) {
+      console.error('Failed loading KPI stats', e);
+      const kpiGroups = document.getElementById('kpi-groups');
+      const kpiItems = document.getElementById('kpi-items');
+      const kpiReady = document.getElementById('kpi-ready');
+      if (kpiGroups) kpiGroups.textContent = '—';
+      if (kpiItems) kpiItems.textContent = '—';
+      if (kpiReady) kpiReady.textContent = '—';
+    }
+  }
+
   async function loadInventory(page=1) {
     try {
       console.log('Fetching inventory data...');
       countEl.textContent = 'loading...';
-      const params = new URLSearchParams();
+      const params = buildSharedQueryParams();
       params.set('page', page);
       params.set('per_page', perPage);
-      // selected filters
-      if(selItemGroup.value) params.set('item_group', selItemGroup.value);
-      if(selLocation.value) params.set('location', selLocation.value);
-      if(selStage.value) params.set('stage', selStage.value);
-      if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
+      appendColumnFilterParams(params, 'inventory');
       const resp = await fetch(`/dashboard/api/inventory?${params.toString()}`);
       console.log('API response status:', resp.status, resp.statusText);
       
@@ -342,53 +1317,96 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const data = await resp.json();
       console.log('API data received:', data);
-      
+
       const rows = data.rows || [];
+      const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
+      const hiddenCount = rows.length - visibleRows.length;
       currentPage = data.page || 1;
       totalPages = data.pages || 1;
-      console.log('Number of rows:', rows.length);
+      console.log('Fetched rows:', rows.length, 'visible rows:', visibleRows.length);
       
       tbody.innerHTML = '';
-      for (const r of rows) {
+      for (const r of visibleRows) {
         const tr = document.createElement('tr');
         function fmt(val) { return (val === null || val === undefined || val === '') ? '' : val; }
-        function num(val, digits=2) { 
-          if(val===null||val===undefined||val==='') return ''; 
-          const n=Number(val); 
-          if(!isFinite(n)) return ''; 
-          return n.toFixed(digits); 
+        function num(val, digits=2) {
+          if(val===null||val===undefined||val==='') return '';
+          const n = Number(val);
+          if(!isFinite(n)) return '';
+          return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+          }).format(n);
         }
-        tr.dataset.itemGroup = r.item_group;
-        tr.dataset.item = r.item;
+        function reorderCode(val) {
+          if(val === null || val === undefined || val === '') return '';
+          const normalized = String(val).trim();
+          if(normalized === 'Order Up To Maximum Level') return 'OTM';
+          if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
+          return normalized;
+        }
+    tr.dataset.itemGroup = r.item_group;
+    tr.dataset.item = r.item;
+    tr.dataset.location = r.location || '';
+    tr.dataset.groupLocation = r.group_location || r.location || '';
+    tr.dataset.replacementItem = r.replacement_item || '';
         tr.innerHTML = `
-          <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
-          <td>${fmt(r.item_group)}</td>
-          <td class="fw-semibold text-wrap col-item-cell">${fmt(r.item)}</td>
-          <td class="text-wrap">${fmt(r.location)}</td>
-          <td>${fmt(r.auto_replenishment)}</td>
-          <td>${fmt(r.active)}</td>
-          <td>${fmt(r.discontinued)}</td>
-          <td class="text-end">${num(r.current_qty,0)}</td>
-          <td class="text-end">${num(r.weekly_burn)}</td>
-          <td class="text-end">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
-          <td class="text-end">${num(r.po_90_qty,0)}</td>
-          <td class="text-end">${num(r.requesters_past_year,0)}</td>
-          <td class="fw-semibold text-wrap col-repl-item-cell">${fmt(r.replacement_item)}</td>
-          <td class="text-wrap">${fmt(r.location_ri)}</td>
-          <td>${fmt(r.auto_replenishment_ri)}</td>
-          <td>${fmt(r.active_ri)}</td>
-          <td>${fmt(r.discontinued_ri)}</td>
-          <td class="text-end">${num(r.current_qty_ri,0)}</td>
-          <td class="text-end">${num(r.weekly_burn_ri)}</td>
-          <td class="text-end">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
-          <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
-          <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
+          <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
+          <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
+          <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
+          <td class="col-src text-center">${fmt(r.active)}</td>
+          <td class="col-src text-center">${fmt(r.discontinued)}</td>
+          <td class="col-src text-center">${num(r.current_qty,0)}</td>
+          <td class="col-src text-center">${num(r.weekly_burn)}</td>
+          <td class="col-src text-center">${typeof r.weeks_on_hand === 'string' ? r.weeks_on_hand : num(r.weeks_on_hand,1)}</td>
+          <td class="col-src text-center">${fmt(r.stock_uom)}</td>
+          <td class="col-src text-center">${num(r.uom_conversion, 0)}</td>
+          <td class="col-src text-center">${fmt(r.buy_uom)}</td>
+          <td class="col-src text-center">${num(r.buy_uom_multiplier, 0)}</td>
+          <td class="col-src text-center">${fmt(r.transaction_uom)}</td>
+          <td class="col-src text-center">${num(r.transaction_uom_multiplier, 0)}</td>
+          <td class="col-src text-center">${reorderCode(r.reorder_quantity_code)}</td>
+          <td class="col-src text-center">${num(r.reorder_point,0)}</td>
+          <td class="col-src text-center">${num(r.min_order_qty,0)}</td>
+          <td class="col-src text-center">${num(r.max_order_qty,0)}</td>
+          <td class="col-src text-center">${fmt(r.manufacturer_number)}</td>
+          <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
+          <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
+          <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.active_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
+          <td class="col-repl text-center">${num(r.current_qty_ri,0)}</td>
+          <td class="col-repl text-center">${num(r.weekly_burn_ri)}</td>
+          <td class="col-repl text-center">${typeof r.weeks_on_hand_ri === 'string' ? r.weeks_on_hand_ri : num(r.weeks_on_hand_ri,1)}</td>
+          <td class="col-repl text-center">${fmt(r.stock_uom_ri)}</td>
+          <td class="col-repl text-center">${num(r.uom_conversion_ri, 0)}</td>
+          <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
+          <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
+          <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+          <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+          <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
+          <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+          <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
+          <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_min_order_qty_ri,0)}</td>
+          <td class="col-repl text-center">${num(r.max_order_qty_ri,0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_max_order_qty_ri,0)}</td>
+          <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
+          <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
+          <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         tbody.appendChild(tr);
-        tbody.appendChild(tr);
       }
-    countEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
-    updatePager();
+      applyColumnState(inventoryTable, columnState.inventory);
+      const totalLabel = data.total ?? rows.length;
+      const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
+      countEl.textContent = `${totalLabel} total / ${visibleRows.length} this page${hiddenLabel}`;
+      updatePager();
       console.log('Table populated successfully');
       attachInventoryRowClick();
     } catch (e) {
@@ -400,55 +1418,174 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadPar(page=1) {
     try {
       parCountEl.textContent = 'loading...';
-      const params = new URLSearchParams();
+      const params = buildSharedQueryParams();
       params.set('page', page);
       params.set('per_page', parPerPage);
-      if(selItemGroup.value) params.set('item_group', selItemGroup.value);
-      if(selLocation.value) params.set('location', selLocation.value);
-      if(selStage.value) params.set('stage', selStage.value);
+      appendColumnFilterParams(params, 'par');
       const resp = await fetch(`/dashboard/api/par?${params.toString()}`);
       if(!resp.ok) throw new Error('Failed par fetch');
-  const data = await resp.json();
-  const rows = data.rows || [];
-  parCurrentPage = data.page || 1;
-  parTotalPages = data.pages || 1;
+      const data = await resp.json();
+      const rows = data.rows || [];
+      const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
+      const hiddenCount = rows.length - visibleRows.length;
+      parCurrentPage = data.page || 1;
+      parTotalPages = data.pages || 1;
       parTbody.innerHTML = '';
-      for(const r of rows){
+      for(const r of visibleRows){
         function fmt(val){ return (val===null||val===undefined||val==='') ? '' : val; }
-        function num(val, digits=2){ if(val===null||val===undefined||val==='') return ''; const n=Number(val); if(!isFinite(n)) return ''; return n.toFixed(digits); }
+        function num(val, digits=2){
+          if(val===null||val===undefined||val==='') return '';
+          const n = Number(val);
+          if(!isFinite(n)) return '';
+          return new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+          }).format(n);
+        }
+        function reorderCode(val) {
+          if(val === null || val === undefined || val === '') return '';
+          const normalized = String(val).trim();
+          if(normalized === 'Order Up To Maximum Level') return 'OTM';
+          if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
+          return normalized;
+        }
         const tr = document.createElement('tr');
+  tr.dataset.itemGroup = r.item_group || '';
+  tr.dataset.item = r.item || '';
+  tr.dataset.location = r.location || '';
+  tr.dataset.groupLocation = r.group_location || r.location || '';
+  tr.dataset.replacementItem = r.replacement_item || '';
+  tr.dataset.stage = r.stage || '';
         tr.innerHTML = `
-          <td class="stage-cell" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
-          <td>${fmt(r.item_group)}</td>
-          <td class="fw-semibold text-wrap">${fmt(r.item)}</td>
-          <td class="text-wrap">${fmt(r.location)}</td>
-          <td>${fmt(r.auto_replenishment)}</td>
-            <td>${fmt(r.active)}</td>
-            <td>${fmt(r.discontinued)}</td>
-            <td class="text-end">${num(r.reorder_point,0)}</td>
-            <td class="text-end">${num(r.weekly_burn)}</td>
-            <td class="text-end">${typeof r.weeks_reorder === 'string' ? r.weeks_reorder : num(r.weeks_reorder,1)}</td>
-            <td class="text-end">${num(r.req_qty_ea,0)}</td>
-            <td class="text-end">${num(r.requesters_past_year,0)}</td>
-            <td>${fmt(r.item_group)}</td>
-            <td class="fw-semibold text-wrap">${fmt(r.replacement_item)}</td>
-            <td class="text-wrap">${fmt(r.location_ri)}</td>
-            <td>${fmt(r.auto_replenishment_ri)}</td>
-            <td>${fmt(r.active_ri)}</td>
-            <td>${fmt(r.discontinued_ri)}</td>
-            <td class="text-end">${num(r.reorder_point_ri,0)}</td>
-            <td class="text-end">${num(r.weekly_burn_ri)}</td>
-            <td class="text-end">${typeof r.weeks_reorder_ri === 'string' ? r.weeks_reorder_ri : num(r.weeks_reorder_ri,1) }</td>
-            <td class="col-desc" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
-            <td class="col-desc" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
+          <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
+          <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
+          <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
+            <td class="col-src text-center">${fmt(r.active)}</td>
+            <td class="col-src text-center">${fmt(r.discontinued)}</td>
+            <td class="col-src text-center">${num(r.reorder_point,0)}</td>
+            <td class="col-src text-center">${num(r.weekly_burn)}</td>
+            <td class="col-src text-center">${typeof r.weeks_reorder === 'string' ? r.weeks_reorder : num(r.weeks_reorder,1)}</td>
+            <td class="col-src text-center">${fmt(r.stock_uom)}</td>
+            <td class="col-src text-center">${num(r.uom_conversion, 0)}</td>
+            <td class="col-src text-center">${fmt(r.buy_uom)}</td>
+            <td class="col-src text-center">${num(r.buy_uom_multiplier, 0)}</td>
+            <td class="col-src text-center">${fmt(r.transaction_uom)}</td>
+            <td class="col-src text-center">${num(r.transaction_uom_multiplier, 0)}</td>
+            <td class="col-src text-center">${reorderCode(r.reorder_quantity_code)}</td>
+            <td class="col-src text-center">${num(r.min_order_qty,0)}</td>
+            <td class="col-src text-center">${num(r.max_order_qty,0)}</td>
+            <td class="col-src text-center">${fmt(r.manufacturer_number)}</td>
+            <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
+            <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
+            <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.active_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
+            <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
+            <td class="col-repl text-center">${num(r.weekly_burn_ri)}</td>
+            <td class="col-repl text-center">${typeof r.weeks_reorder_ri === 'string' ? r.weeks_reorder_ri : num(r.weeks_reorder_ri,1) }</td>
+            <td class="col-repl text-center">${fmt(r.stock_uom_ri)}</td>
+            <td class="col-repl text-center">${num(r.uom_conversion_ri, 0)}</td>
+            <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
+            <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
+            <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+            <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+            <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
+            <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
+            <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_min_order_qty_ri,0)}</td>
+            <td class="col-repl text-center">${num(r.max_order_qty_ri,0)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_max_order_qty_ri,0)}</td>
+            <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
+            <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
+            <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
         parTbody.appendChild(tr);
       }
-  parCountEl.textContent = `${data.total || rows.length} total / ${rows.length} this page`;
-  updateParPager();
+      applyParColumnArrangement();
+      applyColumnState(parTable, columnState.par);
+      attachParRowClick();
+      const totalLabel = data.total ?? rows.length;
+      const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
+      parCountEl.textContent = `${totalLabel} total / ${visibleRows.length} this page${hiddenLabel}`;
+    updateParPager();
     } catch(e){
       console.error('Failed loading par locations', e);
       parCountEl.textContent = 'error';
+    }
+  }
+
+  function collectVisibleColumnFields(tableKey){
+    const table = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
+    if(!table) return [];
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return [];
+    const state = columnState[tableKey] || {};
+    const fields = [];
+    Array.from(headerRow.children).forEach(th => {
+      const field = th.dataset.field;
+      if(!field) return;
+      const columnId = th.id || '';
+      const isStateVisible = columnId ? state[columnId] !== false : true;
+      const styleHidden = th.style && th.style.display === 'none';
+      if(isStateVisible && !styleHidden){
+        fields.push(field);
+      }
+    });
+    return fields;
+  }
+
+  async function exportTable(tableKey){
+    const button = tableKey === 'inventory' ? inventoryExportBtn : parExportBtn;
+    if(button){
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+    }
+    try {
+      const params = buildSharedQueryParams();
+      appendColumnFilterParams(params, tableKey);
+      if(hideROnly){
+        params.set('hide_r_only', 'true');
+      }
+      const visibleFields = collectVisibleColumnFields(tableKey);
+      if(visibleFields.length){
+        params.set('visible_columns', visibleFields.join(','));
+      }
+      const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
+      if(!resp.ok){
+        throw new Error(`Export failed (${resp.status})`);
+      }
+      const blob = await resp.blob();
+      let filename = `${tableKey}-export.xlsx`;
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|\"?)([^";]+)/i);
+      if(match && match[1]){
+        const raw = match[1].replace(/^"|"$/g, '');
+        try {
+          filename = decodeURIComponent(raw);
+        } catch {
+          filename = raw;
+        }
+      }
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(url);
+      link.remove();
+    } catch (err){
+      console.error('Failed exporting table', tableKey, err);
+    } finally {
+      if(button){
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
     }
   }
 
@@ -463,8 +1600,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
-  const autoApply = debounce(()=>{ loadInventory(1); loadPar(1); });
-  [selStage, inpDescSearch].forEach(sel => sel.addEventListener('change', autoApply));
+  const autoApply = debounce(()=>{ loadKpiStats(); loadInventory(1); loadPar(1); });
+  if(inventoryResetBtn){
+    inventoryResetBtn.addEventListener('click', () => {
+      resetColumnFiltersFor('inventory');
+      autoApply();
+    });
+  }
+  if(parResetBtn){
+    parResetBtn.addEventListener('click', () => {
+      resetColumnFiltersFor('par');
+      autoApply();
+    });
+  }
+  if(inventoryExportBtn){
+    inventoryExportBtn.addEventListener('click', () => {
+      exportTable('inventory');
+    });
+  }
+  if(parExportBtn){
+    parExportBtn.addEventListener('click', () => {
+      exportTable('par');
+    });
+  }
+  [selStage, inpDescSearch].forEach(ctrl => {
+    if(ctrl){
+      ctrl.addEventListener('change', autoApply);
+    }
+  });
+
+  document.addEventListener('click', evt => {
+    const optionBtn = evt.target.closest('.column-filter-option');
+    if(!optionBtn) return;
+    const menu = optionBtn.closest('.column-filter-menu');
+    if(!menu) return;
+    const tableKey = menu.dataset.table;
+    const field = menu.dataset.field;
+    if(!columnFilters[tableKey]) return;
+    const value = optionBtn.dataset.value || '';
+    columnFilters[tableKey][field] = value;
+    updateColumnFilterButton(tableKey, field);
+    refreshColumnFilterMenuState(tableKey, field);
+    const toggle = menu.previousElementSibling;
+    if(toggle && window.bootstrap && window.bootstrap.Dropdown){
+      const dropdown = window.bootstrap.Dropdown.getOrCreateInstance(toggle);
+      dropdown.hide();
+    }
+    autoApply();
+  });
   // Multi-select handling
   function updateItemGroupSelection(triggerChange=true){
     const checked = Array.from(itemGroupMenu.querySelectorAll('.item-group-checkbox:checked')).map(cb => cb.value);
@@ -487,9 +1670,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function attachItemGroupEvents(){
     const selectAllBtn = itemGroupMenu.querySelector('#ig-select-all');
     const clearBtn = itemGroupMenu.querySelector('#ig-clear');
+    const searchInput = itemGroupMenu.querySelector('#ig-search');
     if(selectAllBtn){
       selectAllBtn.addEventListener('click', () => {
-        itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => { cb.checked = true; });
+        // Only select visible options
+        itemGroupMenu.querySelectorAll('.item-group-option:not([data-hidden="1"]) .item-group-checkbox').forEach(cb => { cb.checked = true; });
         updateItemGroupSelection();
       });
     }
@@ -502,6 +1687,40 @@ document.addEventListener('DOMContentLoaded', () => {
     itemGroupMenu.querySelectorAll('.item-group-checkbox').forEach(cb => {
       cb.addEventListener('change', () => updateItemGroupSelection());
     });
+    if(searchInput){
+      let lastFilter = '';
+      searchInput.addEventListener('input', () => {
+        const raw = searchInput.value.trim();
+        if(raw === lastFilter) return;
+        lastFilter = raw;
+        if(!raw){
+          // reset all
+          itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
+          return;
+        }
+        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
+        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
+        // After escaping, literal '*' became \*; replace with '.*'
+        patternEsc = patternEsc.replace(/\\\*/g, '.*');
+        if(!raw.includes('*')){
+          // Implicit contains match
+          patternEsc = '.*' + patternEsc + '.*';
+        }
+        let regex = null;
+        try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => {
+          const label = (div.getAttribute('data-label') || '').toLowerCase();
+          const match = !regex || regex.test(label);
+          if(match){
+            div.style.display='';
+            div.removeAttribute('data-hidden');
+          } else {
+            div.style.display='none';
+            div.setAttribute('data-hidden','1');
+          }
+        });
+      });
+    }
   }
   // Location multi-select handling
   function updateLocationSelection(triggerChange=true){
@@ -577,7 +1796,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
-  inpDescSearch.addEventListener('keyup', autoApply);
+  if(inpDescSearch){
+    inpDescSearch.addEventListener('keyup', autoApply);
+  }
 
   // Legacy form submit (no visible submit button now) still prevented
   filterForm.addEventListener('submit', evt => { evt.preventDefault(); });
@@ -598,9 +1819,15 @@ document.addEventListener('DOMContentLoaded', () => {
         locSearch.value='';
         locMenu.querySelectorAll('.location-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
       }
+      if(selStage) selStage.value = '';
+  resetColumnFiltersFor('inventory');
+  resetColumnFiltersFor('par');
       // Clear description search input explicitly (form reset usually does but ensure)
-      inpDescSearch.value='';
+      if(inpDescSearch){
+        inpDescSearch.value='';
+      }
       // Reload data
+      loadKpiStats();
       loadInventory(1);
       loadPar(1);
     });
@@ -608,82 +1835,614 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // D3 chart logic
   const chartContainer = document.getElementById('qty-chart');
-  let lastItemGroup = null;
-  let chartDataCache = new Map();
+  const chartHeaderSpan = document.getElementById('current-item-group');
+  const chartHint = document.getElementById('chart-hint');
+  const issueChartContainer = document.getElementById('issue-chart');
+  const issueChartTitle = document.getElementById('issue-chart-title');
+  const issueChartHint = document.getElementById('issue-chart-hint');
+  const issueAggregationToggle = document.getElementById('issue-weekly-toggle');
+  const inventoryTableRegion = inventoryTable ? inventoryTable.parentElement : null;
+  const parTableRegion = parTable ? parTable.parentElement : null;
+  const defaultSelectionState = {
+    itemGroup: null,
+    location: null,
+    primaryItem: null,
+    replacementItem: null,
+    originalItemsKey: '',
+    replacementItemsKey: '',
+  };
+  let lastSelection = { ...defaultSelectionState };
+  let selectedInventoryRow = null;
+  let selectedInventorySignature = null;
+  let selectedParRow = null;
+  let selectedParSignature = null;
+  let lastParIssueSelection = null;
+  const chartDataCache = new Map();
+  const issueDataCache = new Map();
+  let issueAggregationMode = 'daily';
+  let lastIssueRenderContext = null;
+  const PRIMARY_COLOR = '#fb923c';
+  const REPLACEMENT_COLOR = '#60a5fa';
+  const ORIGINAL_SHADE_PALETTE = ['#fb923c', '#ea580c', '#9a3412', '#f97316', '#c2410c', '#7c2d12'];
+  const REPLACEMENT_SHADE_PALETTE = ['#60a5fa', '#2563eb', '#1e40af', '#3b82f6', '#1d4ed8', '#1c367e'];
+  const COLOR_FALLBACK_SCALE = d3.scaleOrdinal(d3.schemeTableau10);
+  const ZDATE_MARKER_COLOR = '#d1d5db';
+  const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
+  const DAYS_WINDOW = 366;
+  const nowUtc = new Date();
+  const chartEndDateUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate()));
+  const chartStartDateUtc = new Date(chartEndDateUtc.getTime() - (DAYS_WINDOW - 1) * MILLIS_PER_DAY);
+  const chartEndDateExclusiveUtc = new Date(chartEndDateUtc.getTime() + MILLIS_PER_DAY);
+  const chartDateRangeUtc = [];
+  for (let ts = chartStartDateUtc.getTime(); ts <= chartEndDateUtc.getTime(); ts += MILLIS_PER_DAY) {
+    chartDateRangeUtc.push(new Date(ts));
+  }
+  const formatTooltipDate = d3.utcFormat('%Y-%m-%d');
+  const formatMonthTick = d3.utcFormat('%Y-%m');
+  const formatQuantity = d3.format(',.0f');
+  const getIssueAggregationLabel = (mode) => mode === 'weekly' ? 'weekly aggregated' : 'daily';
+  function updateIssueAggregationTitle(mode = issueAggregationMode){
+    if(!issueChartTitle) return;
+    const attr = mode === 'weekly' ? 'data-weekly-label' : 'data-daily-label';
+    const fallback = mode === 'weekly' ? 'Weekly Issued-Out Qty' : 'Daily Issued-Out Qty';
+    const label = issueChartTitle.getAttribute(attr) || fallback;
+    issueChartTitle.textContent = label;
+  }
+  function showIssueChartPlaceholder(){
+    if(issueChartContainer){
+      const label = getIssueAggregationLabel(issueAggregationMode);
+      issueChartContainer.innerHTML = '<div class="text-muted small text-center py-5">Select an inventory or PAR row to view '+label+' issue-out activity</div>';
+    }
+    if(issueChartHint){
+      issueChartHint.textContent = '';
+      issueChartHint.style.display = '';
+    }
+  }
+  function refreshIssueAggregationDisplay(){
+    updateIssueAggregationTitle();
+    if(lastIssueRenderContext && lastIssueRenderContext.itemGroup && issueDataCache.has(lastIssueRenderContext.itemGroup)){
+      const ctx = lastIssueRenderContext;
+      renderIssueChart(issueDataCache.get(ctx.itemGroup), ctx.itemGroup, ctx.location, ctx.targetItems, { aggregation: issueAggregationMode });
+    } else {
+      showIssueChartPlaceholder();
+    }
+  }
+
+  function getRowSignature(tr){
+    if(!tr) return null;
+    return [
+      tr.dataset.itemGroup || '',
+      tr.dataset.item || '',
+      tr.dataset.groupLocation || tr.dataset.location || '',
+      tr.dataset.replacementItem || '',
+    ].join('::');
+  }
+
+  function buildSideColorMap(items, palette, preferredOrder = []){
+    const uniqueItems = new Set(Array.from(items || []).filter(Boolean));
+    const orderedItems = [];
+    preferredOrder.forEach(item => {
+      if(item && uniqueItems.has(item) && !orderedItems.includes(item)){
+        orderedItems.push(item);
+      }
+    });
+    const remaining = Array.from(uniqueItems)
+      .filter(item => !orderedItems.includes(item))
+      .sort((a, b) => a.localeCompare(b));
+    const sequence = orderedItems.concat(remaining);
+    const colorMap = new Map();
+    if(!sequence.length) return colorMap;
+    sequence.forEach((item, index) => {
+      const color = palette[index % palette.length] || palette[palette.length - 1];
+      colorMap.set(item, color);
+    });
+    return colorMap;
+  }
+
+  function resolveItemRole(itemName, originalSet, replacementSet){
+    if(originalSet && originalSet.has(itemName)) return 'original';
+    if(replacementSet && replacementSet.has(itemName)) return 'replacement';
+    return 'other';
+  }
+
+  function collectRelatedItems(itemGroup, location){
+    const normalizedGroup = String(itemGroup || '');
+    const normalizedLocation = (location || '').trim().toLowerCase();
+    const originalItems = new Set();
+    const replacementItems = new Set();
+    tbody.querySelectorAll('tr').forEach(row => {
+      if((row.dataset.itemGroup || '') !== normalizedGroup) return;
+      const rowLoc = (row.dataset.groupLocation || row.dataset.location || '').trim().toLowerCase();
+      if(normalizedLocation && rowLoc !== normalizedLocation) return;
+      const srcItem = row.dataset.item;
+      const replItem = row.dataset.replacementItem;
+      if(srcItem) originalItems.add(srcItem);
+      if(replItem) replacementItems.add(replItem);
+    });
+    return {
+      originalItems: Array.from(originalItems),
+      replacementItems: Array.from(replacementItems),
+    };
+  }
+
+  function collectRelatedParItems(itemGroup, location){
+    if(!parTbody) return { originalItems: [], replacementItems: [] };
+    const normalizedGroup = String(itemGroup || '');
+    const normalizedLocation = (location || '').trim().toLowerCase();
+    const originalItems = new Set();
+    const replacementItems = new Set();
+    parTbody.querySelectorAll('tr').forEach(row => {
+      if((row.dataset.itemGroup || '') !== normalizedGroup) return;
+      const rowLoc = (row.dataset.groupLocation || row.dataset.location || '').trim().toLowerCase();
+      if(normalizedLocation && rowLoc !== normalizedLocation) return;
+      const srcItem = row.dataset.item;
+      const replItem = row.dataset.replacementItem;
+      if(srcItem) originalItems.add(srcItem);
+      if(replItem) replacementItems.add(replItem);
+    });
+    return {
+      originalItems: Array.from(originalItems),
+      replacementItems: Array.from(replacementItems),
+    };
+  }
+
+  function normalizeTargetItems(target = {}){
+    const primaryItem = target.primaryItem || null;
+    const replacementItem = target.replacementItem || null;
+    const originalSet = new Set((target.originalItems || []).filter(Boolean));
+    const replacementSet = new Set((target.replacementItems || []).filter(Boolean));
+    if(primaryItem) originalSet.add(primaryItem);
+    if(replacementItem) replacementSet.add(replacementItem);
+    return {
+      primaryItem,
+      replacementItem,
+      originalItems: Array.from(originalSet),
+      replacementItems: Array.from(replacementSet),
+    };
+  }
+
+  function resetChartDisplay(){
+    if(chartContainer){
+      chartContainer.innerHTML = '<div class="text-muted small text-center py-5">Select an inventory row to view the chart</div>';
+    }
+    if(chartHeaderSpan){
+      chartHeaderSpan.textContent = 'Not Selected';
+    }
+    if(chartHint){
+      chartHint.textContent = '';
+      chartHint.style.display = '';
+    }
+    showIssueChartPlaceholder();
+    updateIssueAggregationTitle();
+  }
+
+  function showParSelectionChartState(itemGroup, location){
+    const trimmedGroup = (itemGroup || '').trim();
+    const trimmedLocation = (location || '').trim();
+    const headerLabel = trimmedLocation
+      ? `${trimmedGroup || 'Not Selected'} @ ${trimmedLocation}`
+      : (trimmedGroup || 'Not Selected');
+    if(chartHeaderSpan){
+      chartHeaderSpan.textContent = headerLabel;
+    }
+    if(chartHint){
+      chartHint.textContent = 'Inventory quantity chart is unavailable for PAR selections. Choose an inventory row to view quantity trends.';
+      chartHint.style.display = '';
+    }
+    if(chartContainer){
+      chartContainer.innerHTML = '<div class="text-muted small text-center py-5">Inventory quantity chart is only shown when an inventory row is selected.</div>';
+    }
+  }
+
+  function clearInventoryRowHighlight(){
+    if(selectedInventoryRow){
+      selectedInventoryRow.classList.remove('inventory-row-selected');
+      selectedInventoryRow.removeAttribute('aria-selected');
+    }
+    selectedInventoryRow = null;
+  }
+
+  function selectInventoryRow(tr){
+    if(!tr) return;
+    if(selectedInventoryRow === tr){
+      selectedInventorySignature = getRowSignature(tr);
+      tr.classList.add('inventory-row-selected');
+      tr.setAttribute('aria-selected', 'true');
+      return;
+    }
+    clearInventoryRowHighlight();
+    selectedInventoryRow = tr;
+    selectedInventorySignature = getRowSignature(tr);
+    tr.classList.add('inventory-row-selected');
+    tr.setAttribute('aria-selected', 'true');
+  }
+
+  function clearInventorySelection({ resetChart = true } = {}){
+    clearInventoryRowHighlight();
+    selectedInventorySignature = null;
+    lastSelection = { ...defaultSelectionState };
+    if(resetChart){
+      resetChartDisplay();
+    }
+  }
+
+  function restoreSelectedRowHighlight(){
+    if(!selectedInventorySignature) return;
+    const nextRow = Array.from(tbody.querySelectorAll('tr')).find(tr => getRowSignature(tr) === selectedInventorySignature);
+    if(nextRow){
+      selectedInventoryRow = nextRow;
+      nextRow.classList.add('inventory-row-selected');
+      nextRow.setAttribute('aria-selected', 'true');
+    } else {
+      clearInventorySelection({ resetChart: true });
+    }
+  }
+
+  resetChartDisplay();
+
+  if(issueAggregationToggle){
+    issueAggregationToggle.addEventListener('change', () => {
+      issueAggregationMode = issueAggregationToggle.checked ? 'weekly' : 'daily';
+      refreshIssueAggregationDisplay();
+    });
+    updateIssueAggregationTitle();
+  } else {
+    updateIssueAggregationTitle();
+  }
 
   function attachInventoryRowClick(){
     tbody.querySelectorAll('tr').forEach(tr => {
-      tr.addEventListener('click', () => {
+      tr.addEventListener('click', evt => {
+        evt.stopPropagation();
+        clearParSelection();
+        selectInventoryRow(tr);
         const ig = tr.dataset.itemGroup;
+        const loc = (tr.dataset.groupLocation || tr.dataset.location || '').trim();
+        const primaryItem = tr.dataset.item || '';
+        const replacementItem = tr.dataset.replacementItem || '';
         if(!ig) return;
-        if(ig === lastItemGroup){
-          // toggle collapse maybe in future; for now ignore
+        const relatedItems = collectRelatedItems(ig, loc);
+        const originalKey = relatedItems.originalItems.slice().sort().join('||');
+        const replacementKey = relatedItems.replacementItems.slice().sort().join('||');
+        if(
+          lastSelection.itemGroup === ig &&
+          lastSelection.location === loc &&
+          lastSelection.primaryItem === primaryItem &&
+          lastSelection.replacementItem === replacementItem &&
+          lastSelection.originalItemsKey === originalKey &&
+          lastSelection.replacementItemsKey === replacementKey
+        ){
+          return;
         }
-        loadQtySeries(ig);
+        loadQtySeries(ig, loc, {
+          primaryItem,
+          replacementItem,
+          originalItems: relatedItems.originalItems,
+          replacementItems: relatedItems.replacementItems,
+        });
       });
     });
+    restoreSelectedRowHighlight();
   }
 
-  async function loadQtySeries(itemGroup){
-    lastItemGroup = itemGroup;
-    chartContainer.innerHTML = '<div class="text-muted small">Loading series for Item Group '+itemGroup+'...</div>';
+  function getParRowSignature(tr){
+    if(!tr) return null;
+    return [
+      tr.dataset.itemGroup || '',
+      tr.dataset.location || '',
+      tr.dataset.replacementItem || '',
+      tr.dataset.stage || '',
+      tr.dataset.item || '',
+    ].join('::');
+  }
+
+  function clearParRowHighlight(){
+    if(selectedParRow){
+      selectedParRow.classList.remove('inventory-row-selected');
+      selectedParRow.removeAttribute('aria-selected');
+    }
+    selectedParRow = null;
+  }
+
+  function selectParRow(tr){
+    if(!tr) return;
+    if(selectedParRow === tr){
+      selectedParSignature = getParRowSignature(tr);
+      tr.classList.add('inventory-row-selected');
+      tr.setAttribute('aria-selected', 'true');
+      return;
+    }
+    clearParRowHighlight();
+    selectedParRow = tr;
+    selectedParSignature = getParRowSignature(tr);
+    tr.classList.add('inventory-row-selected');
+    tr.setAttribute('aria-selected', 'true');
+  }
+
+  function clearParSelection(){
+    clearParRowHighlight();
+    selectedParSignature = null;
+    lastParIssueSelection = null;
+  }
+
+  function restoreParRowHighlight(){
+    if(!selectedParSignature) return;
+    const nextRow = Array.from(parTbody.querySelectorAll('tr')).find(tr => getParRowSignature(tr) === selectedParSignature);
+    if(nextRow){
+      selectedParRow = nextRow;
+      nextRow.classList.add('inventory-row-selected');
+      nextRow.setAttribute('aria-selected', 'true');
+    } else {
+      clearParSelection();
+    }
+  }
+
+  function attachParRowClick(){
+    if(!parTbody) return;
+    parTbody.querySelectorAll('tr').forEach(tr => {
+      tr.addEventListener('click', evt => {
+        evt.stopPropagation();
+        selectParRow(tr);
+        const ig = tr.dataset.itemGroup || '';
+        const loc = (tr.dataset.groupLocation || tr.dataset.location || '').trim();
+        clearInventorySelection();
+        showParSelectionChartState(ig, loc);
+  if(!ig) return;
+        const primaryItem = tr.dataset.item || '';
+        const replacementItem = tr.dataset.replacementItem || '';
+        const related = collectRelatedParItems(ig, loc);
+        const originalKey = related.originalItems.slice().sort().join('||');
+        const replacementKey = related.replacementItems.slice().sort().join('||');
+        if(
+          lastParIssueSelection &&
+          lastParIssueSelection.itemGroup === ig &&
+          lastParIssueSelection.location === loc &&
+          lastParIssueSelection.primaryItem === primaryItem &&
+          lastParIssueSelection.replacementItem === replacementItem &&
+          lastParIssueSelection.originalItemsKey === originalKey &&
+          lastParIssueSelection.replacementItemsKey === replacementKey
+        ){
+          return;
+        }
+        lastParIssueSelection = {
+          itemGroup: ig,
+          location: loc,
+          primaryItem,
+          replacementItem,
+          originalItemsKey: originalKey,
+          replacementItemsKey: replacementKey,
+        };
+        loadIssueSeries(ig, loc, {
+          primaryItem,
+          replacementItem,
+          originalItems: related.originalItems,
+          replacementItems: related.replacementItems,
+        });
+      });
+    });
+    restoreParRowHighlight();
+  }
+
+  document.addEventListener('click', evt => {
+    if(!selectedInventorySignature) return;
+    if(inventoryTable && inventoryTable.contains(evt.target)) return;
+    if(inventoryTableRegion && inventoryTableRegion.contains(evt.target)) return;
+    clearInventorySelection({ resetChart: true });
+  });
+
+  document.addEventListener('click', evt => {
+    if(!selectedParSignature) return;
+    if(parTable && parTable.contains(evt.target)) return;
+    if(parTableRegion && parTableRegion.contains(evt.target)) return;
+    clearParSelection();
+  });
+
+  async function loadQtySeries(itemGroup, location, targetItems = {}){
+    const trimmedLocation = location ? location.trim() : '';
+    const normalizedTargets = normalizeTargetItems(targetItems);
+    const { primaryItem, replacementItem } = normalizedTargets;
+    const originalItemsKey = normalizedTargets.originalItems.slice().sort().join('||');
+    const replacementItemsKey = normalizedTargets.replacementItems.slice().sort().join('||');
+    lastSelection = {
+      itemGroup,
+      location: trimmedLocation,
+      primaryItem,
+      replacementItem,
+      originalItemsKey,
+      replacementItemsKey,
+    };
+    const locSuffix = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+    chartContainer.innerHTML = '<div class="text-muted small">Loading series for Item Group '+itemGroup+locSuffix+'...</div>';
     try {
       if(chartDataCache.has(itemGroup)){
-        renderQtyChart(chartDataCache.get(itemGroup), itemGroup);
+        const cachedData = chartDataCache.get(itemGroup);
+        renderQtyChart(cachedData, itemGroup, trimmedLocation, normalizedTargets);
+        loadIssueSeries(itemGroup, trimmedLocation, normalizedTargets);
         return;
       }
       const resp = await fetch(`/dashboard/api/qty/${itemGroup}`);
       if(!resp.ok) throw new Error('Failed loading qty');
       const data = await resp.json();
       chartDataCache.set(itemGroup, data);
-      renderQtyChart(data, itemGroup);
+      renderQtyChart(data, itemGroup, trimmedLocation, normalizedTargets);
+      loadIssueSeries(itemGroup, trimmedLocation, normalizedTargets);
     } catch(e){
       console.error(e);
       chartContainer.innerHTML = '<div class="text-danger small">Failed loading data: '+e.message+'</div>';
+      if(issueChartContainer){
+        issueChartContainer.innerHTML = '<div class="text-danger small">Daily issue-out data unavailable.</div>';
+      }
     }
   }
 
-  function renderQtyChart(data, itemGroup){
+  async function loadIssueSeries(itemGroup, location, targetItems = {}){
+    if(!issueChartContainer) return;
+    const trimmedLocation = location ? location.trim() : '';
+    const normalizedTargets = normalizeTargetItems(targetItems);
+    const locSuffix = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+    const aggLabel = getIssueAggregationLabel(issueAggregationMode);
+    issueChartContainer.innerHTML = '<div class="text-muted small">Loading '+aggLabel+' issue-out for Item Group '+itemGroup+locSuffix+'...</div>';
+    if(issueChartHint){
+      issueChartHint.textContent = '';
+      issueChartHint.style.display = '';
+    }
+    try {
+      if(issueDataCache.has(itemGroup)){
+        renderIssueChart(issueDataCache.get(itemGroup), itemGroup, trimmedLocation, normalizedTargets, { aggregation: issueAggregationMode });
+        return;
+      }
+      const resp = await fetch(`/dashboard/api/issue/${itemGroup}`);
+      if(!resp.ok) throw new Error('Failed loading issue-out');
+      const data = await resp.json();
+      issueDataCache.set(itemGroup, data);
+      renderIssueChart(data, itemGroup, trimmedLocation, normalizedTargets, { aggregation: issueAggregationMode });
+    } catch(err){
+      console.error(err);
+      issueChartContainer.innerHTML = '<div class="text-danger small">Failed loading '+aggLabel+' issue-out data: '+err.message+'</div>';
+    }
+  }
+
+  function renderQtyChart(data, itemGroup, locationFilter, targetItems = {}){
     chartContainer.innerHTML = '';
-    const rawSeries = data.series || [];
-    // Build unified point list for global x/y domains
-    const allPoints = [];
-    rawSeries.forEach(s => s.points.forEach(p => { if(p.t) allPoints.push(p); }));
-    if(!allPoints.length){
-      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+'</div>';
+    const tooltip = d3.select(chartContainer)
+      .append('div')
+      .attr('class', 'qty-chart-tooltip')
+      .style('position', 'absolute')
+      .style('pointer-events', 'none')
+      // slightly more transparent background
+      .style('background', 'rgba(15, 23, 42, 0.78)')
+      .style('max-width', '220px')
+      .style('color', '#fff')
+      .style('padding', '4px 8px')
+      .style('border-radius', '4px')
+      .style('font-size', '11px')
+      .style('line-height', '1.25')
+      .style('z-index', '10')
+      .style('display', 'none');
+    const normalizedTargets = normalizeTargetItems(targetItems);
+    const rawSeries = Array.isArray(data.series) ? data.series : [];
+    const trimmedLocation = locationFilter ? locationFilter.trim() : '';
+    const normalizedFilter = trimmedLocation ? trimmedLocation.toLowerCase() : null;
+    const filteredSeries = normalizedFilter
+      ? rawSeries.filter(s => {
+          const locKey = (s.group_location || s.location || '').toLowerCase();
+          return locKey === normalizedFilter;
+        })
+      : rawSeries.slice();
+    if(!filteredSeries.length){
+      const locationMsg = trimmedLocation ? ' at Location '+trimmedLocation : '';
+      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+locationMsg+'</div>';
+      const headerSpan = document.getElementById('current-item-group');
+      if(headerSpan) headerSpan.textContent = trimmedLocation ? `${itemGroup} @ ${trimmedLocation}` : itemGroup;
       return;
     }
-  // Update header span and hide hint
-  const headerSpan = document.getElementById('current-item-group');
-  if(headerSpan) headerSpan.textContent = itemGroup;
-  const hintEl = document.getElementById('chart-hint');
-  if(hintEl) hintEl.style.display = 'none';
-    function parseIso(s){ return new Date(s); }
-    const xExtent = d3.extent(allPoints, d => parseIso(d.t));
+    const parseIso = (iso) => iso ? new Date(iso) : null;
+    const withinWindow = (date) => date && date >= chartStartDateUtc && date < chartEndDateExclusiveUtc;
+
+    const normalizedSeries = filteredSeries
+      .map(s => {
+        const points = [];
+        (s.points || []).forEach(p => {
+          const dt = parseIso(p.t);
+          if(!withinWindow(dt)) return;
+          const qtyVal = Number(p.qty);
+          if(!Number.isFinite(qtyVal)) return;
+          points.push({ date: dt, qty: qtyVal });
+        });
+        const zDate = s.z_date ? parseIso(s.z_date) : null;
+        return {
+          ...s,
+          points,
+          zDate,
+        };
+      })
+      .filter(s => s.points.length);
+
+    if(!normalizedSeries.length){
+      const locationMsg = trimmedLocation ? ' at Location '+trimmedLocation : '';
+      chartContainer.innerHTML = '<div class="text-muted small">No data for Item Group '+itemGroup+locationMsg+'</div>';
+      const headerSpan = document.getElementById('current-item-group');
+      if(headerSpan) headerSpan.textContent = trimmedLocation ? `${itemGroup} @ ${trimmedLocation}` : itemGroup;
+      return;
+    }
+    // Update header span and hide hint
+    const headerSpan = document.getElementById('current-item-group');
+    if(headerSpan) headerSpan.textContent = trimmedLocation ? `${itemGroup} @ ${trimmedLocation}` : itemGroup;
+    const hintEl = document.getElementById('chart-hint');
+    if(hintEl){
+      const locationMsg = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+  hintEl.textContent = `Lines show the last ${DAYS_WINDOW - 1} days of inventory balances for Item Group ${itemGroup}${locationMsg} (orange shades = original items, blue shades = replacement items).`;
+      hintEl.style.display = '';
+    }
+
+    const primaryItem = normalizedTargets.primaryItem || null;
+    const replacementItem = normalizedTargets.replacementItem || null;
+    const originalItemSet = new Set((normalizedTargets.originalItems || []).filter(Boolean));
+    const replacementItemSet = new Set((normalizedTargets.replacementItems || []).filter(Boolean));
+    const preferredOriginalOrder = primaryItem ? [primaryItem] : [];
+    const preferredReplacementOrder = replacementItem ? [replacementItem] : [];
+    const originalColorMap = buildSideColorMap(originalItemSet, ORIGINAL_SHADE_PALETTE, preferredOriginalOrder);
+    const replacementColorMap = buildSideColorMap(replacementItemSet, REPLACEMENT_SHADE_PALETTE, preferredReplacementOrder);
+    const highlightCandidates = [];
+    if(primaryItem) highlightCandidates.push(primaryItem);
+    if(replacementItem && replacementItem !== primaryItem) highlightCandidates.push(replacementItem);
+    const highlightSeries = highlightCandidates
+      .map(code => normalizedSeries.find(s => s.item === code))
+      .find(entry => Boolean(entry)) || null;
+    const highlightDate = highlightSeries && highlightSeries.zDate && withinWindow(highlightSeries.zDate)
+      ? highlightSeries.zDate
+      : null;
+    const highlightItemCode = highlightSeries ? highlightSeries.item : null;
+    const highlightLocationRaw = highlightSeries
+      ? (highlightSeries.group_location || highlightSeries.location || '').toString().trim()
+      : (trimmedLocation || '');
+    const highlightOptions = {
+      highlightDate,
+      highlightItem: highlightItemCode,
+      highlightLocation: highlightLocationRaw,
+    };
+    const allPoints = normalizedSeries.flatMap(s => s.points);
     const yExtent = d3.extent(allPoints, d => d.qty);
-    const locations = Array.from(new Set(rawSeries.map(s => s.location || 'Unknown'))).sort();
+    const yMin = Number.isFinite(yExtent[0]) ? yExtent[0] : 0;
+    const yMax = Number.isFinite(yExtent[1]) ? yExtent[1] : 0;
+    const locations = Array.from(new Set(normalizedSeries.map(s => s.group_location || s.location || 'Unknown'))).sort();
     const multiLocation = locations.length > 1;
+
+    const distinctItems = Array.from(new Set(normalizedSeries.map(s => s.item))).sort();
+    const fallbackItems = distinctItems.filter(it => !originalItemSet.has(it) && !replacementItemSet.has(it));
+    const fallbackColorScale = COLOR_FALLBACK_SCALE.copy().domain(fallbackItems);
+    const getSeriesColor = (itemName) => {
+      const role = resolveItemRole(itemName, originalItemSet, replacementItemSet);
+      if(role === 'original') return originalColorMap.get(itemName) || PRIMARY_COLOR;
+      if(role === 'replacement') return replacementColorMap.get(itemName) || REPLACEMENT_COLOR;
+      const fallbackColor = fallbackColorScale(itemName);
+      return fallbackColor || '#64748b';
+    };
 
     // If multiple locations, create a small-multiple chart per location, otherwise single chart as before.
     const perChartHeight = multiLocation ? 240 : (chartContainer.clientHeight || 320); // plot area + margins
     const baseWidth = chartContainer.clientWidth || 400;
-    const margin = {top: 20, right: 30, bottom: 60, left: 60}; // extra bottom for legend separation
+    const margin = {top: 20, right: 30, bottom: 90, left: 60}; // extra bottom for rotated labels + legend separation
     const innerW = baseWidth - margin.left - margin.right;
     const innerH = perChartHeight - margin.top - margin.bottom;
     // Color by item only so same item across locations retains color
-    const distinctItems = Array.from(new Set(rawSeries.map(s => s.item))).sort();
-    const color = d3.scaleOrdinal(d3.schemeCategory10).domain(distinctItems);
-    const x = d3.scaleUtc().domain(xExtent).range([0, innerW]);
+    const x = d3.scaleUtc().domain([chartStartDateUtc, chartEndDateUtc]).range([0, innerW]);
     // We'll build per-location y scales; fallback unified when single chart
-  // Add 10% headroom above max
-  const maxGlobal = yExtent[1];
-  const paddedGlobalMax = (maxGlobal > 0) ? maxGlobal * 1.1 : maxGlobal; // only pad positive ranges
-  const unifiedY = d3.scaleLinear().domain([Math.min(0, yExtent[0]), paddedGlobalMax]).nice().range([innerH, 0]);
+    // Add 10% headroom above max
+    const paddedGlobalMax = (yMax > 0) ? yMax * 1.1 : yMax;
+    const unifiedY = d3.scaleLinear().domain([Math.min(0, yMin), paddedGlobalMax]).nice().range([innerH, 0]);
     function makeLine(yScale){
-      return d3.line().defined(d => d.t && d.qty != null).x(d => x(parseIso(d.t))).y(d => yScale(d.qty));
+      return d3.line()
+        .defined(d => d && Number.isFinite(d.qty))
+        .x(d => x(d.date))
+        .y(d => yScale(d.qty));
     }
 
-    function drawOneChart(seriesSubset, locationLabel){
+    function drawOneChart(seriesSubset, locationLabel, options = {}){
+      const highlightDateOption = options.highlightDate instanceof Date ? options.highlightDate : null;
+      const highlightItemOption = options.highlightItem || null;
+      const highlightLocationOption = (options.highlightLocation || '').toString().trim().toLowerCase();
+      const locationKey = (locationLabel || '').toString().trim().toLowerCase();
       const svg = d3.select(chartContainer).append('svg')
         .attr('width', baseWidth)
         .attr('height', perChartHeight)
@@ -691,42 +2450,251 @@ document.addEventListener('DOMContentLoaded', () => {
         .style('margin-bottom','12px');
       const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
       // Axes
-      g.append('g').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x).ticks(6));
+      const monthTicks = d3.utcMonth.range(chartStartDateUtc, chartEndDateExclusiveUtc);
+      const xAxis = d3.axisBottom(x)
+        .tickValues(monthTicks)
+        .tickFormat(formatMonthTick);
+      const xAxisG = g.append('g')
+        .attr('transform', `translate(0,${innerH})`)
+        .call(xAxis);
+      xAxisG.selectAll('text')
+        .attr('text-anchor', 'end')
+        .attr('dx', '0.8em')
+        .attr('dy', '1.4em')
+        .attr('transform', 'rotate(-45)');
       // Build y scale for this subset (independent per location if multiLocation)
       let yScale;
       if(multiLocation){
-  const locExtent = d3.extent(seriesSubset.flatMap(s => s.points.filter(p=>p.t).map(p => p.qty)));
-  const paddedLocMax = (locExtent[1] > 0) ? locExtent[1] * 1.1 : locExtent[1];
-  yScale = d3.scaleLinear().domain([Math.min(0, locExtent[0]), paddedLocMax]).nice().range([innerH,0]);
+        const locPoints = seriesSubset.flatMap(s => s.points);
+        const locExtent = d3.extent(locPoints, p => p.qty);
+        const locMin = Number.isFinite(locExtent[0]) ? locExtent[0] : 0;
+        const locMax = Number.isFinite(locExtent[1]) ? locExtent[1] : 0;
+        const paddedLocMax = (locMax > 0) ? locMax * 1.1 : locMax;
+        yScale = d3.scaleLinear().domain([Math.min(0, locMin), paddedLocMax]).nice().range([innerH,0]);
       } else {
         yScale = unifiedY;
       }
-      g.append('g').call(d3.axisLeft(yScale));
+      const bisectDate = d3.bisector(p => p.date).left;
+      g.append('g').call(d3.axisLeft(yScale).ticks(6).tickFormat(formatQuantity));
       const line = makeLine(yScale);
-      // Title for small multiples
-      g.append('text')
-        .attr('x', 0)
-        .attr('y', -6)
-        .attr('text-anchor','start')
-        .attr('class','small fw-semibold')
-        .text(multiLocation ? `Location: ${locationLabel}` : `Available Qty — Item Group ${itemGroup}`);
+      const shouldHighlight = Boolean(
+        highlightDateOption &&
+        (!multiLocation || highlightLocationOption === locationKey) &&
+        seriesSubset.some(s => s.item === highlightItemOption)
+      );
+      if(shouldHighlight){
+        const highlightX = x(highlightDateOption);
+        if(Number.isFinite(highlightX)){
+          g.append('line')
+            .attr('class', 'zdate-marker')
+            .attr('x1', highlightX)
+            .attr('x2', highlightX)
+            .attr('y1', 0)
+            .attr('y2', innerH)
+            .attr('stroke', ZDATE_MARKER_COLOR)
+            .attr('stroke-width', 1.5)
+            .attr('stroke-dasharray', '6,4')
+            .attr('opacity', 0.9)
+            .attr('pointer-events', 'none');
+        }
+      }
+      const focusGroup = g.append('g')
+        .attr('class', 'chart-focus')
+        .attr('pointer-events', 'none')
+        .style('display', 'none');
+      const crosshair = focusGroup.append('line')
+        .attr('class', 'chart-crosshair')
+        .attr('y1', 0)
+        .attr('y2', innerH)
+        .attr('stroke', '#0f172a')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '4,4')
+        .attr('opacity', 0.85);
+      const focusCircles = new Map();
 
       const legendEntries = [];
+      const seenLegendKeys = new Set();
+      const seriesMeta = new Map();
       seriesSubset.forEach(s => {
-        const key = multiLocation ? s.item : (s.item + ' @ ' + (s.location || 'Unknown'));
-        const c = color(s.item); // color by item
-        g.append('path')
-          .datum(s.points.filter(p => p.t))
+        const locLabel = s.group_location || s.location || 'Unknown';
+        const role = resolveItemRole(s.item, originalItemSet, replacementItemSet);
+        const roleSuffix = role === 'original' ? ' (Original)' : (role === 'replacement' ? ' (Replacement)' : '');
+        const decoratedName = roleSuffix ? `${s.item}${roleSuffix}` : s.item;
+        const key = multiLocation ? decoratedName : `${decoratedName} @ ${locLabel}`;
+        const c = getSeriesColor(s.item); // color by item with overrides
+        const linePoints = s.points;
+        if(!linePoints.length) return;
+        const path = g.append('path')
+          .datum(linePoints)
           .attr('fill','none')
           .attr('stroke', c)
           .attr('stroke-width',1.5)
-          .attr('d', line)
-          .append('title').text(key);
-        legendEntries.push({key, color: c});
+          .attr('pointer-events', 'none')
+          .attr('d', line);
+        path.append('title').text(key);
+        // Keep base item in meta.label (decorate only for legend keys)
+        seriesMeta.set(s.item, {
+          points: linePoints,
+          color: c,
+          label: s.item,
+          location: locLabel,
+          role,
+        });
+        if(!seenLegendKeys.has(key)){
+          legendEntries.push({key, color: c, role});
+          seenLegendKeys.add(key);
+        }
       });
 
+      const hideFocus = () => {
+        focusGroup.style('display', 'none');
+        crosshair.style('display', 'none');
+        tooltip.style('display', 'none');
+        focusCircles.forEach(circle => circle.style('display', 'none'));
+      };
+
+      const trackedItems = Array.from(new Set([
+        ...originalItemSet,
+        ...replacementItemSet,
+      ]));
+      focusCircles.clear();
+      focusGroup.selectAll('circle').remove();
+      (trackedItems.length ? trackedItems : Array.from(seriesMeta.keys())).forEach(item => {
+        const meta = seriesMeta.get(item);
+        if(!meta) return;
+        const circle = focusGroup.append('circle')
+          .attr('r', 4)
+          .attr('fill', '#ffffff')
+          .attr('stroke', meta.color)
+          .attr('stroke-width', 1.6)
+          .style('display', 'none');
+        focusCircles.set(item, circle);
+      });
+
+      const overlay = g.append('rect')
+        .attr('class', 'chart-hover-overlay')
+        .attr('width', innerW)
+        .attr('height', innerH)
+        .attr('fill', 'transparent')
+        .style('cursor', 'col-resize');
+
+      legendEntries.sort((a, b) => {
+        const order = { original: 0, replacement: 1, other: 2 };
+        const roleA = order[a.role] ?? 2;
+        const roleB = order[b.role] ?? 2;
+        if(roleA !== roleB) return roleA - roleB;
+        return a.key.localeCompare(b.key);
+      });
+
+      const handleHover = (event) => {
+        const [mx] = d3.pointer(event, g.node());
+        const rawDate = x.invert(mx);
+        if(!rawDate) {
+          hideFocus();
+          return;
+        }
+        const domain = x.domain();
+        const crosshairDate = new Date(Math.min(Math.max(rawDate.getTime(), domain[0].getTime()), domain[1].getTime()));
+        const entries = [];
+        const itemsToShow = trackedItems.length ? trackedItems : Array.from(seriesMeta.keys());
+        itemsToShow.forEach(item => {
+          const meta = seriesMeta.get(item);
+          if(!meta || !meta.points.length) return;
+          let idx = bisectDate(meta.points, crosshairDate);
+          if(idx <= 0){
+            idx = 1;
+          } else if(idx >= meta.points.length){
+            idx = meta.points.length - 1;
+          }
+          const lower = meta.points[idx - 1] || meta.points[0];
+          const upper = meta.points[idx] || meta.points[meta.points.length - 1];
+          const lowerDate = lower.date;
+          const upperDate = upper.date;
+          if(!lowerDate || !upperDate) return;
+          const lowerQty = Number(lower.qty);
+          const upperQty = Number(upper.qty);
+          if(!Number.isFinite(lowerQty) || !Number.isFinite(upperQty)) return;
+          let ratio = (crosshairDate - lowerDate) / (upperDate - lowerDate || 1);
+          if(!Number.isFinite(ratio)) ratio = 0;
+          ratio = Math.min(1, Math.max(0, ratio));
+          const qtyVal = lowerQty + (upperQty - lowerQty) * ratio;
+          const yPos = yScale(qtyVal);
+          entries.push({
+            item,
+            meta,
+            qty: qtyVal,
+            date: crosshairDate,
+            xPos: x(crosshairDate),
+            yPos,
+          });
+        });
+        if(!entries.length){
+          hideFocus();
+          return;
+        }
+        const anchor = entries.find(e => e.item === primaryItem) || entries[0];
+        const anchorX = anchor.xPos;
+        focusGroup.style('display', null);
+        crosshair
+          .attr('x1', anchorX)
+          .attr('x2', anchorX)
+          .attr('y1', 0)
+          .attr('y2', innerH)
+          .style('display', null);
+        focusCircles.forEach((circle, item) => {
+          const entry = entries.find(e => e.item === item);
+          if(entry){
+            circle
+              .style('display', null)
+              .attr('cx', anchorX)
+              .attr('cy', entry.yPos)
+              .attr('stroke', entry.meta.color);
+          } else {
+            circle.style('display', 'none');
+          }
+        });
+        // Show location once at the top (from the anchor), then date, then per-item rows
+        const locationTop = (anchor && anchor.meta && anchor.meta.location) ? anchor.meta.location : 'Unknown';
+        let content = `<div style="font-size:11px; color:rgba(226, 232, 240, 0.95); margin-bottom:6px;">${locationTop}</div>`;
+        content += `<div class="fw-semibold">${formatTooltipDate(anchor.date)}</div>`;
+        entries.forEach(entry => {
+          const roleLabel = entry.meta.role === 'original' ? 'Original' : (entry.meta.role === 'replacement' ? 'Replacement' : '');
+          const leftText = `${entry.meta.label}${roleLabel ? ' (' + roleLabel + ')' : ''}:`;
+          const tooltipLabelColor = entry.meta.color;
+          // tighter spacing: smaller gap and top margin, align center vertically
+          content += `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:2px;">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px;">
+                <span style="color:${tooltipLabelColor}; font-weight:600;">${leftText}</span>
+              </div>
+              <div style="min-width:56px; text-align:right; font-variant-numeric: tabular-nums;">${formatQuantity(entry.qty)}</div>
+            </div>`;
+        });
+        tooltip.style('display', 'block').html(content);
+        const tooltipNode = tooltip.node();
+        const containerRect = chartContainer.getBoundingClientRect();
+        const svgRect = svg.node().getBoundingClientRect();
+        const tipWidth = tooltipNode ? tooltipNode.offsetWidth : 0;
+        const tipHeight = tooltipNode ? tooltipNode.offsetHeight : 0;
+        let left = (svgRect.left - containerRect.left) + margin.left + anchorX + 12;
+        let top = (svgRect.top - containerRect.top) + margin.top + anchor.yPos - tipHeight - 12;
+        const maxLeft = containerRect.width - tipWidth - 8;
+        if(left > maxLeft) left = maxLeft;
+        if(left < 8) left = 8;
+        if(top < 0) top = (svgRect.top - containerRect.top) + margin.top + anchor.yPos + 12;
+        const maxTop = containerRect.height - tipHeight - 8;
+        if(top > maxTop) top = maxTop;
+        tooltip.style('left', `${Math.max(0, left)}px`).style('top', `${Math.max(0, top)}px`);
+        focusGroup.raise();
+      };
+
+      overlay
+        .on('mouseenter', handleHover)
+        .on('mousemove', handleHover)
+        .on('mouseleave', hideFocus);
+
       // Legend (placed with more vertical gap from x-axis)
-      const legendYOffset = innerH + 20; // 20px below axis instead of tight
+      const legendYOffset = innerH + 50; // 40px below axis to avoid overlap with rotated labels
       const legend = g.append('g').attr('transform', `translate(0,${legendYOffset})`);
       let lx = 0; let ly = 0; const maxWidth = innerW; const rowH = 16;
       legendEntries.forEach(le => {
@@ -741,16 +2709,499 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if(multiLocation){
       locations.forEach(loc => {
-        const subset = rawSeries.filter(s => (s.location || 'Unknown') === loc).slice().sort((a,b)=> a.item.localeCompare(b.item));
-        drawOneChart(subset, loc);
+        const subset = normalizedSeries
+          .filter(s => (s.group_location || s.location || 'Unknown') === loc)
+          .slice()
+          .sort((a,b)=> a.item.localeCompare(b.item));
+        drawOneChart(subset, loc, highlightOptions);
       });
     } else {
-      drawOneChart(rawSeries.slice().sort((a,b)=> a.item.localeCompare(b.item) || a.location.localeCompare(b.location)), rawSeries[0]?.location || 'Unknown');
+      const sortedSeries = normalizedSeries.slice().sort((a,b)=> a.item.localeCompare(b.item) || (a.group_location || a.location || '').localeCompare(b.group_location || b.location || ''));
+      drawOneChart(sortedSeries, sortedSeries[0]?.group_location || sortedSeries[0]?.location || 'Unknown', highlightOptions);
     }
 
   }
 
-  loadFilterOptions().then(() => { loadInventory(1); loadPar(1); });
+  function renderIssueChart(data, itemGroup, locationFilter, targetItems = {}, options = {}){
+    if(!issueChartContainer) return;
+    const aggregation = options.aggregation === 'weekly' ? 'weekly' : 'daily';
+    issueAggregationMode = aggregation;
+    if(issueAggregationToggle){
+      issueAggregationToggle.checked = aggregation === 'weekly';
+    }
+
+    const trimmedLocation = locationFilter ? locationFilter.trim() : '';
+    const normalizedFilter = trimmedLocation ? trimmedLocation.toLowerCase() : null;
+    const rawSeries = Array.isArray(data.series) ? data.series : [];
+    const filteredSeries = normalizedFilter
+      ? rawSeries.filter(s => (s.group_location || s.location || '').toLowerCase() === normalizedFilter)
+      : rawSeries.slice();
+
+    const normalizedTargets = normalizeTargetItems(targetItems);
+    lastIssueRenderContext = {
+      itemGroup,
+      location: trimmedLocation,
+      targetItems: {
+        primaryItem: normalizedTargets.primaryItem,
+        replacementItem: normalizedTargets.replacementItem,
+        originalItems: [...(normalizedTargets.originalItems || [])],
+        replacementItems: [...(normalizedTargets.replacementItems || [])],
+      },
+    };
+
+    const aggLabel = getIssueAggregationLabel(aggregation);
+    if(!filteredSeries.length){
+      const locationMsg = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+      issueChartContainer.innerHTML = `<div class="text-muted small">No ${aggLabel} issue-out data for Item Group ${itemGroup}${locationMsg}</div>`;
+      if(issueChartHint){
+        issueChartHint.textContent = '';
+        issueChartHint.style.display = '';
+      }
+      updateIssueAggregationTitle(aggregation);
+      return;
+    }
+
+    issueChartContainer.innerHTML = '';
+
+    const tooltip = d3.select(issueChartContainer)
+      .append('div')
+      .attr('class', 'issue-chart-tooltip')
+      .style('position', 'absolute')
+      .style('pointer-events', 'none')
+      .style('background', 'rgba(15, 23, 42, 0.78)')
+      .style('max-width', '220px')
+      .style('color', '#fff')
+      .style('padding', '4px 8px')
+      .style('border-radius', '4px')
+      .style('font-size', '11px')
+      .style('line-height', '1.25')
+      .style('z-index', '10')
+      .style('display', 'none');
+
+    const itemLocationMap = new Map();
+    filteredSeries.forEach(series => {
+      const locLabel = series.group_location || series.location || trimmedLocation || 'Unknown';
+      if(series.item && !itemLocationMap.has(series.item)){
+        itemLocationMap.set(series.item, locLabel);
+      }
+    });
+
+    const primaryItem = normalizedTargets.primaryItem || null;
+    const replacementItem = normalizedTargets.replacementItem || null;
+    const originalItemSet = new Set((normalizedTargets.originalItems || []).filter(Boolean));
+    const replacementItemSet = new Set((normalizedTargets.replacementItems || []).filter(Boolean));
+    const preferredOriginalOrder = primaryItem ? [primaryItem] : [];
+    const preferredReplacementOrder = replacementItem ? [replacementItem] : [];
+    const originalColorMap = buildSideColorMap(originalItemSet, ORIGINAL_SHADE_PALETTE, preferredOriginalOrder);
+    const replacementColorMap = buildSideColorMap(replacementItemSet, REPLACEMENT_SHADE_PALETTE, preferredReplacementOrder);
+    const trackedItems = Array.from(new Set([
+      ...originalItemSet,
+      ...replacementItemSet,
+    ]));
+
+    const parseIso = (iso) => iso ? new Date(iso) : null;
+    const withinWindow = (date) => date && date >= chartStartDateUtc && date < chartEndDateExclusiveUtc;
+    const dateKeyFor = (date) => formatTooltipDate(date);
+
+    const rowsByKey = new Map();
+    chartDateRangeUtc.forEach(date => {
+      const key = dateKeyFor(date);
+      rowsByKey.set(key, { date, dateKey: key, rangeStart: date, rangeEnd: date });
+    });
+
+    filteredSeries.forEach(series => {
+      const itemCode = series.item;
+      (series.points || []).forEach(point => {
+        const dt = parseIso(point.t);
+        if(!withinWindow(dt)) return;
+        const qtyVal = Number(point.qty);
+        if(!Number.isFinite(qtyVal)) return;
+        const key = dateKeyFor(dt);
+        const row = rowsByKey.get(key);
+        if(!row) return;
+        row[itemCode] = (row[itemCode] || 0) + qtyVal;
+      });
+    });
+
+  const stackedRows = chartDateRangeUtc.map(date => rowsByKey.get(dateKeyFor(date)) || { date, dateKey: dateKeyFor(date), rangeStart: date, rangeEnd: date });
+
+    const stackKeySet = new Set([
+      ...trackedItems,
+      ...filteredSeries.map(s => s.item),
+    ]);
+    const fallbackItems = Array.from(stackKeySet)
+      .filter(item => item && !trackedItems.includes(item))
+      .sort((a, b) => a.localeCompare(b));
+    const stackKeys = (trackedItems.length
+      ? trackedItems.concat(fallbackItems)
+      : Array.from(stackKeySet).filter(Boolean).sort((a, b) => a.localeCompare(b)));
+
+    if(!stackKeys.length){
+      const locationMsg = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+      issueChartContainer.innerHTML = `<div class="text-muted small">No ${aggLabel} issue-out data for Item Group ${itemGroup}${locationMsg}</div>`;
+      if(issueChartHint){
+        issueChartHint.textContent = '';
+        issueChartHint.style.display = '';
+      }
+      updateIssueAggregationTitle(aggregation);
+      return;
+    }
+
+    stackedRows.forEach(row => {
+      if(!row) return;
+      stackKeys.forEach(key => {
+        const value = Number(row[key] ?? 0);
+        row[key] = Number.isFinite(value) ? value : 0;
+      });
+    });
+
+    let domainDates = chartDateRangeUtc.slice();
+    let rowsLookup = rowsByKey;
+    let displayRows = stackedRows;
+    if(aggregation === 'weekly'){
+      const weeklyRowsByKey = new Map();
+      const weeklyDates = [];
+      const firstWeekStart = d3.utcWeek.floor(chartStartDateUtc);
+      for(let ts = firstWeekStart.getTime(); ts < chartEndDateExclusiveUtc.getTime(); ts += 7 * MILLIS_PER_DAY){
+        const date = new Date(ts);
+        const key = dateKeyFor(date);
+        const rangeEndTs = Math.min(chartEndDateUtc.getTime(), ts + 6 * MILLIS_PER_DAY);
+        weeklyRowsByKey.set(key, {
+          date,
+          dateKey: key,
+          rangeStart: date,
+          rangeEnd: new Date(rangeEndTs),
+        });
+        weeklyDates.push(date);
+      }
+      stackedRows.forEach(row => {
+        if(!row) return;
+        const weekStart = d3.utcWeek.floor(row.date);
+        const key = dateKeyFor(weekStart);
+        const weeklyRow = weeklyRowsByKey.get(key);
+        if(!weeklyRow) return;
+        stackKeys.forEach(itemKey => {
+          const value = Number(row[itemKey] ?? 0);
+          weeklyRow[itemKey] = (weeklyRow[itemKey] || 0) + (Number.isFinite(value) ? value : 0);
+        });
+      });
+      weeklyRowsByKey.forEach(row => {
+        stackKeys.forEach(itemKey => {
+          const numeric = Number(row[itemKey] ?? 0);
+          row[itemKey] = Number.isFinite(numeric) ? numeric : 0;
+        });
+      });
+      domainDates = weeklyDates;
+      rowsLookup = weeklyRowsByKey;
+      displayRows = weeklyDates.map(date => {
+        const key = dateKeyFor(date);
+        return weeklyRowsByKey.get(key) || {
+          date,
+          dateKey: key,
+          rangeStart: date,
+          rangeEnd: new Date(Math.min(chartEndDateUtc.getTime(), date.getTime() + 6 * MILLIS_PER_DAY)),
+        };
+      });
+    }
+
+    const fallbackColorScale = COLOR_FALLBACK_SCALE.copy().domain(fallbackItems);
+    const colorFor = (item) => {
+      const role = resolveItemRole(item, originalItemSet, replacementItemSet);
+      if(role === 'original') return originalColorMap.get(item) || PRIMARY_COLOR;
+      if(role === 'replacement') return replacementColorMap.get(item) || REPLACEMENT_COLOR;
+      const fallbackColor = fallbackColorScale(item);
+      return fallbackColor || '#64748b';
+    };
+
+    const referenceWidth = chartContainer ? chartContainer.clientWidth : 0;
+    const containerWidth = issueChartContainer.clientWidth || referenceWidth || 400;
+    const perChartHeight = 320;
+    const margin = { top: 20, right: 30, bottom: 90, left: 60 };
+    const innerW = containerWidth - margin.left - margin.right;
+    const innerH = perChartHeight - margin.top - margin.bottom;
+
+    const x = d3.scaleBand()
+      .domain(domainDates)
+      .range([0, innerW])
+      .padding(aggregation === 'weekly' ? 0.2 : 0.12);
+
+    const maxTotal = d3.max(displayRows, row => stackKeys.reduce((sum, key) => sum + ((row && row[key]) || 0), 0)) || 0;
+    const yMax = maxTotal > 0 ? maxTotal * 1.1 : 1;
+    const y = d3.scaleLinear().domain([0, yMax]).nice().range([innerH, 0]);
+
+    const svg = d3.select(issueChartContainer)
+      .append('svg')
+      .attr('width', containerWidth)
+      .attr('height', perChartHeight)
+      .style('display', 'block');
+
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    const monthTicks = d3.utcMonth.range(chartStartDateUtc, chartEndDateExclusiveUtc);
+    const domainTimeMap = new Map(domainDates.map(date => [date.getTime(), date]));
+    const tickCandidates = [];
+    monthTicks.forEach(monthStart => {
+      if(aggregation === 'weekly'){
+        let candidate = d3.utcWeek.floor(monthStart);
+        for(let i = 0; i < 14; i++){
+          const time = candidate.getTime();
+          if(domainTimeMap.has(time)){
+            tickCandidates.push(domainTimeMap.get(time));
+            break;
+          }
+          candidate = d3.utcDay.offset(candidate, 1);
+          if(candidate >= chartEndDateExclusiveUtc) break;
+          if(candidate.getUTCMonth() !== monthStart.getUTCMonth() && i >= 7) break;
+        }
+      } else {
+        let candidate = new Date(monthStart);
+        for(let i = 0; i < 7; i++){
+          const time = candidate.getTime();
+          if(domainTimeMap.has(time)){
+            tickCandidates.push(domainTimeMap.get(time));
+            break;
+          }
+          candidate = d3.utcDay.offset(candidate, 1);
+          if(candidate.getUTCMonth() !== monthStart.getUTCMonth()) break;
+        }
+      }
+    });
+    const uniqueTickTimes = Array.from(new Set(tickCandidates.map(d => d.getTime())));
+    let tickDates = uniqueTickTimes.map(time => domainTimeMap.get(time)).filter(Boolean);
+    if(!tickDates.length){
+      const step = Math.max(1, Math.floor(domainDates.length / 6));
+      tickDates = domainDates.filter((_, idx) => idx % step === 0);
+    }
+    const xAxis = d3.axisBottom(x)
+      .tickValues(tickDates)
+      .tickFormat(formatMonthTick);
+    const xAxisG = g.append('g')
+      .attr('transform', `translate(0,${innerH})`)
+      .call(xAxis);
+    xAxisG.selectAll('text')
+      .attr('text-anchor', 'end')
+      .attr('dx', '0.8em')
+      .attr('dy', '1.4em')
+      .attr('transform', 'rotate(-45)');
+
+    g.append('g')
+      .call(d3.axisLeft(y).ticks(6).tickFormat(formatQuantity));
+
+    const stackGenerator = d3.stack().keys(stackKeys);
+    const stackedData = stackGenerator(displayRows);
+
+    const layerGroups = g.selectAll('.issue-layer')
+      .data(stackedData, d => d.key)
+      .join('g')
+      .attr('class', 'issue-layer')
+      .attr('fill', d => colorFor(d.key));
+    layerGroups.selectAll('rect')
+      .data(layer => layer.map((segment, index) => ({ segment, index, key: layer.key })))
+      .join('rect')
+      .attr('x', d => {
+        const row = displayRows[d.index];
+        const date = row ? row.date : domainDates[d.index];
+        const pos = x(date);
+        return Number.isFinite(pos) ? pos : 0;
+      })
+      .attr('y', d => y(d.segment[1]))
+      .attr('height', d => Math.max(0, y(d.segment[0]) - y(d.segment[1])))
+      .attr('width', Math.max(1, x.bandwidth()))
+      .attr('pointer-events', 'none');
+
+    const focusGroup = g.append('g')
+      .attr('class', 'issue-focus')
+      .attr('pointer-events', 'none')
+      .style('display', 'none');
+    const crosshair = focusGroup.append('line')
+      .attr('class', 'issue-crosshair')
+      .attr('y1', 0)
+      .attr('y2', innerH)
+      .attr('stroke', '#0f172a')
+      .attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4,4')
+      .attr('opacity', 0.85);
+
+    const datePositions = domainDates.map(date => ({
+      date,
+      xCenter: x(date) + x.bandwidth() / 2,
+    }));
+
+    const hideFocus = () => {
+      focusGroup.style('display', 'none');
+      crosshair.style('display', 'none');
+      tooltip.style('display', 'none');
+    };
+
+    const formatRangeLabel = (row, fallbackDate) => {
+      if(!row){
+        return formatTooltipDate(fallbackDate);
+      }
+      if(aggregation !== 'weekly'){
+        return formatTooltipDate(row.date);
+      }
+      const startStr = formatTooltipDate(row.rangeStart || row.date);
+      const endStr = formatTooltipDate(row.rangeEnd || row.date);
+      return startStr === endStr ? startStr : `${startStr} → ${endStr}`;
+    };
+
+    const handleHover = (event) => {
+      const [mx] = d3.pointer(event, g.node());
+      if(mx == null || mx < 0 || mx > innerW){
+        hideFocus();
+        return;
+      }
+      let nearest = null;
+      let minDist = Number.POSITIVE_INFINITY;
+      for(const pos of datePositions){
+        const dist = Math.abs(mx - pos.xCenter);
+        if(dist < minDist){
+          minDist = dist;
+          nearest = pos;
+        }
+      }
+      if(!nearest){
+        hideFocus();
+        return;
+      }
+      const row = rowsLookup.get(dateKeyFor(nearest.date));
+      if(!row){
+        hideFocus();
+        return;
+      }
+      const segments = stackKeys
+        .map(key => ({
+          key,
+          value: Number(row[key] || 0),
+          role: resolveItemRole(key, originalItemSet, replacementItemSet),
+        }))
+        .filter(entry => entry.value > 0);
+      const anchorX = nearest.xCenter;
+      const locationTop = trimmedLocation ? trimmedLocation : 'All Locations';
+      let content = `<div style="font-size:11px; color:rgba(226, 232, 240, 0.95); margin-bottom:6px;">${locationTop}</div>`;
+      content += `<div class="fw-semibold">${formatRangeLabel(row, nearest.date)}</div>`;
+      if(!segments.length){
+        content += '<div style="margin-top:4px;">No issue-out recorded</div>';
+      } else {
+        segments.forEach(entry => {
+          const suffix = entry.role === 'original' ? ' (Original)' : (entry.role === 'replacement' ? ' (Replacement)' : '');
+          content += `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:2px;">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:140px;">
+                <span style="color:${colorFor(entry.key)}; font-weight:600;">${entry.key}${suffix}:</span>
+              </div>
+              <div style="min-width:56px; text-align:right; font-variant-numeric: tabular-nums;">${formatQuantity(entry.value)}</div>
+            </div>`;
+        });
+      }
+      const totalValue = segments.reduce((sum, entry) => sum + entry.value, 0);
+      const anchorY = totalValue > 0 ? y(totalValue) : innerH;
+      focusGroup.style('display', null);
+      crosshair
+        .attr('x1', anchorX)
+        .attr('x2', anchorX)
+        .attr('y1', 0)
+        .attr('y2', innerH)
+        .style('display', null);
+      tooltip.html(content).style('display', 'block');
+      const tooltipNode = tooltip.node();
+      const containerRect = issueChartContainer.getBoundingClientRect();
+      const svgRect = svg.node().getBoundingClientRect();
+      const tipWidth = tooltipNode ? tooltipNode.offsetWidth : 0;
+      const tipHeight = tooltipNode ? tooltipNode.offsetHeight : 0;
+      let left = (svgRect.left - containerRect.left) + margin.left + anchorX + 12;
+      let top = (svgRect.top - containerRect.top) + margin.top + anchorY - tipHeight - 12;
+      const maxLeft = containerRect.width - tipWidth - 8;
+      if(left > maxLeft) left = maxLeft;
+      if(left < 8) left = 8;
+      if(top < 0) top = (svgRect.top - containerRect.top) + margin.top + anchorY + 12;
+      const maxTop = containerRect.height - tipHeight - 8;
+      if(top > maxTop) top = maxTop;
+      tooltip.style('left', `${Math.max(0, left)}px`).style('top', `${Math.max(0, top)}px`);
+      focusGroup.raise();
+    };
+
+    const overlay = g.append('rect')
+      .attr('class', 'issue-hover-overlay')
+      .attr('width', innerW)
+      .attr('height', innerH)
+      .attr('fill', 'transparent')
+      .style('cursor', 'col-resize')
+      .on('mouseenter', handleHover)
+      .on('mousemove', handleHover)
+      .on('mouseleave', hideFocus);
+
+    const legendEntries = stackKeys.map(key => {
+      const role = resolveItemRole(key, originalItemSet, replacementItemSet);
+      const roleLabel = role === 'original' ? 'Original' : (role === 'replacement' ? 'Replacement' : null);
+      const locLabel = itemLocationMap.get(key) || trimmedLocation || 'Unknown';
+      const label = roleLabel ? `${key} (${roleLabel}) @ ${locLabel}` : `${key} @ ${locLabel}`;
+      return {
+        key,
+        role,
+        color: colorFor(key),
+        label,
+      };
+    });
+
+    legendEntries.sort((a, b) => {
+      const order = { original: 0, replacement: 1, other: 2 };
+      const roleA = order[a.role] ?? 2;
+      const roleB = order[b.role] ?? 2;
+      if(roleA !== roleB) return roleA - roleB;
+      return a.label.localeCompare(b.label);
+    });
+
+    if(legendEntries.length){
+      const legendYOffset = innerH + 50;
+      const legend = g.append('g')
+        .attr('class', 'issue-legend')
+        .attr('transform', `translate(0,${legendYOffset})`);
+      let offsetX = 0;
+      let offsetY = 0;
+      const maxWidth = innerW;
+      const rowHeight = 16;
+      legendEntries.forEach(entry => {
+        const group = legend.append('g')
+          .attr('transform', `translate(${offsetX},${offsetY})`);
+        group.append('rect')
+          .attr('width', 12)
+          .attr('height', 12)
+          .attr('rx', 2)
+          .attr('ry', 2)
+          .attr('fill', entry.color);
+        group.append('text')
+          .attr('x', 18)
+          .attr('y', 10)
+          .attr('font-size', '11px')
+          .text(entry.label);
+        const node = group.node();
+        const bbox = node && typeof node.getBBox === 'function' ? node.getBBox() : null;
+        offsetX += (bbox ? bbox.width : 70) + 16;
+        if(offsetX > maxWidth){
+          offsetX = 0;
+          offsetY += rowHeight;
+          group.attr('transform', `translate(${offsetX},${offsetY})`);
+          offsetX += (bbox ? bbox.width : 70) + 16;
+        }
+      });
+    }
+
+    if(issueChartHint){
+      const locationMsg = trimmedLocation ? ` @ ${trimmedLocation}` : '';
+      if(aggregation === 'weekly'){
+        const weeksCount = Math.ceil((DAYS_WINDOW - 1) / 7);
+        issueChartHint.textContent = `Stacked weekly totals (orange shades = original items, blue shades = replacement items) for Item Group ${itemGroup}${locationMsg}. Each bar sums daily issue-outs within the week (~${weeksCount} weeks window).`;
+      } else {
+        issueChartHint.textContent = `Stacked daily bars (orange shades = original items, blue shades = replacement items) for Item Group ${itemGroup}${locationMsg} over the past ${DAYS_WINDOW - 1} days.`;
+      }
+      issueChartHint.style.display = '';
+    }
+
+    updateIssueAggregationTitle(aggregation);
+  }
+
+  loadFilterOptions().then(() => { loadKpiStats(); loadInventory(1); loadPar(1); });
 });
 </script>
 {% endblock %}

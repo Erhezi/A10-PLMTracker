@@ -76,13 +76,19 @@
       </div>
     </div>
     <div class="col-12 col-lg-3">
-      <button type="button" class="btn btn-outline-primary w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3 location-setup-toggle-btn" id="location-setup-toggle" style="min-height: 80px; border-width: 2px;">
-        <div class="small text-uppercase fw-semibold mb-1">Prepare Location Set-up</div>
-        <div class="small text-muted">Toggle column presets</div>
-        <div class="mt-2">
-          <span class="badge bg-secondary" id="location-setup-status">OFF</span>
-        </div>
-      </button>
+      <div class="d-flex flex-column flex-md-row gap-2 h-100">
+        <button type="button" class="btn btn-outline-primary flex-fill h-100 d-flex flex-column align-items-center justify-content-center p-3 location-setup-toggle-btn" id="location-setup-toggle" style="min-height: 80px; border-width: 2px;">
+          <div class="small text-uppercase fw-semibold mb-1">Prepare Location Set-up</div>
+          <div class="small text-muted">Toggle column presets</div>
+          <div class="mt-2">
+            <span class="badge bg-secondary" id="location-setup-status">OFF</span>
+          </div>
+        </button>
+  <button type="button" class="btn btn-outline-success flex-fill h-100 d-flex flex-column align-items-center justify-content-center p-3" id="notify-requesters-btn" style="min-height: 80px; border-width: 2px;">
+          <div class="small text-uppercase fw-semibold mb-1">Notify Requesters</div>
+          <div class="small text-muted text-center">Review emails by filtered items</div>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -225,6 +231,8 @@
         <div class="d-flex justify-content-between align-items-center border-top small px-3 py-2" id="inventory-pager" style="display:none;">
           <div>
             <button class="btn btn-outline-secondary btn-sm" id="inv-first" disabled>&laquo; First</button>
+
+          {% include 'dashboard/_pull_requester.html' %}
             <button class="btn btn-outline-secondary btn-sm" id="inv-prev" disabled>&lsaquo; Prev</button>
             <button class="btn btn-outline-secondary btn-sm" id="inv-next" disabled>Next &rsaquo;</button>
             <button class="btn btn-outline-secondary btn-sm" id="inv-last" disabled>Last &raquo;</button>
@@ -455,6 +463,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const parResetBtn = document.getElementById('par-reset-filters');
   const inventoryExportBtn = document.getElementById('inventory-export-excel');
   const parExportBtn = document.getElementById('par-export-excel');
+  const notifyBtn = document.getElementById('notify-requesters-btn');
+  const notifyModalEl = document.getElementById('notifyRequestersModal');
+  const notifyLoading = document.getElementById('notify-requesters-loading');
+  const notifyError = document.getElementById('notify-requesters-error');
+  const notifyEmpty = document.getElementById('notify-requesters-empty');
+  const notifyContent = document.getElementById('notify-requesters-content');
+  const notifySummary = document.getElementById('notify-requesters-summary');
+  const notifyTableBody = document.getElementById('notify-requesters-table-body');
+  const notifyCopyBtn = document.getElementById('notify-requesters-copy');
+  const notifyCopyOriginalLabel = notifyCopyBtn ? notifyCopyBtn.textContent.trim() : '';
+  let notifyModalInstance = null;
+  if(notifyModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
+    notifyModalInstance = bootstrap.Modal.getOrCreateInstance(notifyModalEl);
+  }
+  let notifyCopyTooltip = null;
+  const notifyCopyDefaultTitle = notifyCopyBtn ? (notifyCopyBtn.getAttribute('title') || 'Copy Email Addresses') : '';
+  if(notifyCopyBtn && typeof bootstrap !== 'undefined' && bootstrap.Tooltip){
+    notifyCopyTooltip = bootstrap.Tooltip.getOrCreateInstance(notifyCopyBtn, { trigger: 'manual' });
+  }
   const htmlEscapeMap = {
     '&': '&amp;',
     '<': '&lt;',
@@ -1241,6 +1268,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function appendRequesterFilterParams(params){
+    if(!params) return;
+    Object.entries(filterParamMap.inventory).forEach(([field, paramName]) => {
+      const inventoryValue = columnFilters.inventory?.[field];
+      const parValue = columnFilters.par?.[field];
+      const value = inventoryValue || parValue;
+      if(value){
+        params.set(paramName, value);
+      }
+    });
+  }
+
+  function buildRequesterQueryParams(){
+    const params = buildSharedQueryParams();
+    appendRequesterFilterParams(params);
+    if(hideROnly){
+      params.set('hide_r_only', 'true');
+    }
+    return params;
+  }
+
   function updatePager() {
     if(totalPages <= 1){
       pager.style.display = 'none';
@@ -1516,6 +1564,212 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch(e){
       console.error('Failed loading par locations', e);
       parCountEl.textContent = 'error';
+    }
+  }
+
+  const pluralize = (count, noun) => {
+    const n = Number(count) || 0;
+    return `${n} ${noun}${n === 1 ? '' : 's'}`;
+  };
+
+  let notifyLastQueryKey = '';
+  let notifyLastResponse = null;
+  let notifyEmailList = [];
+
+  function setCopyButtonEnabled(enabled){
+    if(!notifyCopyBtn) return;
+    notifyCopyBtn.disabled = !enabled;
+    notifyCopyBtn.classList.toggle('disabled', !enabled);
+  }
+
+  function resetNotifyModalState(){
+    if(notifyLoading) notifyLoading.classList.remove('d-none');
+    if(notifyError) notifyError.classList.add('d-none');
+    if(notifyEmpty) notifyEmpty.classList.add('d-none');
+    if(notifyContent) notifyContent.classList.add('d-none');
+    if(notifyTableBody) notifyTableBody.innerHTML = '';
+    if(notifySummary) notifySummary.textContent = '';
+    notifyEmailList = [];
+    setCopyButtonEnabled(false);
+  }
+
+  function showNotifyError(message){
+    if(notifyLoading) notifyLoading.classList.add('d-none');
+    if(notifyEmpty) notifyEmpty.classList.add('d-none');
+    if(notifyContent) notifyContent.classList.add('d-none');
+    if(notifyError){
+      notifyError.textContent = message || 'Failed to load requesters.';
+      notifyError.classList.remove('d-none');
+    }
+    setCopyButtonEnabled(false);
+  }
+
+  function renderBadgeList(items, badgeClass){
+    if(!Array.isArray(items) || !items.length){
+      return '<span class="text-muted">—</span>';
+    }
+    return items
+      .map(value => `<span class="badge ${badgeClass} me-1 mb-1">${escapeHtml(value)}</span>`)
+      .join('');
+  }
+
+  function buildRequesterRow(row){
+    const requester = escapeHtml(row.requester || '');
+    const name = escapeHtml(row.name || '');
+    const email = escapeHtml(row.email || '');
+    const emailCell = email
+      ? `<a href="mailto:${escapeAttr(email)}" class="text-decoration-none">${email}</a>`
+      : '<span class="text-muted">—</span>';
+    const locationsHtml = renderBadgeList(row.locations, 'bg-light text-dark');
+    const itemsHtml = renderBadgeList(row.items, 'bg-primary text-white');
+    const requestCount = Number(row.request_count || 0);
+    const requestLabel = Number.isFinite(requestCount)
+      ? requestCount.toLocaleString('en-US')
+      : '0';
+    const requisitionTooltip = Array.isArray(row.requisition_ids) && row.requisition_ids.length
+      ? ` title="${escapeAttr(row.requisition_ids.join(', '))}"`
+      : '';
+    const requesterCell = requester ? `<code>${requester}</code>` : '<span class="text-muted">—</span>';
+    const nameCell = name || '<span class="text-muted">—</span>';
+    return `<tr${requisitionTooltip}>
+      <td>${requesterCell}</td>
+      <td>${nameCell}</td>
+      <td>${emailCell}</td>
+      <td class="text-wrap" style="min-width:160px;">${locationsHtml}</td>
+      <td class="text-wrap" style="min-width:220px;">${itemsHtml}</td>
+      <td class="text-end">${requestLabel}</td>
+    </tr>`;
+  }
+
+  function renderNotifyResults(data){
+    if(!data){
+      showNotifyError('No response received.');
+      return;
+    }
+    if(notifyLoading) notifyLoading.classList.add('d-none');
+    if(notifyError) notifyError.classList.add('d-none');
+    notifyEmailList = Array.isArray(data.email_addresses) ? data.email_addresses.filter(Boolean) : [];
+    const requesters = Array.isArray(data.requesters) ? data.requesters : [];
+    if(!requesters.length){
+      if(notifyEmpty) notifyEmpty.classList.remove('d-none');
+      if(notifyContent) notifyContent.classList.add('d-none');
+      setCopyButtonEnabled(false);
+      return;
+    }
+
+    if(notifyEmpty) notifyEmpty.classList.add('d-none');
+    if(notifyContent) notifyContent.classList.remove('d-none');
+
+    if(notifyTableBody){
+      notifyTableBody.innerHTML = requesters.map(buildRequesterRow).join('');
+    }
+
+    if(notifySummary){
+      const requesterCount = Number.isFinite(Number(data.requester_count))
+        ? Number(data.requester_count)
+        : requesters.length;
+      const items = Array.isArray(data.items) ? data.items : [];
+      const itemCount = items.length;
+      const preview = items.slice(0, 6).join(', ');
+      const totalRequests = requesters.reduce((sum, entry) => {
+        const count = Number(entry?.request_count ?? 0);
+        return Number.isFinite(count) ? sum + count : sum;
+      }, 0);
+      let summary = `${pluralize(requesterCount, 'requester')} covering ${pluralize(itemCount, 'item')} (original items only).`;
+      if(preview){
+        const extra = itemCount > 6 ? `, +${itemCount - 6} more` : '';
+        summary += ` Items: ${preview}${extra}.`;
+      }
+      if(totalRequests > 0){
+        summary += ` Total requests: ${totalRequests.toLocaleString('en-US')}.`;
+      }
+      summary += ' Requesters limited to R-prefixed locations in the past 365 days.';
+      notifySummary.textContent = summary;
+    }
+
+    setCopyButtonEnabled(notifyEmailList.length > 0);
+  }
+
+  async function loadNotifyRequesters({ force = false } = {}){
+    if(!notifyModalInstance) return;
+    const params = buildRequesterQueryParams();
+    const queryKey = params.toString();
+    if(!force && notifyLastQueryKey === queryKey && notifyLastResponse){
+      resetNotifyModalState();
+      renderNotifyResults(notifyLastResponse);
+      return;
+    }
+
+    resetNotifyModalState();
+    if(notifyBtn){
+      notifyBtn.disabled = true;
+      notifyBtn.setAttribute('aria-busy', 'true');
+    }
+    try {
+      const resp = await fetch(`/dashboard/api/requesters?${params.toString()}`);
+      if(!resp.ok){
+        const message = await resp.text();
+        throw new Error(message || `Request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      notifyLastQueryKey = queryKey;
+      notifyLastResponse = data;
+      renderNotifyResults(data);
+    } catch (error) {
+      console.error('Failed to load requesters', error);
+      showNotifyError(error.message || 'Failed to load requesters');
+    } finally {
+      if(notifyBtn){
+        notifyBtn.disabled = false;
+        notifyBtn.removeAttribute('aria-busy');
+      }
+    }
+  }
+
+  async function copyNotifyEmails(){
+    if(!notifyEmailList.length) return false;
+    const uniqueEmails = Array.from(new Set(notifyEmailList.filter(Boolean)));
+    if(!uniqueEmails.length) return false;
+    const text = uniqueEmails.join('; ');
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        try {
+          textarea.select();
+          document.execCommand('copy');
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error('Copy to clipboard failed', error);
+      return false;
+    }
+  }
+
+  function showCopyFeedback(message){
+    if(notifyCopyTooltip && notifyCopyBtn){
+      notifyCopyBtn.setAttribute('data-bs-original-title', message);
+      notifyCopyTooltip.show();
+      setTimeout(() => {
+        notifyCopyTooltip.hide();
+        notifyCopyBtn.setAttribute('data-bs-original-title', notifyCopyDefaultTitle);
+      }, 1500);
+      return;
+    }
+    if(notifyCopyBtn){
+      notifyCopyBtn.textContent = message;
+      setTimeout(() => {
+        notifyCopyBtn.textContent = notifyCopyOriginalLabel || 'Copy Email Addresses';
+      }, 1500);
     }
   }
 
@@ -3199,6 +3453,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateIssueAggregationTitle(aggregation);
+  }
+
+  setCopyButtonEnabled(false);
+
+  if(notifyModalEl){
+    notifyModalEl.addEventListener('show.bs.modal', () => {
+      loadNotifyRequesters();
+    });
+    notifyModalEl.addEventListener('hidden.bs.modal', () => {
+      if(notifyCopyTooltip){
+        notifyCopyTooltip.hide();
+        if(notifyCopyBtn){
+          notifyCopyBtn.setAttribute('data-bs-original-title', notifyCopyDefaultTitle);
+        }
+      }
+      if(notifyBtn){
+        notifyBtn.disabled = false;
+        notifyBtn.removeAttribute('aria-busy');
+      }
+    });
+  }
+
+  if(notifyBtn && notifyModalInstance){
+    notifyBtn.addEventListener('click', () => {
+      notifyModalInstance.show();
+    });
+  }
+
+  if(notifyCopyBtn){
+    notifyCopyBtn.addEventListener('click', async () => {
+      if(notifyCopyBtn.disabled) return;
+      const success = await copyNotifyEmails();
+      showCopyFeedback(success ? 'Copied!' : 'Copy failed');
+    });
   }
 
   loadFilterOptions().then(() => { loadKpiStats(); loadInventory(1); loadPar(1); });

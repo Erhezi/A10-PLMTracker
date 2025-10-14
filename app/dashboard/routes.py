@@ -23,6 +23,95 @@ ALLOWED_STAGE_VALUES = {
 }
 
 
+def _normalize_code(value: object | None) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _collect_item_pool(rows: list[dict]) -> set[str]:
+    items: set[str] = set()
+    for row in rows:
+        item = _normalize_code(row.get("item"))
+        if item:
+            items.add(item)
+    return items
+
+
+def _aggregate_requester_rows(raw_rows: list[dict]) -> list[dict]:
+    aggregated: dict[str, dict] = {}
+    for row in raw_rows:
+        requester = _normalize_code(row.get("requester"))
+        if not requester:
+            continue
+        entry = aggregated.setdefault(
+            requester,
+            {
+                "requester": requester,
+                "name": "",
+                "email": "",
+                "locations": set(),
+                "items": set(),
+                "requisition_ids": set(),
+                "request_count": 0,
+            },
+        )
+
+        name = _normalize_code(row.get("name"))
+        if name and not entry["name"]:
+            entry["name"] = name
+
+        email = _normalize_code(row.get("email"))
+        if email and not entry["email"]:
+            entry["email"] = email
+
+        location = _normalize_code(row.get("location"))
+        if location:
+            entry["locations"].add(location)
+
+        item = _normalize_code(row.get("item"))
+        if item:
+            entry["items"].add(item)
+
+        requisition = _normalize_code(row.get("requisition"))
+        if requisition:
+            entry["requisition_ids"].add(requisition)
+
+        count_value = row.get("requests_count")
+        if count_value is None:
+            count_value = row.get("RequestsCount")
+        try:
+            parsed_count = int(count_value) if count_value is not None else 0
+        except (TypeError, ValueError):
+            parsed_count = 0
+
+        if parsed_count < 0:
+            parsed_count = 0
+
+        entry["request_count"] += parsed_count
+
+    results: list[dict] = []
+    for entry in aggregated.values():
+        results.append(
+            {
+                "requester": entry["requester"],
+                "name": entry["name"] or None,
+                "email": entry["email"] or None,
+                "locations": sorted(entry["locations"]),
+                "items": sorted(entry["items"]),
+                "requisition_ids": sorted(entry["requisition_ids"]),
+                "request_count": entry["request_count"],
+            }
+        )
+
+    def _sort_key(payload: dict) -> tuple[str, str]:
+        name_key = (payload.get("name") or "").lower()
+        return (name_key, payload.get("requester") or "")
+
+    results.sort(key=_sort_key)
+    return results
+
+
 def _normalize_tri_state(value: object) -> str:
     """Normalize database values to 'yes', 'no', or 'blank'."""
     if value is None:
@@ -498,7 +587,47 @@ def api_par():
 @bp.route("/api/requesters")
 @login_required
 def api_requesters():
-    pass
+    inventory_rows = _filtered_inventory_rows(request.args)
+    par_rows = _filtered_par_rows(request.args)
+
+    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    if hide_r_only:
+        inventory_rows = [row for row in inventory_rows if not _is_r_only_location(row)]
+        par_rows = [row for row in par_rows if not _is_r_only_location(row)]
+
+    item_pool = _collect_item_pool(inventory_rows) | _collect_item_pool(par_rows)
+    if not item_pool:
+        return jsonify({
+            "items": [],
+            "requesters": [],
+            "requester_count": 0,
+            "email_addresses": [],
+        })
+
+    stmt = (
+        select(
+            Requesters365Day.Requester.label("requester"),
+            Requesters365Day.RequesterName.label("name"),
+            Requesters365Day.EmailAddress.label("email"),
+            Requesters365Day.RequestingLocation.label("location"),
+            Requesters365Day.Item.label("item"),
+            Requesters365Day.Requisition_FD5.label("requisition"),
+            Requesters365Day.RequestsCount.label("requests_count"),
+        )
+        .where(Requesters365Day.Item.in_(sorted(item_pool)))
+        .where(Requesters365Day.RequestingLocation.like("R%"))
+    )
+
+    requester_rows = [dict(row._mapping) for row in db.session.execute(stmt)]
+    requesters = _aggregate_requester_rows(requester_rows)
+    email_addresses = sorted({r["email"] for r in requesters if r["email"]})
+
+    return jsonify({
+        "items": sorted(item_pool),
+        "requesters": requesters,
+        "requester_count": len(requesters),
+        "email_addresses": email_addresses,
+    })
 
 
 @bp.route("/api/stats")

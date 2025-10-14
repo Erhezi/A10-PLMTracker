@@ -26,8 +26,9 @@ body { font-feature-settings: "tnum"; }
   font-size: 9pt;
   line-height: 1;
   display: inline-block;
-  vertical-align: text-bottom; /* align near the baseline/bottom of the Dashboard title */
+  vertical-align: baseline; /* baseline alignment then nudge down visually */
   margin-left: 0.5rem;
+  transform: translateY(0.28rem); /* slightly larger downward nudge to resemble subscript */
 }
 
 footer { font-size: .75rem; }

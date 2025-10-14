@@ -531,14 +531,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       return;
     }
-  // Subtract one day (we always display last refresh date - 1 day)
-  const oneDayMs = 24 * 60 * 60 * 1000;
-  const adj = new Date(parsed.getTime() - oneDayMs);
-  // Display adjusted date in YYYY-MM-DD (local date)
+  // Display the date portion of the timestamp but show time as 00:05:00
+  // (5 minutes past midnight for that date, local time)
+  const adj = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 5, 0);
+  // Display adjusted date/time in YYYY-MM-DD HH:MM:SS (local time)
   const y = adj.getFullYear();
   const m = String(adj.getMonth() + 1).padStart(2, '0');
   const d = String(adj.getDate()).padStart(2, '0');
-  refreshValueEl.textContent = `${y}-${m}-${d}`;
+  const hh = String(adj.getHours()).padStart(2, '0');
+  const mm = String(adj.getMinutes()).padStart(2, '0');
+  const ss = String(adj.getSeconds()).padStart(2, '0');
+  refreshValueEl.textContent = `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
     refreshValueEl.setAttribute('title', isoString);
     if(refreshContainer){
       refreshContainer.dataset.refreshIso = isoString;

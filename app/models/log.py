@@ -19,8 +19,8 @@ class ProcessLog(db.Model):
 
 	__tablename__ = "process_log"
 	__table_args__ = (
-		Index('IX_PLM_ProcessLog_Time', 'exec_start', mssql_sort='DESC'),
-		Index('IX_PLM_ProcessLog_Status', 'status', 'exec_start', mssql_sort='DESC', mssql_include=['process_name']),
+		Index('IX_PLM_ProcessLog_Time', 'exec_start'),
+		Index('IX_PLM_ProcessLog_Status', 'status', 'exec_start'),
 		{"schema": "PLM"},
 	)
 
@@ -50,6 +50,23 @@ class ProcessLog(db.Model):
 			f"<ProcessLog pkid={self.pkid} process={self.process_name!r}"
 			f" start={self.exec_start} end={self.exec_end} status={self.status}>"
 		)
+
+	@classmethod
+	def get_latest_success_timestamp(cls, session):
+		"""Get the latest exec_end timestamp where status is SUCCESS.
+		
+		Returns:
+			datetime or None: The latest successful execution end time, or None if not found.
+		"""
+		from sqlalchemy import select, func, or_
+		# Try both 'Success' and 'SUCCESS' to be case-insensitive
+		result = session.execute(
+			select(func.max(cls.exec_end))
+			.where(or_(cls.status == 'Success', cls.status == 'SUCCESS'))
+			.where(cls.exec_end.isnot(None))
+		).scalar()
+		print(f"[DEBUG ProcessLog] Query result: {result}")
+		return result
 
 
 

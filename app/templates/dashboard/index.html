@@ -1,7 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard — PLM Tracker{% endblock %}
 {% block content %}
-<h1 class="h4 fw-semibold mb-4">Dashboard</h1>
+<h1 class="h4 fw-semibold mb-4 d-flex align-items-center flex-wrap gap-3">
+  <span>Dashboard</span>
+  <span id="dashboard-refresh" class="small text-accent-pink text-nowrap">
+    supporting data last refreshed as <span id="dashboard-refresh-value">—</span>
+  </span>
+</h1>
 
 <!-- Section 1: KPI Cards + Filters (full width) -->
 <div class="container-fluid p-0 mb-4" id="section-kpis">
@@ -129,6 +134,7 @@
                 <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
+                <th id="inv-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="inv-col-active" data-field="active" class="col-active">Active</th>
                 <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
@@ -149,6 +155,7 @@
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="inv-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
                 <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
@@ -179,6 +186,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
@@ -199,6 +207,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
@@ -272,6 +281,7 @@
                 <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
+                <th id="par-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="par-col-active" data-field="active" class="col-active">Active</th>
                 <th id="par-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
@@ -291,6 +301,7 @@
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="par-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="par-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
@@ -320,6 +331,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="par-filter-active" data-field="active"></th>
                 <th class="col-disc column-filter-cell" id="par-filter-disc" data-field="discontinued"></th>
@@ -339,6 +351,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
                 <th class="col-active column-filter-cell" id="par-filter-active-ri" data-field="active_ri"></th>
                 <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-field="discontinued_ri"></th>
@@ -473,6 +486,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const notifyTableBody = document.getElementById('notify-requesters-table-body');
   const notifyCopyBtn = document.getElementById('notify-requesters-copy');
   const notifyCopyOriginalLabel = notifyCopyBtn ? notifyCopyBtn.textContent.trim() : '';
+  const refreshContainer = document.getElementById('dashboard-refresh');
+  const refreshValueEl = document.getElementById('dashboard-refresh-value');
   let notifyModalInstance = null;
   if(notifyModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
     notifyModalInstance = bootstrap.Modal.getOrCreateInstance(notifyModalEl);
@@ -496,6 +511,39 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: {},
     par: {},
   };
+
+  function renderRefreshTimestamp(isoString){
+    if(!refreshValueEl) return;
+    if(!isoString){
+      refreshValueEl.textContent = '—';
+      refreshValueEl.removeAttribute('title');
+      if(refreshContainer){
+        delete refreshContainer.dataset.refreshIso;
+      }
+      return;
+    }
+    const parsed = new Date(isoString);
+    if(Number.isNaN(parsed.getTime())){
+      refreshValueEl.textContent = '—';
+      refreshValueEl.removeAttribute('title');
+      if(refreshContainer){
+        delete refreshContainer.dataset.refreshIso;
+      }
+      return;
+    }
+  // Subtract one day (we always display last refresh date - 1 day)
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const adj = new Date(parsed.getTime() - oneDayMs);
+  // Display adjusted date in YYYY-MM-DD (local date)
+  const y = adj.getFullYear();
+  const m = String(adj.getMonth() + 1).padStart(2, '0');
+  const d = String(adj.getDate()).padStart(2, '0');
+  refreshValueEl.textContent = `${y}-${m}-${d}`;
+    refreshValueEl.setAttribute('title', isoString);
+    if(refreshContainer){
+      refreshContainer.dataset.refreshIso = isoString;
+    }
+  }
   const triStateOptions = [
     { value: '', label: 'All' },
     { value: 'yes', label: 'Yes' },
@@ -868,6 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
     ...recommendedColumns,
   ];
   ['inventory', 'par'].forEach(tableKey => {
@@ -930,7 +979,8 @@ document.addEventListener('DOMContentLoaded', () => {
        'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
        'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
        'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
        ...recommendedColumns];
         
         invHide.forEach(field => {
@@ -961,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
     ...recommendedColumns];
         
         parHide.forEach(field => {
@@ -991,7 +1042,8 @@ document.addEventListener('DOMContentLoaded', () => {
        'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
        'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
        'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
        ...recommendedColumns];
         
         invShow.forEach(field => {
@@ -1021,7 +1073,8 @@ document.addEventListener('DOMContentLoaded', () => {
        'min_order_qty', 'max_order_qty', 'manufacturer_number',
        'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
        'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-       'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
        ...recommendedColumns];
         
         parShow.forEach(field => {
@@ -1404,6 +1457,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
           <td class="col-src text-center">${fmt(r.active)}</td>
           <td class="col-src text-center">${fmt(r.discontinued)}</td>
@@ -1424,6 +1478,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
           <td class="col-repl text-center">${fmt(r.active_ri)}</td>
           <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
@@ -1510,6 +1565,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
             <td class="col-src text-center">${fmt(r.active)}</td>
             <td class="col-src text-center">${fmt(r.discontinued)}</td>
@@ -1529,6 +1585,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
             <td class="col-repl text-center">${fmt(r.active_ri)}</td>
             <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
@@ -2052,6 +2109,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if(inpDescSearch){
     inpDescSearch.addEventListener('keyup', autoApply);
+  }
+
+  // Load refresh timestamp
+  async function loadRefreshTimestamp() {
+    try {
+      const resp = await fetch('/dashboard/api/refresh-timestamp');
+      if(!resp.ok) throw new Error('Failed loading refresh timestamp');
+      const data = await resp.json();
+      renderRefreshTimestamp(data.refresh_timestamp);
+    } catch (e) {
+      console.error('Failed to load refresh timestamp', e);
+    }
   }
 
   // Legacy form submit (no visible submit button now) still prevented
@@ -3489,6 +3558,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  loadRefreshTimestamp();
   loadFilterOptions().then(() => { loadKpiStats(); loadInventory(1); loadPar(1); });
 });
 </script>

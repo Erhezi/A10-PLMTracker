@@ -346,6 +346,7 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Item", "item"),
     ("Location", "location"),
+    ("Preferred Bin", "preferred_bin"),
     ("Auto-repl.", "auto_replenishment"),
     ("Active", "active"),
     ("Discon.", "discontinued"),
@@ -366,6 +367,7 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("90-day PO Qty", "po_90_qty"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
+    ("Preferred Bin (RI)", "preferred_bin_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
     ("Active (RI)", "active_ri"),
     ("Discon. (RI)", "discontinued_ri"),
@@ -398,6 +400,7 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Item", "item"),
     ("Location", "location"),
+    ("Preferred Bin", "preferred_bin"),
     ("Auto-repl.", "auto_replenishment"),
     ("Active", "active"),
     ("Discon.", "discontinued"),
@@ -417,6 +420,7 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("90-day Req Qty", "req_qty_ea"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
+    ("Preferred Bin (RI)", "preferred_bin_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
     ("Active (RI)", "active_ri"),
     ("Discon. (RI)", "discontinued_ri"),
@@ -542,6 +546,7 @@ def api_filter_options():
         "Tracking - Item Transition",
         "Pending Clinical Approval",
     ]
+
     return jsonify({
         "item_groups": item_groups,
         "locations": locations,
@@ -627,6 +632,28 @@ def api_requesters():
         "requesters": requesters,
         "requester_count": len(requesters),
         "email_addresses": email_addresses,
+    })
+
+
+@bp.route("/api/refresh-timestamp")
+@login_required
+def api_refresh_timestamp():
+    """Return the latest successful data refresh timestamp from process log."""
+    refresh_timestamp = None
+    try:
+        from ..models.log import ProcessLog
+        latest_refresh = ProcessLog.get_latest_success_timestamp(db.session)
+        print(f"[DEBUG] Latest refresh from DB: {latest_refresh}")
+        if latest_refresh:
+            refresh_timestamp = latest_refresh.isoformat()
+            print(f"[DEBUG] Formatted timestamp: {refresh_timestamp}")
+    except Exception as e:
+        print(f"[ERROR] Failed to get refresh timestamp: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return jsonify({
+        "refresh_timestamp": refresh_timestamp,
     })
 
 

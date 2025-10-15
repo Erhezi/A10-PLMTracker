@@ -16,17 +16,17 @@ from ..models.relations import (
 from ..models.inventory import Item, ContractItem
 from ..utility.item_group import BatchValidationError
 from ..utility.add_pairs import AddItemPairs
+from ..utility.stage_transition import StageTransitionHelper
+from .batch_service import (
+    apply_stage,
+    apply_wrike,
+    apply_go_live,
+    summarize_results,
+)
 
 """Stage name definitions (canonical only)."""
 
-ALLOWED_STAGES = [  # New canonical stage names (order meaningful for UI select)
-    'Tracking - Discontinued',
-    'Pending Item Number',
-    'Pending Clinical Approval',
-    'Tracking - Item Transition',
-    'Deleted',
-    'Tracking Completed'
-]
+ALLOWED_STAGES = StageTransitionHelper.STAGES  # New canonical stage names (order meaningful for UI select)
 
 def normalize_stage(value: str | None) -> str | None:  # kept for minimal refactor
     return value
@@ -112,7 +112,6 @@ def update_item(item: str, replace_item: str):
         .filter_by(item=item, replace_item=replace_item)
         .first_or_404()
     )
-    print(record) #debugging
     stage = request.form.get("stage")
     expected_go_live_date = request.form.get("expected_go_live_date") or None
     wants_json = (request.args.get('ajax') == '1') or ('application/json' in request.headers.get('Accept','')) or request.headers.get('X-Requested-With') == 'fetch'
@@ -135,30 +134,20 @@ def update_item(item: str, replace_item: str):
         else:
             normalized_wrike[field] = None
 
-    if stage not in ALLOWED_STAGES:
+    decision = StageTransitionHelper.evaluate_transition(
+        record.stage,
+        stage,
+        replace_item=record.replace_item,
+    )
+
+    if not decision.allowed:
+        message = decision.reason or "Stage transition not permitted"
         if wants_json:
-            return jsonify({"status":"error","field":"stage","message":"Invalid stage value"}), 400
-        flash("Invalid stage value", "danger")
+            return jsonify({"status": "error", "field": "stage", "message": message}), 400
+        flash(message, "warning")
         return redirect(url_for("collector.groups"))
 
-    # Transition rules:
-    #  - If current stage is Tracking - Discontinued, only allow Deleted or Tracking Completed
-    #  - If current stage is not Tracking - Discontinued, disallow moving into it directly
-    current_stage = record.stage or ''
-    if current_stage == 'Tracking - Discontinued':
-        if stage not in ('Tracking - Discontinued', 'Deleted', 'Tracking Completed'):
-            if wants_json:
-                return jsonify({"status":"error","field":"stage","message":"Invalid transition from Tracking - Discontinued"}), 400
-            flash("Cannot transition from Tracking - Discontinued to that stage (only Deleted or Tracking Completed allowed)", "warning")
-            return redirect(url_for("collector.groups"))
-    else:
-        if stage == 'Tracking - Discontinued':
-            if wants_json:
-                return jsonify({"status":"error","field":"stage","message":"Cannot set stage to Tracking - Discontinued here"}), 400
-            flash("Cannot set stage to Tracking - Discontinued here", "warning")
-            return redirect(url_for("collector.groups"))
-
-    record.stage = stage
+    record.stage = decision.final_stage
     # Parse date (YYYY-MM-DD) if provided
     if expected_go_live_date:
         try:
@@ -196,9 +185,59 @@ def update_item(item: str, replace_item: str):
                 "update_dt": record.update_dt.isoformat() if record.update_dt else None,
             },
             "count_deleted": count_deleted,
+            "transition_note": decision.reason,
         })
     flash("ItemLink updated", "success")
+    if decision.reason:
+        flash(decision.reason, "info")
     return redirect(url_for("collector.groups"))
+
+
+@bp.post("/groups/batch/stage")
+@login_required
+def batch_update_stage():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    requested_stage = payload.get("stage")
+    if not requested_stage:
+        return jsonify({"status": "error", "message": "Missing stage"}), 400
+    try:
+        results = apply_stage(rows, requested_stage)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    summary = summarize_results(results)
+    return jsonify(summary)
+
+
+@bp.post("/groups/batch/wrike/<field>")
+@login_required
+def batch_update_wrike(field: str):
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    value = payload.get("value")
+    try:
+        results = apply_wrike(rows, field, value)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    summary = summarize_results(results)
+    return jsonify(summary)
+
+
+@bp.post("/groups/batch/go-live")
+@login_required
+def batch_update_go_live():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    date_value = payload.get("expected_go_live_date")
+    try:
+        results = apply_go_live(rows, date_value)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    summary = summarize_results(results)
+    return jsonify(summary)
 
 @bp.route("/conflicts")
 @login_required

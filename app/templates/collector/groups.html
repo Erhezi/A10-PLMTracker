@@ -3,6 +3,21 @@
 {% block content %}
 <h1 class ="h4 fw-semibold mb-3">Item Groups</h1>
 <p class="text-muted small">List all items entered for tracking</p>
+
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3" id="batch-action-toolbar">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Batch change actions">
+    <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="stage" disabled>Change Project Stage</button>
+    <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id1" disabled>Create Wrike Task - Get Item #</button>
+    <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id2" disabled>Create Wrike Task - Set-up Inv.</button>
+    <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id3" disabled>Create Wrike Task - Set-up Par</button>
+    <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="go_live" disabled>Change Go Live Date</button>
+  </div>
+  <div class="form-check form-switch ms-auto" id="batch-mode-switch">
+    <input class="form-check-input" type="checkbox" role="switch" id="batch-mode-toggle">
+    <label class="form-check-label" for="batch-mode-toggle">Batch Change</label>
+  </div>
+</div>
+
 <div class="d-flex align-items-end gap-3 flex-wrap mb-2">
   <div style="width:170px;">
     <label for="filter-mode" class="form-label small mb-1 text-muted">Filter Mode</label>
@@ -15,8 +30,13 @@
   </div>
   <div class="flex-grow-1" style="max-width:720px;">
     <label for="filter-input" class="form-label small mb-1 text-muted">Quick Filter</label>
-  <div class="d-flex align-items-end gap-2 flex-nowrap">
-      <input id="filter-input" type="text" class="form-control form-control-sm flex-grow-1" placeholder="Type to filter..." autocomplete="off" />
+    <div class="d-flex align-items-end gap-2 flex-nowrap">
+      <div class="flex-grow-1">
+        <div class="input-group input-group-sm">
+          <input id="filter-input" type="text" class="form-control" placeholder="Type to filter..." autocomplete="off" />
+          <button type="button" class="btn btn-outline-secondary" id="filter-clear-btn">Clear All</button>
+        </div>
+      </div>
       <span id="filter-hint" class="small text-muted flex-shrink-0">Use ";" to search multiple terms (max 10).</span>
     </div>
   </div>
@@ -30,11 +50,12 @@
   </div>
 </div>
 
-<div class="table-responsive position-relative border rounded shadow-sm" style="max-height:700px; overflow:auto;">
+<div class="table-responsive position-relative border rounded shadow-sm" style="max-height:640px; overflow:auto;">
   <table class="table table-sm table-hover align-middle mb-0" id="itemlink-table">
     <thead class="table-light small sticky-top shadow-sm" style="z-index:5;">
       <tr>
-        <th style="width:58px;" class="text-center sortable" data-sort="none" data-type="none">Edit <span class="sort-indicator"></span></th>
+  <th style="width:46px;" class="text-center sortable select-header d-none" data-type="none"><input type="checkbox" id="batch-select-all" class="form-check-input" title="Select all"></th>
+  <th style="width:58px;" class="text-center sortable edit-header" data-sort="none" data-type="none">Edit <span class="sort-indicator"></span></th>
         <th class="text-center sortable" data-type="number" style="min-width:50px; width:50px;">Item Group <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text" style="min-width:70px;">Item <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text">Mfg Part # <span class="sort-indicator"></span></th>
@@ -57,7 +78,10 @@
       {% if items %}
         {% for r in items %}
         <tr data-item="{{ r.item }}" data-replace-item="{{ r.replace_item }}">
-          <td class="text-center">
+          <td class="text-center select-cell d-none">
+            <input type="checkbox" class="form-check-input row-select" />
+          </td>
+          <td class="text-center edit-cell">
             <button class="btn btn-outline-primary btn-sm edit-btn" type="button">Edit</button>
             <div class="d-none action-buttons">
               <button class="btn btn-success btn-sm save-btn" type="button" title="Save changes">Save</button>
@@ -157,17 +181,365 @@
   </table>
 </div>
 
+<!-- Batch action modals -->
+<div class="modal fade" id="batch-stage-modal" tabindex="-1" aria-labelledby="batch-stage-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="batch-stage-label">Change Project Stage</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Select a stage to apply to all selected rows. Prohibited transitions will be skipped automatically.</p>
+        <div class="mb-3">
+          <label for="batch-stage-select" class="form-label">Stage</label>
+          <select class="form-select" id="batch-stage-select">
+            <option value="">-- Select Stage --</option>
+            {% for s in allowed_stages %}
+              <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="alert alert-danger d-none" id="batch-stage-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="batch-stage-confirm">Apply Stage</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="batch-wrike-modal" tabindex="-1" aria-labelledby="batch-wrike-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="batch-wrike-label">Update Wrike Task</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Provide a 10-digit Wrike ID (leave blank to clear) for all selected rows.</p>
+        <div class="mb-3">
+          <label for="batch-wrike-input" class="form-label" id="batch-wrike-input-label">Wrike ID</label>
+          <input type="text" class="form-control" id="batch-wrike-input" maxlength="10" inputmode="numeric" pattern="\d{10}">
+        </div>
+        <div class="alert alert-danger d-none" id="batch-wrike-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="batch-wrike-confirm">Apply Wrike ID</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="batch-go-live-modal" tabindex="-1" aria-labelledby="batch-go-live-label" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="batch-go-live-label">Change Go Live Date</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Select the expected go-live date to apply to all selected rows. Leave blank to clear the date.</p>
+        <div class="mb-3">
+          <label for="batch-go-live-input" class="form-label">Expected Go Live Date</label>
+          <input type="date" class="form-control" id="batch-go-live-input">
+        </div>
+        <div class="alert alert-danger d-none" id="batch-go-live-error"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="batch-go-live-confirm">Apply Date</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="batch-endpoints-json">
+  {{ {
+    "stage": url_for("collector.batch_update_stage"),
+    "wrike": {
+      "wrike_id1": url_for("collector.batch_update_wrike", field="wrike_id1"),
+      "wrike_id2": url_for("collector.batch_update_wrike", field="wrike_id2"),
+      "wrike_id3": url_for("collector.batch_update_wrike", field="wrike_id3"),
+    },
+    "goLive": url_for("collector.batch_update_go_live"),
+  } | tojson }}
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+  const batchEndpoints = (() => {
+    const el = document.getElementById('batch-endpoints-json');
+    if(!el){
+      console.error('Batch endpoint manifest missing.');
+      return {};
+    }
+    try {
+      return JSON.parse(el.textContent);
+    } catch (err) {
+      console.error('Unable to parse batch endpoint manifest', err);
+      return {};
+    }
+  })();
   // All stages are already canonical; no legacy normalization needed.
 
   const table = document.getElementById('itemlink-table');
   const filterInput = document.getElementById('filter-input');
+  const filterClearBtn = document.getElementById('filter-clear-btn');
   const filterMode = document.getElementById('filter-mode');
   const filterHint = document.getElementById('filter-hint');
   const hintDefaultText = 'Use ";" to search multiple terms (max 10).';
   const hintOverflowText = 'Use ";" to search multiple terms (max 10). Only the first 10 terms are applied.';
   const visibleCountEl = document.getElementById('visible-count');
+  const batchToggle = document.getElementById('batch-mode-toggle');
+  const batchButtons = Array.from(document.querySelectorAll('.batch-action-btn'));
+  const selectHeader = table ? table.querySelector('.select-header') : null;
+  const editHeader = table ? table.querySelector('.edit-header') : null;
+  const selectAll = document.getElementById('batch-select-all');
+  const stageModalEl = document.getElementById('batch-stage-modal');
+  const wrikeModalEl = document.getElementById('batch-wrike-modal');
+  const goLiveModalEl = document.getElementById('batch-go-live-modal');
+  const stageSelect = document.getElementById('batch-stage-select');
+  const wrikeInput = document.getElementById('batch-wrike-input');
+  const goLiveInput = document.getElementById('batch-go-live-input');
+  const stageError = document.getElementById('batch-stage-error');
+  const wrikeError = document.getElementById('batch-wrike-error');
+  const goLiveError = document.getElementById('batch-go-live-error');
+  const wrikeInputLabel = document.getElementById('batch-wrike-input-label');
+  const wrikeModalTitle = wrikeModalEl ? wrikeModalEl.querySelector('.modal-title') : null;
+  const bootstrapModalCtor = (typeof window !== 'undefined' && window.bootstrap && typeof window.bootstrap.Modal === 'function') ? window.bootstrap.Modal : null;
+  const stageModal = stageModalEl && bootstrapModalCtor ? new bootstrapModalCtor(stageModalEl) : null;
+  const wrikeModal = wrikeModalEl && bootstrapModalCtor ? new bootstrapModalCtor(wrikeModalEl) : null;
+  const goLiveModal = goLiveModalEl && bootstrapModalCtor ? new bootstrapModalCtor(goLiveModalEl) : null;
+  const stageConfirm = document.getElementById('batch-stage-confirm');
+  const wrikeConfirm = document.getElementById('batch-wrike-confirm');
+  const goLiveConfirm = document.getElementById('batch-go-live-confirm');
+  const getVisibleCheckboxes = () => {
+    if(!table) return [];
+    return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => !cb.closest('tr')?.classList.contains('d-none'));
+  };
+  const syncSelectAll = () => {
+    if(!selectAll) return;
+    const checkboxes = getVisibleCheckboxes();
+    if(!checkboxes.length){
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+      return;
+    }
+    const allChecked = checkboxes.every(cb => cb.checked);
+    const anyChecked = checkboxes.some(cb => cb.checked);
+    selectAll.checked = allChecked;
+    selectAll.indeterminate = anyChecked && !allChecked;
+  };
+  const normalizeReplace = (value) => {
+    if(value === null || value === undefined) return null;
+    const trimmed = String(value).trim();
+    if(!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    if(lower === 'none' || lower === 'null' || lower === 'nan') return null;
+    return trimmed;
+  };
+  const buildRowKey = (item, replace) => `${item}::${(normalizeReplace(replace) || '').toLowerCase()}`;
+  const createRowLookup = () => {
+    const map = new Map();
+    if(!table) return map;
+    Array.from(table.querySelectorAll('tbody tr')).forEach(tr => {
+      const item = tr.dataset.item;
+      if(!item) return;
+      const replace = normalizeReplace(tr.dataset.replaceItem);
+      map.set(buildRowKey(item, replace), tr);
+    });
+    return map;
+  };
+  const buildPayload = (rows) => rows.map(row => ({
+    item: row.dataset.item,
+    replace_item: normalizeReplace(row.dataset.replaceItem),
+  }));
+  const updateDeletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
+    const countEl = document.getElementById('clear-deleted-count');
+    const btn = document.getElementById('clear-deleted-btn');
+    if(!countEl || !btn) return;
+    if(providedCount !== undefined && providedCount !== null){
+      const num = Number(providedCount);
+      if(!Number.isNaN(num)){
+        const safe = Math.max(0, num);
+        countEl.textContent = safe;
+        btn.disabled = safe === 0;
+        return;
+      }
+    }
+    if(oldStage === undefined || newStage === undefined) return;
+    const oldNorm = (oldStage || '').trim().toLowerCase();
+    const newNorm = (newStage || '').trim().toLowerCase();
+    let current = parseInt(countEl.textContent || '0', 10);
+    if(Number.isNaN(current)) current = 0;
+    if(oldNorm === 'deleted' && newNorm !== 'deleted'){
+      current = Math.max(0, current - 1);
+    } else if(oldNorm !== 'deleted' && newNorm === 'deleted'){
+      current += 1;
+    }
+    countEl.textContent = current;
+    btn.disabled = current === 0;
+  };
+  const applyRecordToRow = (row, rec) => {
+    if(!row || !rec) return;
+    if(Object.prototype.hasOwnProperty.call(rec, 'replace_item')){
+      row.dataset.replaceItem = rec.replace_item ?? '';
+    }
+    const stageCell = row.querySelector('.stage-cell');
+    if(stageCell){
+      stageCell.dataset.value = rec.stage || '';
+      const badgeWrap = stageCell.querySelector('.read-value');
+      if(badgeWrap){
+        badgeWrap.innerHTML = rec.stage ? `<span class="badge stage-badge stage-${(rec.stage||'').toLowerCase().replace(/ /g,'-')}">${rec.stage}</span>` : '';
+      }
+      const sel = stageCell.querySelector('select');
+      if(sel) sel.value = rec.stage || '';
+    }
+    const dateCell = row.querySelector('.date-cell');
+    if(dateCell){
+      dateCell.dataset.value = rec.expected_go_live_date || '';
+      const span = dateCell.querySelector('.read-value');
+      if(span){
+        if(!rec.expected_go_live_date){
+          span.innerHTML = '<span class="text-muted fst-italic">unknown</span>';
+        } else {
+          span.textContent = rec.expected_go_live_date;
+        }
+      }
+      const inp = dateCell.querySelector('input');
+      if(inp) inp.value = rec.expected_go_live_date || '';
+    }
+    ['wrike_id1','wrike_id2','wrike_id3'].forEach(field => {
+      const cell = row.querySelector(`.wrike-cell[data-field="${field}"]`);
+      if(!cell) return;
+      const span = cell.querySelector('.read-value');
+      const input = cell.querySelector('input');
+      const value = rec[field] || '';
+      cell.dataset.value = value || '';
+      if(span){
+        span.innerHTML = formatWrikeHtml(value);
+      }
+      if(input){
+        input.value = value || '';
+      }
+    });
+    const updateCell = row.querySelector('td:last-child');
+    if(updateCell){
+      if(rec.update_dt){
+        try {
+          updateCell.textContent = new Date(rec.update_dt).toISOString().slice(0,19).replace('T',' ');
+        } catch {
+          updateCell.textContent = rec.update_dt;
+        }
+      }
+    }
+  };
+  const showBatchSummary = (summary, failureMessages) => {
+    if(!summary) return;
+    const lines = [`Batch update complete: ${summary.success || 0} succeeded.`];
+    if(summary.failed){
+      lines.push(`${summary.failed} failed.`);
+    }
+    if(failureMessages && failureMessages.length){
+      lines.push('');
+      lines.push('Failed rows:');
+      failureMessages.slice(0,5).forEach(msg => lines.push(msg));
+      if(failureMessages.length > 5){
+        lines.push(`(+${failureMessages.length - 5} more)`);
+      }
+    }
+    alert(lines.join('\n'));
+  };
+  const applyBatchSummary = (summary) => {
+    if(!summary) return;
+    const results = Array.isArray(summary.results) ? summary.results : [];
+    const rowMap = createRowLookup();
+    const failureMessages = [];
+    results.forEach(result => {
+      const key = buildRowKey(result.item, result.replace_item);
+      const row = rowMap.get(key);
+      if(!row) return;
+      if(result.success){
+        if(result.record){
+          applyRecordToRow(row, result.record);
+        }
+        row.classList.remove('batch-failure-flash');
+      } else {
+        row.classList.add('batch-failure-flash');
+        if(result.message){
+          failureMessages.push(`• ${result.item}${result.replace_item ? ` / ${result.replace_item}` : ''}: ${result.message}`);
+        } else {
+          failureMessages.push(`• ${result.item}${result.replace_item ? ` / ${result.replace_item}` : ''}: Update blocked`);
+        }
+        setTimeout(() => row.classList.remove('batch-failure-flash'), 4000);
+      }
+    });
+    if(Object.prototype.hasOwnProperty.call(summary, 'count_deleted')){
+      updateDeletedCountUI({ providedCount: summary.count_deleted });
+    }
+    showBatchSummary(summary, failureMessages);
+    syncSelectAll();
+  };
+  const submitBatch = async (url, payload, errorBox) => {
+    if(errorBox){
+      errorBox.classList.add('d-none');
+      errorBox.textContent = '';
+    }
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'fetch'
+        },
+        body: JSON.stringify(payload)
+      });
+      let data = null;
+      try {
+        data = await resp.json();
+      } catch {
+        data = null;
+      }
+      if(!resp.ok || (data && data.status === 'error')){
+        const message = data && data.message ? data.message : `Request failed (${resp.status})`;
+        throw new Error(message);
+      }
+      if(!data){
+        throw new Error('No response payload received');
+      }
+      return data;
+    } catch (err) {
+      console.error('Batch request failed', err);
+      const message = err && err.message ? err.message : 'Batch request failed';
+      if(errorBox){
+        errorBox.textContent = message;
+        errorBox.classList.remove('d-none');
+      } else {
+        alert(message);
+      }
+      return null;
+    }
+  };
+  const withBusyState = async (button, task) => {
+    if(button){
+      if(button.dataset.busy === '1'){
+        return null;
+      }
+      button.dataset.busy = '1';
+      button.disabled = true;
+    }
+    try {
+      return await task();
+    } finally {
+      if(button){
+        delete button.dataset.busy;
+        button.disabled = false;
+      }
+    }
+  };
   const escapeHtml = (value) => {
     if(value === null || value === undefined){
       return '';
@@ -185,6 +557,129 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     return `<span class="text-muted small">${safe}</span>`;
   };
+  if(stageConfirm){
+    stageConfirm.addEventListener('click', async () => {
+      if(stageConfirm.dataset.busy === '1') return;
+      const selectedRows = ensureSelection();
+      if(!selectedRows) return;
+      if(!stageSelect){
+        alert('Stage selector unavailable.');
+        return;
+      }
+      const targetStage = stageSelect.value ? stageSelect.value.trim() : '';
+      if(stageError){
+        stageError.classList.add('d-none');
+        stageError.textContent = '';
+      }
+      if(!targetStage){
+        if(stageError){
+          stageError.textContent = 'Choose a target stage before applying.';
+          stageError.classList.remove('d-none');
+        } else {
+          alert('Choose a target stage before applying.');
+        }
+        stageSelect.focus();
+        return;
+      }
+      await withBusyState(stageConfirm, async () => {
+        const payload = { stage: targetStage, rows: buildPayload(selectedRows) };
+        const response = await submitBatch(batchEndpoints.stage, payload, stageError);
+        if(!response) return;
+        applyBatchSummary(response);
+        if(stageSelect) stageSelect.value = '';
+        if(stageModal){
+          stageModal.hide();
+        } else {
+          resetFilters();
+        }
+      });
+    });
+  }
+  if(wrikeConfirm){
+    wrikeConfirm.addEventListener('click', async () => {
+      if(wrikeConfirm.dataset.busy === '1') return;
+      const selectedRows = ensureSelection();
+      if(!selectedRows) return;
+      const field = wrikeModalEl ? wrikeModalEl.dataset.field : null;
+      if(!field || !batchEndpoints.wrike || !batchEndpoints.wrike[field]){
+        alert('Wrike field unavailable.');
+        resetFilters();
+        return;
+      }
+      if(wrikeError){
+        wrikeError.classList.add('d-none');
+        wrikeError.textContent = '';
+      }
+      let value = wrikeInput ? wrikeInput.value.trim() : '';
+      if(value && !/^\d{10}$/.test(value)){
+        if(wrikeError){
+          wrikeError.textContent = 'Enter a 10-digit Wrike ID or leave blank to clear it.';
+          wrikeError.classList.remove('d-none');
+        } else {
+          alert('Wrike ID must be 10 digits or left blank.');
+        }
+        if(wrikeInput){
+          wrikeInput.focus();
+          wrikeInput.select();
+        }
+        return;
+      }
+      if(!value){
+        value = null;
+      }
+      await withBusyState(wrikeConfirm, async () => {
+        const payload = { value, rows: buildPayload(selectedRows) };
+        const response = await submitBatch(batchEndpoints.wrike[field], payload, wrikeError);
+        if(!response) return;
+        applyBatchSummary(response);
+        if(wrikeInput) wrikeInput.value = value || '';
+        if(wrikeModal){
+          wrikeModal.hide();
+        } else {
+          resetFilters();
+        }
+      });
+    });
+  }
+  if(goLiveConfirm){
+    goLiveConfirm.addEventListener('click', async () => {
+      if(goLiveConfirm.dataset.busy === '1') return;
+      const selectedRows = ensureSelection();
+      if(!selectedRows) return;
+      if(goLiveError){
+        goLiveError.classList.add('d-none');
+        goLiveError.textContent = '';
+      }
+      let dateValue = goLiveInput ? goLiveInput.value.trim() : '';
+      if(dateValue && !/^\d{4}-\d{2}-\d{2}$/.test(dateValue)){
+        if(goLiveError){
+          goLiveError.textContent = 'Enter a valid date (YYYY-MM-DD) or leave blank to clear it.';
+          goLiveError.classList.remove('d-none');
+        } else {
+          alert('Enter a date in YYYY-MM-DD format or leave blank to clear it.');
+        }
+        if(goLiveInput){
+          goLiveInput.focus();
+        }
+        return;
+      }
+      if(!dateValue){
+        dateValue = null;
+      }
+      await withBusyState(goLiveConfirm, async () => {
+        const payload = { expected_go_live_date: dateValue, rows: buildPayload(selectedRows) };
+        const response = await submitBatch(batchEndpoints.goLive, payload, goLiveError);
+        if(!response) return;
+        applyBatchSummary(response);
+        if(goLiveInput) goLiveInput.value = dateValue || '';
+        if(goLiveModal){
+          goLiveModal.hide();
+        } else {
+          resetFilters();
+        }
+      });
+    });
+  }
   if(!table) return;
 
   // Handle potential caching issues on reload
@@ -202,6 +697,9 @@ document.addEventListener('DOMContentLoaded', () => {
   table.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
     if(!btn) return;
+    if(btn.classList.contains('batch-action-btn')){
+      return;
+    }
     const row = btn.closest('tr');
     if(btn.classList.contains('edit-btn')) {
       enterEdit(row, btn);
@@ -265,11 +763,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if(visibleCountEl) visibleCountEl.textContent = visible;
+    syncSelectAll();
   }
   if(filterInput && filterMode){
     filterInput.addEventListener('input', applyFilter);
     filterMode.addEventListener('change', applyFilter);
     applyFilter();
+  }
+
+  if(filterClearBtn){
+    filterClearBtn.addEventListener('click', () => {
+      if(filterInput){
+        filterInput.value = '';
+      }
+      if(filterMode){
+        filterMode.value = 'contains';
+      }
+      resetFilters();
+      if(filterInput){
+        filterInput.focus();
+      }
+    });
   }
 
   function enterEdit(row, editButton){
@@ -447,6 +961,177 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('An error occurred while saving');
     }
   }
+
+  function setBatchMode(enabled){
+    if(!table) return;
+    if(enabled){
+      table.querySelectorAll('tr.table-warning').forEach(row => exitEdit(row));
+      if(selectHeader) selectHeader.classList.remove('d-none');
+      table.querySelectorAll('.select-cell').forEach(cell => cell.classList.remove('d-none'));
+      if(editHeader) editHeader.classList.add('d-none');
+      table.querySelectorAll('.edit-cell').forEach(cell => cell.classList.add('d-none'));
+      batchButtons.forEach(btn => btn.disabled = false);
+      syncSelectAll();
+    } else {
+      if(selectHeader) selectHeader.classList.add('d-none');
+      table.querySelectorAll('.select-cell').forEach(cell => {
+        cell.classList.add('d-none');
+        const checkbox = cell.querySelector('.row-select');
+        if(checkbox) checkbox.checked = false;
+      });
+      if(selectAll) selectAll.checked = false;
+      if(selectAll) selectAll.indeterminate = false;
+      if(editHeader) editHeader.classList.remove('d-none');
+      table.querySelectorAll('.edit-cell').forEach(cell => cell.classList.remove('d-none'));
+      batchButtons.forEach(btn => btn.disabled = true);
+    }
+  }
+
+  if(batchToggle){
+    batchToggle.addEventListener('change', (event) => {
+      setBatchMode(event.target.checked);
+    });
+    setBatchMode(batchToggle.checked);
+  } else {
+    batchButtons.forEach(btn => btn.disabled = true);
+  }
+
+  if(selectAll){
+    selectAll.addEventListener('change', (event) => {
+      const checked = event.target.checked;
+      selectAll.indeterminate = false;
+      getVisibleCheckboxes().forEach(cb => {
+        if(!cb.disabled){
+          cb.checked = checked;
+        }
+      });
+      syncSelectAll();
+    });
+  }
+
+  if(table){
+    table.addEventListener('change', (event) => {
+      const cb = event.target.closest('.row-select');
+      if(!cb) return;
+      syncSelectAll();
+    });
+  }
+
+  function getSelectedRows(){
+    if(!table) return [];
+    return Array.from(table.querySelectorAll('tbody tr')).filter(tr => tr.querySelector('.row-select')?.checked);
+  }
+
+  function ensureSelection(){
+    const selected = getSelectedRows();
+    if(!selected.length){
+      alert('Select at least one row to continue.');
+      return false;
+    }
+    return selected;
+  }
+
+  function filterToSelectedRows(){
+    const selected = getSelectedRows();
+    if(!selected.length){
+      return selected;
+    }
+    const selectedSet = new Set(selected);
+    Array.from(table.querySelectorAll('tbody tr')).forEach(tr => {
+      const isSelected = selectedSet.has(tr);
+      tr.classList.toggle('batch-filtered-out', !isSelected);
+      tr.classList.toggle('d-none', !isSelected);
+      if(isSelected){
+        tr.classList.remove('d-none');
+      }
+    });
+    syncSelectAll();
+    if(filterInput) filterInput.disabled = true;
+    if(filterMode) filterMode.disabled = true;
+    if(table) table.dataset.batchFilterActive = '1';
+    if(visibleCountEl) visibleCountEl.textContent = selected.length;
+    return selected;
+  }
+
+  function resetFilters(){
+    Array.from(table.querySelectorAll('tbody tr')).forEach(tr => {
+      tr.classList.remove('batch-filtered-out');
+      tr.classList.remove('d-none');
+    });
+    if(filterInput) filterInput.disabled = false;
+    if(filterMode) filterMode.disabled = false;
+    if(table) table.dataset.batchFilterActive = '';
+    applyFilter();
+    syncSelectAll();
+  }
+
+  [stageModalEl, wrikeModalEl, goLiveModalEl].forEach(modalEl => {
+    if(!modalEl) return;
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      resetFilters();
+      clearErrors();
+    });
+  });
+
+  function clearErrors(){
+    [stageError, wrikeError, goLiveError].forEach(alertBox => {
+      if(alertBox){
+        alertBox.classList.add('d-none');
+        alertBox.textContent = '';
+      }
+    });
+  }
+
+  batchButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selected = ensureSelection();
+      if(!selected) return;
+      const visibleSelection = filterToSelectedRows();
+      if(!visibleSelection.length){
+        return;
+      }
+      clearErrors();
+      const action = btn.dataset.action;
+      if(action === 'stage'){
+        if(stageSelect) stageSelect.value = '';
+        if(stageModal){
+          stageModal.show();
+        } else {
+          alert('Batch stage modal unavailable. Ensure Bootstrap JavaScript is loaded.');
+          resetFilters();
+        }
+      } else if(action?.startsWith('wrike')){
+        if(wrikeInput) wrikeInput.value = '';
+        if(wrikeInputLabel){
+          if(action === 'wrike_id1') wrikeInputLabel.textContent = 'Wrike ID (Get Item #)';
+          if(action === 'wrike_id2') wrikeInputLabel.textContent = 'Wrike ID (Set-up Inv.)';
+          if(action === 'wrike_id3') wrikeInputLabel.textContent = 'Wrike ID (Set-up Par)';
+        }
+        if(wrikeModalTitle){
+          if(action === 'wrike_id1') wrikeModalTitle.textContent = 'Create Wrike Task - Get Item #';
+          if(action === 'wrike_id2') wrikeModalTitle.textContent = 'Create Wrike Task - Set-up Inv.';
+          if(action === 'wrike_id3') wrikeModalTitle.textContent = 'Create Wrike Task - Set-up Par';
+        }
+        if(wrikeModalEl) wrikeModalEl.dataset.field = action;
+        if(wrikeModal){
+          wrikeModal.show();
+        } else {
+          alert('Batch Wrike modal unavailable. Ensure Bootstrap JavaScript is loaded.');
+          resetFilters();
+        }
+      } else if(action === 'go_live'){
+        if(goLiveInput) goLiveInput.value = '';
+        if(goLiveModal){
+          goLiveModal.show();
+        } else {
+          alert('Batch Go Live modal unavailable. Ensure Bootstrap JavaScript is loaded.');
+          resetFilters();
+        }
+      } else {
+        resetFilters();
+      }
+    });
+  });
 });
 </script>
 <script>
@@ -569,6 +1254,8 @@ document.addEventListener('DOMContentLoaded', () => {
   #itemlink-table th.sortable.active { background:#eef3f9; }
   #itemlink-table th.sortable.active .sort-indicator { opacity:1; }
   #itemlink-table .table-warning { --bs-table-bg:#fff3cd !important; }
+  #itemlink-table .select-cell, #itemlink-table .select-header { width:46px; min-width:46px; }
+  #itemlink-table .select-cell input { cursor:pointer; }
   /* fixed small column classes */
   .col-70 { width:70px; min-width:70px; max-width:70px; }
   .ellipsis { overflow:hidden; }

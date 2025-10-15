@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import List, Dict, Optional, Set, Tuple, Iterable
-import re
 from datetime import date, datetime
 from calendar import monthrange
 from dataclasses import dataclass
@@ -181,24 +180,22 @@ def dedupe_preserve_order(seq: List[str]) -> List[str]:
 def validate_batch_inputs(
     items: List[str], 
     replace_items: List[str], 
-    wrike_id: str = None,
     expected_go_live_date_raw: str = None,
     sentinel_replacements: Set[str] = None,
     max_per_side: int = None
-) -> Tuple[List[str], List[str], str, date]:
+) -> Tuple[List[str], List[str], date]:
     """
     Validate and normalize batch input data.
     
     Args:
         items: List of source item codes
         replace_items: List of replacement item codes  
-        wrike_id: Optional Wrike task ID (must be 10 digits)
         expected_go_live_date_raw: Optional date string (YYYY-MM-DD)
         sentinel_replacements: Set of sentinel replacement values (default: {"NO REPLACEMENT"})
         max_per_side: Maximum items allowed per side (default: from config)
     
     Returns:
-        Tuple of (normalized_items, normalized_replace_items, validated_wrike_id, validated_date)
+        Tuple of (normalized_items, normalized_replace_items, validated_date)
         
     Raises:
         BatchValidationError: If validation fails
@@ -228,13 +225,6 @@ def validate_batch_inputs(
     if len(replace_items) > max_per_side:
         raise BatchValidationError(f"Too many replacement items (max {max_per_side})")
     
-    # Validate wrike id (optional, must be 10 digits if provided)
-    validated_wrike_id = None
-    if wrike_id:
-        if not re.fullmatch(r"\d{10}", wrike_id):
-            raise BatchValidationError("Wrike Task ID must be exactly 10 digits")
-        validated_wrike_id = wrike_id
-    
     # Parse and validate expected go live date (optional, within next 6 months)
     validated_date = None
     if expected_go_live_date_raw:
@@ -258,7 +248,7 @@ def validate_batch_inputs(
         if validated_date > max_allowed:
             raise BatchValidationError("Expected Go Live Date cannot be more than 6 months in the future")
     
-    return items, replace_items, validated_wrike_id, validated_date
+    return items, replace_items, validated_date
 
 
 def _fetch_items_map(codes: set[str]) -> dict[str, Item]:

@@ -1,13 +1,13 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required
 from sqlalchemy import func, or_
-from sqlalchemy.orm import noload
+from sqlalchemy.orm import selectinload
 from datetime import date, datetime, timedelta
-import re
 from .. import db
 from ..models import now_ny_naive
 from ..models.relations import (
     ItemLink,
+    ItemLinkWrike,
     ItemGroup,
     PendingItems,
     ItemGroupConflictError,
@@ -75,7 +75,7 @@ def groups():
     # Avoid eager loading any relationships (they are not needed for groups table)
     items = (
         ItemLink.query
-        .options(noload('*'))
+        .options(selectinload(ItemLink.wrike))
         .order_by(ItemLink.item_group.desc(), ItemLink.item)
         .all()
     )
@@ -106,22 +106,34 @@ def update_item(item: str, replace_item: str):
     # representations to actual None so SQL queries match NULL values.
     if isinstance(replace_item, str) and replace_item.lower() in ('none', 'null', 'nan', ''):
         replace_item = None
-    record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first_or_404()
+    record = (
+        ItemLink.query
+        .options(selectinload(ItemLink.wrike))
+        .filter_by(item=item, replace_item=replace_item)
+        .first_or_404()
+    )
     print(record) #debugging
     stage = request.form.get("stage")
     expected_go_live_date = request.form.get("expected_go_live_date") or None
-    wrike_id = request.form.get("wrike_id") or None
     wants_json = (request.args.get('ajax') == '1') or ('application/json' in request.headers.get('Accept','')) or request.headers.get('X-Requested-With') == 'fetch'
+    wrike_inputs = {
+        "wrike_id1": request.form.get("wrike_id1"),
+        "wrike_id2": request.form.get("wrike_id2"),
+        "wrike_id3": request.form.get("wrike_id3"),
+    }
 
-    # Server-side Wrike ID validation: allow empty or exactly 10 digits
-    if wrike_id:
-        wrike_id = wrike_id.strip()
-        import re
-        if not re.match(r"\A\d{10}\Z", wrike_id):
-            if wants_json:
-                return jsonify({"status":"error","field":"wrike_id","message":"Wrike ID must be 10 digits or left blank"}), 400
-            flash("Wrike ID must be 10 digits or left blank", "warning")
-            return redirect(url_for("collector.groups"))
+    normalized_wrike: dict[str, str | None] = {}
+    for field, raw in wrike_inputs.items():
+        value = (raw or "").strip()
+        if value:
+            if not (value.isdigit() and len(value) == 10):
+                if wants_json:
+                    return jsonify({"status": "error", "field": field, "message": "Wrike ID must be exactly 10 digits"}), 400
+                flash("Wrike ID values must be 10 digits or left blank", "warning")
+                return redirect(url_for("collector.groups"))
+            normalized_wrike[field] = value
+        else:
+            normalized_wrike[field] = None
 
     if stage not in ALLOWED_STAGES:
         if wants_json:
@@ -159,7 +171,12 @@ def update_item(item: str, replace_item: str):
     else:
         record.expected_go_live_date = None
 
-    record.wrike_id = wrike_id
+    wrike_record = ItemLinkWrike.ensure_for_link(record)
+    wrike_record.wrike_id1 = normalized_wrike["wrike_id1"]
+    wrike_record.wrike_id2 = normalized_wrike["wrike_id2"]
+    wrike_record.wrike_id3 = normalized_wrike["wrike_id3"]
+    wrike_record.sync_from_item_link(record)
+
     record.update_dt = now_ny_naive()
     db.session.commit()
     if wants_json:
@@ -173,7 +190,9 @@ def update_item(item: str, replace_item: str):
                 "replace_item": record.replace_item,
                 "stage": record.stage,
                 "expected_go_live_date": record.expected_go_live_date.isoformat() if record.expected_go_live_date else None,
-                "wrike_id": record.wrike_id,
+                "wrike_id1": wrike_record.wrike_id1,
+                "wrike_id2": wrike_record.wrike_id2,
+                "wrike_id3": wrike_record.wrike_id3,
                 "update_dt": record.update_dt.isoformat() if record.update_dt else None,
             },
             "count_deleted": count_deleted,
@@ -383,7 +402,6 @@ def api_batch_item_links():
     pending_meta = data.get("pending_meta") or {}
     explicit_stage = data.get("stage") or None
     expected_go_live_date_raw = (data.get("expected_go_live_date") or "").strip() or None
-    wrike_id = (data.get("wrike_id") or "").strip() or None
 
     # Basic validation
     if not items or not replace_items:
@@ -400,7 +418,6 @@ def api_batch_item_links():
             pending_meta=pending_meta,
             explicit_stage=explicit_stage,
             expected_go_live_date_raw=expected_go_live_date_raw,
-            wrike_id=wrike_id,
             sentinel_replacements=SENTINEL_REPLACEMENTS,
             allowed_stages=ALLOWED_STAGES,
             max_per_side=max_per_side,

@@ -45,10 +45,12 @@
         <th class="sortable col-repl" data-type="text">Repl Mfg <span class="sort-indicator"></span></th>
         <th class="sortable col-repl" data-type="text" style="min-width:240px;">Repl Description <span class="sort-indicator"></span></th>
         <th class="text-center sortable" data-type="stage">Stage <span class="sort-indicator"></span></th>
-  <th class="sortable text-center go-live-col" data-type="date" style="min-width:90px; width:90px;">Go Live <span class="sort-indicator"></span></th>
-  <th class="sortable text-center" data-type="wrike">Wrike ID <span class="sort-indicator"></span></th>
-  <th class="sortable text-center" data-type="date">CreateDT <span class="sort-indicator"></span></th>
-  <th class="sortable text-center" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
+  <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID1</small> Get Item # <span class="sort-indicator"></span></th>
+  <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID2</small> Set-up Inv. <span class="sort-indicator"></span></th>
+  <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID3</small> Set-up Par <span class="sort-indicator"></span></th>
+        <th class="sortable text-center go-live-col" data-type="date" style="min-width:90px; width:90px;">Go Live <span class="sort-indicator"></span></th>
+        <th class="sortable text-center" data-type="date">CreateDT <span class="sort-indicator"></span></th>
+        <th class="sortable text-center" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
       </tr>
     </thead>
     <tbody class="small">
@@ -87,6 +89,10 @@
               <span class="text-muted fst-italic">null</span>
             {% else %}{{ r.repl_item_description }}{% endif %}
           </td>
+          {% set wrike = r.wrike %}
+          {% set wrike_id1 = wrike.wrike_id1 if wrike else '' %}
+          {% set wrike_id2 = wrike.wrike_id2 if wrike else '' %}
+          {% set wrike_id3 = wrike.wrike_id3 if wrike else '' %}
           <td class="stage-cell text-center" data-value="{{ r.stage or '' }}">
             <span class="read-value">
               {% if r.stage %}
@@ -100,6 +106,36 @@
               {% endfor %}
             </select>
           </td>
+          <td class="wrike-cell text-center" data-field="wrike_id1" data-value="{{ wrike_id1 or '' }}">
+            <span class="read-value">
+              {% if wrike_id1 %}
+                <a href="https://www.wrike.com/open.htm?id={{ wrike_id1 }}" target="_blank" rel="noopener" class="small">{{ wrike_id1 }}</a>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </span>
+            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" class="form-control form-control-sm d-none" name="wrike_id1" value="{{ wrike_id1 or '' }}" />
+          </td>
+          <td class="wrike-cell text-center" data-field="wrike_id2" data-value="{{ wrike_id2 or '' }}">
+            <span class="read-value">
+              {% if wrike_id2 %}
+                <a href="https://www.wrike.com/open.htm?id={{ wrike_id2 }}" target="_blank" rel="noopener" class="small">{{ wrike_id2 }}</a>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </span>
+            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" class="form-control form-control-sm d-none" name="wrike_id2" value="{{ wrike_id2 or '' }}" />
+          </td>
+          <td class="wrike-cell text-center" data-field="wrike_id3" data-value="{{ wrike_id3 or '' }}">
+            <span class="read-value">
+              {% if wrike_id3 %}
+                <a href="https://www.wrike.com/open.htm?id={{ wrike_id3 }}" target="_blank" rel="noopener" class="small">{{ wrike_id3 }}</a>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </span>
+            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" class="form-control form-control-sm d-none" name="wrike_id3" value="{{ wrike_id3 or '' }}" />
+          </td>
           <td class="date-cell text-center" data-value="{{ r.expected_go_live_date }}" style="width:90px; min-width:90px;">
             <span class="read-value">
               {% if not r.expected_go_live_date or r.expected_go_live_date|string|lower in ['nan','none',''] %}
@@ -110,25 +146,12 @@
             </span>
             <input type="date" class="form-control form-control-sm d-none" name="expected_go_live_date" value="{{ r.expected_go_live_date }}" />
           </td>
-          <td class="wrike-cell" data-value="{{ r.wrike_id or ''}}">
-            <span class="read-value">
-              {% set wrike_str = (r.wrike_id|string) if r.wrike_id else '' %}
-              {% if wrike_str and wrike_str.isdigit() and wrike_str|length == 10 %}
-                <a href="https://www.wrike.com/open.htm?id={{ wrike_str }}" target="_blank" rel="noopener" class="small">{{ wrike_str }}</a>
-              {% elif wrike_str %}
-                <span class="text-muted small">{{ wrike_str }}</span>
-              {% else %}
-                <span class="text-muted small">—</span>
-              {% endif %}
-            </span>
-            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" title="10 digits" class="form-control form-control-sm d-none" name="wrike_id" value="{{ r.wrike_id or '' }}" />
-          </td>
           <td class="text-nowrap text-muted" style="font-size: .7rem;">{{ r.create_dt.strftime('%Y-%m-%d') if r.create_dt else '' }}</td>
           <td class="text-nowrap text-muted" style="font-size: .7rem;">{{ r.update_dt.strftime('%Y-%m-%d %H:%M:%S') if r.update_dt else '' }}</td>
         </tr>
         {% endfor %}
       {% else %}
-        <tr><td colspan="15" class="text-muted fst-italic">No ItemLink records.</td></tr>
+  <tr><td colspan="17" class="text-muted fst-italic">No ItemLink records.</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -145,6 +168,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const hintDefaultText = 'Use ";" to search multiple terms (max 10).';
   const hintOverflowText = 'Use ";" to search multiple terms (max 10). Only the first 10 terms are applied.';
   const visibleCountEl = document.getElementById('visible-count');
+  const escapeHtml = (value) => {
+    if(value === null || value === undefined){
+      return '';
+    }
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(value).replace(/[&<>"']/g, ch => map[ch] || ch);
+  };
+  const formatWrikeHtml = (value) => {
+    if(!value){
+      return '<span class="text-muted small">—</span>';
+    }
+    const safe = escapeHtml(value);
+    if(/^\d{10}$/.test(value)){
+      return `<a href="https://www.wrike.com/open.htm?id=${safe}" target="_blank" rel="noopener" class="small">${safe}</a>`;
+    }
+    return `<span class="text-muted small">${safe}</span>`;
+  };
   if(!table) return;
 
   // Handle potential caching issues on reload
@@ -281,7 +321,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset input values to original data-value attributes
     const stageCell = row.querySelector('.stage-cell');
     const dateCell = row.querySelector('.date-cell');
-    const wrikeCell = row.querySelector('.wrike-cell');
     if(stageCell){
       const sel = stageCell.querySelector('select');
       sel.value = stageCell.dataset.value || '';
@@ -290,23 +329,28 @@ document.addEventListener('DOMContentLoaded', () => {
       const inp = dateCell.querySelector('input');
       inp.value = dateCell.dataset.value || '';
     }
-    if(wrikeCell){
-      const inp = wrikeCell.querySelector('input');
-      inp.value = wrikeCell.dataset.value || '';
-    }
+    row.querySelectorAll('.wrike-cell').forEach(cell => {
+      const inp = cell.querySelector('input');
+      if(inp){
+        inp.value = cell.dataset.value || '';
+      }
+    });
   }
   async function saveRow(row){
     const item = row.dataset.item;
     const replaceItem = row.dataset['replaceItem'];
     const stage = row.querySelector('select[name="stage"]').value;
     const dateVal = row.querySelector('input[name="expected_go_live_date"]').value;
-    const wrikeId = row.querySelector('input[name="wrike_id"]').value;
     
     try {
       const formData = new FormData();
       formData.append('stage', stage);
       if(dateVal) formData.append('expected_go_live_date', dateVal);
-      if(wrikeId) formData.append('wrike_id', wrikeId);
+      ['wrike_id1','wrike_id2','wrike_id3'].forEach(field => {
+        const input = row.querySelector(`input[name="${field}"]`);
+        if(!input) return;
+        formData.append(field, input.value.trim());
+      });
       
       const resp = await fetch(`/groups/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}/update`, {
         method: 'POST',
@@ -376,24 +420,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const inp = dateCell.querySelector('input');
         if(inp) inp.value = rec.expected_go_live_date || '';
       }
-      // Wrike update
-      const wrikeCell = row.querySelector('.wrike-cell');
-      if(wrikeCell){
-        wrikeCell.dataset.value = rec.wrike_id || '';
-        const span = wrikeCell.querySelector('.read-value');
-        if(span){
-          const wid = rec.wrike_id || '';
-            if(wid && /^\d{10}$/.test(wid)){
-              span.innerHTML = `<a href="https://www.wrike.com/open.htm?id=${wid}" target="_blank" rel="noopener" class="small">${wid}</a>`;
-            } else if(wid){
-              span.innerHTML = `<span class="text-muted small">${wid}</span>`;
-            } else {
-              span.innerHTML = '<span class="text-muted small">—</span>';
-            }
-        }
-        const inp = wrikeCell.querySelector('input');
-        if(inp) inp.value = rec.wrike_id || '';
-      }
+        ['wrike_id1','wrike_id2','wrike_id3'].forEach(field => {
+          const cell = row.querySelector(`.wrike-cell[data-field="${field}"]`);
+          if(!cell) return;
+          const span = cell.querySelector('.read-value');
+          const input = cell.querySelector('input');
+          const value = rec[field] || '';
+          cell.dataset.value = value || '';
+          if(span){
+            span.innerHTML = formatWrikeHtml(value);
+          }
+          if(input){
+            input.value = value || '';
+          }
+        });
       // Update update_dt column (last cell)
       const updateCell = row.lastElementChild; // update_dt is last td
       if(updateCell){
@@ -447,10 +487,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return raw.toLowerCase();
     }
     if(type === 'wrike'){
-      const link = cell.querySelector('a');
-      if(link) raw = link.innerText.trim();
-      const digits = raw.match(/\d{10}/);
-      return digits ? digits[0] : ''; // sort numeric id as string
+      const dataValue = cell.dataset.value || raw;
+      return dataValue || '';
     }
     return raw.toLowerCase();
   }
@@ -544,6 +582,12 @@ document.addEventListener('DOMContentLoaded', () => {
   #itemlink-table th.go-live-col,
   #itemlink-table td.date-cell { text-align:center; }
   #itemlink-table td.date-cell .form-control { min-width:0; max-width:100%; text-align:center; }
+  #itemlink-table th.wrike-col,
+  #itemlink-table td.wrike-cell { text-align:center; min-width:70px; width:75px; }
+  #itemlink-table td.wrike-cell .form-control { min-width:0; max-width:100px; text-align:center; margin:0 auto; }
+  /* Wrike header small labels */
+  #itemlink-table th.wrike-col .wrike-sub { font-size:0.7rem; display:block; }
+  #itemlink-table th.wrike-col .wrike-id { font-size:0.75rem; margin-left:4px; }
   #filter-hint { white-space:nowrap; }
 </style>
 {% endblock %}

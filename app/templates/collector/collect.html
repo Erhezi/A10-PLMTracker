@@ -49,10 +49,6 @@
     <label class="form-label small mb-1 text-muted">Expected Go Live Date</label>
     <input type="date" id="expected-go-live" class="form-control form-control-sm" min="{{ date_min }}" max="{{ date_max }}" />
   </div>
-  <div class="d-flex flex-column">
-    <label class="form-label small mb-1 text-muted">Wrike Task ID (10 digits)</label>
-    <input type="text" pattern="\d{10}" maxlength="10" minlength="10" inputmode="numeric" id="wrike-id" class="form-control form-control-sm" placeholder="##########" />
-  </div>
   <button id="create-links" class="btn btn-primary btn-sm" disabled>Create Links</button>
   <div id="batch-feedback" class="small"></div>
 </div>
@@ -75,7 +71,6 @@
           <th style="min-width:220px;">Repl Description</th>
           <th class="text-center">Stage</th>
           <th style="min-width:110px;">Go Live</th>
-          <th>Wrike ID</th>
           <th>CreateDT</th>
           <th>UpdateDT</th>
         </tr>
@@ -114,7 +109,6 @@
   const createBtn = document.getElementById('create-links');
   const feedback = document.getElementById('batch-feedback');
   const goLiveInput = document.getElementById('expected-go-live');
-  const wrikeInput = document.getElementById('wrike-id');
   const createdWrapper = document.getElementById('created-results-wrapper');
   const createdTableBody = document.querySelector('#created-links-table tbody');
   const skippedWrapper = document.getElementById('skipped-results-wrapper');
@@ -316,14 +310,6 @@
     if(Object.keys(pendingMeta).length){ payload.pending_meta = pendingMeta; }
     const goLive = goLiveInput.value.trim();
     if(goLive) payload.expected_go_live_date = goLive;
-    const wrike = wrikeInput.value.trim();
-    if(wrike){
-      if(!/^\d{10}$/.test(wrike)){
-        feedback.innerHTML = `<span class='text-danger'>Wrike Task ID must be 10 digits</span>`;
-        return;
-      }
-      payload.wrike_id = wrike;
-    }
     feedback.textContent = 'Creating...';
     try {
       const res = await fetch('/api/item-links/batch', {
@@ -348,7 +334,6 @@
               .replace(/^-|-$/g, '') : '';
             const stageBadge = r.stage ? `<span class='badge stage-badge stage-${stageSlug}'>${r.stage}</span>` : '';
             const goLive = r.expected_go_live_date ? r.expected_go_live_date : `<span class='text-muted fst-italic'>unknown</span>`;
-            const wrikeDisp = r.wrike_id ? (r.wrike_id.match(/^\d{10}$/) ? `<a href='https://www.wrike.com/open.htm?id=${r.wrike_id}' target='_blank' rel='noopener' class='small'>${r.wrike_id}</a>` : `<span class='text-muted small'>${r.wrike_id}</span>`) : '<span class="text-muted small">—</span>';
             return `<tr>
               <td class='text-center'>
                 <button type='button' class='btn btn-sm btn-outline-danger py-0 px-1' title='Remove link' data-remove-link data-item='${r.item}' data-replace-item='${r.replace_item}'>&times;</button>
@@ -364,7 +349,6 @@
               <td class='text-truncate col-repl' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
               <td class='text-center'>${stageBadge}</td>
               <td>${goLive}</td>
-              <td>${wrikeDisp}</td>
               <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.create_dt ? r.create_dt.substring(0,10):''}</td>
               <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.update_dt ? r.update_dt.replace('T',' ').substring(0,19):''}</td>
             </tr>`;

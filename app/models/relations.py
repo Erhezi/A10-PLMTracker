@@ -74,10 +74,126 @@ class ItemLink(db.Model):
 
     create_dt           = db.Column("CreateDT", db.DateTime(timezone=False))
     update_dt           = db.Column("UpdateDT", db.DateTime(timezone=False))
-    wrike_id            = db.Column("WrikeID",  db.String(50))
+
+    wrike = relationship(
+        "ItemLinkWrike",
+        uselist=False,
+        back_populates="item_link",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="joined",
+    )
 
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
+
+
+class ItemLinkWrike(db.Model):
+	"""Mapping to PLM.ItemLinkWrike table capturing Wrike task IDs for ItemLink rows.
+	   Each ItemLink can have multiple associated Wrike tasks:
+	   - WrikeID1: acquire 6-digit item number for replacement item(s)
+	   - WrikeID2: set up inventory location(s) for replacement item(s)
+	   - WrikeID3: set up par location(s) for replacement item(s)
+	   - WrikeID4: place holder for future use
+	   - WrikeID5: place holder for future use
+	   Each task will come with 
+	   - Wrike ID
+	   - CreateDT
+	   - UpdateDT
+	   - Complete DT
+	   - Completed (0/1), 1 for yes, 0 for no
+	"""
+
+	__tablename__ = "ItemLinkWrike"
+	__table_args__ = (
+		UniqueConstraint("item_link_id", name="UX_ItemLinkWrike_ItemLink"),
+		{"schema": "PLM"},
+	)
+
+	# sarogate key for ItemLinkWrike
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+	# foreign key reference back to ItemLink
+	item_link_id = db.Column("item_link_id", db.BigInteger, db.ForeignKey("PLM.ItemLink.PKID", ondelete='CASCADE'), nullable=False)
+
+	# convinient access to some important fields from ItemLink
+	item = db.Column("Item", db.String(10), nullable=False)
+	replace_item = db.Column("Replace Item", db.String(250), nullable=True)
+	item_group = db.Column("Item Group", db.Integer, nullable=False)
+	stage = db.Column("Stage", db.String(100), nullable=True)
+
+	# Wrike task fields (5 sets)
+	wrike_id1 = db.Column("WrikeID1", db.String(50), nullable=True)
+	create_dt1 = db.Column("CreateDT1", db.DateTime(timezone=False), nullable=True)
+	update_dt1 = db.Column("UpdateDT1", db.DateTime(timezone=False), nullable=True)
+	complete_dt1 = db.Column("CompleteDT1", db.DateTime(timezone=False), nullable=True)
+	completed1 = db.Column("Completed1", db.Integer, nullable=False, default=0)  # 0/1
+
+	wrike_id2 = db.Column("WrikeID2", db.String(50), nullable=True)
+	create_dt2 = db.Column("CreateDT2", db.DateTime(timezone=False), nullable=True)
+	update_dt2 = db.Column("UpdateDT2", db.DateTime(timezone=False), nullable=True)
+	complete_dt2 = db.Column("CompleteDT2", db.DateTime(timezone=False), nullable=True)
+	completed2 = db.Column("Completed2", db.Integer, nullable=False, default=0)  # 0/1
+	
+	wrike_id3 = db.Column("WrikeID3", db.String(50), nullable=True)
+	create_dt3 = db.Column("CreateDT3", db.DateTime(timezone=False), nullable=True)
+	update_dt3 = db.Column("UpdateDT3", db.DateTime(timezone=False), nullable=True)
+	complete_dt3 = db.Column("CompleteDT3", db.DateTime(timezone=False), nullable=True)
+	completed3 = db.Column("Completed3", db.Integer, nullable=False, default=0)  # 0/1
+	
+	wrike_id4 = db.Column("WrikeID4", db.String(50), nullable=True)
+	create_dt4 = db.Column("CreateDT4", db.DateTime(timezone=False), nullable=True)
+	update_dt4 = db.Column("UpdateDT4", db.DateTime(timezone=False), nullable=True)
+	complete_dt4 = db.Column("CompleteDT4", db.DateTime(timezone=False), nullable=True)
+	completed4 = db.Column("Completed4", db.Integer, nullable=False, default=0)  # 0/1
+
+	wrike_id5 = db.Column("WrikeID5", db.String(50), nullable=True)
+	create_dt5 = db.Column("CreateDT5", db.DateTime(timezone=False), nullable=True)
+	update_dt5 = db.Column("UpdateDT5", db.DateTime(timezone=False), nullable=True)
+	complete_dt5 = db.Column("CompleteDT5", db.DateTime(timezone=False), nullable=True)
+	completed5 = db.Column("Completed5", db.Integer, nullable=False, default=0)  # 0/1
+
+	item_link = relationship(
+		"ItemLink",
+		foreign_keys=[item_link_id],
+		back_populates="wrike",
+		lazy="joined"
+	)
+
+	def __repr__(self):
+		return f"<ItemLinkWrike id={self.pkid} link_id={self.item_link_id} item={self.item} replace={self.replace_item} group={self.item_group} stage={self.stage} wrike1={self.wrike_id1} wrike2={self.wrike_id2} wrike3={self.wrike_id3}>"
+
+	@classmethod
+	def ensure_for_link(cls, item_link: ItemLink, *, session=None) -> "ItemLinkWrike":
+		"""Return an ItemLinkWrike row for the given ItemLink, creating or updating as needed."""
+		session = object_session(item_link) or session or db.session
+		record = item_link.wrike
+		if record is None:
+			record = cls.from_item_link(item_link)
+			session.add(record)
+			item_link.wrike = record
+		else:
+			record.sync_from_item_link(item_link)
+		return record
+
+	@classmethod
+	def from_item_link(cls, item_link: ItemLink) -> "ItemLinkWrike":
+		return cls(
+			item_link=item_link,
+			item=item_link.item,
+			replace_item=item_link.replace_item,
+			item_group=item_link.item_group,
+			stage=item_link.stage,
+		)
+
+	def sync_from_item_link(self, item_link: ItemLink) -> None:
+		"""Keep denormalized columns in sync with the ItemLink."""
+		self.item = item_link.item
+		self.replace_item = item_link.replace_item
+		self.item_group = item_link.item_group
+		self.stage = item_link.stage
+		if item_link.pkid is not None:
+			self.item_link_id = item_link.pkid
+
 
 
 class ConflictError(db.Model):

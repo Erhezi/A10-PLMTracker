@@ -1,13 +1,13 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required
 from sqlalchemy import func, or_
-from sqlalchemy.orm import noload
+from sqlalchemy.orm import selectinload
 from datetime import date, datetime, timedelta
-import re
 from .. import db
 from ..models import now_ny_naive
 from ..models.relations import (
     ItemLink,
+    ItemLinkWrike,
     ItemGroup,
     PendingItems,
     ItemGroupConflictError,
@@ -16,17 +16,17 @@ from ..models.relations import (
 from ..models.inventory import Item, ContractItem
 from ..utility.item_group import BatchValidationError
 from ..utility.add_pairs import AddItemPairs
+from ..utility.stage_transition import StageTransitionHelper
+from .batch_service import (
+    apply_stage,
+    apply_wrike,
+    apply_go_live,
+    summarize_results,
+)
 
 """Stage name definitions (canonical only)."""
 
-ALLOWED_STAGES = [  # New canonical stage names (order meaningful for UI select)
-    'Tracking - Discontinued',
-    'Pending Item Number',
-    'Pending Clinical Approval',
-    'Tracking - Item Transition',
-    'Deleted',
-    'Tracking Completed'
-]
+ALLOWED_STAGES = StageTransitionHelper.STAGES  # New canonical stage names (order meaningful for UI select)
 
 def normalize_stage(value: str | None) -> str | None:  # kept for minimal refactor
     return value
@@ -75,7 +75,7 @@ def groups():
     # Avoid eager loading any relationships (they are not needed for groups table)
     items = (
         ItemLink.query
-        .options(noload('*'))
+        .options(selectinload(ItemLink.wrike))
         .order_by(ItemLink.item_group.desc(), ItemLink.item)
         .all()
     )
@@ -106,47 +106,48 @@ def update_item(item: str, replace_item: str):
     # representations to actual None so SQL queries match NULL values.
     if isinstance(replace_item, str) and replace_item.lower() in ('none', 'null', 'nan', ''):
         replace_item = None
-    record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first_or_404()
-    print(record) #debugging
+    record = (
+        ItemLink.query
+        .options(selectinload(ItemLink.wrike))
+        .filter_by(item=item, replace_item=replace_item)
+        .first_or_404()
+    )
     stage = request.form.get("stage")
     expected_go_live_date = request.form.get("expected_go_live_date") or None
-    wrike_id = request.form.get("wrike_id") or None
     wants_json = (request.args.get('ajax') == '1') or ('application/json' in request.headers.get('Accept','')) or request.headers.get('X-Requested-With') == 'fetch'
+    wrike_inputs = {
+        "wrike_id1": request.form.get("wrike_id1"),
+        "wrike_id2": request.form.get("wrike_id2"),
+        "wrike_id3": request.form.get("wrike_id3"),
+    }
 
-    # Server-side Wrike ID validation: allow empty or exactly 10 digits
-    if wrike_id:
-        wrike_id = wrike_id.strip()
-        import re
-        if not re.match(r"\A\d{10}\Z", wrike_id):
-            if wants_json:
-                return jsonify({"status":"error","field":"wrike_id","message":"Wrike ID must be 10 digits or left blank"}), 400
-            flash("Wrike ID must be 10 digits or left blank", "warning")
-            return redirect(url_for("collector.groups"))
+    normalized_wrike: dict[str, str | None] = {}
+    for field, raw in wrike_inputs.items():
+        value = (raw or "").strip()
+        if value:
+            if not (value.isdigit() and len(value) == 10):
+                if wants_json:
+                    return jsonify({"status": "error", "field": field, "message": "Wrike ID must be exactly 10 digits"}), 400
+                flash("Wrike ID values must be 10 digits or left blank", "warning")
+                return redirect(url_for("collector.groups"))
+            normalized_wrike[field] = value
+        else:
+            normalized_wrike[field] = None
 
-    if stage not in ALLOWED_STAGES:
+    decision = StageTransitionHelper.evaluate_transition(
+        record.stage,
+        stage,
+        replace_item=record.replace_item,
+    )
+
+    if not decision.allowed:
+        message = decision.reason or "Stage transition not permitted"
         if wants_json:
-            return jsonify({"status":"error","field":"stage","message":"Invalid stage value"}), 400
-        flash("Invalid stage value", "danger")
+            return jsonify({"status": "error", "field": "stage", "message": message}), 400
+        flash(message, "warning")
         return redirect(url_for("collector.groups"))
 
-    # Transition rules:
-    #  - If current stage is Tracking - Discontinued, only allow Deleted or Tracking Completed
-    #  - If current stage is not Tracking - Discontinued, disallow moving into it directly
-    current_stage = record.stage or ''
-    if current_stage == 'Tracking - Discontinued':
-        if stage not in ('Tracking - Discontinued', 'Deleted', 'Tracking Completed'):
-            if wants_json:
-                return jsonify({"status":"error","field":"stage","message":"Invalid transition from Tracking - Discontinued"}), 400
-            flash("Cannot transition from Tracking - Discontinued to that stage (only Deleted or Tracking Completed allowed)", "warning")
-            return redirect(url_for("collector.groups"))
-    else:
-        if stage == 'Tracking - Discontinued':
-            if wants_json:
-                return jsonify({"status":"error","field":"stage","message":"Cannot set stage to Tracking - Discontinued here"}), 400
-            flash("Cannot set stage to Tracking - Discontinued here", "warning")
-            return redirect(url_for("collector.groups"))
-
-    record.stage = stage
+    record.stage = decision.final_stage
     # Parse date (YYYY-MM-DD) if provided
     if expected_go_live_date:
         try:
@@ -159,7 +160,12 @@ def update_item(item: str, replace_item: str):
     else:
         record.expected_go_live_date = None
 
-    record.wrike_id = wrike_id
+    wrike_record = ItemLinkWrike.ensure_for_link(record)
+    wrike_record.wrike_id1 = normalized_wrike["wrike_id1"]
+    wrike_record.wrike_id2 = normalized_wrike["wrike_id2"]
+    wrike_record.wrike_id3 = normalized_wrike["wrike_id3"]
+    wrike_record.sync_from_item_link(record)
+
     record.update_dt = now_ny_naive()
     db.session.commit()
     if wants_json:
@@ -173,13 +179,65 @@ def update_item(item: str, replace_item: str):
                 "replace_item": record.replace_item,
                 "stage": record.stage,
                 "expected_go_live_date": record.expected_go_live_date.isoformat() if record.expected_go_live_date else None,
-                "wrike_id": record.wrike_id,
+                "wrike_id1": wrike_record.wrike_id1,
+                "wrike_id2": wrike_record.wrike_id2,
+                "wrike_id3": wrike_record.wrike_id3,
                 "update_dt": record.update_dt.isoformat() if record.update_dt else None,
             },
             "count_deleted": count_deleted,
+            "transition_note": decision.reason,
         })
     flash("ItemLink updated", "success")
+    if decision.reason:
+        flash(decision.reason, "info")
     return redirect(url_for("collector.groups"))
+
+
+@bp.post("/groups/batch/stage")
+@login_required
+def batch_update_stage():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    requested_stage = payload.get("stage")
+    if not requested_stage:
+        return jsonify({"status": "error", "message": "Missing stage"}), 400
+    try:
+        results = apply_stage(rows, requested_stage)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    summary = summarize_results(results)
+    return jsonify(summary)
+
+
+@bp.post("/groups/batch/wrike/<field>")
+@login_required
+def batch_update_wrike(field: str):
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    value = payload.get("value")
+    try:
+        results = apply_wrike(rows, field, value)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    summary = summarize_results(results)
+    return jsonify(summary)
+
+
+@bp.post("/groups/batch/go-live")
+@login_required
+def batch_update_go_live():
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("rows") or []
+    date_value = payload.get("expected_go_live_date")
+    try:
+        results = apply_go_live(rows, date_value)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(exc)}), 400
+    summary = summarize_results(results)
+    return jsonify(summary)
 
 @bp.route("/conflicts")
 @login_required
@@ -383,7 +441,6 @@ def api_batch_item_links():
     pending_meta = data.get("pending_meta") or {}
     explicit_stage = data.get("stage") or None
     expected_go_live_date_raw = (data.get("expected_go_live_date") or "").strip() or None
-    wrike_id = (data.get("wrike_id") or "").strip() or None
 
     # Basic validation
     if not items or not replace_items:
@@ -400,7 +457,6 @@ def api_batch_item_links():
             pending_meta=pending_meta,
             explicit_stage=explicit_stage,
             expected_go_live_date_raw=expected_go_live_date_raw,
-            wrike_id=wrike_id,
             sentinel_replacements=SENTINEL_REPLACEMENTS,
             allowed_stages=ALLOWED_STAGES,
             max_per_side=max_per_side,

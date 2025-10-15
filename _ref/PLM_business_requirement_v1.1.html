@@ -92,7 +92,7 @@
     <ul>
       <li>Tracking - Discontinued</li>
       <li>Pending Item Number</li>
-      <li>Pending Clinical Approval</li>
+  <li>Pending Clinical Readiness</li>
       <li>Tracking - Item Transition</li>
       <li>Deleted</li>
       <li>Tracking Completed</li>
@@ -101,7 +101,7 @@
     <h4>2.2.2.1 Stage Change Responsibility & Batch Actions</h4>
     <ul>
       <li><strong>Responsibility:</strong> <em>MM/PDE/MDM</em> (final owner TBD) will change stage from
-        <em>Pending Clinical Approval</em> → <em>Tracking - Item Transition</em> once the <strong>Item Location set-up</strong> is finished.</li>
+        <em>Pending Clinical Readiness</em> → <em>Tracking - Item Transition</em> once the <strong>Item Location set-up</strong> is finished.</li>
       <li><strong>Batch capability:</strong> Provide bulk stage-change on the <em>Group</em> page to update multiple Item Pairs in one action.</li>
     </ul>
 
@@ -140,7 +140,7 @@
     <h4>2.3.2.1 ItemLocation Upload Template (Stage-Gated)</h4>
     <ul>
       <li>Expose the Infor-compliant <strong>ItemLocation upload</strong> template only when the Item Pair's stage is
-        <em>Pending Clinical Approval</em>.</li>
+        <em>Pending Clinical Readiness</em>.</li>
       <li>All other stages remain read-only; no MDM-consumable file should be produced.</li>
     </ul>
 
@@ -158,7 +158,7 @@
       <li><strong>Stage Handling</strong>
         <ul>
           <li>Stages are applied per Item Pair.</li>
-          <li>Item Pairs under <em>Pending Clinical Approval</em> will enable the Item Location export capability.</li>
+          <li>Item Pairs under <em>Pending Clinical Readiness</em> will enable the Item Location export capability.</li>
           <li>Item Pairs under other stages are read-only and no MDM-consumable file should be produced.</li>
         </ul>
       </li>
@@ -200,20 +200,20 @@ stateDiagram-v2
 
     %% === States (updated labels) ===
     state "Pending Item Number" as PINA
-    state "Pending Clinical Approval" as PCA
+  state "Pending Clinical Readiness" as PCR
     state "Tracking - Item Transition" as TT
     state "Tracking - Discontinued" as DISC
     state "Deleted" as DEL
     state "Tracking Completed" as DONE
 
     %% === Creation paths ===
-    [*] --> PCA : Creation<br/>(replacement has Item #)
+  [*] --> PCR : Creation<br/>(replacement has Item #)
     [*] --> PINA : Creation<br/>(replacement missing Item #)
     [*] --> DISC : Creation<br/>(replacement set Discontinued)<br/>(replacement becomes null)
 
     %% === Normal flow ===
-    PINA --> PCA : Item # assigned
-    PCA  --> TT  : User marks approved
+  PINA --> PCR : Item # assigned
+  PCR  --> TT  : User marks approved
 
     %% === Completion ===
     DISC --> DONE : Mark completed
@@ -225,14 +225,14 @@ stateDiagram-v2
 
     %% === Delete (from any active state) ===
     PINA --> DEL : Mark as Deleted
-    PCA  --> DEL : Mark as Deleted
+  PCR  --> DEL : Mark as Deleted
     TT   --> DEL : Mark as Deleted
     DISC --> DEL : Mark as Deleted
     DONE --> DEL : Mark as Deleted
 
     %% === Restore from Deleted (if still visible) ===
     DEL --> PINA : Restore
-    DEL --> PCA  : Restore
+  DEL --> PCR  : Restore
     DEL --> TT   : Restore
     DEL --> DISC : Restore
 

@@ -71,8 +71,10 @@ def build_location_pairs(
             "item": r.Item,
             "replacement_item": r.Replace_Item,
             "location": r.Location,  # unified location label (view-level logic)
+            "preferred_bin": r.PreferredBin,
             "group_location": r.Group_Locations or r.Location,
             "location_ri": r.Location_ri or r.Location,  # fallback
+            "preferred_bin_ri": getattr(r, "PreferredBin_ri", None),
             "location_type": r.LocationType,
             "auto_replenishment": r.AutomaticPO,
             "active": r.Active,

@@ -13,6 +13,7 @@ from ..models.relations import (
     ItemGroup,
     ItemGroupConflictError,
     ItemLink,
+    ItemLinkWrike,
     PendingItems,
     PENDING_PLACEHOLDER_PREFIX,
 )
@@ -54,7 +55,6 @@ class AddItemPairs:
         pending_meta: Optional[Dict[str, Dict[str, str]]] = None,
         explicit_stage: Optional[str] = None,
         expected_go_live_date_raw: Optional[str] = None,
-        wrike_id: Optional[str] = None,
         sentinel_replacements: Optional[Set[str]] = None,
         allowed_stages: Optional[List[str]] = None,
         max_per_side: Optional[int] = None,
@@ -81,12 +81,10 @@ class AddItemPairs:
         (
             self.items,
             self.replace_items,
-            self.validated_wrike_id,
             self.validated_date,
         ) = validate_batch_inputs(
             items=items,
             replace_items=replace_items,
-            wrike_id=wrike_id,
             expected_go_live_date_raw=expected_go_live_date_raw,
             sentinel_replacements=self.sentinel_replacements,
             max_per_side=self.max_per_side,
@@ -125,6 +123,9 @@ class AddItemPairs:
 
         pending_merges = self.planner.consume_pending_merges()
         self._apply_merges(pending_merges)
+
+        for link in self._touched_links:
+            ItemLinkWrike.ensure_for_link(link)
 
         should_flush = bool(self._touched_links or self.merged_groups)
         should_commit = bool(self.conflict_entries or should_flush)
@@ -429,7 +430,6 @@ class AddItemPairs:
         src_item = self.items_map[item]
         existing_link.stage = "Tracking - Discontinued"
         existing_link.expected_go_live_date = self.validated_date
-        existing_link.wrike_id = self.validated_wrike_id
         existing_link.update_dt = self.ts_now
         existing_link.replace_item = None
         existing_link.mfg_part_num = src_item.mfg_part_num
@@ -438,6 +438,7 @@ class AddItemPairs:
         existing_link.repl_mfg_part_num = None
         existing_link.repl_manufacturer = None
         existing_link.repl_item_description = None
+        ItemLinkWrike.ensure_for_link(existing_link)
 
         self.session.add(existing_link)
         if existing_link not in self.reused_links:
@@ -543,13 +544,14 @@ class AddItemPairs:
             item_description=src_item.item_description,
             stage=link_stage,
             expected_go_live_date=self.validated_date,
-            wrike_id=self.validated_wrike_id,
             create_dt=self.ts_now,
             update_dt=self.ts_now,
             repl_mfg_part_num=repl_mfg_part,
             repl_manufacturer=repl_manufacturer,
             repl_item_description=repl_desc,
         )
+
+        link.wrike = ItemLinkWrike.from_item_link(link)
 
         if addition_type == "pending" and repl_value_for_model:
             meta = self.pending_meta.get(repl_value_for_model, {})
@@ -653,7 +655,9 @@ class AddItemPairs:
                     "repl_item_description": link.repl_item_description,
                     "stage": link.stage,
                     "expected_go_live_date": link.expected_go_live_date.isoformat() if link.expected_go_live_date else None,
-                    "wrike_id": link.wrike_id,
+                    "wrike_id1": link.wrike.wrike_id1 if link.wrike else None,
+                    "wrike_id2": link.wrike.wrike_id2 if link.wrike else None,
+                    "wrike_id3": link.wrike.wrike_id3 if link.wrike else None,
                     "create_dt": link.create_dt.isoformat() if link.create_dt else None,
                     "update_dt": link.update_dt.isoformat() if link.update_dt else None,
                 }

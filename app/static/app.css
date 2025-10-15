@@ -20,6 +20,16 @@ body { font-feature-settings: "tnum"; }
 
 .bg-soft-accent { background: var(--plm-accent-soft); }
 .text-accent { color: var(--plm-accent); }
+.text-accent-pink { color: var(--plm-accent-pink); }
+/* Small refresh timestamp beside Dashboard title - aligned like a subscript */
+#dashboard-refresh {
+  font-size: 9pt;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: baseline; /* baseline alignment then nudge down visually */
+  margin-left: 0.5rem;
+  transform: translateY(0.28rem); /* slightly larger downward nudge to resemble subscript */
+}
 
 footer { font-size: .75rem; }
 
@@ -121,7 +131,7 @@ footer { font-size: .75rem; }
 }
 
 .stage-pending-item-number { background: #0d6efd !important; color: #fff !important; }
-.stage-pending-clinical-approval { background: #6610f2 !important; color: #fff !important; }
+.stage-pending-clinical-readiness { background: #6610f2 !important; color: #fff !important; }
 .stage-deleted { background: #dc3545 !important; color: #fff !important; }
 /* Tracking composite stages (normalized slug collapses repeated hyphens) */
 .stage-tracking-completed { background: #198754 !important; color: #fff !important; }
@@ -626,4 +636,11 @@ footer { font-size: .75rem; }
 
 .user-control-buttons .delete-btn:hover {
     background-color: #a71d2a;
+}
+
+/* Highlight selected rows when surfaced via batch view */
+.show-selected-highlight td,
+.show-selected-highlight th {
+  background-color: rgba(13, 110, 253, 0.12) !important;
+  transition: background-color 0.6s ease;
 }

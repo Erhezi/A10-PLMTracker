@@ -74,6 +74,8 @@ class Requesters365Day(db.Model):
     Requisition_FD5    = db.Column("Requisition.FD5", db.String(150), nullable=True)
     EmailAddress       = db.Column(db.String(450), nullable=True)
 
+    RequestsCount      = db.Column(db.Integer, nullable=True) # numbers of requisition lines made by this requester for this item at this location in past 365 days
+
     def __repr__(self):
         return (f"<Requesters365Day("
                 f"Requester={self.Requester!r}, "

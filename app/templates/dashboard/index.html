@@ -1,7 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard — PLM Tracker{% endblock %}
 {% block content %}
-<h1 class="h4 fw-semibold mb-4">Dashboard</h1>
+<h1 class="h4 fw-semibold mb-4 d-flex align-items-center flex-wrap gap-3">
+  <span>Dashboard</span>
+  <span id="dashboard-refresh" class="small text-accent-pink text-nowrap">
+    supporting data last refreshed as <span id="dashboard-refresh-value">—</span>
+  </span>
+</h1>
 
 <!-- Section 1: KPI Cards + Filters (full width) -->
 <div class="container-fluid p-0 mb-4" id="section-kpis">
@@ -76,13 +81,19 @@
       </div>
     </div>
     <div class="col-12 col-lg-3">
-      <button type="button" class="btn btn-outline-primary w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3 location-setup-toggle-btn" id="location-setup-toggle" style="min-height: 80px; border-width: 2px;">
-        <div class="small text-uppercase fw-semibold mb-1">Prepare Location Set-up</div>
-        <div class="small text-muted">Toggle column presets</div>
-        <div class="mt-2">
-          <span class="badge bg-secondary" id="location-setup-status">OFF</span>
-        </div>
-      </button>
+      <div class="d-flex flex-column flex-md-row gap-2 h-100">
+        <button type="button" class="btn btn-outline-primary flex-fill h-100 d-flex flex-column align-items-center justify-content-center p-3 location-setup-toggle-btn" id="location-setup-toggle" style="min-height: 80px; border-width: 2px;">
+          <div class="small text-uppercase fw-semibold mb-1">Prepare Location Set-up</div>
+          <div class="small text-muted">Toggle column presets</div>
+          <div class="mt-2">
+            <span class="badge bg-secondary" id="location-setup-status">OFF</span>
+          </div>
+        </button>
+  <button type="button" class="btn btn-outline-success flex-fill h-100 d-flex flex-column align-items-center justify-content-center p-3" id="notify-requesters-btn" style="min-height: 80px; border-width: 2px;">
+          <div class="small text-uppercase fw-semibold mb-1">Notify Requesters</div>
+          <div class="small text-muted text-center">Review emails by filtered items</div>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -123,6 +134,7 @@
                 <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
+                <th id="inv-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="inv-col-active" data-field="active" class="col-active">Active</th>
                 <th id="inv-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
@@ -143,6 +155,7 @@
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="inv-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
                 <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
@@ -173,6 +186,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
@@ -193,6 +207,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
                 <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
@@ -225,6 +240,8 @@
         <div class="d-flex justify-content-between align-items-center border-top small px-3 py-2" id="inventory-pager" style="display:none;">
           <div>
             <button class="btn btn-outline-secondary btn-sm" id="inv-first" disabled>&laquo; First</button>
+
+          {% include 'dashboard/_pull_requester.html' %}
             <button class="btn btn-outline-secondary btn-sm" id="inv-prev" disabled>&lsaquo; Prev</button>
             <button class="btn btn-outline-secondary btn-sm" id="inv-next" disabled>Next &rsaquo;</button>
             <button class="btn btn-outline-secondary btn-sm" id="inv-last" disabled>Last &raquo;</button>
@@ -264,6 +281,7 @@
                 <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
+                <th id="par-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="par-col-active" data-field="active" class="col-active">Active</th>
                 <th id="par-col-disc" data-field="discontinued" class="col-disc">Discon.</th>
@@ -283,6 +301,7 @@
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="par-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
                 <th id="par-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
@@ -312,6 +331,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="par-filter-active" data-field="active"></th>
                 <th class="col-disc column-filter-cell" id="par-filter-disc" data-field="discontinued"></th>
@@ -331,6 +351,7 @@
                 <th class="col-num column-filter-cell"></th>
                 <th class="col-repl-item column-filter-cell"></th>
                 <th class="col-location column-filter-cell"></th>
+                <th class="col-text column-filter-cell"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
                 <th class="col-active column-filter-cell" id="par-filter-active-ri" data-field="active_ri"></th>
                 <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-field="discontinued_ri"></th>
@@ -455,6 +476,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const parResetBtn = document.getElementById('par-reset-filters');
   const inventoryExportBtn = document.getElementById('inventory-export-excel');
   const parExportBtn = document.getElementById('par-export-excel');
+  const notifyBtn = document.getElementById('notify-requesters-btn');
+  const notifyModalEl = document.getElementById('notifyRequestersModal');
+  const notifyLoading = document.getElementById('notify-requesters-loading');
+  const notifyError = document.getElementById('notify-requesters-error');
+  const notifyEmpty = document.getElementById('notify-requesters-empty');
+  const notifyContent = document.getElementById('notify-requesters-content');
+  const notifySummary = document.getElementById('notify-requesters-summary');
+  const notifyTableBody = document.getElementById('notify-requesters-table-body');
+  const notifyCopyBtn = document.getElementById('notify-requesters-copy');
+  const notifyCopyOriginalLabel = notifyCopyBtn ? notifyCopyBtn.textContent.trim() : '';
+  const refreshContainer = document.getElementById('dashboard-refresh');
+  const refreshValueEl = document.getElementById('dashboard-refresh-value');
+  let notifyModalInstance = null;
+  if(notifyModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
+    notifyModalInstance = bootstrap.Modal.getOrCreateInstance(notifyModalEl);
+  }
+  let notifyCopyTooltip = null;
+  const notifyCopyDefaultTitle = notifyCopyBtn ? (notifyCopyBtn.getAttribute('title') || 'Copy Email Addresses') : '';
+  if(notifyCopyBtn && typeof bootstrap !== 'undefined' && bootstrap.Tooltip){
+    notifyCopyTooltip = bootstrap.Tooltip.getOrCreateInstance(notifyCopyBtn, { trigger: 'manual' });
+  }
   const htmlEscapeMap = {
     '&': '&amp;',
     '<': '&lt;',
@@ -469,6 +511,42 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: {},
     par: {},
   };
+
+  function renderRefreshTimestamp(isoString){
+    if(!refreshValueEl) return;
+    if(!isoString){
+      refreshValueEl.textContent = '—';
+      refreshValueEl.removeAttribute('title');
+      if(refreshContainer){
+        delete refreshContainer.dataset.refreshIso;
+      }
+      return;
+    }
+    const parsed = new Date(isoString);
+    if(Number.isNaN(parsed.getTime())){
+      refreshValueEl.textContent = '—';
+      refreshValueEl.removeAttribute('title');
+      if(refreshContainer){
+        delete refreshContainer.dataset.refreshIso;
+      }
+      return;
+    }
+  // Display the date portion of the timestamp but show time as 00:05:00
+  // (5 minutes past midnight for that date, local time)
+  const adj = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 5, 0);
+  // Display adjusted date/time in YYYY-MM-DD HH:MM:SS (local time)
+  const y = adj.getFullYear();
+  const m = String(adj.getMonth() + 1).padStart(2, '0');
+  const d = String(adj.getDate()).padStart(2, '0');
+  const hh = String(adj.getHours()).padStart(2, '0');
+  const mm = String(adj.getMinutes()).padStart(2, '0');
+  const ss = String(adj.getSeconds()).padStart(2, '0');
+  refreshValueEl.textContent = `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+    refreshValueEl.setAttribute('title', isoString);
+    if(refreshContainer){
+      refreshContainer.dataset.refreshIso = isoString;
+    }
+  }
   const triStateOptions = [
     { value: '', label: 'All' },
     { value: 'yes', label: 'Yes' },
@@ -841,6 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
     ...recommendedColumns,
   ];
   ['inventory', 'par'].forEach(tableKey => {
@@ -903,7 +982,8 @@ document.addEventListener('DOMContentLoaded', () => {
        'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
        'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
        'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
        ...recommendedColumns];
         
         invHide.forEach(field => {
@@ -934,6 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
     ...recommendedColumns];
         
         parHide.forEach(field => {
@@ -964,7 +1045,8 @@ document.addEventListener('DOMContentLoaded', () => {
        'reorder_point', 'min_order_qty', 'max_order_qty', 'manufacturer_number',
        'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
        'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-       'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'reorder_point_ri', 'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
        ...recommendedColumns];
         
         invShow.forEach(field => {
@@ -994,7 +1076,8 @@ document.addEventListener('DOMContentLoaded', () => {
        'min_order_qty', 'max_order_qty', 'manufacturer_number',
        'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
        'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
-       'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'preferred_bin', 'preferred_bin_ri',
        ...recommendedColumns];
         
         parShow.forEach(field => {
@@ -1241,6 +1324,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function appendRequesterFilterParams(params){
+    if(!params) return;
+    Object.entries(filterParamMap.inventory).forEach(([field, paramName]) => {
+      const inventoryValue = columnFilters.inventory?.[field];
+      const parValue = columnFilters.par?.[field];
+      const value = inventoryValue || parValue;
+      if(value){
+        params.set(paramName, value);
+      }
+    });
+  }
+
+  function buildRequesterQueryParams(){
+    const params = buildSharedQueryParams();
+    appendRequesterFilterParams(params);
+    if(hideROnly){
+      params.set('hide_r_only', 'true');
+    }
+    return params;
+  }
+
   function updatePager() {
     if(totalPages <= 1){
       pager.style.display = 'none';
@@ -1356,6 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
           <td class="col-src text-center">${fmt(r.active)}</td>
           <td class="col-src text-center">${fmt(r.discontinued)}</td>
@@ -1376,6 +1481,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
           <td class="col-repl text-center">${fmt(r.active_ri)}</td>
           <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
@@ -1462,6 +1568,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
             <td class="col-src text-center">${fmt(r.active)}</td>
             <td class="col-src text-center">${fmt(r.discontinued)}</td>
@@ -1481,6 +1588,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
             <td class="col-repl text-center">${fmt(r.active_ri)}</td>
             <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
@@ -1516,6 +1624,212 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch(e){
       console.error('Failed loading par locations', e);
       parCountEl.textContent = 'error';
+    }
+  }
+
+  const pluralize = (count, noun) => {
+    const n = Number(count) || 0;
+    return `${n} ${noun}${n === 1 ? '' : 's'}`;
+  };
+
+  let notifyLastQueryKey = '';
+  let notifyLastResponse = null;
+  let notifyEmailList = [];
+
+  function setCopyButtonEnabled(enabled){
+    if(!notifyCopyBtn) return;
+    notifyCopyBtn.disabled = !enabled;
+    notifyCopyBtn.classList.toggle('disabled', !enabled);
+  }
+
+  function resetNotifyModalState(){
+    if(notifyLoading) notifyLoading.classList.remove('d-none');
+    if(notifyError) notifyError.classList.add('d-none');
+    if(notifyEmpty) notifyEmpty.classList.add('d-none');
+    if(notifyContent) notifyContent.classList.add('d-none');
+    if(notifyTableBody) notifyTableBody.innerHTML = '';
+    if(notifySummary) notifySummary.textContent = '';
+    notifyEmailList = [];
+    setCopyButtonEnabled(false);
+  }
+
+  function showNotifyError(message){
+    if(notifyLoading) notifyLoading.classList.add('d-none');
+    if(notifyEmpty) notifyEmpty.classList.add('d-none');
+    if(notifyContent) notifyContent.classList.add('d-none');
+    if(notifyError){
+      notifyError.textContent = message || 'Failed to load requesters.';
+      notifyError.classList.remove('d-none');
+    }
+    setCopyButtonEnabled(false);
+  }
+
+  function renderBadgeList(items, badgeClass){
+    if(!Array.isArray(items) || !items.length){
+      return '<span class="text-muted">—</span>';
+    }
+    return items
+      .map(value => `<span class="badge ${badgeClass} me-1 mb-1">${escapeHtml(value)}</span>`)
+      .join('');
+  }
+
+  function buildRequesterRow(row){
+    const requester = escapeHtml(row.requester || '');
+    const name = escapeHtml(row.name || '');
+    const email = escapeHtml(row.email || '');
+    const emailCell = email
+      ? `<a href="mailto:${escapeAttr(email)}" class="text-decoration-none">${email}</a>`
+      : '<span class="text-muted">—</span>';
+    const locationsHtml = renderBadgeList(row.locations, 'bg-light text-dark');
+    const itemsHtml = renderBadgeList(row.items, 'bg-primary text-white');
+    const requestCount = Number(row.request_count || 0);
+    const requestLabel = Number.isFinite(requestCount)
+      ? requestCount.toLocaleString('en-US')
+      : '0';
+    const requisitionTooltip = Array.isArray(row.requisition_ids) && row.requisition_ids.length
+      ? ` title="${escapeAttr(row.requisition_ids.join(', '))}"`
+      : '';
+    const requesterCell = requester ? `<code>${requester}</code>` : '<span class="text-muted">—</span>';
+    const nameCell = name || '<span class="text-muted">—</span>';
+    return `<tr${requisitionTooltip}>
+      <td>${requesterCell}</td>
+      <td>${nameCell}</td>
+      <td>${emailCell}</td>
+      <td class="text-wrap" style="min-width:160px;">${locationsHtml}</td>
+      <td class="text-wrap" style="min-width:220px;">${itemsHtml}</td>
+      <td class="text-end">${requestLabel}</td>
+    </tr>`;
+  }
+
+  function renderNotifyResults(data){
+    if(!data){
+      showNotifyError('No response received.');
+      return;
+    }
+    if(notifyLoading) notifyLoading.classList.add('d-none');
+    if(notifyError) notifyError.classList.add('d-none');
+    notifyEmailList = Array.isArray(data.email_addresses) ? data.email_addresses.filter(Boolean) : [];
+    const requesters = Array.isArray(data.requesters) ? data.requesters : [];
+    if(!requesters.length){
+      if(notifyEmpty) notifyEmpty.classList.remove('d-none');
+      if(notifyContent) notifyContent.classList.add('d-none');
+      setCopyButtonEnabled(false);
+      return;
+    }
+
+    if(notifyEmpty) notifyEmpty.classList.add('d-none');
+    if(notifyContent) notifyContent.classList.remove('d-none');
+
+    if(notifyTableBody){
+      notifyTableBody.innerHTML = requesters.map(buildRequesterRow).join('');
+    }
+
+    if(notifySummary){
+      const requesterCount = Number.isFinite(Number(data.requester_count))
+        ? Number(data.requester_count)
+        : requesters.length;
+      const items = Array.isArray(data.items) ? data.items : [];
+      const itemCount = items.length;
+      const preview = items.slice(0, 6).join(', ');
+      const totalRequests = requesters.reduce((sum, entry) => {
+        const count = Number(entry?.request_count ?? 0);
+        return Number.isFinite(count) ? sum + count : sum;
+      }, 0);
+      let summary = `${pluralize(requesterCount, 'requester')} covering ${pluralize(itemCount, 'item')} (original items only).`;
+      if(preview){
+        const extra = itemCount > 6 ? `, +${itemCount - 6} more` : '';
+        summary += ` Items: ${preview}${extra}.`;
+      }
+      if(totalRequests > 0){
+        summary += ` Total requests: ${totalRequests.toLocaleString('en-US')}.`;
+      }
+      summary += ' Requesters limited to R-prefixed locations in the past 365 days.';
+      notifySummary.textContent = summary;
+    }
+
+    setCopyButtonEnabled(notifyEmailList.length > 0);
+  }
+
+  async function loadNotifyRequesters({ force = false } = {}){
+    if(!notifyModalInstance) return;
+    const params = buildRequesterQueryParams();
+    const queryKey = params.toString();
+    if(!force && notifyLastQueryKey === queryKey && notifyLastResponse){
+      resetNotifyModalState();
+      renderNotifyResults(notifyLastResponse);
+      return;
+    }
+
+    resetNotifyModalState();
+    if(notifyBtn){
+      notifyBtn.disabled = true;
+      notifyBtn.setAttribute('aria-busy', 'true');
+    }
+    try {
+      const resp = await fetch(`/dashboard/api/requesters?${params.toString()}`);
+      if(!resp.ok){
+        const message = await resp.text();
+        throw new Error(message || `Request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      notifyLastQueryKey = queryKey;
+      notifyLastResponse = data;
+      renderNotifyResults(data);
+    } catch (error) {
+      console.error('Failed to load requesters', error);
+      showNotifyError(error.message || 'Failed to load requesters');
+    } finally {
+      if(notifyBtn){
+        notifyBtn.disabled = false;
+        notifyBtn.removeAttribute('aria-busy');
+      }
+    }
+  }
+
+  async function copyNotifyEmails(){
+    if(!notifyEmailList.length) return false;
+    const uniqueEmails = Array.from(new Set(notifyEmailList.filter(Boolean)));
+    if(!uniqueEmails.length) return false;
+    const text = uniqueEmails.join('; ');
+    try {
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        try {
+          textarea.select();
+          document.execCommand('copy');
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error('Copy to clipboard failed', error);
+      return false;
+    }
+  }
+
+  function showCopyFeedback(message){
+    if(notifyCopyTooltip && notifyCopyBtn){
+      notifyCopyBtn.setAttribute('data-bs-original-title', message);
+      notifyCopyTooltip.show();
+      setTimeout(() => {
+        notifyCopyTooltip.hide();
+        notifyCopyBtn.setAttribute('data-bs-original-title', notifyCopyDefaultTitle);
+      }, 1500);
+      return;
+    }
+    if(notifyCopyBtn){
+      notifyCopyBtn.textContent = message;
+      setTimeout(() => {
+        notifyCopyBtn.textContent = notifyCopyOriginalLabel || 'Copy Email Addresses';
+      }, 1500);
     }
   }
 
@@ -1798,6 +2112,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if(inpDescSearch){
     inpDescSearch.addEventListener('keyup', autoApply);
+  }
+
+  // Load refresh timestamp
+  async function loadRefreshTimestamp() {
+    try {
+      const resp = await fetch('/dashboard/api/refresh-timestamp');
+      if(!resp.ok) throw new Error('Failed loading refresh timestamp');
+      const data = await resp.json();
+      renderRefreshTimestamp(data.refresh_timestamp);
+    } catch (e) {
+      console.error('Failed to load refresh timestamp', e);
+    }
   }
 
   // Legacy form submit (no visible submit button now) still prevented
@@ -3201,6 +3527,41 @@ document.addEventListener('DOMContentLoaded', () => {
     updateIssueAggregationTitle(aggregation);
   }
 
+  setCopyButtonEnabled(false);
+
+  if(notifyModalEl){
+    notifyModalEl.addEventListener('show.bs.modal', () => {
+      loadNotifyRequesters();
+    });
+    notifyModalEl.addEventListener('hidden.bs.modal', () => {
+      if(notifyCopyTooltip){
+        notifyCopyTooltip.hide();
+        if(notifyCopyBtn){
+          notifyCopyBtn.setAttribute('data-bs-original-title', notifyCopyDefaultTitle);
+        }
+      }
+      if(notifyBtn){
+        notifyBtn.disabled = false;
+        notifyBtn.removeAttribute('aria-busy');
+      }
+    });
+  }
+
+  if(notifyBtn && notifyModalInstance){
+    notifyBtn.addEventListener('click', () => {
+      notifyModalInstance.show();
+    });
+  }
+
+  if(notifyCopyBtn){
+    notifyCopyBtn.addEventListener('click', async () => {
+      if(notifyCopyBtn.disabled) return;
+      const success = await copyNotifyEmails();
+      showCopyFeedback(success ? 'Copied!' : 'Copy failed');
+    });
+  }
+
+  loadRefreshTimestamp();
   loadFilterOptions().then(() => { loadKpiStats(); loadInventory(1); loadPar(1); });
 });
 </script>

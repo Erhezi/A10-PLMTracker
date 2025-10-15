@@ -19,7 +19,7 @@ TRI_STATE_VALUES = {"yes", "no", "blank"}
 ALLOWED_STAGE_VALUES = {
     "Tracking - Discontinued",
     "Tracking - Item Transition",
-    "Pending Clinical Approval",
+    "Pending Clinical Readiness",
 }
 
 
@@ -544,7 +544,7 @@ def api_filter_options():
     stages = [
         "Tracking - Discontinued",
         "Tracking - Item Transition",
-        "Pending Clinical Approval",
+        "Pending Clinical Readiness",
     ]
 
     return jsonify({

@@ -13,7 +13,7 @@ from typing import Iterable, Mapping
 CANONICAL_STAGES: list[str] = [
 	"Tracking - Discontinued",
 	"Pending Item Number",
-	"Pending Clinical Approval",
+	"Pending Clinical Readiness",
 	"Tracking - Item Transition",
 	"Deleted",
 	"Tracking Completed",
@@ -55,11 +55,11 @@ class StageTransitionHelper:
 		},
 		"Pending Item Number": {
 			"Pending Item Number",
-			"Pending Clinical Approval",
+			"Pending Clinical Readiness",
 			"Deleted",
 		},
-		"Pending Clinical Approval": {
-			"Pending Clinical Approval",
+		"Pending Clinical Readiness": {
+			"Pending Clinical Readiness",
 			"Deleted",
 			"Tracking - Item Transition",
 		},

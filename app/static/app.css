@@ -131,7 +131,7 @@ footer { font-size: .75rem; }
 }
 
 .stage-pending-item-number { background: #0d6efd !important; color: #fff !important; }
-.stage-pending-clinical-approval { background: #6610f2 !important; color: #fff !important; }
+.stage-pending-clinical-readiness { background: #6610f2 !important; color: #fff !important; }
 .stage-deleted { background: #dc3545 !important; color: #fff !important; }
 /* Tracking composite stages (normalized slug collapses repeated hyphens) */
 .stage-tracking-completed { background: #198754 !important; color: #fff !important; }

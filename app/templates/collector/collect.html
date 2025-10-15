@@ -40,7 +40,7 @@
     <div class="d-flex align-items-center gap-2">
       <span id="derived-stage" class="badge bg-info">&mdash;</span>
       <select id="stage-override" class="form-select form-select-sm w-auto" disabled>
-        <option value="Pending Clinical Approval">Pending Clinical Approval</option>
+        <option value="Pending Clinical Readiness">Pending Clinical Readiness</option>
         <option value="Tracking - Item Transition">Tracking - Item Transition</option>
       </select>
     </div>
@@ -150,11 +150,11 @@
   let locked = false;
   if(repls.length===1 && repls[0]==='NO REPLACEMENT'){ stage='Tracking - Discontinued'; locked=true; }
   else if(repls.length===1 && /^PENDING\*\*\*/.test(repls[0])){ stage='Pending Item Number'; locked=false; }
-  else if(repls.length){ stage='Pending Clinical Approval'; }
+  else if(repls.length){ stage='Pending Clinical Readiness'; }
     stageBadge.textContent = stage;
     stageBadge.className = 'badge ' + (locked? 'bg-secondary':'bg-info');
     stageSelect.disabled = locked || stage==='—';
-  if(!locked && stage!=='—') stageSelect.value = 'Pending Clinical Approval';
+  if(!locked && stage!=='—') stageSelect.value = 'Pending Clinical Readiness';
   }
 
   function enforceLimits(){
@@ -303,7 +303,7 @@
     
     const stageDerived = stageBadge.textContent;
     let stageToSend = stageDerived;
-    if(stageToSend==='Pending Clinical Approval' && stageSelect.value !== 'Pending Clinical Approval'){
+  if(stageToSend==='Pending Clinical Readiness' && stageSelect.value !== 'Pending Clinical Readiness'){
       stageToSend = stageSelect.value; // user override
     }
     const payload = { items, replace_items: repls, stage: stageToSend };

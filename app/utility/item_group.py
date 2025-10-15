@@ -314,7 +314,7 @@ def _determine_stage(replacements: List[str], explicit: str = None, sentinel_rep
 
     Rules:
     - If only sentinel 'NO REPLACEMENT' => stage 'Tracking - Discontinued' (locked)
-    - Else default 'Pending Clinical Approval' unless explicit provided.
+    - Else default 'Pending Clinical Readiness' unless explicit provided.
     """
     if sentinel_replacements is None:
         sentinel_replacements = {"NO REPLACEMENT"}
@@ -323,4 +323,4 @@ def _determine_stage(replacements: List[str], explicit: str = None, sentinel_rep
         return 'Tracking - Discontinued', True
     if explicit:
         return explicit, False
-    return 'Pending Clinical Approval', False
+    return 'Pending Clinical Readiness', False

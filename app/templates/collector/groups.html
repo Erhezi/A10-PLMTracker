@@ -12,9 +12,15 @@
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id3" disabled>Create Wrike Task - Set-up Par</button>
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="go_live" disabled>Change Go Live Date</button>
   </div>
-  <div class="form-check form-switch ms-auto" id="batch-mode-switch">
-    <input class="form-check-input" type="checkbox" role="switch" id="batch-mode-toggle">
-    <label class="form-check-label" for="batch-mode-toggle">Batch Change</label>
+  <div class="d-flex align-items-center gap-2 ms-auto">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Selection visibility" id="selection-visibility-group">
+      <button type="button" class="btn btn-outline-secondary d-none" id="show-selected-btn">Show Selected</button>
+      <button type="button" class="btn btn-outline-secondary d-none" id="show-all-btn">Show All</button>
+    </div>
+    <div class="form-check form-switch" id="batch-mode-switch">
+      <input class="form-check-input" type="checkbox" role="switch" id="batch-mode-toggle">
+      <label class="form-check-label" for="batch-mode-toggle">Batch Change</label>
+    </div>
   </div>
 </div>
 
@@ -41,7 +47,8 @@
     </div>
   </div>
   <div class="ms-auto d-flex align-items-end gap-2 flex-wrap justify-content-end text-end">
-    <div class="small text-muted">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
+    <div class="small text-muted flex-shrink-0">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
+    <div class="small text-muted flex-shrink-0 d-none" id="selected-count-container">Selected: <span id="selected-count">0</span></div>
     <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');" class="m-0">
       <button id="clear-deleted-btn" type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
         Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
@@ -292,7 +299,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const hintDefaultText = 'Use ";" to search multiple terms (max 10).';
   const hintOverflowText = 'Use ";" to search multiple terms (max 10). Only the first 10 terms are applied.';
   const visibleCountEl = document.getElementById('visible-count');
+  const selectedCountContainer = document.getElementById('selected-count-container');
+  const selectedCountEl = document.getElementById('selected-count');
   const batchToggle = document.getElementById('batch-mode-toggle');
+  const showSelectedBtn = document.getElementById('show-selected-btn');
+  const showAllBtn = document.getElementById('show-all-btn');
   const batchButtons = Array.from(document.querySelectorAll('.batch-action-btn'));
   const selectHeader = table ? table.querySelector('.select-header') : null;
   const editHeader = table ? table.querySelector('.edit-header') : null;
@@ -315,22 +326,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const stageConfirm = document.getElementById('batch-stage-confirm');
   const wrikeConfirm = document.getElementById('batch-wrike-confirm');
   const goLiveConfirm = document.getElementById('batch-go-live-confirm');
+  const getSelectedCheckboxes = () => {
+    if(!table) return [];
+    return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => cb.checked);
+  };
+  let showSelectedActive = false;
+
+  const updateSelectedCount = () => {
+    if(!selectedCountEl) return;
+    const count = getSelectedCheckboxes().length;
+    selectedCountEl.textContent = count;
+    if(showSelectedBtn){
+      if(!showSelectedActive){
+        showSelectedBtn.disabled = count === 0;
+      }
+    }
+  };
   const getVisibleCheckboxes = () => {
     if(!table) return [];
     return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => !cb.closest('tr')?.classList.contains('d-none'));
   };
   const syncSelectAll = () => {
-    if(!selectAll) return;
-    const checkboxes = getVisibleCheckboxes();
-    if(!checkboxes.length){
-      selectAll.checked = false;
-      selectAll.indeterminate = false;
-      return;
+    if(selectAll){
+      const checkboxes = getVisibleCheckboxes();
+      if(!checkboxes.length){
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+      } else {
+        const allChecked = checkboxes.every(cb => cb.checked);
+        const anyChecked = checkboxes.some(cb => cb.checked);
+        selectAll.checked = allChecked;
+        selectAll.indeterminate = anyChecked && !allChecked;
+      }
     }
-    const allChecked = checkboxes.every(cb => cb.checked);
-    const anyChecked = checkboxes.some(cb => cb.checked);
-    selectAll.checked = allChecked;
-    selectAll.indeterminate = anyChecked && !allChecked;
+    updateSelectedCount();
   };
   const normalizeReplace = (value) => {
     if(value === null || value === undefined) return null;
@@ -971,6 +1000,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if(editHeader) editHeader.classList.add('d-none');
       table.querySelectorAll('.edit-cell').forEach(cell => cell.classList.add('d-none'));
       batchButtons.forEach(btn => btn.disabled = false);
+      if(selectedCountContainer){
+        selectedCountContainer.classList.remove('d-none');
+      }
+      if(showSelectedBtn){
+        showSelectedBtn.classList.remove('d-none');
+        showSelectedBtn.classList.remove('active');
+        showSelectedBtn.disabled = getSelectedRows().length === 0;
+      }
+      if(showAllBtn){
+        showAllBtn.classList.add('d-none');
+        showAllBtn.disabled = true;
+      }
+      showSelectedActive = false;
       syncSelectAll();
     } else {
       if(selectHeader) selectHeader.classList.add('d-none');
@@ -984,6 +1026,21 @@ document.addEventListener('DOMContentLoaded', () => {
       if(editHeader) editHeader.classList.remove('d-none');
       table.querySelectorAll('.edit-cell').forEach(cell => cell.classList.remove('d-none'));
       batchButtons.forEach(btn => btn.disabled = true);
+      updateSelectedCount();
+      if(selectedCountContainer){
+        selectedCountContainer.classList.add('d-none');
+      }
+      if(showSelectedBtn){
+        showSelectedBtn.classList.add('d-none');
+        showSelectedBtn.disabled = true;
+        showSelectedBtn.classList.remove('active');
+      }
+      if(showAllBtn){
+        showAllBtn.classList.add('d-none');
+        showAllBtn.disabled = true;
+      }
+      showSelectedActive = false;
+      resetFilters();
     }
   }
 
@@ -1058,9 +1115,24 @@ document.addEventListener('DOMContentLoaded', () => {
       tr.classList.remove('batch-filtered-out');
       tr.classList.remove('d-none');
     });
+    if(table){
+      table.dataset.batchFilterActive = '';
+      table.dataset.showSelectedView = '';
+    }
+    table.querySelectorAll('.show-selected-highlight').forEach(row => row.classList.remove('show-selected-highlight'));
     if(filterInput) filterInput.disabled = false;
     if(filterMode) filterMode.disabled = false;
-    if(table) table.dataset.batchFilterActive = '';
+    if(showSelectedActive){
+      showSelectedActive = false;
+      if(showSelectedBtn){
+        showSelectedBtn.classList.remove('active');
+        showSelectedBtn.disabled = getSelectedCheckboxes().length === 0;
+      }
+      if(showAllBtn){
+        showAllBtn.classList.add('d-none');
+        showAllBtn.disabled = true;
+      }
+    }
     applyFilter();
     syncSelectAll();
   }
@@ -1079,6 +1151,45 @@ document.addEventListener('DOMContentLoaded', () => {
         alertBox.classList.add('d-none');
         alertBox.textContent = '';
       }
+    });
+  }
+
+  if(showSelectedBtn){
+    showSelectedBtn.addEventListener('click', () => {
+      if(showSelectedActive) return;
+      const selectedRows = ensureSelection();
+      if(!selectedRows) return;
+      if(filterInput){
+        filterInput.value = '';
+      }
+      if(filterMode){
+        filterMode.value = 'contains';
+      }
+      const visibleSelection = filterToSelectedRows();
+      if(!visibleSelection.length) return;
+      showSelectedActive = true;
+      if(table) table.dataset.showSelectedView = '1';
+      showSelectedBtn.classList.add('active');
+      showSelectedBtn.disabled = true;
+      if(showAllBtn){
+        showAllBtn.classList.remove('d-none');
+        showAllBtn.disabled = false;
+      }
+      const firstRow = visibleSelection[0];
+      if(firstRow && typeof firstRow.scrollIntoView === 'function'){
+        firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      visibleSelection.forEach(row => row.classList.add('show-selected-highlight'));
+      window.setTimeout(() => {
+        visibleSelection.forEach(row => row.classList.remove('show-selected-highlight'));
+      }, 1600);
+    });
+  }
+
+  if(showAllBtn){
+    showAllBtn.addEventListener('click', () => {
+      if(showAllBtn.disabled) return;
+      resetFilters();
     });
   }
 

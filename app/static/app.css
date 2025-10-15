@@ -637,3 +637,10 @@ footer { font-size: .75rem; }
 .user-control-buttons .delete-btn:hover {
     background-color: #a71d2a;
 }
+
+/* Highlight selected rows when surfaced via batch view */
+.show-selected-highlight td,
+.show-selected-highlight th {
+  background-color: rgba(13, 110, 253, 0.12) !important;
+  transition: background-color 0.6s ease;
+}

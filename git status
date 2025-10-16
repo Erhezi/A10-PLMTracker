@@ -1,0 +1,54 @@
+[33md81d2ea[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;32mreport_real/dan[m[33m)[m rule change
+[33mfb93050[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Merge pull request #5 from Erhezi/report/dan
+[33me38851f[m[33m ([m[1;32mreport/dan[m[33m)[m UI improvement for handling batch change
+[33m3a67c61[m changed the clincial approval to clinical readiness
+[33mfce3b3b[m add batch process toolbar to groups
+[33m8dc2adb[m wrike ID rebuild
+[33mae6ced3[m time stamp updated
+[33m066436a[m add timestamp to dashboard
+[33m7f5ff19[m added requester button and modal
+[33mc8b03cf[m[33m ([m[1;31morigin/Wrike_Automation_AT[m[33m, [m[1;31morigin/Logins_AT[m[33m)[m Merge pull request #4 from Erhezi/conflict/dan
+[33m8fef6fb[m some changes
+[33m3212f83[m Merge pull request #3 from Erhezi/Logins_AT
+[33ma7373db[m removed requester column from inventory/par table from dashboard
+[33mc6f7aa6[m added column and toggle
+[33m8f4cfd4[m Admin Control Page Update 10072025
+[33mba45e8c[m model changes to support further dev
+[33me10fe78[m before making major changes for MDM export
+[33m658d4cb[m requester email
+[33m6f4bfa4[m requesters
+[33m4137ea0[m dashboard improvement
+[33m234d94e[m make new models, make calculations of br in rolling
+[33mfa5946e[m added playground
+[33m68cb328[m added  purge and fixed many-to-many bug for conflicts.
+[33ma017e68[m simple change
+[33m9d4c6cf[m added features to dashboard, added openpyxl to requirements.txt
+[33m156d139[m UI improvement before making more changes on export
+[33md13c35b[m dashboard improvement
+[33m19ce402[m bug fix for conflict and collect
+[33m2710bb2[m changes made to add_pairs.py
+[33mee63342[m conflict initially working
+[33m1cf8459[m model changes.
+[33mfbfbc6d[m commit before making major changes
+[33m20bba87[m UI changes to improve visual
+[33m2c1ddf1[m conflict initial development.
+[33m40840f5[m changes on dashboard graph and backend models
+[33m984a38f[m UI improvement and added more data model to deal with the burn rate calculation
+[33m9f89ca7[m Merge pull request #2 from Erhezi/conflict_AT
+[33mc87a0e3[m Merge branch 'main' into conflict_AT
+[33m6ea05a6[m Merge pull request #1 from Erhezi/dashboard/dan
+[33mc539d93[m style changes to item link table
+[33mb7c6545[m Admin Control Page Update 09232025
+[33m7c2ac58[m made improvement on graphs
+[33mbf058a9[m Update package requirement
+[33m3126254[m dashboard filterings adjustment
+[33ma655c74[m enabled automatic item link for 'Pending Item Number' items. other fixes to models and functions.
+[33mbe0b1eb[m merged reset password
+[33mab2ea6a[m added needed filter to dashboard
+[33m5696a83[m changes to remove relations from ItemLink so the relation there will not hurt my performance
+[33m2f3fccc[m models updated
+[33me35938d[m fixed item addition for pending item
+[33me8589cf[m just commit to save my changes
+[33m7f23ce5[m item collection and inventory management system
+[33mb6a737b[m SIMPLIED
+[33m5a96fea[m Initialize the repo

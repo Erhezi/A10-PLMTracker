@@ -467,11 +467,16 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const showBatchSummary = (summary, failureMessages) => {
     if(!summary) return;
-    const lines = [`Batch update complete: ${summary.success || 0} succeeded.`];
-    if(summary.failed){
-      lines.push(`${summary.failed} failed.`);
+    const failures = Number(summary.failed) || 0;
+    const hasFailureDetails = failureMessages && failureMessages.length;
+    if(failures === 0 && !hasFailureDetails){
+      return; // All rows succeeded; no alert necessary.
     }
-    if(failureMessages && failureMessages.length){
+    const lines = [`Batch update complete: ${summary.success || 0} succeeded.`];
+    if(failures){
+      lines.push(`${failures} failed.`);
+    }
+    if(hasFailureDetails){
       lines.push('');
       lines.push('Failed rows:');
       failureMessages.slice(0,5).forEach(msg => lines.push(msg));
@@ -509,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateDeletedCountUI({ providedCount: summary.count_deleted });
     }
     showBatchSummary(summary, failureMessages);
+    activateShowSelectedView({ auto: true });
     syncSelectAll();
   };
   const submitBatch = async (url, payload, errorBox) => {
@@ -618,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(stageSelect) stageSelect.value = '';
         if(stageModal){
           stageModal.hide();
-        } else {
+        } else if(!showSelectedActive){
           resetFilters();
         }
       });
@@ -664,7 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(wrikeInput) wrikeInput.value = value || '';
         if(wrikeModal){
           wrikeModal.hide();
-        } else {
+        } else if(!showSelectedActive){
           resetFilters();
         }
       });
@@ -703,7 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(goLiveInput) goLiveInput.value = dateValue || '';
         if(goLiveModal){
           goLiveModal.hide();
-        } else {
+        } else if(!showSelectedActive){
           resetFilters();
         }
       });
@@ -1110,6 +1116,48 @@ document.addEventListener('DOMContentLoaded', () => {
     return selected;
   }
 
+  function activateShowSelectedView({ auto = false } = {}){
+    const selectedRows = getSelectedRows();
+    if(!selectedRows.length){
+      return [];
+    }
+    if(filterInput){
+      filterInput.value = '';
+    }
+    if(filterMode){
+      filterMode.value = 'contains';
+    }
+    const visibleSelection = filterToSelectedRows();
+    if(!visibleSelection.length){
+      return visibleSelection;
+    }
+    showSelectedActive = true;
+    if(table) table.dataset.showSelectedView = '1';
+    if(showSelectedBtn){
+      showSelectedBtn.classList.remove('d-none');
+      showSelectedBtn.classList.add('active');
+      showSelectedBtn.disabled = true;
+    }
+    if(showAllBtn){
+      showAllBtn.classList.remove('d-none');
+      showAllBtn.disabled = false;
+    }
+    if(selectedCountContainer){
+      selectedCountContainer.classList.remove('d-none');
+    }
+    const firstRow = visibleSelection[0];
+    if(firstRow && typeof firstRow.scrollIntoView === 'function'){
+      firstRow.scrollIntoView({ behavior: auto ? 'auto' : 'smooth', block: 'center' });
+    }
+    if(!auto){
+      visibleSelection.forEach(row => row.classList.add('show-selected-highlight'));
+      window.setTimeout(() => {
+        visibleSelection.forEach(row => row.classList.remove('show-selected-highlight'));
+      }, 1600);
+    }
+    return visibleSelection;
+  }
+
   function resetFilters(){
     Array.from(table.querySelectorAll('tbody tr')).forEach(tr => {
       tr.classList.remove('batch-filtered-out');
@@ -1140,7 +1188,9 @@ document.addEventListener('DOMContentLoaded', () => {
   [stageModalEl, wrikeModalEl, goLiveModalEl].forEach(modalEl => {
     if(!modalEl) return;
     modalEl.addEventListener('hidden.bs.modal', () => {
-      resetFilters();
+      if(!showSelectedActive){
+        resetFilters();
+      }
       clearErrors();
     });
   });
@@ -1157,32 +1207,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if(showSelectedBtn){
     showSelectedBtn.addEventListener('click', () => {
       if(showSelectedActive) return;
-      const selectedRows = ensureSelection();
-      if(!selectedRows) return;
-      if(filterInput){
-        filterInput.value = '';
-      }
-      if(filterMode){
-        filterMode.value = 'contains';
-      }
-      const visibleSelection = filterToSelectedRows();
-      if(!visibleSelection.length) return;
-      showSelectedActive = true;
-      if(table) table.dataset.showSelectedView = '1';
-      showSelectedBtn.classList.add('active');
-      showSelectedBtn.disabled = true;
-      if(showAllBtn){
-        showAllBtn.classList.remove('d-none');
-        showAllBtn.disabled = false;
-      }
-      const firstRow = visibleSelection[0];
-      if(firstRow && typeof firstRow.scrollIntoView === 'function'){
-        firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      visibleSelection.forEach(row => row.classList.add('show-selected-highlight'));
-      window.setTimeout(() => {
-        visibleSelection.forEach(row => row.classList.remove('show-selected-highlight'));
-      }, 1600);
+      if(!ensureSelection()) return;
+      activateShowSelectedView({ auto: false });
     });
   }
 

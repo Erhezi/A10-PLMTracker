@@ -64,7 +64,7 @@ class StageTransitionHelper:
 			"Tracking - Item Transition",
 		},
 		"Tracking - Item Transition": {
-			"Tracking - Item Transition",
+			"Pending Clinical Readiness",
 			"Deleted",
 			"Tracking Completed",
 		},

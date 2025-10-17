@@ -8,24 +8,26 @@
         <th>Mfg Part</th>
         <th>Description</th>
         <th>Active</th>
-        <th>Discontinue</th>
+        <th>Discon.</th>
+        <th>In3000</th>
       </tr>
     </thead>
     <tbody>
     {% for it in items %}
-      <tr data-item-row data-item-code="{{ it.item }}">
+    <tr data-item-row data-item-code="{{ it.item }}" data-in3000="{{ 'true' if it.company_3000 == 'Yes' else 'false' }}" class="item-row{% if it.company_3000 != 'Yes' %} muted-row{% endif %}">
         <td>
-          <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ it.item }}">
+          <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ it.item }}"{% if it.company_3000 != 'Yes' %} disabled aria-disabled="true" title="Only items in Company 3000 can be selected"{% endif %}>
         </td>
         <td class="text-nowrap fw-semibold">{{ it.item }}</td>
         <td>{{ it.manufacturer or '' }}</td>
         <td>{{ it.mfg_part_num or '' }}</td>
         <td style="max-width:260px" class="text-truncate" title="{{ it.item_description }}">{{ it.item_description or '' }}</td>
-        <td>{% if it.is_active == 'Yes' %}<span class="badge bg-success">Y</span>{% else %}<span class="badge bg-danger">N</span>{% endif %}</td>
-        <td>{% if it.is_discontinued == 'Yes' %}<span class="badge bg-danger">Y</span>{% else %}<span class="badge bg-success">N</span>{% endif %}</td>
+        <td class="text-center align-middle">{% if it.is_active == 'Yes' %}<span class="badge bg-success{% if it.company_3000 != 'Yes' %} opacity-75{% endif %}">Y</span>{% else %}<span class="badge bg-danger{% if it.company_3000 != 'Yes' %} opacity-75{% endif %}">N</span>{% endif %}</td>
+        <td class="text-center align-middle">{% if it.is_discontinued == 'Yes' %}<span class="badge bg-danger{% if it.company_3000 != 'Yes' %} opacity-75{% endif %}">Y</span>{% else %}<span class="badge bg-success{% if it.company_3000 != 'Yes' %} opacity-75{% endif %}">N</span>{% endif %}</td>
+        <td class="text-center align-middle">{% if it.company_3000 == 'Yes' %}<span class="badge bg-success">Y</span>{% else %}<span class="badge bg-danger opacity-75">N</span>{% endif %}</td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="text-muted fst-italic">No matches</td></tr>
+      <tr><td colspan="8" class="text-muted fst-italic">No matches</td></tr>
     {% endfor %}
     </tbody>
   </table>

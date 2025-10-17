@@ -20,6 +20,7 @@ class Item(db.Model):
     manufacturer = db.Column("manufacturer", db.String(255))
     mfg_part_num = db.Column("mfg_part_num", db.String(100))
     item_description = db.Column("item_description", db.String(500))
+    company_3000 = db.Column("company_3000", db.String(5)) # take value 'Yes' or 'No' to indicate if item exists in 3000's locations (inscope or not)
     last_update_date = db.Column("last_update_date", db.DateTime)
 
     def __repr__(self):  # pragma: no cover - debug aid
@@ -47,6 +48,7 @@ class ContractItem(db.Model):
     item_description = db.Column("item_description", db.String(500))
     item_type = db.Column("item_type", db.String(100))
     item = db.Column("item", db.String(50))
+    is_mhs = db.Column("is_mhs", db.String(5))  # take value 'Yes' or 'No', indicate if item is on MHS Contracts (meaning it is not entity specific)
     last_update_date = db.Column("last_update_date", db.DateTime)
 
     def __repr__(self):  # pragma: no cover - debug aid

@@ -9,17 +9,18 @@
         <th>Description</th>
         <th>Contract</th>
         <th>Item Type</th>
+        <th>For MHS</th>
       </tr>
     </thead>
     <tbody>
     {% for r in contract_items %}
-      <tr data-contract-item-row data-contract-id="{{ r.contract_id }}" data-mfg-part-num="{{ r.mfg_part_num }}">
+      <tr data-contract-item-row data-contract-id="{{ r.contract_id }}" data-mfg-part-num="{{ r.mfg_part_num }}" data-is-mhs="{{ 'Yes' if r.is_mhs == 'Yes' else 'No' }}" class="contract-item-row{% if r.is_mhs != 'Yes' %} muted-row{% endif %}">
         <td>
           {# If Item Type is Special we synthesize a PENDING placeholder code #}
           {% if r.item_type and r.item_type|lower == 'special' %}
-            <input type="checkbox" class="form-check-input" data-pick-checkbox value="PENDING***{{ r.mfg_part_num }}" data-contract-id="{{ r.contract_id }}" data-mfg-part="{{ r.mfg_part_num }}" data-pending-placeholder="1">
+            <input type="checkbox" class="form-check-input" data-pick-checkbox value="PENDING***{{ r.mfg_part_num }}" data-contract-id="{{ r.contract_id }}" data-mfg-part="{{ r.mfg_part_num }}" data-pending-placeholder="1"{% if r.is_mhs != 'Yes' %} disabled aria-disabled="true" title="Only items for MHS can be selected"{% endif %}>
           {% else %}
-            <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ r.item }}" data-contract-id="{{ r.contract_id }}" data-mfg-part="{{ r.mfg_part_num }}">
+            <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ r.item }}" data-contract-id="{{ r.contract_id }}" data-mfg-part="{{ r.mfg_part_num }}"{% if r.is_mhs != 'Yes' %} disabled aria-disabled="true" title="Only items for MHS can be selected"{% endif %}>
           {% endif %}
         </td>
         <td class="text-nowrap fw-semibold">
@@ -34,9 +35,16 @@
         <td style="max-width:260px" class="text-truncate" title="{{ r.item_description }}">{{ r.item_description or '' }}</td>
         <td>{{ r.contract_id }}</td>
         <td>{{ r.item_type or '' }}</td>
+        <td class="text-center align-middle">
+          {% if r.is_mhs == 'Yes' %}
+            <span class="badge bg-success">Y</span>
+          {% else %}
+            <span class="badge bg-danger opacity-75">N</span>
+          {% endif %}
+        </td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="text-muted fst-italic">No matches</td></tr>
+      <tr><td colspan="8" class="text-muted fst-italic">No matches</td></tr>
     {% endfor %}
     </tbody>
   </table>

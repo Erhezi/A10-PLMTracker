@@ -378,6 +378,7 @@ def api_search_items():
             "item_description": it.item_description,
             "is_active": it.is_active == 'Yes',
             "is_discontinued": it.is_discontinued == 'Yes',
+            "company_3000": it.company_3000 == 'Yes',
         }
         for it in items
     ])
@@ -427,6 +428,7 @@ def api_search_contract_items():
             "item_description": r.item_description,
             "item_type": r.item_type,
             "item": r.item,
+            "is_mhs": r.is_mhs == 'Yes',
         }
         for r in rows
     ])

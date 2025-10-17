@@ -27,6 +27,7 @@ from .node_check import (
     CONFLICT_SELF_DIRECTED,
     CONFLICT_UNKNOWN,
     detect_many_to_many_conflict,
+    is_active_link,
 )
 
 
@@ -672,6 +673,8 @@ class AddItemPairs:
         )
         existing: Dict[Tuple[str, Optional[str]], ItemLink] = {}
         for link in rows:
+            if not is_active_link(link):
+                continue
             key = (link.item, link.replace_item)
             existing[key] = link
         return existing
@@ -709,6 +712,7 @@ class AddItemPairs:
                     .filter(ItemLink.item_group.in_(group_ids))
                     .all()
                 )
+        existing_links = [link for link in existing_links if is_active_link(link)]
 
         return BatchGroupPlanner(existing_links, next_group_id=max_group_value + 1)
 

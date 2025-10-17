@@ -511,6 +511,47 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: {},
     par: {},
   };
+  const tableColumnOrder = {
+    inventory: [],
+    par: [],
+  };
+
+  function initializeColumnMetadata(tableKey, table){
+    if(!table) return;
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return;
+    const order = Array.from(headerRow.children).map(th => th.id || '').map(id => id || '');
+    tableColumnOrder[tableKey] = order;
+    const annotateRow = (row) => {
+      if(!row) return;
+      Array.from(row.children).forEach((cell, index) => {
+        const columnId = order[index] || cell.dataset.columnId || cell.id || '';
+        if(columnId){
+          cell.dataset.columnId = columnId;
+        }
+      });
+    };
+    if(table.tHead){
+      Array.from(table.tHead.rows).forEach(annotateRow);
+    }
+    Array.from(table.tBodies || []).forEach(tbody => {
+      Array.from(tbody.rows).forEach(annotateRow);
+    });
+  }
+
+  function annotateBodyRow(tableKey, row){
+    if(!row) return;
+    const order = tableColumnOrder[tableKey];
+    if(!Array.isArray(order) || !order.length) return;
+    const cells = Array.from(row.children);
+    const limit = Math.min(order.length, cells.length);
+    for(let i = 0; i < limit; i++){
+      const columnId = order[i];
+      if(columnId){
+        cells[i].dataset.columnId = columnId;
+      }
+    }
+  }
 
   function renderRefreshTimestamp(isoString){
     if(!refreshValueEl) return;
@@ -691,25 +732,27 @@ document.addEventListener('DOMContentLoaded', () => {
   
   console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
 
+  initializeColumnMetadata('inventory', inventoryTable);
+  initializeColumnMetadata('par', parTable);
+
   function toggleColumnVisibility(table, columnId, show){
     if(!table || !columnId) return;
-    const header = table.querySelector(`#${cssEscape(columnId)}`);
-    if(!header) return;
-    const headerRow = header.parentElement;
-    const colIndex = Array.from(headerRow.children).indexOf(header);
-    if(colIndex < 0) return;
     const display = show ? '' : 'none';
+    const selector = `[data-column-id="${columnId}"]`;
     if(table.tHead){
       Array.from(table.tHead.rows).forEach(row => {
-        const cell = row.children[colIndex];
+        let cell = row.querySelector(selector);
+        if(!cell){
+          cell = row.querySelector(`#${cssEscape(columnId)}`);
+        }
         if(cell) cell.style.display = display;
       });
-    } else {
-      header.style.display = display;
     }
-    table.querySelectorAll('tbody tr').forEach(tr => {
-      const cell = tr.children[colIndex];
-      if(cell) cell.style.display = display;
+    Array.from(table.tBodies || []).forEach(tbody => {
+      Array.from(tbody.rows).forEach(row => {
+        const cell = row.querySelector(selector);
+        if(cell) cell.style.display = display;
+      });
     });
   }
 
@@ -717,39 +760,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!table || !columnId || !targetColumnId) return;
     const headerRow = table.querySelector('thead tr.column-header-labels');
     if(!headerRow) return;
-    const headerCells = Array.from(headerRow.children);
     const sourceHeader = headerRow.querySelector(`#${cssEscape(columnId)}`);
     const targetHeader = headerRow.querySelector(`#${cssEscape(targetColumnId)}`);
     if(!sourceHeader || !targetHeader) return;
-    const sourceIndex = headerCells.indexOf(sourceHeader);
-    let targetIndex = headerCells.indexOf(targetHeader);
-    if(sourceIndex < 0 || targetIndex < 0) return;
-    if(position === 'after'){
-      targetIndex += 1;
+    const placeAfter = position === 'after';
+    const headerReference = placeAfter ? targetHeader.nextSibling : targetHeader;
+    if(headerReference !== sourceHeader){
+      headerRow.insertBefore(sourceHeader, headerReference);
     }
-    if(targetIndex === sourceIndex || (position === 'after' && targetIndex === sourceIndex + 1)){
-      return;
-    }
-
-    const moveCell = (row) => {
+    const repositionCells = (row) => {
       if(!row) return;
-      const cells = Array.from(row.children);
-      if(sourceIndex >= cells.length) return;
-      const cell = cells[sourceIndex];
-      if(!cell) return;
-      const reference = targetIndex >= cells.length ? null : row.children[targetIndex];
-      if(reference){
-        row.insertBefore(cell, reference);
-      } else {
-        row.appendChild(cell);
+      let sourceCell = row.querySelector(`[data-column-id="${columnId}"]`);
+      let targetCell = row.querySelector(`[data-column-id="${targetColumnId}"]`);
+      if(!sourceCell || !targetCell || sourceCell === targetCell) return;
+      const reference = placeAfter ? targetCell.nextSibling : targetCell;
+      if(reference !== sourceCell){
+        row.insertBefore(sourceCell, reference);
       }
     };
-
     if(table.tHead){
-      Array.from(table.tHead.rows).forEach(moveCell);
+      Array.from(table.tHead.rows).forEach(row => {
+        if(row === headerRow) return;
+        repositionCells(row);
+      });
     }
     Array.from(table.tBodies || []).forEach(tbody => {
-      Array.from(tbody.rows).forEach(moveCell);
+      Array.from(tbody.rows).forEach(repositionCells);
     });
   }
 
@@ -1506,6 +1542,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
+        annotateBodyRow('inventory', tr);
         tbody.appendChild(tr);
       }
       applyColumnState(inventoryTable, columnState.inventory);
@@ -1612,6 +1649,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
             <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
         `;
+        annotateBodyRow('par', tr);
         parTbody.appendChild(tr);
       }
       applyParColumnArrangement();

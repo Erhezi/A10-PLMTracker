@@ -4,7 +4,7 @@ from typing import Iterable, Sequence
 from .. import db
 from . import now_ny_naive
 from sqlalchemy.orm import relationship, backref, object_session
-from sqlalchemy import Index, UniqueConstraint, text
+from sqlalchemy import Index, UniqueConstraint, text, event
 
 
 PENDING_PLACEHOLDER_PREFIX = "PENDING***"
@@ -193,6 +193,37 @@ class ItemLinkWrike(db.Model):
 		self.stage = item_link.stage
 		if item_link.pkid is not None:
 			self.item_link_id = item_link.pkid
+
+
+# --- automatic timestamping for wrike id fields ---------------------------------
+def _wrike_set_handler_factory(idx: int):
+	id_attr = f"wrike_id{idx}"
+	create_attr = f"create_dt{idx}"
+	update_attr = f"update_dt{idx}"
+
+	def _handler(target, value, oldvalue, initiator):
+		# When a Wrike ID is first set (oldvalue is None and new value not None)
+		# set both CreateDT and UpdateDT. When it changes, set UpdateDT.
+		try:
+			if oldvalue is None and value is not None:
+				setattr(target, create_attr, now_ny_naive())
+				setattr(target, update_attr, now_ny_naive())
+			elif value != oldvalue:
+				# covers change from some value -> different value and also
+				# value -> None (clearing) if desired to record update
+				setattr(target, update_attr, now_ny_naive())
+		except Exception:
+			# defensive: avoid letting timestamping break the attribute set
+			pass
+		return value
+
+	return _handler
+
+
+# Attach listeners for wrike_id1..wrike_id5
+for _i in range(1, 6):
+	event.listen(getattr(ItemLinkWrike, f"wrike_id{_i}"), 'set', _wrike_set_handler_factory(_i), retval=False)
+
 
 
 

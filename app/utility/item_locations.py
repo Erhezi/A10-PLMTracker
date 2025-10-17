@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 from typing import List, Dict, Optional
 
 from sqlalchemy import select
@@ -204,16 +204,19 @@ def _annotate_replacement_setups(rows: List[Dict]) -> None:
         for row in group_rows:
             row["item_replace_relation"] = relation
 
-        if relation != "1-1":
-            continue
-
-        base = next(
-            (r for r in group_rows if r.get("item") and r.get("replacement_item")),
-            group_rows[0],
-        )
-        calculations = _compute_replacement_quantities(base)
-        for row in group_rows:
-            row.update(calculations)
+        if relation == "1-1":
+            base = next(
+                (r for r in group_rows if r.get("item") and r.get("replacement_item")),
+                group_rows[0],
+            )
+            calculations = _compute_replacement_quantities(base)
+            for row in group_rows:
+                row.update(calculations)
+        elif relation == "many-1":
+            calculations = _compute_many_to_one_quantities(group_rows)
+            if calculations:
+                for row in group_rows:
+                    row.update(calculations)
 
 
 def _compute_replacement_quantities(row: Dict) -> Dict[str, Optional[float]]:
@@ -254,6 +257,60 @@ def _compute_replacement_quantities(row: Dict) -> Dict[str, Optional[float]]:
     return result
 
 
+def _compute_many_to_one_quantities(group_rows: List[Dict]) -> Dict[str, Optional[float]]:
+    if not group_rows:
+        return {}
+
+    base = next((r for r in group_rows if r.get("replacement_item")), group_rows[0])
+
+    reorder_sum = _sum_non_negative(group_rows, "reorder_point")
+    max_sum = _sum_non_negative(group_rows, "max_order_qty")
+
+    repl_mult = _to_decimal(base.get("buy_uom_multiplier_ri"))
+    repl_min = _to_decimal(base.get("min_order_qty_ri"))
+
+    step = None
+    if repl_mult is not None and repl_mult > 0:
+        step = repl_mult
+    elif repl_min is not None and repl_min > 0:
+        step = repl_min
+
+    recommended_reorder = reorder_sum
+    if reorder_sum is not None and step is not None and step > 0:
+        recommended_reorder = _round_to_multiple(reorder_sum, step)
+
+    recommended_max = max_sum
+    if max_sum is not None and step is not None and step > 0:
+        recommended_max = _round_to_multiple(max_sum, step)
+
+    recommended_min = None
+    if repl_mult is not None and repl_mult > 0:
+        recommended_min = _to_native(repl_mult)
+    elif repl_min is not None and repl_min > 0:
+        recommended_min = _to_native(repl_min)
+
+    # Fallback to a positive source min if replacement data missing
+    if recommended_min is None:
+        original_mins = [_to_decimal(r.get("min_order_qty")) for r in group_rows]
+        fallback_min = _max_positive(original_mins)
+        if fallback_min is not None:
+            recommended_min = _to_native(fallback_min)
+
+    result: Dict[str, Optional[float]] = {
+        "recommended_setup_source": "aggregate-many-1",
+        "recommended_reorder_quantity_code_ri": base.get("reorder_quantity_code_ri") or base.get("reorder_quantity_code"),
+    }
+
+    if recommended_reorder is not None:
+        result["recommended_reorder_point_ri"] = _to_native(recommended_reorder)
+    if recommended_min is not None:
+        result["recommended_min_order_qty_ri"] = recommended_min
+    if recommended_max is not None:
+        result["recommended_max_order_qty_ri"] = _to_native(recommended_max)
+
+    return result
+
+
 def _to_decimal(value: object | None) -> Optional[Decimal]:
     if value is None:
         return None
@@ -268,8 +325,29 @@ def _to_decimal(value: object | None) -> Optional[Decimal]:
 def _ceil_to_multiple(value: Optional[Decimal], multiple: Decimal) -> Optional[Decimal]:
     if value is None or multiple is None or multiple == 0:
         return value
-    quotient = (value / multiple).to_integral_value(rounding=ROUND_CEILING)
+    quotient = (value / multiple).to_integral_value(rounding=ROUND_HALF_UP)
     return quotient * multiple
+
+
+def _round_to_multiple(value: Optional[Decimal], step: Decimal) -> Optional[Decimal]:
+    if value is None or step is None or step <= 0:
+        return value
+    units = (value / step).quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    return units * step
+
+
+def _sum_non_negative(rows: List[Dict], key: str) -> Optional[Decimal]:
+    total = Decimal(0)
+    has_value = False
+    for row in rows:
+        val = _to_decimal(row.get(key))
+        if val is None:
+            continue
+        if val < 0:
+            continue
+        total += val
+        has_value = True
+    return total if has_value else None
 
 
 def _max_positive(values: List[Optional[Decimal]]) -> Optional[Decimal]:

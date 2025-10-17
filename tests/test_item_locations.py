@@ -73,19 +73,35 @@ def test_annotate_replacement_setups_missing_replacement_multiplier():
     assert rows[0]["recommended_setup_source"] == "copy"
 
 
-def test_annotate_replacement_setups_many_to_one_skips_calculation():
+def test_annotate_replacement_setups_many_to_one_aggregates_recommendations():
     rows = [
         {
             "item_group": 404,
             "group_location": "LOC-4",
             "item": "ITEM-1",
             "replacement_item": "ITEM-Z",
+            "reorder_point": 10,
+            "min_order_qty": 2,
+            "max_order_qty": 20,
+            "buy_uom_multiplier": 1,
+            "buy_uom_multiplier_ri": 4,
+            "min_order_qty_ri": 4,
+            "max_order_qty_ri": 80,
+            "reorder_quantity_code": "STD",
         },
         {
             "item_group": 404,
             "group_location": "LOC-4",
             "item": "ITEM-2",
             "replacement_item": "ITEM-Z",
+            "reorder_point": 15,
+            "min_order_qty": 5,
+            "max_order_qty": 50,
+            "buy_uom_multiplier": 1,
+            "buy_uom_multiplier_ri": 4,
+            "min_order_qty_ri": 4,
+            "max_order_qty_ri": 80,
+            "reorder_quantity_code": "STD",
         },
     ]
 
@@ -93,5 +109,11 @@ def test_annotate_replacement_setups_many_to_one_skips_calculation():
 
     assert rows[0]["item_replace_relation"] == "many-1"
     assert rows[1]["item_replace_relation"] == "many-1"
-    assert "recommended_reorder_point_ri" not in rows[0]
-    assert "recommended_reorder_point_ri" not in rows[1]
+    assert rows[0]["recommended_reorder_point_ri"] == 24
+    assert rows[0]["recommended_min_order_qty_ri"] == 4
+    assert rows[0]["recommended_max_order_qty_ri"] == 72
+    assert rows[0]["recommended_setup_source"] == "aggregate-many-1"
+    assert rows[1]["recommended_reorder_point_ri"] == 24
+    assert rows[1]["recommended_min_order_qty_ri"] == 4
+    assert rows[1]["recommended_max_order_qty_ri"] == 72
+    assert rows[1]["recommended_setup_source"] == "aggregate-many-1"

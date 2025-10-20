@@ -17,6 +17,7 @@ from ..models.relations import (
     PendingItems,
     PENDING_PLACEHOLDER_PREFIX,
 )
+from ..models.log import BurnRateRefreshJob
 from .item_group import (
     BatchGroupPlanner,
     validate_batch_inputs,
@@ -29,6 +30,7 @@ from .node_check import (
     detect_many_to_many_conflict,
     is_active_link,
 )
+from .burn_rate_refresh import schedule_burn_rate_refresh
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,7 @@ class AddItemPairs:
         self.skipped_details: List[Dict[str, object]] = []
         self.pending_items_to_create: List[Tuple[ItemLink, str, str]] = []
         self.merged_groups: List[int] = []
+        self.burn_rate_jobs: List[BurnRateRefreshJob] = []
 
         # Normalized inputs
         (
@@ -130,9 +133,18 @@ class AddItemPairs:
 
         should_flush = bool(self._touched_links or self.merged_groups)
         should_commit = bool(self.conflict_entries or should_flush)
+        burn_rate_link_ids: List[int] = []
 
         if should_flush:
             self.session.flush()
+            burn_rate_link_ids = [link.pkid for link in self._touched_links if link.pkid]
+            if burn_rate_link_ids:
+                self.burn_rate_jobs = [
+                    BurnRateRefreshJob(item_link_id=int(pkid))
+                    for pkid in burn_rate_link_ids
+                ]
+                self.session.add_all(self.burn_rate_jobs)
+                self.session.flush()
             try:
                 self._sync_item_groups()
             except ItemGroupConflictError:
@@ -142,6 +154,10 @@ class AddItemPairs:
 
         if should_commit:
             self.session.commit()
+            print("committed and start burn rate refresh")
+            if burn_rate_link_ids:
+                job_ids = [job.id for job in self.burn_rate_jobs if job.id]
+                schedule_burn_rate_refresh(burn_rate_link_ids, job_ids=job_ids)
 
         created_total = len(self.created_links) + len(self.reused_links)
         return {
@@ -154,6 +170,7 @@ class AddItemPairs:
             "stage_locked": self.stage_locked,
             "merged_groups": sorted(set(self.merged_groups)),
             "records": self._serialize_result_records(),
+            "burn_rate_jobs": self._serialize_burn_rate_jobs(),
         }
 
     # ------------------------------------------------------------------
@@ -664,6 +681,18 @@ class AddItemPairs:
                 }
             )
         return records
+
+    def _serialize_burn_rate_jobs(self) -> List[Dict[str, object]]:
+        jobs: List[Dict[str, object]] = []
+        for job in self.burn_rate_jobs:
+            jobs.append(
+                {
+                    "job_id": job.id,
+                    "item_link_id": job.item_link_id,
+                    "status": job.status,
+                }
+            )
+        return jobs
 
     def _fetch_existing_links(self) -> Dict[Tuple[str, Optional[str]], ItemLink]:
         rows = (

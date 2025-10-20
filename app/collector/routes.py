@@ -14,6 +14,7 @@ from ..models.relations import (
     ConflictError,
 )
 from ..models.inventory import Item, ContractItem
+from ..models.log import BurnRateRefreshJob
 from ..utility.item_group import BatchValidationError
 from ..utility.add_pairs import AddItemPairs
 from ..utility.stage_transition import StageTransitionHelper
@@ -485,11 +486,60 @@ def api_batch_item_links():
         "stage_locked": result["stage_locked"],
         "merged_groups": result["merged_groups"],
         "records": result["records"],
+        "burn_rate_jobs": result.get("burn_rate_jobs", []),
     }
     if result.get("reactivated"):
         response_body["reactivated"] = result["reactivated"]
     status_code = 201 if result["created"] else 200
     return jsonify(response_body), status_code
+
+
+@bp.get("/api/burn-rate-jobs")
+@login_required
+def api_burn_rate_jobs():
+    def _parse_int_params(raw: str | None) -> list[int]:
+        if not raw:
+            return []
+        values: list[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                values.append(int(part))
+            except ValueError:
+                continue
+        return values
+
+    job_ids = _parse_int_params(request.args.get("job_ids"))
+    item_link_ids = _parse_int_params(request.args.get("item_link_ids"))
+
+    query = BurnRateRefreshJob.query
+    if job_ids:
+        query = query.filter(BurnRateRefreshJob.id.in_(job_ids))
+    elif item_link_ids:
+        query = query.filter(BurnRateRefreshJob.item_link_id.in_(item_link_ids))
+
+    rows = (
+        query.order_by(BurnRateRefreshJob.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    payload = [
+        {
+            "job_id": row.id,
+            "item_link_id": row.item_link_id,
+            "status": row.status,
+            "message": row.message,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+        }
+        for row in rows
+    ]
+
+    return jsonify(payload)
 
 
 # -------------------- API: Delete single item link --------------------

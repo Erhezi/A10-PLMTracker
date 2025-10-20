@@ -51,6 +51,7 @@
   </div>
   <button id="create-links" class="btn btn-primary btn-sm" disabled>Create Links</button>
   <div id="batch-feedback" class="small"></div>
+  <div id="burn-rate-feedback" class="small text-muted"></div>
 </div>
 
 <div class="mt-4" id="created-results-wrapper" style="display:none;">
@@ -108,6 +109,7 @@
   const stageSelect = document.getElementById('stage-override');
   const createBtn = document.getElementById('create-links');
   const feedback = document.getElementById('batch-feedback');
+  const burnRateFeedback = document.getElementById('burn-rate-feedback');
   const goLiveInput = document.getElementById('expected-go-live');
   const createdWrapper = document.getElementById('created-results-wrapper');
   const createdTableBody = document.querySelector('#created-links-table tbody');
@@ -126,6 +128,73 @@
     }
     return String(value).replace(/[&<>"']/g, (ch) => escapeMap[ch] || ch);
   };
+
+  let burnRatePollToken = null;
+
+  function setBurnRateStatus(message, variant = 'muted') {
+    if (!burnRateFeedback) return;
+    const classes = ['small'];
+    if (variant === 'success') classes.push('text-success');
+    else if (variant === 'danger') classes.push('text-danger');
+    else if (variant === 'info') classes.push('text-info');
+    else classes.push('text-muted');
+    burnRateFeedback.className = classes.join(' ');
+    burnRateFeedback.textContent = message || '';
+  }
+
+  setBurnRateStatus('', 'muted');
+
+  function startBurnRatePolling(jobIds) {
+    if (!burnRateFeedback) return;
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      if (burnRatePollToken && typeof burnRatePollToken === 'object') {
+        burnRatePollToken.cancelled = true;
+      }
+      setBurnRateStatus('', 'muted');
+      return;
+    }
+
+    if (burnRatePollToken && typeof burnRatePollToken === 'object') {
+      burnRatePollToken.cancelled = true;
+    }
+
+    const token = { cancelled: false };
+    burnRatePollToken = token;
+
+    const poll = async (attempt = 0) => {
+      if (token.cancelled) return;
+      try {
+        const res = await fetch(`/api/burn-rate-jobs?job_ids=${jobIds.join(',')}`);
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        if (token.cancelled) return;
+
+        const statuses = data.map((row) => (row.status || '').toUpperCase());
+        if (!statuses.length) {
+          setBurnRateStatus('Burn-rate refresh queued…', 'info');
+        } else if (statuses.every((s) => s === 'SUCCESS')) {
+          setBurnRateStatus('Burn rates refreshed.', 'success');
+          return;
+        } else if (statuses.some((s) => s === 'FAILED')) {
+          const failure = data.find((row) => (row.status || '').toUpperCase() === 'FAILED');
+          const message = failure && failure.message ? ` ${failure.message}` : '';
+          setBurnRateStatus(`Burn-rate refresh failed.${message}`, 'danger');
+          return;
+        } else {
+          setBurnRateStatus('Burn rates calculating…', 'info');
+        }
+      } catch (err) {
+        if (token.cancelled) return;
+        setBurnRateStatus('Burn-rate refresh queued…', 'info');
+      }
+
+      const delay = Math.min(15000, 2000 + attempt * 1000);
+      setTimeout(() => poll(attempt + 1), delay);
+    };
+
+    setBurnRateStatus('Burn rates calculating…', 'info');
+    poll();
+  }
 
   // Load batch limits from template data
   const batchLimitsData = document.getElementById('batch-limits-data');
@@ -311,6 +380,7 @@
     const goLive = goLiveInput.value.trim();
     if(goLive) payload.expected_go_live_date = goLive;
     feedback.textContent = 'Creating...';
+    startBurnRatePolling([]);
     try {
       const res = await fetch('/api/item-links/batch', {
         method:'POST',
@@ -320,6 +390,7 @@
       const json = await res.json();
       if(!res.ok){
         feedback.innerHTML = `<span class='text-danger'>Error: ${json.error||'Failed'}</span>`;
+        startBurnRatePolling([]);
       } else {
         const groupDisplay = json.group_id !== null && json.group_id !== undefined ? json.group_id : '—';
         feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${groupDisplay}</span>`;
@@ -400,9 +471,21 @@
             skippedWrapper.style.display = 'none';
           }
         }
+        const jobIds = Array.isArray(json.burn_rate_jobs)
+          ? json.burn_rate_jobs
+              .map(job => Number.parseInt(job && job.job_id, 10))
+              .filter(id => Number.isInteger(id))
+          : [];
+        if(jobIds.length){
+          startBurnRatePolling(jobIds);
+        } else {
+          startBurnRatePolling([]);
+        }
       }
     } catch(err){
-      feedback.innerHTML = `<span class='text-danger'>Error: ${err}</span>`;
+      console.error(err);
+      feedback.innerHTML = `<span class='text-danger'>Unexpected error creating links.</span>`;
+      startBurnRatePolling([]);
     }
   });
 

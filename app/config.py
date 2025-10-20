@@ -32,6 +32,7 @@ class Config:
     # -------------------------------------------
     # # Batch processing limits
     MAX_BATCH_PER_SIDE = int(os.getenv("MAX_BATCH_PER_SIDE", "6"))  # Max items or replace_items per side (total combinations = per_side^2)
+    ENABLE_BURN_RATE_REFRESH = os.getenv("ENABLE_BURN_RATE_REFRESH", "1") not in {"0", "false", "False"}
 
     @classmethod
     def validate(cls):

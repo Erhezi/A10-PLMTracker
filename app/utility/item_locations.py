@@ -25,6 +25,7 @@ def build_location_pairs(
     location_types: Optional[List[str]] = None,
     offset: int = 0,
     limit: int | None = None,
+    br_calc_type: str = "simple",
 ) -> List[Dict]:
     """Fetch pre-computed inventory side-by-side rows from PLM.vw_PLMTrackerBase.
 
@@ -121,7 +122,7 @@ def build_location_pairs(
             "max_order_qty_ri": r.MaxOrderQty_ri,
             "manufacturer_number_ri": r.ManufacturerNumber_ri,
         })
-    _annotate_replacement_setups(out)
+    _annotate_replacement_setups(out, br_calc_type=br_calc_type)
     # Stable sort by item_group then location for display
     out.sort(key=lambda d: (
         d.get("item_group") or 0,
@@ -176,7 +177,7 @@ def _weeks_on_hand(available_qty: Optional[float], weekly_burn: float) -> str | 
         return "n/a"
 
 
-def _annotate_replacement_setups(rows: List[Dict]) -> None:
+def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple") -> None:
     """Attach relationship classification and recommended RI quantities."""
     groups: Dict[tuple, List[Dict]] = defaultdict(list)
     for row in rows:
@@ -203,112 +204,300 @@ def _annotate_replacement_setups(rows: List[Dict]) -> None:
 
         for row in group_rows:
             row["item_replace_relation"] = relation
+            row["BRCalcType"] = br_calc_type
 
         if relation == "1-1":
             base = next(
                 (r for r in group_rows if r.get("item") and r.get("replacement_item")),
                 group_rows[0],
             )
-            calculations = _compute_replacement_quantities(base)
+            calculations = _compute_replacement_quantities(base, br_calc_type=br_calc_type)
             for row in group_rows:
                 row.update(calculations)
         elif relation == "many-1":
-            calculations = _compute_many_to_one_quantities(group_rows)
+            calculations = _compute_many_to_one_quantities(group_rows, br_calc_type=br_calc_type)
             if calculations:
                 for row in group_rows:
                     row.update(calculations)
+        elif relation == "1-many":
+            _apply_one_to_many_quantities(group_rows, br_calc_type=br_calc_type)
 
 
-def _compute_replacement_quantities(row: Dict) -> Dict[str, Optional[float]]:
-    src_reorder = _to_decimal(row.get("reorder_point"))
-    src_min = _to_decimal(row.get("min_order_qty"))
-    src_max = _to_decimal(row.get("max_order_qty"))
-    src_mult = _to_decimal(row.get("buy_uom_multiplier"))
-    repl_mult = _to_decimal(row.get("buy_uom_multiplier_ri"))
+def _normalize_location_type(value: object | None) -> str:
+    return str(value or "").strip().lower()
 
+
+def _is_par_location(row: Dict) -> bool:
+    return _normalize_location_type(row.get("location_type")) == "par location"
+
+
+def _positive_decimal_value(value: object | None) -> Optional[Decimal]:
+    dec = _to_decimal(value)
+    if dec is None or dec <= 0:
+        return None
+    return dec
+
+
+def _non_negative_decimal_value(value: object | None) -> Optional[Decimal]:
+    dec = _to_decimal(value)
+    if dec is None:
+        return None
+    if dec < 0:
+        return None
+    return dec
+
+
+def _coerce_multiplier(value: object | None, default: Optional[Decimal] = Decimal(1)) -> Optional[Decimal]:
+    dec = _positive_decimal_value(value)
+    if dec is None:
+        return default
+    return dec
+
+
+def _scaled_value(
+    value: Optional[Decimal],
+    numerator_multiplier: Optional[Decimal],
+    denominator_multiplier: Optional[Decimal],
+) -> Optional[Decimal]:
+    if value is None:
+        return None
+    numerator = numerator_multiplier if numerator_multiplier is not None else Decimal(1)
+    denominator = denominator_multiplier if denominator_multiplier is not None else Decimal(1)
+    if denominator == 0:
+        return None
+    return (value * numerator) / denominator
+
+
+def _divide(value: Optional[Decimal], denominator: Optional[Decimal]) -> Optional[Decimal]:
+    if value is None:
+        return None
+    return _scaled_value(value, Decimal(1), denominator)
+
+
+def _round_half_up_integer(value: Optional[Decimal]) -> Optional[Decimal]:
+    if value is None:
+        return None
+    return value.to_integral_value(rounding=ROUND_HALF_UP)
+
+
+def _ceil_positive_value(value: Optional[Decimal]) -> Optional[Decimal]:
+    if value is None:
+        return None
+    return value.to_integral_value(rounding=ROUND_CEILING)
+
+
+def _sum_weighted(rows: List[Dict], value_key: str, multiplier_key: str) -> Optional[Decimal]:
+    total = Decimal(0)
+    has_value = False
+    for row in rows:
+        base_value = _to_decimal(row.get(value_key))
+        if base_value is None:
+            continue
+        multiplier = _coerce_multiplier(row.get(multiplier_key))
+        if multiplier is None:
+            continue
+        total += base_value * multiplier
+        has_value = True
+    return total if has_value else None
+
+
+def _collect_non_negative(rows: List[Dict], key: str) -> List[Optional[Decimal]]:
+    return [_non_negative_decimal_value(row.get(key)) for row in rows]
+
+
+def _compute_replacement_quantities(row: Dict, br_calc_type: str = "simple") -> Dict[str, Optional[float]]:
+    is_par = _is_par_location(row)
+    relation_label = "par" if is_par else "inventory"
     result: Dict[str, Optional[float]] = {
-        "recommended_reorder_point_ri": _to_native(src_reorder),
-        "recommended_min_order_qty_ri": _to_native(_max_positive([src_min, src_mult, repl_mult])),
-        "recommended_max_order_qty_ri": _to_native(src_max),
-        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
-        "recommended_setup_source": "copy",
+        "recommended_reorder_point_ri": None,
+        "recommended_min_order_qty_ri": None,
+        "recommended_max_order_qty_ri": None,
+        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code") or row.get("reorder_quantity_code_ri"),
+        "recommended_setup_source": f"{br_calc_type}-1-1-{relation_label}",
     }
 
-    if repl_mult is None or repl_mult <= 0:
+    if br_calc_type != "simple":
         return result
 
-    if src_mult is not None and src_mult > 0 and src_mult == repl_mult:
-        result.update({
-            "recommended_reorder_point_ri": _to_native(src_reorder),
-            "recommended_min_order_qty_ri": _to_native(_max_positive([src_min, repl_mult])),
-            "recommended_max_order_qty_ri": _to_native(src_max),
-            "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
-            "recommended_setup_source": "uom-match",
-        })
-        return result
+    src_reorder = _to_decimal(row.get("reorder_point"))
+    src_min = _non_negative_decimal_value(row.get("min_order_qty"))
+    src_max = _non_negative_decimal_value(row.get("max_order_qty"))
+
+    src_stock_mult = _coerce_multiplier(row.get("uom_conversion"))
+    repl_stock_mult = _coerce_multiplier(row.get("uom_conversion_ri"))
+    repl_buy_mult = _positive_decimal_value(row.get("buy_uom_multiplier_ri"))
+    repl_trans_mult = _positive_decimal_value(row.get("transaction_uom_multiplier_ri"))
+
+    reorder_calc = _ceil_positive_value(_scaled_value(src_reorder, src_stock_mult, repl_stock_mult))
+    if reorder_calc is None:
+        reorder_calc = src_reorder
+
+    if is_par:
+        min_calc = src_min
+    else:
+        min_calc = repl_buy_mult if repl_buy_mult is not None else src_min
+
+    max_calc: Optional[Decimal] = None
+    if is_par:
+        max_ratio = _scaled_value(src_max, src_stock_mult, repl_trans_mult)
+        if max_ratio is not None:
+            max_calc = _round_half_up_integer(max_ratio)
+    else:
+        if repl_buy_mult is not None:
+            unit_ratio = _scaled_value(src_max, src_stock_mult, repl_buy_mult)
+            units = _round_half_up_integer(unit_ratio)
+            if units is not None:
+                max_calc = units * repl_buy_mult
+
+    if max_calc is None:
+        max_calc = src_max
 
     result.update({
-        "recommended_reorder_point_ri": _to_native(_ceil_to_multiple(src_reorder, repl_mult)),
-        "recommended_min_order_qty_ri": _to_native(repl_mult),
-        "recommended_max_order_qty_ri": _to_native(_ceil_to_multiple(src_max, repl_mult)),
-        "recommended_reorder_quantity_code_ri": row.get("reorder_quantity_code"),
-        "recommended_setup_source": "uom-adjust",
+        "recommended_reorder_point_ri": _to_native(reorder_calc),
+        "recommended_min_order_qty_ri": _to_native(min_calc),
+        "recommended_max_order_qty_ri": _to_native(max_calc),
     })
     return result
 
 
-def _compute_many_to_one_quantities(group_rows: List[Dict]) -> Dict[str, Optional[float]]:
+def _compute_many_to_one_quantities(group_rows: List[Dict], br_calc_type: str = "simple") -> Dict[str, Optional[float]]:
     if not group_rows:
         return {}
 
     base = next((r for r in group_rows if r.get("replacement_item")), group_rows[0])
-
-    reorder_sum = _sum_non_negative(group_rows, "reorder_point")
-    max_sum = _sum_non_negative(group_rows, "max_order_qty")
-
-    repl_mult = _to_decimal(base.get("buy_uom_multiplier_ri"))
-    repl_min = _to_decimal(base.get("min_order_qty_ri"))
-
-    step = None
-    if repl_mult is not None and repl_mult > 0:
-        step = repl_mult
-    elif repl_min is not None and repl_min > 0:
-        step = repl_min
-
-    recommended_reorder = reorder_sum
-    if reorder_sum is not None and step is not None and step > 0:
-        recommended_reorder = _round_to_multiple(reorder_sum, step)
-
-    recommended_max = max_sum
-    if max_sum is not None and step is not None and step > 0:
-        recommended_max = _round_to_multiple(max_sum, step)
-
-    recommended_min = None
-    if repl_mult is not None and repl_mult > 0:
-        recommended_min = _to_native(repl_mult)
-    elif repl_min is not None and repl_min > 0:
-        recommended_min = _to_native(repl_min)
-
-    # Fallback to a positive source min if replacement data missing
-    if recommended_min is None:
-        original_mins = [_to_decimal(r.get("min_order_qty")) for r in group_rows]
-        fallback_min = _max_positive(original_mins)
-        if fallback_min is not None:
-            recommended_min = _to_native(fallback_min)
+    is_par = _is_par_location(base)
+    relation_label = "par" if is_par else "inventory"
 
     result: Dict[str, Optional[float]] = {
-        "recommended_setup_source": "aggregate-many-1",
+        "recommended_setup_source": f"{br_calc_type}-many-1-{relation_label}",
         "recommended_reorder_quantity_code_ri": base.get("reorder_quantity_code_ri") or base.get("reorder_quantity_code"),
+        "recommended_reorder_point_ri": None,
+        "recommended_min_order_qty_ri": None,
+        "recommended_max_order_qty_ri": None,
     }
 
-    if recommended_reorder is not None:
-        result["recommended_reorder_point_ri"] = _to_native(recommended_reorder)
-    if recommended_min is not None:
-        result["recommended_min_order_qty_ri"] = recommended_min
-    if recommended_max is not None:
-        result["recommended_max_order_qty_ri"] = _to_native(recommended_max)
+    if br_calc_type != "simple":
+        return result
 
+    reorder_weighted = _sum_weighted(group_rows, "reorder_point", "uom_conversion")
+    max_weighted = _sum_weighted(group_rows, "max_order_qty", "uom_conversion")
+    src_min_candidates = _collect_non_negative(group_rows, "min_order_qty")
+
+    repl_stock_mult = _coerce_multiplier(base.get("uom_conversion_ri"))
+    repl_buy_mult = _positive_decimal_value(base.get("buy_uom_multiplier_ri"))
+    repl_trans_mult = _positive_decimal_value(base.get("transaction_uom_multiplier_ri"))
+
+    reorder_calc = _ceil_positive_value(_divide(reorder_weighted, repl_stock_mult))
+    if reorder_calc is None:
+        reorder_calc = _non_negative_decimal_value(reorder_weighted)
+
+    if is_par:
+        min_calc = _max_positive(src_min_candidates)
+    else:
+        min_calc = repl_buy_mult if repl_buy_mult is not None else _max_positive(src_min_candidates)
+
+    max_calc: Optional[Decimal] = None
+    if is_par:
+        max_ratio = _divide(max_weighted, repl_trans_mult)
+        if max_ratio is not None:
+            max_calc = _round_half_up_integer(max_ratio)
+    else:
+        if repl_buy_mult is not None:
+            unit_ratio = _divide(max_weighted, repl_buy_mult)
+            units = _round_half_up_integer(unit_ratio)
+            if units is not None:
+                max_calc = units * repl_buy_mult
+        else:
+            unit_ratio = _divide(max_weighted, None)
+            max_calc = unit_ratio
+
+    if max_calc is None:
+        max_calc = _max_positive(_collect_non_negative(group_rows, "max_order_qty"))
+
+    result.update({
+        "recommended_reorder_point_ri": _to_native(reorder_calc),
+        "recommended_min_order_qty_ri": _to_native(min_calc),
+        "recommended_max_order_qty_ri": _to_native(max_calc),
+    })
     return result
+
+
+def _apply_one_to_many_quantities(group_rows: List[Dict], br_calc_type: str = "simple") -> None:
+    """Distribute source policy values evenly across multiple replacements."""
+    if not group_rows:
+        return
+
+    replacements = [r for r in group_rows if r.get("replacement_item")]
+    if not replacements:
+        return
+
+    count = len(replacements)
+    if count == 0:
+        return
+
+    fraction = Decimal(1) / Decimal(count)
+
+    for row in group_rows:
+        if not row.get("replacement_item"):
+            continue
+
+        is_par = _is_par_location(row)
+        relation_label = "par" if is_par else "inventory"
+        row["recommended_setup_source"] = f"{br_calc_type}-1-many-{relation_label}"
+        row["recommended_reorder_quantity_code_ri"] = row.get("reorder_quantity_code_ri") or row.get("reorder_quantity_code")
+
+        if br_calc_type != "simple":
+            continue
+
+        src_reorder = _to_decimal(row.get("reorder_point"))
+        src_max = _non_negative_decimal_value(row.get("max_order_qty"))
+        src_min = _non_negative_decimal_value(row.get("min_order_qty"))
+
+        src_stock_mult = _coerce_multiplier(row.get("uom_conversion"))
+        repl_stock_mult = _coerce_multiplier(row.get("uom_conversion_ri"))
+        repl_buy_mult = _positive_decimal_value(row.get("buy_uom_multiplier_ri"))
+        repl_trans_mult = _positive_decimal_value(row.get("transaction_uom_multiplier_ri"))
+
+        numerator_mult = (src_stock_mult if src_stock_mult is not None else Decimal(1)) * fraction
+
+        reorder_raw = _scaled_value(src_reorder, numerator_mult, repl_stock_mult)
+        if is_par:
+            reorder_calc = _ceil_positive_value(reorder_raw)
+        else:
+            reorder_calc = _round_half_up_integer(reorder_raw)
+        if reorder_calc is None and reorder_raw is not None:
+            reorder_calc = _non_negative_decimal_value(reorder_raw)
+
+        if is_par:
+            min_calc = src_min
+        else:
+            min_calc = repl_buy_mult if repl_buy_mult is not None else src_min
+
+        max_calc: Optional[Decimal] = None
+        if is_par:
+            max_ratio = _scaled_value(src_max, numerator_mult, repl_trans_mult)
+            if max_ratio is not None:
+                max_calc = _round_half_up_integer(max_ratio)
+        else:
+            max_ratio = _scaled_value(src_max, numerator_mult, repl_buy_mult)
+            if max_ratio is not None:
+                units = _round_half_up_integer(max_ratio)
+                if units is not None and repl_buy_mult is not None:
+                    max_calc = units * repl_buy_mult
+                elif units is not None:
+                    max_calc = units
+
+        if max_calc is None:
+            if max_ratio is not None:
+                max_calc = _non_negative_decimal_value(max_ratio)
+            else:
+                max_calc = src_max
+
+        row.update({
+            "recommended_reorder_point_ri": _to_native(reorder_calc),
+            "recommended_min_order_qty_ri": _to_native(min_calc),
+            "recommended_max_order_qty_ri": _to_native(max_calc),
+        })
 
 
 def _to_decimal(value: object | None) -> Optional[Decimal]:
@@ -325,7 +514,7 @@ def _to_decimal(value: object | None) -> Optional[Decimal]:
 def _ceil_to_multiple(value: Optional[Decimal], multiple: Decimal) -> Optional[Decimal]:
     if value is None or multiple is None or multiple == 0:
         return value
-    quotient = (value / multiple).to_integral_value(rounding=ROUND_HALF_UP)
+    quotient = (value / multiple).to_integral_value(rounding=ROUND_CEILING)
     return quotient * multiple
 
 
@@ -381,6 +570,7 @@ def build_inventory_pairs(
     company: str | None = None,
     location: str | None = None,
     require_active: bool = False,
+    br_calc_type: str = "simple",
 ) -> List[Dict]:
     """Shim calling build_location_pairs for existing imports.
 
@@ -394,4 +584,5 @@ def build_inventory_pairs(
         require_active=require_active,
         include_par=False,
         location_types=["Inventory Location"],
+        br_calc_type=br_calc_type,
     )

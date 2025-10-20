@@ -23,6 +23,12 @@ ALLOWED_STAGE_VALUES = {
 }
 
 
+@bp.route("/documents/order-point-calculation")
+@login_required
+def order_point_calc_doc():
+    return render_template("documents/orderPointCalc.html")
+
+
 def _normalize_code(value: object | None) -> str:
     if value is None:
         return ""

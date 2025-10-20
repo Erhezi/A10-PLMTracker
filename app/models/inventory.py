@@ -337,7 +337,7 @@ class PLMZDate(db.Model):
 
     # Columns based on provided DB schema
     Inventory_base_ID = db.Column(db.Integer, nullable=True, primary_key=True)  # part of PK
-    item_link_id = db.Column(db.BigInteger, nullable=False, primary_key=True)  # part of PK
+    item_link_id = db.Column("PKID", db.BigInteger, nullable=False, primary_key=True)  # part of PK
 
     Location = db.Column(db.String(255), nullable=True)
     item_group = db.Column("Item Group", db.Integer, nullable=False)
@@ -346,7 +346,7 @@ class PLMZDate(db.Model):
     Company = db.Column(db.String(10), nullable=True)
 
     br_calc_type = db.Column("BRCalcType",     db.String(12), nullable=False)
-    br_calc_status = db.Column("BRCalcStatus", db.String(12), nullable=False)
+    br_calc_status = db.Column("BRCalcStatus", db.String(12), nullable=False) # 'New - ADD' or 'Existing'
     
     days_overlap = db.Column(db.Integer, nullable=True)  # days of O side natural z-date - R side create date (overlap, expect to be negative value if overlapping)
     days_to_start = db.Column(db.Integer, nullable=True) # days of R side create date - (current date go back 365 days), measures when replacement started compared to 1 year
@@ -363,7 +363,7 @@ class PLMZDate(db.Model):
 #-------------------------------------------------------
 # Table Mappings - PLM ItemLink specific (only contains ItemLink items)
 #-------------------------------------------------------
-class PLMItemGroupBRRoling(db.Model):
+class PLMItemGroupBRRolling(db.Model):
     """
     Mapping to PLM.PLMItemGroupBRRolling (SQL Server Table).
     View holds (Company, Location, ItemGroup) specific pre-calculated 

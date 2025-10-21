@@ -72,9 +72,14 @@ def build_location_pairs(
             "item": r.Item,
             "replacement_item": r.Replace_Item,
             "location": r.Location,  # unified location label (view-level logic)
+            "location_text": getattr(r, "LocationText", None),
+            "company": getattr(r, "Company", None),
             "preferred_bin": r.PreferredBin,
             "group_location": r.Group_Locations or r.Location,
+            "group_type": None,
             "location_ri": r.Location_ri or r.Location,  # fallback
+            "location_text_ri": getattr(r, "LocationText_ri", None),
+            "company_ri": getattr(r, "Company_ri", None),
             "preferred_bin_ri": getattr(r, "PreferredBin_ri", None),
             "location_type": r.LocationType,
             "auto_replenishment": r.AutomaticPO,
@@ -121,6 +126,8 @@ def build_location_pairs(
             "min_order_qty_ri": r.MinOrderQty_ri,
             "max_order_qty_ri": r.MaxOrderQty_ri,
             "manufacturer_number_ri": r.ManufacturerNumber_ri,
+            "recommended_auto_replenishment_ri": None,
+            "recommended_preferred_bin_ri": None,
         })
     _annotate_replacement_setups(out, br_calc_type=br_calc_type)
     # Stable sort by item_group then location for display
@@ -177,6 +184,52 @@ def _weeks_on_hand(available_qty: Optional[float], weekly_burn: float) -> str | 
         return "n/a"
 
 
+def _relation_display_label(relation: Optional[str]) -> Optional[str]:
+    mapping = {
+        "1-1": "1-1",
+        "1-many": "1-M",
+        "many-1": "M-1",
+        "many-many": "M-M",
+        "unknown": "Unknown",
+    }
+    if not relation:
+        return None
+    return mapping.get(relation, relation)
+
+
+def _auto_value_profile(value: object | None) -> tuple[str, str]:
+    if value is None:
+        return "", ""
+    text = str(value).strip()
+    if not text:
+        return "", ""
+    lowered = text.lower()
+    if lowered in {"yes", "y", "true", "t", "1", "active"}:
+        return "yes", "Yes"
+    if lowered in {"no", "n", "false", "f", "0", "inactive"}:
+        return "no", "No"
+    if lowered == "tbd":
+        return "tbd", "TBD"
+    return lowered, text
+
+
+def _recommended_auto_for_many_to_one(group_rows: List[Dict]) -> str:
+    normalized_values: set[str] = set()
+    display_lookup: Dict[str, str] = {}
+    for row in group_rows:
+        normalized, display = _auto_value_profile(row.get("auto_replenishment"))
+        if not normalized or normalized == "tbd":
+            continue
+        normalized_values.add(normalized)
+        display_lookup.setdefault(normalized, display)
+    if not normalized_values:
+        return ""
+    if len(normalized_values) == 1:
+        normalized = next(iter(normalized_values))
+        return display_lookup.get(normalized, "Yes" if normalized == "yes" else "No" if normalized == "no" else display_lookup.get(normalized, ""))
+    return "TBD"
+
+
 def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple") -> None:
     """Attach relationship classification and recommended RI quantities."""
     groups: Dict[tuple, List[Dict]] = defaultdict(list)
@@ -221,6 +274,33 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
                     row.update(calculations)
         elif relation == "1-many":
             _apply_one_to_many_quantities(group_rows, br_calc_type=br_calc_type)
+
+        relation_display = _relation_display_label(relation)
+        for row in group_rows:
+            row["group_type"] = relation_display
+
+        if relation in {"1-1", "1-many"}:
+            for row in group_rows:
+                _, display_auto = _auto_value_profile(row.get("auto_replenishment"))
+                row["recommended_auto_replenishment_ri"] = display_auto or None
+        elif relation == "many-1":
+            rec_auto = _recommended_auto_for_many_to_one(group_rows)
+            value = rec_auto or None
+            for row in group_rows:
+                row["recommended_auto_replenishment_ri"] = value
+        elif relation == "many-many":
+            for row in group_rows:
+                row["recommended_auto_replenishment_ri"] = "TBD"
+
+        if relation == "1-1":
+            for row in group_rows:
+                preferred = row.get("preferred_bin")
+                if isinstance(preferred, str):
+                    preferred = preferred.strip()
+                row["recommended_preferred_bin_ri"] = preferred or None
+        elif relation in {"1-many", "many-1", "many-many"}:
+            for row in group_rows:
+                row["recommended_preferred_bin_ri"] = "TBD"
 
 
 def _normalize_location_type(value: object | None) -> str:
@@ -561,28 +641,3 @@ __all__ = [
     "build_inventory_pairs",  # backward compatibility
 ]
 
-
-# ---------------------------------------------------------------------------
-# Backward compatibility shim (legacy name used by older routes)
-# ---------------------------------------------------------------------------
-def build_inventory_pairs(
-    stages: Optional[List[str]] = None,
-    company: str | None = None,
-    location: str | None = None,
-    require_active: bool = False,
-    br_calc_type: str = "simple",
-) -> List[Dict]:
-    """Shim calling build_location_pairs for existing imports.
-
-    Kept temporarily so existing code importing build_inventory_pairs keeps working.
-    Uses inventory mode (include_par=False) and defaults to Inventory Location type.
-    """
-    return build_location_pairs(
-        stages=stages,
-        company=company,
-        location=location,
-        require_active=require_active,
-        include_par=False,
-        location_types=["Inventory Location"],
-        br_calc_type=br_calc_type,
-    )

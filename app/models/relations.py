@@ -608,6 +608,7 @@ class PLMTrackerBase(db.Model):
     # Original Item side fields	
 	Item = db.Column("Item", db.String(10), nullable=False)
 
+	Company = db.Column("Company", db.String(10), nullable=True)
 	Location = db.Column("Location", db.String(20), nullable=True)
 	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=True)
@@ -642,6 +643,7 @@ class PLMTrackerBase(db.Model):
 	# Replace Item side (ri) fields
 	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
 
+	Company_ri = db.Column("Company_ri", db.String(10), nullable=True)
 	Location_ri = db.Column("Location_ri", db.String(20), nullable=True)
 	LocationText_ri = db.Column("LocationText_ri", db.String(255), nullable=True)
 	Inventory_base_ID_ri = db.Column("Inventory_base_ID_ri", db.BIGINT, nullable=True)

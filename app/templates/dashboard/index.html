@@ -144,9 +144,12 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="inv-col-group-type" data-field="group_type" class="col-group-type">Group Type</th>
                 <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
+                <th id="inv-col-location-text" data-field="location_text" class="col-text">Location Text</th>
+                <th id="inv-col-company" data-field="company" class="col-text">Company</th>
                 <th id="inv-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="inv-col-active" data-field="active" class="col-active">Active</th>
@@ -167,9 +170,13 @@
                 <th id="inv-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
-                <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="inv-col-location_ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="inv-col-location-text-ri" data-field="location_text_ri" class="col-text">Location Text (RI)</th>
+                <th id="inv-col-company-ri" data-field="company_ri" class="col-text">Company (RI)</th>
                 <th id="inv-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
+                <th id="inv-col-preferred-bin-rec" data-field="recommended_preferred_bin_ri" class="col-text col-recom">Preferred Bin (Recom.)</th>
                 <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
+                <th id="inv-col-auto-rec" data-field="recommended_auto_replenishment_ri" class="col-auto col-recom">Auto-repl. (Recom.)</th>
                 <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="inv-col-current-ri" data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
@@ -194,56 +201,63 @@
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
-                <th class="col-stage column-filter-cell"></th>
-                <th class="col-group column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
-                <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
-                <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
-                <th class="col-num column-filter-cell" id="inv-filter-current" data-field="current_qty_state"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-repl-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
-                <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
-                <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
-                <th class="col-num column-filter-cell" id="inv-filter-current-ri" data-field="current_qty_ri_state"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-pt-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
+                <th class="col-stage column-filter-cell" id="inv-filter-stage" data-column-id="inv-col-stage"></th>
+                <th class="col-group column-filter-cell" id="inv-filter-group" data-column-id="inv-col-group"></th>
+                <th class="col-group-type column-filter-cell" id="inv-filter-group-type" data-column-id="inv-col-group-type"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weekly-group" data-column-id="inv-col-weekly-group"></th>
+                <th class="col-item column-filter-cell" id="inv-filter-item" data-column-id="inv-col-item"></th>
+                <th class="col-location column-filter-cell" id="inv-filter-location" data-column-id="inv-col-location"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-location-text" data-column-id="inv-col-location-text"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-company" data-column-id="inv-col-company"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-preferred-bin" data-column-id="inv-col-preferred-bin"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto" data-column-id="inv-col-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active" data-column-id="inv-col-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc" data-column-id="inv-col-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current" data-column-id="inv-col-current" data-field="current_qty_state"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weekly" data-column-id="inv-col-weekly"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weeks" data-column-id="inv-col-weeks"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-stock-uom" data-column-id="inv-col-stock-uom"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-uom-conversion" data-column-id="inv-col-uom-conversion"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-buy-uom" data-column-id="inv-col-buy-uom"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-buy-uom-mult" data-column-id="inv-col-buy-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-trans-uom" data-column-id="inv-col-trans-uom"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-trans-uom-mult" data-column-id="inv-col-trans-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-reorder-policy" data-column-id="inv-col-reorder-policy"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-reorder-pt" data-column-id="inv-col-reorder-pt"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-min-order" data-column-id="inv-col-min-order"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-max-order" data-column-id="inv-col-max-order"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-mfg-num" data-column-id="inv-col-mfg-num"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-po90" data-column-id="inv-col-po90"></th>
+                <th class="col-repl-item column-filter-cell" id="inv-filter-repl-item" data-column-id="inv-col-repl-item"></th>
+                <th class="col-location column-filter-cell" id="inv-filter-location-ri" data-column-id="inv-col-location_ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-location-text-ri" data-column-id="inv-col-location-text-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-company-ri" data-column-id="inv-col-company-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-preferred-bin-ri" data-column-id="inv-col-preferred-bin-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="inv-filter-preferred-bin-rec" data-column-id="inv-col-preferred-bin-rec"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-column-id="inv-col-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-auto column-filter-cell col-recom" id="inv-filter-auto-rec" data-column-id="inv-col-auto-rec"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-column-id="inv-col-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-column-id="inv-col-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current-ri" data-column-id="inv-col-current-ri" data-field="current_qty_ri_state"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weekly-ri" data-column-id="inv-col-weekly-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weeks-ri" data-column-id="inv-col-weeks-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-stock-uom-ri" data-column-id="inv-col-stock-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-uom-conversion-ri" data-column-id="inv-col-uom-conversion-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-buy-uom-ri" data-column-id="inv-col-buy-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-buy-uom-mult-ri" data-column-id="inv-col-buy-uom-mult-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-trans-uom-ri" data-column-id="inv-col-trans-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-trans-uom-mult-ri" data-column-id="inv-col-trans-uom-mult-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-reorder-policy-ri" data-column-id="inv-col-reorder-policy-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="inv-filter-reorder-policy-rec" data-column-id="inv-col-reorder-policy-rec" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-reorder-pt-ri" data-column-id="inv-col-reorder-pt-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-reorder-pt-rec" data-column-id="inv-col-reorder-pt-rec" data-recom-col="reorder-pt-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-min-order-ri" data-column-id="inv-col-min-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-min-order-rec" data-column-id="inv-col-min-order-rec" data-recom-col="min-order-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-max-order-ri" data-column-id="inv-col-max-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-max-order-rec" data-column-id="inv-col-max-order-rec" data-recom-col="max-order-rec"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-mfg-num-ri" data-column-id="inv-col-mfg-num-ri"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-desc" data-column-id="inv-col-desc"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-desc-ri" data-column-id="inv-col-desc-ri"></th>
               </tr>
             <tbody>
               <!-- dynamic rows inserted by JS -->
@@ -291,9 +305,12 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="par-col-stage" data-field="stage" class="col-stage">Stage</th>
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="par-col-group-type" data-field="group_type" class="col-group-type">Group Type</th>
                 <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
+                <th id="par-col-location-text" data-field="location_text" class="col-text">Location Text</th>
+                <th id="par-col-company" data-field="company" class="col-text">Company</th>
                 <th id="par-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="par-col-active" data-field="active" class="col-active">Active</th>
@@ -314,8 +331,12 @@
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
+                <th id="par-col-location-text-ri" data-field="location_text_ri" class="col-text">Location Text (RI)</th>
+                <th id="par-col-company-ri" data-field="company_ri" class="col-text">Company (RI)</th>
                 <th id="par-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
+                <th id="par-col-preferred-bin-rec" data-field="recommended_preferred_bin_ri" class="col-text col-recom">Preferred Bin (Recom.)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
+                <th id="par-col-auto-rec" data-field="recommended_auto_replenishment_ri" class="col-auto col-recom">Auto-repl. (Recom.)</th>
                 <th id="par-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="par-col-reorder-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
@@ -339,54 +360,61 @@
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
-                <th class="col-stage column-filter-cell"></th>
-                <th class="col-group column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
-                <th class="col-active column-filter-cell" id="par-filter-active" data-field="active"></th>
-                <th class="col-disc column-filter-cell" id="par-filter-disc" data-field="discontinued"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-repl-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
-                <th class="col-active column-filter-cell" id="par-filter-active-ri" data-field="active_ri"></th>
-                <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-field="discontinued_ri"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
+                <th class="col-stage column-filter-cell" id="par-filter-stage" data-column-id="par-col-stage"></th>
+                <th class="col-group column-filter-cell" id="par-filter-group" data-column-id="par-col-group"></th>
+                <th class="col-group-type column-filter-cell" id="par-filter-group-type" data-column-id="par-col-group-type"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weekly-group" data-column-id="par-col-weekly-group"></th>
+                <th class="col-item column-filter-cell" id="par-filter-item" data-column-id="par-col-item"></th>
+                <th class="col-location column-filter-cell" id="par-filter-location" data-column-id="par-col-location"></th>
+                <th class="col-text column-filter-cell" id="par-filter-location-text" data-column-id="par-col-location-text"></th>
+                <th class="col-text column-filter-cell" id="par-filter-company" data-column-id="par-col-company"></th>
+                <th class="col-text column-filter-cell" id="par-filter-preferred-bin" data-column-id="par-col-preferred-bin"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto" data-column-id="par-col-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active" data-column-id="par-col-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc" data-column-id="par-col-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell" id="par-filter-reorder" data-column-id="par-col-reorder"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weekly" data-column-id="par-col-weekly"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weeks" data-column-id="par-col-weeks"></th>
+                <th class="col-text column-filter-cell" id="par-filter-stock-uom" data-column-id="par-col-stock-uom"></th>
+                <th class="col-num column-filter-cell" id="par-filter-uom-conversion" data-column-id="par-col-uom-conversion"></th>
+                <th class="col-text column-filter-cell" id="par-filter-buy-uom" data-column-id="par-col-buy-uom"></th>
+                <th class="col-num column-filter-cell" id="par-filter-buy-uom-mult" data-column-id="par-col-buy-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="par-filter-trans-uom" data-column-id="par-col-trans-uom"></th>
+                <th class="col-num column-filter-cell" id="par-filter-trans-uom-mult" data-column-id="par-col-trans-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="par-filter-reorder-policy" data-column-id="par-col-reorder-policy"></th>
+                <th class="col-num column-filter-cell" id="par-filter-min-order" data-column-id="par-col-min-order"></th>
+                <th class="col-num column-filter-cell" id="par-filter-max-order" data-column-id="par-col-max-order"></th>
+                <th class="col-text column-filter-cell" id="par-filter-mfg-num" data-column-id="par-col-mfg-num"></th>
+                <th class="col-num column-filter-cell" id="par-filter-req90" data-column-id="par-col-req90"></th>
+                <th class="col-repl-item column-filter-cell" id="par-filter-repl-item" data-column-id="par-col-repl-item"></th>
+                <th class="col-location column-filter-cell" id="par-filter-location-ri" data-column-id="par-col-location-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-location-text-ri" data-column-id="par-col-location-text-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-company-ri" data-column-id="par-col-company-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-preferred-bin-ri" data-column-id="par-col-preferred-bin-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="par-filter-preferred-bin-rec" data-column-id="par-col-preferred-bin-rec"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-column-id="par-col-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-auto column-filter-cell col-recom" id="par-filter-auto-rec" data-column-id="par-col-auto-rec"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active-ri" data-column-id="par-col-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-column-id="par-col-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-reorder-ri" data-column-id="par-col-reorder-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weekly-ri" data-column-id="par-col-weekly-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weeks-ri" data-column-id="par-col-weeks-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-stock-uom-ri" data-column-id="par-col-stock-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-uom-conversion-ri" data-column-id="par-col-uom-conversion-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-buy-uom-ri" data-column-id="par-col-buy-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-buy-uom-mult-ri" data-column-id="par-col-buy-uom-mult-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-trans-uom-ri" data-column-id="par-col-trans-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-trans-uom-mult-ri" data-column-id="par-col-trans-uom-mult-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-reorder-policy-ri" data-column-id="par-col-reorder-policy-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="par-filter-reorder-policy-rec" data-column-id="par-col-reorder-policy-rec" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-reorder-rec" data-column-id="par-col-reorder-rec" data-recom-col="reorder-rec"></th>
+                <th class="col-num column-filter-cell" id="par-filter-min-order-ri" data-column-id="par-col-min-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-min-order-rec" data-column-id="par-col-min-order-rec" data-recom-col="min-order-rec"></th>
+                <th class="col-num column-filter-cell" id="par-filter-max-order-ri" data-column-id="par-col-max-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-max-order-rec" data-column-id="par-col-max-order-rec" data-recom-col="max-order-rec"></th>
+                <th class="col-text column-filter-cell" id="par-filter-mfg-num-ri" data-column-id="par-col-mfg-num-ri"></th>
+                <th class="col-desc column-filter-cell" id="par-filter-desc" data-column-id="par-col-desc"></th>
+                <th class="col-desc column-filter-cell" id="par-filter-desc-ri" data-column-id="par-col-desc-ri"></th>
               </tr>
             </thead>
             <tbody>
@@ -1057,6 +1085,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize new UOM/reorder columns as hidden
   const recommendedColumns = [
+    'recommended_preferred_bin_ri',
+    'recommended_auto_replenishment_ri',
     'recommended_reorder_quantity_code_ri',
     'recommended_reorder_point_ri',
     'recommended_min_order_qty_ri',
@@ -1069,6 +1099,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
+    'location_text', 'company', 'location_text_ri', 'company_ri',
     'preferred_bin', 'preferred_bin_ri',
     ...recommendedColumns,
   ];
@@ -1607,9 +1638,12 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="text-center col-group-type">${fmt(r.group_type)}</td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center" title="${fmt(r.location_text)}">${fmt(r.location_text)}</td>
+          <td class="col-src text-center">${fmt(r.company)}</td>
           <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
           <td class="col-src text-center">${fmt(r.active)}</td>
@@ -1631,8 +1665,12 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+          <td class="col-repl text-center" title="${fmt(r.location_text_ri)}">${fmt(r.location_text_ri)}</td>
+          <td class="col-repl text-center">${fmt(r.company_ri)}</td>
           <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
+          <td class="col-repl col-recom text-center">${fmt(r.recommended_preferred_bin_ri)}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+          <td class="col-repl col-recom text-center">${fmt(r.recommended_auto_replenishment_ri)}</td>
           <td class="col-repl text-center">${fmt(r.active_ri)}</td>
           <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
           <td class="col-repl text-center">${num(r.current_qty_ri,0)}</td>
@@ -1716,9 +1754,12 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="text-center col-group-type">${fmt(r.group_type)}</td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
+          <td class="col-src text-center" title="${fmt(r.location_text)}">${fmt(r.location_text)}</td>
+          <td class="col-src text-center">${fmt(r.company)}</td>
           <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
             <td class="col-src text-center">${fmt(r.active)}</td>
@@ -1739,8 +1780,12 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
+            <td class="col-repl text-center" title="${fmt(r.location_text_ri)}">${fmt(r.location_text_ri)}</td>
+            <td class="col-repl text-center">${fmt(r.company_ri)}</td>
             <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
+            <td class="col-repl col-recom text-center">${fmt(r.recommended_preferred_bin_ri)}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+            <td class="col-repl col-recom text-center">${fmt(r.recommended_auto_replenishment_ri)}</td>
             <td class="col-repl text-center">${fmt(r.active_ri)}</td>
             <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
             <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>

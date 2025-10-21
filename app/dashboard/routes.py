@@ -243,14 +243,22 @@ def _apply_quantity_filter(rows, field: str, desired: str | None):
     return filtered
 
 
-def _filtered_inventory_rows(args) -> list[dict]:
-    stages_list = _parse_stage_values(args)
-    item_group_filters = _parse_item_group_filters(args.get("item_group"))
-    location_filters = _parse_location_filters(args.get("location"))
-    company = args.get("company") or None
-    active_param = args.get("active")
-    require_active = active_param.lower() == "true" if active_param else False
-    desc_search_lower = _desc_search_lower(args)
+def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
+    if apply_filters:
+        stages_list = _parse_stage_values(args)
+        item_group_filters = _parse_item_group_filters(args.get("item_group"))
+        location_filters = _parse_location_filters(args.get("location"))
+        company = args.get("company") or None
+        active_param = args.get("active")
+        require_active = active_param.lower() == "true" if active_param else False
+        desc_search_lower = _desc_search_lower(args)
+    else:
+        stages_list = list(ALLOWED_STAGE_VALUES)
+        item_group_filters: list[int] = []
+        location_filters: list[str] = []
+        company = None
+        require_active = False
+        desc_search_lower = ""
 
     all_rows = build_location_pairs(
         stages=stages_list,
@@ -276,22 +284,29 @@ def _filtered_inventory_rows(args) -> list[dict]:
             )
         ]
 
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
-    all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
-    all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
+    if apply_filters:
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
+        all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
+        all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
     return all_rows
 
 
-def _filtered_par_rows(args) -> list[dict]:
-    stages_list = _parse_stage_values(args)
-    item_group_filters = _parse_item_group_filters(args.get("item_group"))
-    location_filters = _parse_location_filters(args.get("location"))
-    desc_search_lower = _desc_search_lower(args)
+def _filtered_par_rows(args, *, apply_filters: bool = True) -> list[dict]:
+    if apply_filters:
+        stages_list = _parse_stage_values(args)
+        item_group_filters = _parse_item_group_filters(args.get("item_group"))
+        location_filters = _parse_location_filters(args.get("location"))
+        desc_search_lower = _desc_search_lower(args)
+    else:
+        stages_list = list(ALLOWED_STAGE_VALUES)
+        item_group_filters = []
+        location_filters = []
+        desc_search_lower = ""
 
     all_rows = build_location_pairs(
         stages=stages_list,
@@ -315,12 +330,13 @@ def _filtered_par_rows(args) -> list[dict]:
             )
         ]
 
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
+    if apply_filters:
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
 
     for r in all_rows:
         reorder_pt = r.get("reorder_point")
@@ -450,6 +466,36 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
 ]
+
+
+def _parse_column_selection(param: str | None) -> list[str]:
+    if not param:
+        return []
+    seen: set[str] = set()
+    results: list[str] = []
+    for part in param.split(","):
+        field = part.strip()
+        if not field or field in seen:
+            continue
+        seen.add(field)
+        results.append(field)
+    return results
+
+
+def _filter_export_columns(
+    column_defs: list[tuple[str, str]],
+    requested_fields: list[str],
+) -> list[tuple[str, str]]:
+    if not requested_fields:
+        return []
+    lookup = {field_name: (header, field_name) for header, field_name in column_defs}
+    filtered: list[tuple[str, str]] = []
+    for field in requested_fields:
+        column = lookup.get(field)
+        if column and column not in filtered:
+            filtered.append(column)
+    return filtered
+
 
 @bp.route("/")
 @login_required
@@ -720,12 +766,17 @@ def api_stats():
 @login_required
 def export_table(table_key: str):
     table_key_normalized = table_key.lower()
+    row_scope = (request.args.get("row_scope") or "filtered").strip().lower()
+    if row_scope not in {"all", "filtered"}:
+        row_scope = "filtered"
+    apply_filters = row_scope != "all"
+
     if table_key_normalized == "inventory":
-        rows = _filtered_inventory_rows(request.args)
+        rows = _filtered_inventory_rows(request.args, apply_filters=apply_filters)
         columns = INVENTORY_EXPORT_COLUMNS
         sheet_name = "Inventory"
     elif table_key_normalized == "par":
-        rows = _filtered_par_rows(request.args)
+        rows = _filtered_par_rows(request.args, apply_filters=apply_filters)
         columns = PAR_EXPORT_COLUMNS
         sheet_name = "Par Locations"
     else:
@@ -735,14 +786,26 @@ def export_table(table_key: str):
     if hide_r_only:
         rows = [row for row in rows if not _is_r_only_location(row)]
 
-    visible_param = request.args.get("visible_columns")
-    if visible_param:
-        requested_fields = [part.strip() for part in visible_param.split(",") if part.strip()]
-        if requested_fields:
-            lookup = {field: (header, field) for header, field in columns}
-            filtered_columns = [lookup[field] for field in requested_fields if field in lookup]
-            if filtered_columns:
-                columns = filtered_columns
+    column_mode = (request.args.get("column_mode") or "").strip().lower()
+    requested_fields = _parse_column_selection(request.args.get("columns"))
+    legacy_visible_param = request.args.get("visible_columns")
+    if not requested_fields and legacy_visible_param:
+        requested_fields = _parse_column_selection(legacy_visible_param)
+        if not column_mode:
+            column_mode = "visible"
+    if column_mode not in {"all", "visible", "custom"}:
+        column_mode = "all"
+
+    if requested_fields:
+        filtered_columns = _filter_export_columns(columns, requested_fields)
+        if column_mode == "custom":
+            if not filtered_columns or len(filtered_columns) != len(requested_fields):
+                abort(400, description="Requested columns are not available for export.")
+            columns = filtered_columns
+        elif filtered_columns:
+            columns = filtered_columns
+    elif column_mode == "custom":
+        abort(400, description="No columns selected for export.")
 
     workbook = Workbook()
     worksheet = workbook.active

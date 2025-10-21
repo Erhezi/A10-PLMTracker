@@ -124,7 +124,7 @@
             <div class="small text-muted" id="inventory-count">0 rows</div>
             <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
               <input class="form-check-input" type="checkbox" id="inventory-hide-r-toggle" checked>
-              <label class="form-check-label" for="inventory-hide-r-toggle">Hide R-Only Location</label>
+              <label class="form-check-label" for="inventory-hide-r-toggle">Hide RI-Only Location</label>
             </div>
             <div class="dropdown">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="inventory-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
@@ -271,7 +271,7 @@
             <div class="small text-muted" id="par-count">0 rows</div>
             <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
               <input class="form-check-input" type="checkbox" id="par-hide-r-toggle" checked>
-              <label class="form-check-label" for="par-hide-r-toggle">Hide R-Only Location</label>
+              <label class="form-check-label" for="par-hide-r-toggle">Hide RI-Only Location</label>
             </div>
             <div class="dropdown">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="par-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
@@ -435,6 +435,77 @@
 </div>
 
 <!-- Requester contacts modal -->
+<div class="modal fade" id="exportConfigModal" tabindex="-1" aria-labelledby="exportConfigModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exportConfigModalLabel">Export Options — <span id="export-modal-table-label">Table</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-4">
+          <h6 class="text-uppercase small text-muted mb-2">Rows to Export</h6>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="radio" name="export-row-scope" id="export-row-filtered" value="filtered" checked>
+            <label class="form-check-label" for="export-row-filtered">
+              Filtered only <span class="text-muted">(respect current filters)</span>
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="export-row-scope" id="export-row-all" value="all">
+            <label class="form-check-label" for="export-row-all">
+              All records <span class="text-muted">(ignore dashboard filters)</span>
+            </label>
+          </div>
+        </div>
+        <div class="mb-4">
+          <h6 class="text-uppercase small text-muted mb-2">Columns</h6>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-all" value="all" checked>
+            <label class="form-check-label" for="export-column-all">All columns</label>
+          </div>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-visible" value="visible">
+            <label class="form-check-label" for="export-column-visible">Visible columns only</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-custom" value="custom">
+            <label class="form-check-label" for="export-column-custom">Self-defined selection</label>
+          </div>
+        </div>
+        <div id="export-column-picker" class="export-column-picker d-none">
+          <div class="row g-3 align-items-start">
+            <div class="col-lg-6">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Available Columns</h6>
+                <span class="badge bg-light text-dark" id="export-available-count">0</span>
+              </div>
+              <div class="export-column-list" data-role="available-list" aria-label="Available columns"></div>
+              <p class="text-muted small mb-0 mt-2">Sorted by field name. Drag to Selected to include.</p>
+            </div>
+            <div class="col-lg-6">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Selected Columns</h6>
+                <span class="badge bg-primary text-white" id="export-selected-count">0</span>
+              </div>
+              <div class="export-column-list selected" data-role="selected-list" aria-label="Selected columns"></div>
+              <p class="text-muted small mb-0 mt-2">Drag to rearrange, or back to Available to remove.</p>
+            </div>
+          </div>
+        </div>
+        <div class="alert alert-warning small d-none mt-3" role="alert" id="export-custom-warning">Select at least one column to continue.</div>
+        <div class="alert alert-danger small d-none mt-3" role="alert" id="export-error-alert"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="export-download-btn">
+          <span class="spinner-border spinner-border-sm align-middle me-2 d-none" role="status" aria-hidden="true"></span>
+          Download Excel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
   
 {% endblock %}
 {% block scripts %}
@@ -510,6 +581,23 @@ document.addEventListener('DOMContentLoaded', () => {
   if(notifyCopyBtn && typeof bootstrap !== 'undefined' && bootstrap.Tooltip){
     notifyCopyTooltip = bootstrap.Tooltip.getOrCreateInstance(notifyCopyBtn, { trigger: 'manual' });
   }
+  const exportModalEl = document.getElementById('exportConfigModal');
+  const exportModalTitleEl = document.getElementById('export-modal-table-label');
+  const exportRowRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-row-scope"]')) : [];
+  const exportColumnRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-column-mode"]')) : [];
+  const exportColumnPicker = exportModalEl ? exportModalEl.querySelector('#export-column-picker') : null;
+  const exportAvailableList = exportModalEl ? exportModalEl.querySelector('[data-role="available-list"]') : null;
+  const exportSelectedList = exportModalEl ? exportModalEl.querySelector('[data-role="selected-list"]') : null;
+  const exportAvailableCount = exportModalEl ? exportModalEl.querySelector('#export-available-count') : null;
+  const exportSelectedCount = exportModalEl ? exportModalEl.querySelector('#export-selected-count') : null;
+  const exportCustomWarning = exportModalEl ? exportModalEl.querySelector('#export-custom-warning') : null;
+  const exportErrorAlert = exportModalEl ? exportModalEl.querySelector('#export-error-alert') : null;
+  const exportDownloadBtn = document.getElementById('export-download-btn');
+  const exportDownloadSpinner = exportDownloadBtn ? exportDownloadBtn.querySelector('.spinner-border') : null;
+  let exportModalInstance = null;
+  if(exportModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
+    exportModalInstance = bootstrap.Modal.getOrCreateInstance(exportModalEl);
+  }
   const htmlEscapeMap = {
     '&': '&amp;',
     '<': '&lt;',
@@ -528,6 +616,19 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: [],
     par: [],
   };
+  const exportTableLabels = {
+    inventory: 'Inventory Locations',
+    par: 'Par Locations',
+  };
+  const exportState = {
+    tableKey: null,
+    rowScope: 'filtered',
+    columnMode: 'visible',
+    allColumns: [],
+    selectedFields: [],
+    isBusy: false,
+  };
+  let exportDragData = null;
 
   function initializeColumnMetadata(tableKey, table){
     if(!table) return;
@@ -1904,54 +2005,398 @@ document.addEventListener('DOMContentLoaded', () => {
     return fields;
   }
 
-  async function exportTable(tableKey){
-    const button = tableKey === 'inventory' ? inventoryExportBtn : parExportBtn;
-    if(button){
-      button.disabled = true;
-      button.setAttribute('aria-busy', 'true');
+  function gatherAllColumnMetadata(tableKey){
+    const table = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
+    if(!table) return [];
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return [];
+    const results = [];
+    Array.from(headerRow.children).forEach(th => {
+      const field = (th.dataset.field || '').trim();
+      if(!field) return;
+      const label = (th.textContent || '').trim() || field;
+      results.push({
+        field,
+        label,
+        columnId: th.id || '',
+      });
+    });
+    return results;
+  }
+
+  function renderExportColumnItem(column, listType){
+    const item = document.createElement('div');
+    item.className = 'export-column-item';
+    item.setAttribute('role', 'option');
+    item.setAttribute('tabindex', '0');
+    item.dataset.field = column.field;
+    item.dataset.listType = listType;
+    item.innerHTML = `<div class="export-column-item-title">${escapeHtml(column.label)}</div><div class="export-column-item-sub text-muted">${escapeHtml(column.field)}</div>`;
+    item.draggable = true;
+    item.addEventListener('dragstart', handleExportDragStart);
+    item.addEventListener('dragend', handleExportDragEnd);
+    item.addEventListener('dblclick', () => {
+      if(listType === 'available'){
+        moveFieldToSelected(column.field);
+      } else {
+        moveFieldToAvailable(column.field);
+      }
+    });
+    item.addEventListener('keydown', (event) => {
+      if(event.key === 'Enter' || event.key === ' '){
+        event.preventDefault();
+        if(listType === 'available'){
+          moveFieldToSelected(column.field);
+        } else {
+          moveFieldToAvailable(column.field);
+        }
+      }
+    });
+    return item;
+  }
+
+  function refreshExportColumnLists(){
+    if(!exportModalEl) return;
+    const columnMap = new Map(exportState.allColumns.map(col => [col.field, col]));
+    exportState.selectedFields = exportState.selectedFields.filter(field => columnMap.has(field));
+    const availableFields = exportState.allColumns
+      .map(col => col.field)
+      .filter(field => !exportState.selectedFields.includes(field))
+      .sort((a, b) => a.localeCompare(b));
+    if(exportAvailableList){
+      exportAvailableList.innerHTML = '';
+      availableFields.forEach(field => {
+        const metadata = columnMap.get(field);
+        if(metadata){
+          exportAvailableList.appendChild(renderExportColumnItem(metadata, 'available'));
+        }
+      });
     }
-    try {
-      const params = buildSharedQueryParams();
+    if(exportSelectedList){
+      exportSelectedList.innerHTML = '';
+      exportState.selectedFields.forEach(field => {
+        const metadata = columnMap.get(field);
+        if(metadata){
+          exportSelectedList.appendChild(renderExportColumnItem(metadata, 'selected'));
+        }
+      });
+    }
+    if(exportAvailableCount){
+      exportAvailableCount.textContent = availableFields.length;
+    }
+    if(exportSelectedCount){
+      exportSelectedCount.textContent = exportState.selectedFields.length;
+    }
+    updateExportConfirmState();
+  }
+
+  function moveFieldToSelected(field, index){
+    if(!field) return;
+    const existingIndex = exportState.selectedFields.indexOf(field);
+    if(existingIndex !== -1){
+      exportState.selectedFields.splice(existingIndex, 1);
+    }
+    const insertionIndex = typeof index === 'number'
+      ? Math.max(0, Math.min(index, exportState.selectedFields.length))
+      : exportState.selectedFields.length;
+    exportState.selectedFields.splice(insertionIndex, 0, field);
+    refreshExportColumnLists();
+  }
+
+  function moveFieldToAvailable(field){
+    const idx = exportState.selectedFields.indexOf(field);
+    if(idx !== -1){
+      exportState.selectedFields.splice(idx, 1);
+      refreshExportColumnLists();
+    }
+  }
+
+  function clearExportErrors(){
+    if(exportErrorAlert){
+      exportErrorAlert.classList.add('d-none');
+      exportErrorAlert.textContent = '';
+    }
+  }
+
+  function showExportError(message){
+    if(exportErrorAlert){
+      exportErrorAlert.textContent = message;
+      exportErrorAlert.classList.remove('d-none');
+    }
+  }
+
+  function updateExportConfirmState(){
+    const requiresSelection = exportState.columnMode === 'custom';
+    const hasSelection = exportState.selectedFields.length > 0;
+    if(exportCustomWarning){
+      exportCustomWarning.classList.toggle('d-none', !(requiresSelection && !hasSelection));
+    }
+    if(exportDownloadBtn){
+      const disabled = exportState.isBusy || (requiresSelection && !hasSelection);
+      exportDownloadBtn.disabled = disabled;
+      exportDownloadBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    }
+    if(exportDownloadSpinner){
+      exportDownloadSpinner.classList.toggle('d-none', !exportState.isBusy);
+    }
+  }
+
+  function setExportRowScope(scope){
+    exportState.rowScope = scope === 'all' ? 'all' : 'filtered';
+    exportRowRadios.forEach(radio => {
+      radio.checked = radio.value === exportState.rowScope;
+    });
+  }
+
+  function setExportColumnMode(mode){
+    const normalized = mode === 'custom' ? 'custom' : (mode === 'visible' ? 'visible' : 'all');
+    exportState.columnMode = normalized;
+    if(normalized === 'custom' && exportState.selectedFields.length === 0){
+      const fallback = exportState.tableKey ? collectVisibleColumnFields(exportState.tableKey) : [];
+      if(fallback.length){
+        exportState.selectedFields = fallback.slice();
+      } else if(exportState.allColumns.length){
+        exportState.selectedFields = exportState.allColumns.map(col => col.field);
+      }
+    }
+    syncExportColumnModeUI();
+    updateExportConfirmState();
+  }
+
+  function syncExportColumnModeUI(){
+    exportColumnRadios.forEach(radio => {
+      radio.checked = radio.value === exportState.columnMode;
+    });
+    if(exportColumnPicker){
+      exportColumnPicker.classList.toggle('d-none', exportState.columnMode !== 'custom');
+    }
+    refreshExportColumnLists();
+  }
+
+  function openExportModal(tableKey){
+    if(!exportModalEl || !exportModalInstance){
+      performExport(tableKey, { rowScope: 'filtered', columnMode: 'visible' }).catch(err => {
+        console.error('Failed exporting table', tableKey, err);
+      });
+      return;
+    }
+    exportState.tableKey = tableKey;
+    exportState.allColumns = gatherAllColumnMetadata(tableKey);
+    exportState.selectedFields = collectVisibleColumnFields(tableKey);
+    exportState.rowScope = 'filtered';
+    exportState.columnMode = exportState.selectedFields.length ? 'visible' : 'all';
+    exportState.isBusy = false;
+    exportDragData = null;
+    clearExportErrors();
+    if(exportModalTitleEl){
+      exportModalTitleEl.textContent = exportTableLabels[tableKey] || tableKey.toUpperCase();
+    }
+    if(exportState.columnMode === 'all' && exportState.selectedFields.length === 0 && exportState.allColumns.length){
+      exportState.selectedFields = exportState.allColumns.map(col => col.field);
+    }
+    setExportRowScope(exportState.rowScope);
+    syncExportColumnModeUI();
+    updateExportConfirmState();
+    exportModalInstance.show();
+  }
+
+  function handleExportDragStart(event){
+    const target = event.currentTarget;
+    const field = target && target.dataset ? target.dataset.field : null;
+    if(!field) return;
+    exportDragData = {
+      field,
+      from: target.dataset.listType || 'available',
+    };
+    target.classList.add('is-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', field);
+  }
+
+  function handleExportDragEnd(event){
+    const target = event.currentTarget;
+    if(target){
+      target.classList.remove('is-dragging');
+    }
+    handleAvailableDragLeave();
+    handleSelectedDragLeave();
+    exportDragData = null;
+  }
+
+  function handleAvailableDragOver(event){
+    if(!exportDragData) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if(exportAvailableList){
+      exportAvailableList.classList.add('drop-active');
+    }
+  }
+
+  function handleAvailableDragLeave(){
+    if(exportAvailableList){
+      exportAvailableList.classList.remove('drop-active');
+    }
+  }
+
+  function handleAvailableDrop(event){
+    if(!exportDragData) return;
+    event.preventDefault();
+    const field = exportDragData.field || event.dataTransfer.getData('text/plain');
+    handleAvailableDragLeave();
+    moveFieldToAvailable(field);
+  }
+
+  function getSelectedInsertIndex(container, cursorY){
+    const items = Array.from(container.querySelectorAll('.export-column-item:not(.is-dragging)'));
+    for(let index = 0; index < items.length; index++){
+      const rect = items[index].getBoundingClientRect();
+      if(cursorY < rect.top + rect.height / 2){
+        return index;
+      }
+    }
+    return items.length;
+  }
+
+  function handleSelectedDragOver(event){
+    if(!exportDragData || !exportSelectedList) return;
+    event.preventDefault();
+    const insertIndex = getSelectedInsertIndex(exportSelectedList, event.clientY);
+    exportSelectedList.dataset.dropIndex = String(insertIndex);
+    exportSelectedList.classList.add('drop-active');
+    event.dataTransfer.dropEffect = 'move';
+  }
+
+  function handleSelectedDragLeave(){
+    if(exportSelectedList){
+      exportSelectedList.classList.remove('drop-active');
+      delete exportSelectedList.dataset.dropIndex;
+    }
+  }
+
+  function handleSelectedDrop(event){
+    if(!exportDragData || !exportSelectedList) return;
+    event.preventDefault();
+    const field = exportDragData.field || event.dataTransfer.getData('text/plain');
+    const insertIndex = exportSelectedList.dataset.dropIndex ? Number(exportSelectedList.dataset.dropIndex) : exportState.selectedFields.length;
+    handleSelectedDragLeave();
+    moveFieldToSelected(field, insertIndex);
+  }
+
+  async function performExport(tableKey, options = {}){
+    const params = new URLSearchParams();
+    const effectiveRowScope = options.rowScope === 'all' ? 'all' : 'filtered';
+    if(effectiveRowScope === 'all'){
+      params.set('row_scope', 'all');
+    } else {
+      const baseParams = buildSharedQueryParams();
+      baseParams.forEach((value, key) => params.set(key, value));
       appendColumnFilterParams(params, tableKey);
+      params.set('row_scope', 'filtered');
       if(hideROnly){
         params.set('hide_r_only', 'true');
       }
+    }
+    const mode = options.columnMode === 'custom' ? 'custom' : (options.columnMode === 'visible' ? 'visible' : 'all');
+    if(mode === 'visible'){
       const visibleFields = collectVisibleColumnFields(tableKey);
       if(visibleFields.length){
-        params.set('visible_columns', visibleFields.join(','));
+        params.set('column_mode', 'visible');
+        params.set('columns', visibleFields.join(','));
+      } else {
+        params.set('column_mode', 'all');
       }
-      const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
-      if(!resp.ok){
-        throw new Error(`Export failed (${resp.status})`);
+    } else if(mode === 'custom'){
+      const selected = Array.isArray(options.selectedFields) ? options.selectedFields.filter(Boolean) : [];
+      if(!selected.length){
+        throw new Error('Select at least one column before exporting.');
       }
-      const blob = await resp.blob();
-      let filename = `${tableKey}-export.xlsx`;
-      const disposition = resp.headers.get('Content-Disposition') || '';
-      const match = disposition.match(/filename\*?=(?:UTF-8''|\"?)([^";]+)/i);
-      if(match && match[1]){
-        const raw = match[1].replace(/^"|"$/g, '');
-        try {
-          filename = decodeURIComponent(raw);
-        } catch {
-          filename = raw;
-        }
+      params.set('column_mode', 'custom');
+      params.set('columns', selected.join(','));
+    } else {
+      params.set('column_mode', 'all');
+    }
+    const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
+    if(!resp.ok){
+      let detail = '';
+      try {
+        detail = await resp.text();
+      } catch {
+        detail = '';
       }
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      window.URL.revokeObjectURL(url);
-      link.remove();
-    } catch (err){
-      console.error('Failed exporting table', tableKey, err);
-    } finally {
-      if(button){
-        button.disabled = false;
-        button.removeAttribute('aria-busy');
+      throw new Error(detail || `Export failed (${resp.status})`);
+    }
+    const blob = await resp.blob();
+    let filename = `${tableKey}-export.xlsx`;
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+    if(match && match[1]){
+      const raw = match[1].replace(/^"|"$/g, '');
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
       }
     }
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    window.URL.revokeObjectURL(url);
+    link.remove();
+  }
+
+  if(exportAvailableList){
+    exportAvailableList.addEventListener('dragover', handleAvailableDragOver);
+    exportAvailableList.addEventListener('dragleave', handleAvailableDragLeave);
+    exportAvailableList.addEventListener('drop', handleAvailableDrop);
+  }
+  if(exportSelectedList){
+    exportSelectedList.addEventListener('dragover', handleSelectedDragOver);
+    exportSelectedList.addEventListener('dragleave', handleSelectedDragLeave);
+    exportSelectedList.addEventListener('drop', handleSelectedDrop);
+  }
+  exportRowRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if(radio.checked){
+        setExportRowScope(radio.value);
+        updateExportConfirmState();
+      }
+    });
+  });
+  exportColumnRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if(radio.checked){
+        setExportColumnMode(radio.value);
+      }
+    });
+  });
+  if(exportDownloadBtn){
+    exportDownloadBtn.addEventListener('click', async () => {
+      if(!exportState.tableKey || exportState.isBusy) return;
+      exportState.isBusy = true;
+      clearExportErrors();
+      updateExportConfirmState();
+      try {
+        const selectedFields = exportState.columnMode === 'custom' ? [...exportState.selectedFields] : [];
+        await performExport(exportState.tableKey, {
+          rowScope: exportState.rowScope,
+          columnMode: exportState.columnMode,
+          selectedFields,
+        });
+        if(exportModalInstance){
+          exportModalInstance.hide();
+        }
+      } catch (err) {
+        console.error('Failed exporting table', exportState.tableKey, err);
+        const message = err && err.message ? err.message : 'Export failed.';
+        showExportError(message);
+      } finally {
+        exportState.isBusy = false;
+        updateExportConfirmState();
+      }
+    });
   }
 
   btnFirst.addEventListener('click', () => { if(currentPage>1) loadInventory(1); });
@@ -1980,12 +2425,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if(inventoryExportBtn){
     inventoryExportBtn.addEventListener('click', () => {
-      exportTable('inventory');
+      openExportModal('inventory');
     });
   }
   if(parExportBtn){
     parExportBtn.addEventListener('click', () => {
-      exportTable('par');
+      openExportModal('par');
     });
   }
   [selStage, inpDescSearch].forEach(ctrl => {
@@ -2600,10 +3045,13 @@ document.addEventListener('DOMContentLoaded', () => {
     restoreParRowHighlight();
   }
 
+  const chartSection = document.getElementById('section-chart');
+
   document.addEventListener('click', evt => {
     if(!selectedInventorySignature) return;
     if(inventoryTable && inventoryTable.contains(evt.target)) return;
     if(inventoryTableRegion && inventoryTableRegion.contains(evt.target)) return;
+    if(chartSection && chartSection.contains(evt.target)) return;
     clearInventorySelection({ resetChart: true });
   });
 
@@ -2611,6 +3059,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!selectedParSignature) return;
     if(parTable && parTable.contains(evt.target)) return;
     if(parTableRegion && parTableRegion.contains(evt.target)) return;
+    if(chartSection && chartSection.contains(evt.target)) return;
     clearParSelection();
   });
 

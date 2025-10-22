@@ -640,6 +640,15 @@ class PLMTrackerBase(db.Model):
 	OrderQty90_EA = db.Column("OrderQty90_EA", db.Numeric, nullable=True)
 	ReqQty90_EA = db.Column("ReqQty90_EA", db.Numeric, nullable=True)
 
+	# action for replace item set up
+	action = db.Column("action", db.String(20), nullable=True)
+	# based on stage, existence of replace item in corresponding group location, and existence of rouce item in corresponding group location
+	# value can be one of the following:
+	# Mute - Discontinued item, we don't set up anything for replacement
+	# RI Only - replacement item already exists in this location, but source item does not exist, no action needed
+	# Update - source item exists, replacement item exists, if we export and decide to send file to MDM, it is an update
+	# Create - source item exists, replacement item does not exist, we need to create the replacement item in this location
+
 	# Replace Item side (ri) fields
 	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
 
@@ -648,17 +657,19 @@ class PLMTrackerBase(db.Model):
 	LocationText_ri = db.Column("LocationText_ri", db.String(255), nullable=True)
 	Inventory_base_ID_ri = db.Column("Inventory_base_ID_ri", db.BIGINT, nullable=True)
 	PreferredBin_ri = db.Column("PreferredBin_ri", db.String(40), nullable=True)
-	ItemDescription_ri = db.Column("ItemDescription_ri", db.String(255), nullable=True)
-	ManufacturerNumber_ri = db.Column("ManufacturerNumber_ri", db.String(100), nullable=True)
+	ItemDescription_ri = db.Column("ItemDescription_ri", db.String(255), nullable=True) #item level
+	ManufacturerNumber_ri = db.Column("ManufacturerNumber_ri", db.String(100), nullable=True) #item level
 	Active_ri = db.Column("Active_ri", db.String(5), nullable=True)
 	Discontinued_ri = db.Column("Discontinued_ri", db.String(5), nullable=True)
 	AutomaticPO_ri = db.Column("AutomaticPO_ri", db.String(5), nullable=True)
-	StockUOM_ri = db.Column("StockUOM_ri", db.String(10), nullable=True)
-	UOMConversion_ri = db.Column("UOMConversion_ri", db.Numeric, nullable=True)
-	DefaultBuyUOM_ri = db.Column("DefaultBuyUOM_ri", db.String(10), nullable=True)
-	BuyUOMMultiplier_ri = db.Column("BuyUOMMultiplier_ri", db.Numeric, nullable=True)
-	DefaultTransactionUOM_ri = db.Column("DefaultTransactionUOM_ri", db.String(10), nullable=True)
-	TransactionUOMMultiplier_ri = db.Column("TransactionUOMMultiplier_ri", db.Numeric, nullable=True)
+	StockUOM_ri = db.Column("StockUOM_ri", db.String(10), nullable=True) #item level
+	UOMConversion_ri = db.Column("UOMConversion_ri", db.Numeric, nullable=True) #item level
+	DefaultBuyUOM_ri = db.Column("DefaultBuyUOM_ri", db.String(10), nullable=True) #item level
+	BuyUOMMultiplier_ri = db.Column("BuyUOMMultiplier_ri", db.Numeric, nullable=True) #item level
+	DefaultTransactionUOM_ri = db.Column("DefaultTransactionUOM_ri", db.String(10), nullable=True) #item loc level
+	TransactionUOMMultiplier_ri = db.Column("TransactionUOMMultiplier_ri", db.Numeric, nullable=True) #item loc level
+	MatchedTransactionUOM_ri = db.Column("MatchedTransactionUOM_ri", db.String(10), nullable=True) #item loc level (match to original item's trans UOM)
+	MatchedTransactionUOMMultiplier_ri = db.Column("MatchedTransactionUOMMultiplier_ri", db.Numeric, nullable=True) #item loc level (match to original item's
 	ReorderQuantityCode_ri = db.Column("ReorderQuantityCode_ri", db.String(40), nullable=True)
 	ReorderPoint_ri = db.Column("ReorderPoint_ri", db.Integer, nullable=True)
 	MaxOrderQty_ri = db.Column("MaxOrderQty_ri", db.Integer, nullable=True)

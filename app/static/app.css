@@ -331,6 +331,16 @@ footer { font-size: .75rem; }
   border-left: 1px solid rgba(129, 61, 214, 0.18);
   border-right: 1px solid rgba(129, 61, 214, 0.18);
 }
+/* Notes column override: remove pale-yellow source band for Notes cells
+   Target the per-table data-column-id set by JS so other col-src
+   styling remains intact. Use transparent background to match other text cells.
+   The selector is intentionally specific and placed after the col-src rule.
+   Example: <td data-column-id="inv-col-notes" class="col-desc">...</td>
+*/
+#table-inventory tbody td[data-column-id="inv-col-notes"],
+#table-par tbody td[data-column-id="par-col-notes"] {
+  background: transparent;
+}
 #table-inventory thead tr.column-header-labels th.col-recom,
 #table-par thead tr.column-header-labels th.col-recom {
   background: var(--plm-accent-purple-mid);

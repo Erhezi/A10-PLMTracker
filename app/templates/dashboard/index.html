@@ -187,7 +187,9 @@
                 <th id="inv-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
                 <th id="inv-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
                 <th id="inv-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="inv-col-trans-uom-rec" data-field="recommended_transaction_uom_ri" class="col-text col-recom">Trans. UOM (Recom.)</th>
                 <th id="inv-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="inv-col-trans-uom-mult-rec" data-field="recommended_transaction_uom_multiplier_ri" class="col-num col-recom">Trans. UOM Mult. (Recom.)</th>
                 <th id="inv-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
                 <th id="inv-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
                 <th id="inv-col-reorder-pt-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
@@ -199,6 +201,8 @@
                 <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+                <th id="inv-col-action" data-field="action" class="col-text">Setup Action</th>
+                <th id="inv-col-notes" data-field="notes" class="col-desc">Notes</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
                 <th class="col-stage column-filter-cell" id="inv-filter-stage" data-column-id="inv-col-stage"></th>
@@ -246,7 +250,9 @@
                 <th class="col-text column-filter-cell" id="inv-filter-buy-uom-ri" data-column-id="inv-col-buy-uom-ri"></th>
                 <th class="col-num column-filter-cell" id="inv-filter-buy-uom-mult-ri" data-column-id="inv-col-buy-uom-mult-ri"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-trans-uom-ri" data-column-id="inv-col-trans-uom-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="inv-filter-trans-uom-rec" data-column-id="inv-col-trans-uom-rec"></th>
                 <th class="col-num column-filter-cell" id="inv-filter-trans-uom-mult-ri" data-column-id="inv-col-trans-uom-mult-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-trans-uom-mult-rec" data-column-id="inv-col-trans-uom-mult-rec"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-reorder-policy-ri" data-column-id="inv-col-reorder-policy-ri"></th>
                 <th class="col-text column-filter-cell col-recom" id="inv-filter-reorder-policy-rec" data-column-id="inv-col-reorder-policy-rec" data-recom-col="reorder-policy-rec"></th>
                 <th class="col-num column-filter-cell" id="inv-filter-reorder-pt-ri" data-column-id="inv-col-reorder-pt-ri"></th>
@@ -258,6 +264,8 @@
                 <th class="col-text column-filter-cell" id="inv-filter-mfg-num-ri" data-column-id="inv-col-mfg-num-ri"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-desc" data-column-id="inv-col-desc"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-desc-ri" data-column-id="inv-col-desc-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-action" data-column-id="inv-col-action"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-notes" data-column-id="inv-col-notes"></th>
               </tr>
             <tbody>
               <!-- dynamic rows inserted by JS -->
@@ -347,7 +355,9 @@
                 <th id="par-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
                 <th id="par-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
                 <th id="par-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="par-col-trans-uom-rec" data-field="recommended_transaction_uom_ri" class="col-text col-recom">Trans. UOM (Recom.)</th>
                 <th id="par-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="par-col-trans-uom-mult-rec" data-field="recommended_transaction_uom_multiplier_ri" class="col-num col-recom">Trans. UOM Mult. (Recom.)</th>
                 <th id="par-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
                 <th id="par-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
                 <th id="par-col-reorder-rec" data-field="recommended_reorder_point_ri" class="col-num col-recom">Reorder Point (Recom.)</th>
@@ -358,6 +368,8 @@
                 <th id="par-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+                <th id="par-col-action" data-field="action" class="col-text">Setup Action</th>
+                <th id="par-col-notes" data-field="notes" class="col-desc">Notes</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
                 <th class="col-stage column-filter-cell" id="par-filter-stage" data-column-id="par-col-stage"></th>
@@ -404,7 +416,9 @@
                 <th class="col-text column-filter-cell" id="par-filter-buy-uom-ri" data-column-id="par-col-buy-uom-ri"></th>
                 <th class="col-num column-filter-cell" id="par-filter-buy-uom-mult-ri" data-column-id="par-col-buy-uom-mult-ri"></th>
                 <th class="col-text column-filter-cell" id="par-filter-trans-uom-ri" data-column-id="par-col-trans-uom-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="par-filter-trans-uom-rec" data-column-id="par-col-trans-uom-rec"></th>
                 <th class="col-num column-filter-cell" id="par-filter-trans-uom-mult-ri" data-column-id="par-col-trans-uom-mult-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-trans-uom-mult-rec" data-column-id="par-col-trans-uom-mult-rec"></th>
                 <th class="col-text column-filter-cell" id="par-filter-reorder-policy-ri" data-column-id="par-col-reorder-policy-ri"></th>
                 <th class="col-text column-filter-cell col-recom" id="par-filter-reorder-policy-rec" data-column-id="par-col-reorder-policy-rec" data-recom-col="reorder-policy-rec"></th>
                 <th class="col-num column-filter-cell col-recom" id="par-filter-reorder-rec" data-column-id="par-col-reorder-rec" data-recom-col="reorder-rec"></th>
@@ -415,6 +429,8 @@
                 <th class="col-text column-filter-cell" id="par-filter-mfg-num-ri" data-column-id="par-col-mfg-num-ri"></th>
                 <th class="col-desc column-filter-cell" id="par-filter-desc" data-column-id="par-col-desc"></th>
                 <th class="col-desc column-filter-cell" id="par-filter-desc-ri" data-column-id="par-col-desc-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-action" data-column-id="par-col-action"></th>
+                <th class="col-desc column-filter-cell" id="par-filter-notes" data-column-id="par-col-notes"></th>
               </tr>
             </thead>
             <tbody>
@@ -488,17 +504,25 @@
         </div>
         <div class="mb-4">
           <h6 class="text-uppercase small text-muted mb-2">Columns</h6>
-          <div class="form-check mb-1">
+          <div class="form-check mb-1 export-column-mode-option">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-all" value="all" checked>
             <label class="form-check-label" for="export-column-all">All columns</label>
           </div>
-          <div class="form-check mb-1">
+          <div class="form-check mb-1 export-column-mode-option">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-visible" value="visible">
             <label class="form-check-label" for="export-column-visible">Visible columns only</label>
           </div>
-          <div class="form-check">
+          <div class="form-check export-column-mode-option">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-custom" value="custom">
             <label class="form-check-label" for="export-column-custom">Self-defined selection</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="inventory">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-setup" value="inventory_setup" data-table="inventory">
+            <label class="form-check-label" for="export-column-inventory-setup">Inventory set up</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="par">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup" value="par_setup" data-table="par">
+            <label class="form-check-label" for="export-column-par-setup">Par set up</label>
           </div>
         </div>
         <div id="export-column-picker" class="export-column-picker d-none">
@@ -613,6 +637,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportModalTitleEl = document.getElementById('export-modal-table-label');
   const exportRowRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-row-scope"]')) : [];
   const exportColumnRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-column-mode"]')) : [];
+  const tableSpecificColumnRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-column-mode"][data-table]')) : [];
   const exportColumnPicker = exportModalEl ? exportModalEl.querySelector('#export-column-picker') : null;
   const exportAvailableList = exportModalEl ? exportModalEl.querySelector('[data-role="available-list"]') : null;
   const exportSelectedList = exportModalEl ? exportModalEl.querySelector('[data-role="selected-list"]') : null;
@@ -648,6 +673,40 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: 'Inventory Locations',
     par: 'Par Locations',
   };
+  const exportPresetFields = {
+    inventory: {
+      inventory_setup: [
+        'company_ri',
+        'location_ri',
+        'item_ri',
+        'transaction_uom_ri',
+    'recommended_transaction_uom_ri',
+    'recommended_transaction_uom_multiplier_ri',
+        'preferred_bin_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'recommended_auto_replenishment_ri',
+        'manufacturer_number_ri',
+      ],
+    },
+    par: {
+      par_setup: [
+        'company_ri',
+        'location_ri',
+        'location_text_ri',
+        'item_ri',
+        'manufacturer_number_ri',
+        'item_description_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'preferred_bin_ri',
+        'recommended_transaction_uom_ri',
+        'recommended_transaction_uom_multiplier_ri',
+      ],
+    },
+  };
+  const customExportModes = new Set(['custom', 'inventory_setup', 'par_setup']);
   const exportState = {
     tableKey: null,
     rowScope: 'filtered',
@@ -1087,6 +1146,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const recommendedColumns = [
     'recommended_preferred_bin_ri',
     'recommended_auto_replenishment_ri',
+    'recommended_transaction_uom_ri',
+    'recommended_transaction_uom_multiplier_ri',
     'recommended_reorder_quantity_code_ri',
     'recommended_reorder_point_ri',
     'recommended_min_order_qty_ri',
@@ -1101,6 +1162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
     'location_text', 'company', 'location_text_ri', 'company_ri',
     'preferred_bin', 'preferred_bin_ri',
+    'action', 'notes',
     ...recommendedColumns,
   ];
   ['inventory', 'par'].forEach(tableKey => {
@@ -1681,7 +1743,9 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
           <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
           <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+          <td class="col-repl col-recom text-center">${fmt(r.recommended_transaction_uom_ri)}</td>
           <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_transaction_uom_multiplier_ri, 0)}</td>
           <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
           <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
           <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
@@ -1693,6 +1757,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="col-text text-center">${fmt(r.action)}</td>
+          <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
         `;
         annotateBodyRow('inventory', tr);
         tbody.appendChild(tr);
@@ -1796,7 +1862,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
             <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
             <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+            <td class="col-repl col-recom text-center">${fmt(r.recommended_transaction_uom_ri)}</td>
             <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_transaction_uom_multiplier_ri, 0)}</td>
             <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
             <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
             <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
@@ -1806,7 +1874,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl col-recom text-center">${num(r.recommended_max_order_qty_ri,0)}</td>
             <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
             <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
-            <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+      <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+      <td class="col-text text-center">${fmt(r.action)}</td>
+      <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
         `;
         annotateBodyRow('par', tr);
         parTbody.appendChild(tr);
@@ -2069,6 +2139,22 @@ document.addEventListener('DOMContentLoaded', () => {
     return results;
   }
 
+  function syncTableSpecificColumnModes(tableKey){
+    if(!exportModalEl) return;
+    tableSpecificColumnRadios.forEach(radio => {
+      const target = radio.dataset.table;
+      const matches = target === tableKey;
+      const wrapper = radio.closest('.export-column-mode-option');
+      if(wrapper){
+        wrapper.classList.toggle('d-none', !matches);
+      }
+      radio.disabled = !matches;
+      if(!matches && radio.checked){
+        radio.checked = false;
+      }
+    });
+  }
+
   function renderExportColumnItem(column, listType){
     const item = document.createElement('div');
     item.className = 'export-column-item';
@@ -2171,7 +2257,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateExportConfirmState(){
-    const requiresSelection = exportState.columnMode === 'custom';
+    const requiresSelection = customExportModes.has(exportState.columnMode);
     const hasSelection = exportState.selectedFields.length > 0;
     if(exportCustomWarning){
       exportCustomWarning.classList.toggle('d-none', !(requiresSelection && !hasSelection));
@@ -2194,7 +2280,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setExportColumnMode(mode){
-    const normalized = mode === 'custom' ? 'custom' : (mode === 'visible' ? 'visible' : 'all');
+    const allowedModes = ['all', 'visible', 'custom', 'inventory_setup', 'par_setup'];
+    let normalized = allowedModes.includes(mode) ? mode : 'all';
+    if(normalized === 'inventory_setup' && exportState.tableKey !== 'inventory'){
+      normalized = 'all';
+    } else if(normalized === 'par_setup' && exportState.tableKey !== 'par'){
+      normalized = 'all';
+    }
     exportState.columnMode = normalized;
     if(normalized === 'custom' && exportState.selectedFields.length === 0){
       const fallback = exportState.tableKey ? collectVisibleColumnFields(exportState.tableKey) : [];
@@ -2202,6 +2294,22 @@ document.addEventListener('DOMContentLoaded', () => {
         exportState.selectedFields = fallback.slice();
       } else if(exportState.allColumns.length){
         exportState.selectedFields = exportState.allColumns.map(col => col.field);
+      }
+    } else if(normalized === 'inventory_setup' || normalized === 'par_setup'){
+      const presets = (exportPresetFields[exportState.tableKey] || {})[normalized] || [];
+      const availableFields = new Set(exportState.allColumns.map(col => col.field));
+      const filtered = presets.filter(field => availableFields.has(field));
+      if(filtered.length){
+        exportState.selectedFields = filtered.slice();
+      } else {
+        const fallback = exportState.tableKey ? collectVisibleColumnFields(exportState.tableKey) : [];
+        if(fallback.length){
+          exportState.selectedFields = fallback.slice();
+        } else if(exportState.allColumns.length){
+          exportState.selectedFields = exportState.allColumns.map(col => col.field);
+        } else {
+          exportState.selectedFields = [];
+        }
       }
     }
     syncExportColumnModeUI();
@@ -2213,7 +2321,7 @@ document.addEventListener('DOMContentLoaded', () => {
       radio.checked = radio.value === exportState.columnMode;
     });
     if(exportColumnPicker){
-      exportColumnPicker.classList.toggle('d-none', exportState.columnMode !== 'custom');
+      exportColumnPicker.classList.toggle('d-none', !customExportModes.has(exportState.columnMode));
     }
     refreshExportColumnLists();
   }
@@ -2228,20 +2336,21 @@ document.addEventListener('DOMContentLoaded', () => {
     exportState.tableKey = tableKey;
     exportState.allColumns = gatherAllColumnMetadata(tableKey);
     exportState.selectedFields = collectVisibleColumnFields(tableKey);
+    const hasVisibleColumns = exportState.selectedFields.length > 0;
     exportState.rowScope = 'filtered';
-    exportState.columnMode = exportState.selectedFields.length ? 'visible' : 'all';
     exportState.isBusy = false;
     exportDragData = null;
     clearExportErrors();
     if(exportModalTitleEl){
       exportModalTitleEl.textContent = exportTableLabels[tableKey] || tableKey.toUpperCase();
     }
-    if(exportState.columnMode === 'all' && exportState.selectedFields.length === 0 && exportState.allColumns.length){
+    if(!hasVisibleColumns && exportState.allColumns.length){
       exportState.selectedFields = exportState.allColumns.map(col => col.field);
     }
+    syncTableSpecificColumnModes(tableKey);
     setExportRowScope(exportState.rowScope);
-    syncExportColumnModeUI();
-    updateExportConfirmState();
+    const defaultMode = hasVisibleColumns ? 'visible' : 'all';
+    setExportColumnMode(defaultMode);
     exportModalInstance.show();
   }
 
@@ -2341,7 +2450,7 @@ document.addEventListener('DOMContentLoaded', () => {
         params.set('hide_r_only', 'true');
       }
     }
-    const mode = options.columnMode === 'custom' ? 'custom' : (options.columnMode === 'visible' ? 'visible' : 'all');
+    const mode = customExportModes.has(options.columnMode) ? options.columnMode : (options.columnMode === 'visible' ? 'visible' : 'all');
     if(mode === 'visible'){
       const visibleFields = collectVisibleColumnFields(tableKey);
       if(visibleFields.length){
@@ -2350,7 +2459,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         params.set('column_mode', 'all');
       }
-    } else if(mode === 'custom'){
+    } else if(customExportModes.has(mode)){
       const selected = Array.isArray(options.selectedFields) ? options.selectedFields.filter(Boolean) : [];
       if(!selected.length){
         throw new Error('Select at least one column before exporting.');
@@ -2424,7 +2533,7 @@ document.addEventListener('DOMContentLoaded', () => {
       clearExportErrors();
       updateExportConfirmState();
       try {
-        const selectedFields = exportState.columnMode === 'custom' ? [...exportState.selectedFields] : [];
+        const selectedFields = customExportModes.has(exportState.columnMode) ? [...exportState.selectedFields] : [];
         await performExport(exportState.tableKey, {
           rowScope: exportState.rowScope,
           columnMode: exportState.columnMode,

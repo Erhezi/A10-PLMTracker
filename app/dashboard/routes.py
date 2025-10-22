@@ -408,7 +408,9 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Buy UOM (RI)", "buy_uom_ri"),
     ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
     ("Transaction UOM (RI)", "transaction_uom_ri"),
+    ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
     ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
+    ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
     ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
     ("Reorder Point (RI)", "reorder_point_ri"),
@@ -420,6 +422,8 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
+    ("Setup Action", "action"),
+    ("Notes", "notes"),
 ]
 
 
@@ -469,7 +473,9 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Buy UOM (RI)", "buy_uom_ri"),
     ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
     ("Transaction UOM (RI)", "transaction_uom_ri"),
+    ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
     ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
+    ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
     ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
     ("Min Order Qty (RI)", "min_order_qty_ri"),
@@ -479,6 +485,8 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
+    ("Setup Action", "action"),
+    ("Notes", "notes"),
 ]
 
 

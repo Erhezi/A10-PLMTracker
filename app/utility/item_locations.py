@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from .. import db
-from ..models.inventory import ItemLocations  # legacy imports (may be removed later)
+from ..models.inventory import ItemLocations, ItemUOM  # legacy imports (may be removed later)
 from ..models.relations import PLMTrackerBase  # new consolidated view
 
 
@@ -128,8 +128,13 @@ def build_location_pairs(
             "manufacturer_number_ri": r.ManufacturerNumber_ri,
             "recommended_auto_replenishment_ri": None,
             "recommended_preferred_bin_ri": None,
+            "recommended_transaction_uom_ri": r.MatchedTransactionUOM_ri,
+            "recommended_transaction_uom_multiplier_ri": r.MatchedTransactionUOMMultiplier_ri,
+            "action": r.action,
+            "notes": getattr(r, "notes", None),
         })
     _annotate_replacement_setups(out, br_calc_type=br_calc_type)
+    _populate_notes(out)
     # Stable sort by item_group then location for display
     out.sort(key=lambda d: (
         d.get("item_group") or 0,
@@ -213,20 +218,44 @@ def _auto_value_profile(value: object | None) -> tuple[str, str]:
     return lowered, text
 
 
-def _recommended_auto_for_many_to_one(group_rows: List[Dict]) -> str:
-    normalized_values: set[str] = set()
-    display_lookup: Dict[str, str] = {}
+def _recommended_auto_for_group(group_rows: List[Dict]) -> Optional[str]:
+    normalized_values: Dict[str, str] = {}
     for row in group_rows:
         normalized, display = _auto_value_profile(row.get("auto_replenishment"))
         if not normalized or normalized == "tbd":
             continue
-        normalized_values.add(normalized)
-        display_lookup.setdefault(normalized, display)
+        normalized_values.setdefault(normalized, display)
     if not normalized_values:
-        return ""
+        return None
     if len(normalized_values) == 1:
         normalized = next(iter(normalized_values))
-        return display_lookup.get(normalized, "Yes" if normalized == "yes" else "No" if normalized == "no" else display_lookup.get(normalized, ""))
+        display = normalized_values[normalized]
+        if display:
+            return display
+        if normalized == "yes":
+            return "Yes"
+        if normalized == "no":
+            return "No"
+        return normalized.title()
+    return "TBD"
+
+
+def _recommended_reorder_policy_for_group(group_rows: List[Dict]) -> Optional[str]:
+    normalized_values: Dict[str, str] = {}
+    for row in group_rows:
+        raw = row.get("reorder_quantity_code")
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if not text:
+            continue
+        key = text.lower()
+        normalized_values.setdefault(key, text)
+    if not normalized_values:
+        return None
+    if len(normalized_values) == 1:
+        key = next(iter(normalized_values))
+        return normalized_values[key]
     return "TBD"
 
 
@@ -279,18 +308,9 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         for row in group_rows:
             row["group_type"] = relation_display
 
-        if relation in {"1-1", "1-many"}:
-            for row in group_rows:
-                _, display_auto = _auto_value_profile(row.get("auto_replenishment"))
-                row["recommended_auto_replenishment_ri"] = display_auto or None
-        elif relation == "many-1":
-            rec_auto = _recommended_auto_for_many_to_one(group_rows)
-            value = rec_auto or None
-            for row in group_rows:
-                row["recommended_auto_replenishment_ri"] = value
-        elif relation == "many-many":
-            for row in group_rows:
-                row["recommended_auto_replenishment_ri"] = "TBD"
+        auto_recommendation = _recommended_auto_for_group(group_rows)
+        for row in group_rows:
+            row["recommended_auto_replenishment_ri"] = auto_recommendation
 
         if relation == "1-1":
             for row in group_rows:
@@ -301,6 +321,125 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         elif relation in {"1-many", "many-1", "many-many"}:
             for row in group_rows:
                 row["recommended_preferred_bin_ri"] = "TBD"
+
+        reorder_policy = _recommended_reorder_policy_for_group(group_rows)
+        for row in group_rows:
+            if reorder_policy == "TBD":
+                row["recommended_reorder_quantity_code_ri"] = "TBD"
+            elif reorder_policy is not None:
+                row["recommended_reorder_quantity_code_ri"] = reorder_policy
+
+        for row in group_rows:
+            rec_uom = row.get("recommended_transaction_uom_ri")
+            if rec_uom is None:
+                row["recommended_transaction_uom_ri"] = "TBD"
+            elif isinstance(rec_uom, str) and not rec_uom.strip():
+                row["recommended_transaction_uom_ri"] = "TBD"
+
+        for row in group_rows:
+            action_value = (row.get("action") or "").strip().lower()
+            if action_value in {"ri only", "mute"}:
+                row["recommended_preferred_bin_ri"] = "N.A."
+                row["recommended_auto_replenishment_ri"] = "N.A."
+                row["recommended_reorder_quantity_code_ri"] = "N.A."
+                row["recommended_transaction_uom_ri"] = "N.A."
+
+
+def _is_tbd(value: object | None) -> bool:
+    if not value:
+        return False
+    if isinstance(value, str) and value.strip().lower() == "tbd":
+        return True
+    return False
+
+
+def _build_transaction_uom_lookup(items: set[str]) -> Dict[str, str]:
+    if not items:
+        return {}
+
+    stmt = select(ItemUOM).where(ItemUOM.Item.in_(items))
+    records = db.session.execute(stmt).scalars().all()
+
+    catalog: Dict[str, list[tuple[Decimal, str]]] = defaultdict(list)
+    for record in records:
+        status = (record.ValidForInventoryTransaction or "").strip().lower()
+        if status not in {"valid", "default"}:
+            continue
+        conv = _to_decimal(record.UOMConversion)
+        if conv is None:
+            continue
+        catalog[record.Item].append((conv, record.UOM or ""))
+
+    formatted: Dict[str, str] = {}
+    for item, entries in catalog.items():
+        # Sort by conversion size so smaller units appear first for readability.
+        entries.sort(key=lambda entry: (entry[0], entry[1]))
+        parts: list[str] = []
+        for conv, uom in entries:
+            if not uom:
+                continue
+            try:
+                conv_int = int(conv)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            parts.append(f"{uom}**{conv_int}")
+        if parts:
+            formatted[item] = ", ".join(parts)
+    return formatted
+
+
+def _populate_notes(rows: List[Dict]) -> None:
+    if not rows:
+        return
+
+    items_needing_uoms = {
+        row.get("replacement_item")
+        for row in rows
+        if _is_tbd(row.get("recommended_transaction_uom_ri")) and row.get("replacement_item")
+    }
+
+    uom_lookup = _build_transaction_uom_lookup(items_needing_uoms)
+
+    for row in rows:
+        notes: list[str] = []
+
+        if _is_tbd(row.get("recommended_preferred_bin_ri")):
+            item_raw = row.get("item")
+            bin_raw = row.get("preferred_bin")
+            item_code = str(item_raw).strip() if item_raw is not None else "unknown item"
+            preferred_bin = str(bin_raw).strip() if bin_raw is not None else "None"
+            notes.append(f"source item {item_code} in bin {preferred_bin}")
+
+        if _is_tbd(row.get("recommended_auto_replenishment_ri")):
+            notes.append("source items have mixed auto-PO setup")
+
+        if _is_tbd(row.get("recommended_reorder_quantity_code_ri")):
+            notes.append("source items have mixed reorder policy")
+
+        if _is_tbd(row.get("recommended_transaction_uom_ri")):
+            repl_item = row.get("replacement_item")
+            if repl_item:
+                summary = uom_lookup.get(repl_item)
+                if summary:
+                    src_item = row.get("item") or "unknown item"
+                    src_uom_raw = row.get("transaction_uom")
+                    src_mult_raw = row.get("transaction_uom_multiplier")
+
+                    src_uom = str(src_uom_raw).strip() if src_uom_raw else "unknown UOM"
+                    mult_decimal = _to_decimal(src_mult_raw)
+                    if mult_decimal is not None:
+                        if mult_decimal == mult_decimal.to_integral():
+                            src_mult = str(int(mult_decimal))
+                        else:
+                            src_mult = str(mult_decimal.normalize())
+                    else:
+                        src_mult = "unknown"
+
+                    notes.append(
+                        f"source item {src_item} is using {src_uom}**{src_mult}, replacement item {repl_item} currently is available in these UOMs {summary} for transaction"
+                    )
+
+        row["notes"] = "\n".join(notes) if notes else None
 
 
 def _normalize_location_type(value: object | None) -> str:

@@ -137,6 +137,29 @@ class PO90Day(db.Model):
         return (f"<PO90Day("
                 f"PO={self.PO}, Line={self.POLine}, "
                 f"Vendor={self.Vendor}, Item={self.Item})>")
+    
+
+
+class ItemUOM(db.Model):
+    """
+    Mapping to PLM.vw_ItemUOM (SQL Server VIEW).
+    Read-only
+    """
+
+    __tablename__ = "vw_ItemUOM"
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
+
+    Item              = db.Column(db.String(100), primary_key=True, nullable=False)
+    UOM               = db.Column(db.String(10),  primary_key=True, nullable=False)
+    UOMConversion     = db.Column(db.Numeric,     nullable=True)
+
+    ValidForInventoryTransaction = db.Column(db.String(20), nullable=True) # 'Valid' or 'Default' or 'Not Valid' or 'Inactive'
+    Active                       = db.Column("Item.Active", db.String(5),  nullable=True) # 'Yes' or 'No'
+    
+
+    def __repr__(self):
+        return (f"<ItemUOM Item={self.Item} "
+                f"UOM={self.UOM} x{self.UOMConversion} ")
 
 
 #-------------------------------------------------------

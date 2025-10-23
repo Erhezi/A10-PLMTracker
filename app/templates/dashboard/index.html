@@ -148,8 +148,6 @@
                 <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
-                <th id="inv-col-location-text" data-field="location_text" class="col-text">Location Text</th>
-                <th id="inv-col-company" data-field="company" class="col-text">Company</th>
                 <th id="inv-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="inv-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="inv-col-active" data-field="active" class="col-active">Active</th>
@@ -170,9 +168,7 @@
                 <th id="inv-col-mfg-num" data-field="manufacturer_number" class="col-text">Mfg. Number</th>
                 <th id="inv-col-po90" data-field="po_90_qty" class="col-num">90-day PO Qty</th>
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
-                <th id="inv-col-location_ri" data-field="location_ri" class="col-location">Location (RI)</th>
-                <th id="inv-col-location-text-ri" data-field="location_text_ri" class="col-text">Location Text (RI)</th>
-                <th id="inv-col-company-ri" data-field="company_ri" class="col-text">Company (RI)</th>
+                <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
                 <th id="inv-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
                 <th id="inv-col-preferred-bin-rec" data-field="recommended_preferred_bin_ri" class="col-text col-recom">Preferred Bin (Recom.)</th>
                 <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
@@ -211,8 +207,6 @@
                 <th class="col-num column-filter-cell" id="inv-filter-weekly-group" data-column-id="inv-col-weekly-group"></th>
                 <th class="col-item column-filter-cell" id="inv-filter-item" data-column-id="inv-col-item"></th>
                 <th class="col-location column-filter-cell" id="inv-filter-location" data-column-id="inv-col-location"></th>
-                <th class="col-text column-filter-cell" id="inv-filter-location-text" data-column-id="inv-col-location-text"></th>
-                <th class="col-text column-filter-cell" id="inv-filter-company" data-column-id="inv-col-company"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-preferred-bin" data-column-id="inv-col-preferred-bin"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto" data-column-id="inv-col-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="inv-filter-active" data-column-id="inv-col-active" data-field="active"></th>
@@ -233,9 +227,7 @@
                 <th class="col-text column-filter-cell" id="inv-filter-mfg-num" data-column-id="inv-col-mfg-num"></th>
                 <th class="col-num column-filter-cell" id="inv-filter-po90" data-column-id="inv-col-po90"></th>
                 <th class="col-repl-item column-filter-cell" id="inv-filter-repl-item" data-column-id="inv-col-repl-item"></th>
-                <th class="col-location column-filter-cell" id="inv-filter-location-ri" data-column-id="inv-col-location_ri"></th>
-                <th class="col-text column-filter-cell" id="inv-filter-location-text-ri" data-column-id="inv-col-location-text-ri"></th>
-                <th class="col-text column-filter-cell" id="inv-filter-company-ri" data-column-id="inv-col-company-ri"></th>
+                <th class="col-location column-filter-cell" id="inv-filter-location-ri" data-column-id="inv-col-location-ri"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-preferred-bin-ri" data-column-id="inv-col-preferred-bin-ri"></th>
                 <th class="col-text column-filter-cell col-recom" id="inv-filter-preferred-bin-rec" data-column-id="inv-col-preferred-bin-rec"></th>
                 <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-column-id="inv-col-auto-ri" data-field="auto_replenishment_ri"></th>
@@ -267,6 +259,7 @@
                 <th class="col-text column-filter-cell" id="inv-filter-action" data-column-id="inv-col-action"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-notes" data-column-id="inv-col-notes"></th>
               </tr>
+            </thead>
             <tbody>
               <!-- dynamic rows inserted by JS -->
             </tbody>
@@ -317,8 +310,6 @@
                 <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
-                <th id="par-col-location-text" data-field="location_text" class="col-text">Location Text</th>
-                <th id="par-col-company" data-field="company" class="col-text">Company</th>
                 <th id="par-col-preferred-bin" data-field="preferred_bin" class="col-text">Preferred Bin</th>
                 <th id="par-col-auto" data-field="auto_replenishment" class="col-auto">Auto-repl.</th>
                 <th id="par-col-active" data-field="active" class="col-active">Active</th>
@@ -339,8 +330,6 @@
                 <th id="par-col-req90" data-field="req_qty_ea" class="col-num">90-day Req Qty</th>
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
-                <th id="par-col-location-text-ri" data-field="location_text_ri" class="col-text">Location Text (RI)</th>
-                <th id="par-col-company-ri" data-field="company_ri" class="col-text">Company (RI)</th>
                 <th id="par-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
                 <th id="par-col-preferred-bin-rec" data-field="recommended_preferred_bin_ri" class="col-text col-recom">Preferred Bin (Recom.)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
@@ -378,8 +367,6 @@
                 <th class="col-num column-filter-cell" id="par-filter-weekly-group" data-column-id="par-col-weekly-group"></th>
                 <th class="col-item column-filter-cell" id="par-filter-item" data-column-id="par-col-item"></th>
                 <th class="col-location column-filter-cell" id="par-filter-location" data-column-id="par-col-location"></th>
-                <th class="col-text column-filter-cell" id="par-filter-location-text" data-column-id="par-col-location-text"></th>
-                <th class="col-text column-filter-cell" id="par-filter-company" data-column-id="par-col-company"></th>
                 <th class="col-text column-filter-cell" id="par-filter-preferred-bin" data-column-id="par-col-preferred-bin"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto" data-column-id="par-col-auto" data-field="auto_replenishment"></th>
                 <th class="col-active column-filter-cell" id="par-filter-active" data-column-id="par-col-active" data-field="active"></th>
@@ -400,8 +387,6 @@
                 <th class="col-num column-filter-cell" id="par-filter-req90" data-column-id="par-col-req90"></th>
                 <th class="col-repl-item column-filter-cell" id="par-filter-repl-item" data-column-id="par-col-repl-item"></th>
                 <th class="col-location column-filter-cell" id="par-filter-location-ri" data-column-id="par-col-location-ri"></th>
-                <th class="col-text column-filter-cell" id="par-filter-location-text-ri" data-column-id="par-col-location-text-ri"></th>
-                <th class="col-text column-filter-cell" id="par-filter-company-ri" data-column-id="par-col-company-ri"></th>
                 <th class="col-text column-filter-cell" id="par-filter-preferred-bin-ri" data-column-id="par-col-preferred-bin-ri"></th>
                 <th class="col-text column-filter-cell col-recom" id="par-filter-preferred-bin-rec" data-column-id="par-col-preferred-bin-rec"></th>
                 <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-column-id="par-col-auto-ri" data-field="auto_replenishment_ri"></th>
@@ -676,12 +661,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportPresetFields = {
     inventory: {
       inventory_setup: [
-        'company_ri',
         'location_ri',
         'item_ri',
         'transaction_uom_ri',
-    'recommended_transaction_uom_ri',
-    'recommended_transaction_uom_multiplier_ri',
+        'recommended_transaction_uom_ri',
+        'recommended_transaction_uom_multiplier_ri',
         'preferred_bin_ri',
         'recommended_min_order_qty_ri',
         'recommended_max_order_qty_ri',
@@ -692,9 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     par: {
       par_setup: [
-        'company_ri',
         'location_ri',
-        'location_text_ri',
         'item_ri',
         'manufacturer_number_ri',
         'item_description_ri',
@@ -1160,7 +1142,6 @@ document.addEventListener('DOMContentLoaded', () => {
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
-    'location_text', 'company', 'location_text_ri', 'company_ri',
     'preferred_bin', 'preferred_bin_ri',
     'action', 'notes',
     ...recommendedColumns,
@@ -1704,8 +1685,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
-          <td class="col-src text-center" title="${fmt(r.location_text)}">${fmt(r.location_text)}</td>
-          <td class="col-src text-center">${fmt(r.company)}</td>
           <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
           <td class="col-src text-center">${fmt(r.active)}</td>
@@ -1727,8 +1706,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-src text-center">${num(r.po_90_qty,0)}</td>
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
-          <td class="col-repl text-center" title="${fmt(r.location_text_ri)}">${fmt(r.location_text_ri)}</td>
-          <td class="col-repl text-center">${fmt(r.company_ri)}</td>
           <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
           <td class="col-repl col-recom text-center">${fmt(r.recommended_preferred_bin_ri)}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
@@ -1824,8 +1801,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
-          <td class="col-src text-center" title="${fmt(r.location_text)}">${fmt(r.location_text)}</td>
-          <td class="col-src text-center">${fmt(r.company)}</td>
           <td class="col-src text-center">${fmt(r.preferred_bin)}</td>
           <td class="col-src text-center">${fmt(r.auto_replenishment)}</td>
             <td class="col-src text-center">${fmt(r.active)}</td>
@@ -1846,8 +1821,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-src text-center">${num(r.req_qty_ea,0)}</td>
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
-            <td class="col-repl text-center" title="${fmt(r.location_text_ri)}">${fmt(r.location_text_ri)}</td>
-            <td class="col-repl text-center">${fmt(r.company_ri)}</td>
             <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
             <td class="col-repl col-recom text-center">${fmt(r.recommended_preferred_bin_ri)}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>

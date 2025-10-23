@@ -67,28 +67,27 @@ def build_location_pairs(
         weeks_repl = _weeks_on_hand(getattr(r, "AvailableQty_ri", None), weekly_repl)
 
         out.append({
-            "stage": r.Stage,
-            "item_group": r.Item_Group,
+            "stage": r.Stage, # item group level
+            "item_group": r.Item_Group, # item group level
+            "group_location": r.Group_Locations, # all locations equvalent to union of location and location_ri
+            "company": r.Company, # all locations
+            "location_text": r.LocationText, # all locations
+            "location_type": r.LocationType, # all locations
+            "group_type": None, # item group location level
+            "weekly_burn_group_location": weekly_group, # item group location level
+            # item side
             "item": r.Item,
             "replacement_item": r.Replace_Item,
-            "location": r.Location,  # unified location label (view-level logic)
-            "location_text": getattr(r, "LocationText", None),
-            "company": getattr(r, "Company", None),
+            "location": r.Location, 
             "preferred_bin": r.PreferredBin,
-            "group_location": r.Group_Locations or r.Location,
-            "group_type": None,
-            "location_ri": r.Location_ri or r.Location,  # fallback
-            "location_text_ri": getattr(r, "LocationText_ri", None),
-            "company_ri": getattr(r, "Company_ri", None),
+            "location_ri": r.Location_ri or r.Location,  # fallback so we have complete set of display fields
             "preferred_bin_ri": getattr(r, "PreferredBin_ri", None),
-            "location_type": r.LocationType,
             "auto_replenishment": r.AutomaticPO,
             "active": r.Active,
             "discontinued": r.Discontinued,
             "current_qty": r.AvailableQty,
             "reorder_point": r.ReorderPoint,
             "weekly_burn": weekly_src,
-            "weekly_burn_group_location": weekly_group,
             "weeks_on_hand": weeks_src,
             "po_90_qty": r.OrderQty90_EA,
             "req_qty_ea": r.ReqQty90_EA,
@@ -130,6 +129,7 @@ def build_location_pairs(
             "recommended_preferred_bin_ri": None,
             "recommended_transaction_uom_ri": r.MatchedTransactionUOM_ri,
             "recommended_transaction_uom_multiplier_ri": r.MatchedTransactionUOMMultiplier_ri,
+            # row level
             "action": r.action,
             "notes": getattr(r, "notes", None),
         })

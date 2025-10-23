@@ -515,6 +515,7 @@ class PLMItemGroupLocation(db.Model):
 	Company = db.Column("Company", db.String(10), nullable=False, primary_key=True)
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False, primary_key=True)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
+	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 
 	__mapper_args__ = {
 		"primary_key": [Item_Group, Company, Group_Locations]
@@ -566,6 +567,7 @@ class PLMTranckerHead(db.Model):
 	Stage = db.Column("Stage", db.String(100), nullable=False)
 
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=True, primary_key=True)
+	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
 	Company = db.Column("Company", db.String(10), nullable=True)
 	create_dt = db.Column("CreateDT", db.DateTime(timezone=False), nullable=True)
@@ -596,6 +598,8 @@ class PLMTrackerBase(db.Model):
 	Stage = db.Column("Stage", db.String(100), nullable=False)
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False)
+	LocationText = db.Column("LocationText", db.String(255), nullable=True) # directly on group locations so we don't get those missing value from outer join (in view query)
+	Company = db.Column("Company", db.String(10), nullable=True) #directly on group locations
 	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
 
@@ -608,9 +612,7 @@ class PLMTrackerBase(db.Model):
     # Original Item side fields	
 	Item = db.Column("Item", db.String(10), nullable=False)
 
-	Company = db.Column("Company", db.String(10), nullable=True)
 	Location = db.Column("Location", db.String(20), nullable=True)
-	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=True)
 	PreferredBin = db.Column("PreferredBin", db.String(40), nullable=True)
 	ItemDescription = db.Column("ItemDescription", db.String(255), nullable=True)
@@ -652,9 +654,7 @@ class PLMTrackerBase(db.Model):
 	# Replace Item side (ri) fields
 	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
 
-	Company_ri = db.Column("Company_ri", db.String(10), nullable=True)
 	Location_ri = db.Column("Location_ri", db.String(20), nullable=True)
-	LocationText_ri = db.Column("LocationText_ri", db.String(255), nullable=True)
 	Inventory_base_ID_ri = db.Column("Inventory_base_ID_ri", db.BIGINT, nullable=True)
 	PreferredBin_ri = db.Column("PreferredBin_ri", db.String(40), nullable=True)
 	ItemDescription_ri = db.Column("ItemDescription_ri", db.String(255), nullable=True) #item level

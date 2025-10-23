@@ -490,6 +490,51 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
 ]
 
 
+CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup"}
+
+INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
+    "company": "Company",
+    "location_ri": "InventoryLocation",
+    "replacement_item": "Item",
+    "recommended_transaction_uom_ri": "DefaultTransactionUOM-Issue UOM",
+    "recommended_preferred_bin_ri": "PreferredBin",
+    "recommended_min_order_qty_ri": "MinimumOrderQuantity",
+    "recommended_max_order_qty_ri": "MaximumOrderQuantity",
+    "recommended_reorder_point_ri": "ReorderPoint",
+    "recommended_auto_replenishment_ri": "AutomaticPurchaseOrder (True/Falsse)",
+    "manufacturer_number_ri": "Item Manufacturer Number",
+    "action": "Requested update/Action",
+    "notes": "Notes",
+    "preferred_bin_ri": "Current PreferredBin (Repl. Item)",
+    "min_order_qty_ri": "Current Min (Repl. Item)",
+    "max_order_qty_ri": "Current Max (Repl. Item)",
+    "reorder_point_ri": "Current Reorder (Repl. Item)",
+}
+
+PAR_SETUP_HEADER_OVERRIDES: dict[str, str] = {
+    "company": "Company",
+    "location_ri": "Inventory Location",
+    "location_text": "Inventory Location Name",
+    "replacement_item": "Item",
+    "manufacturer_number_ri": "Item Manufacturer Number",
+    "item_description_ri": "Item.Description",
+    "recommended_min_order_qty_ri": "Min",
+    "recommended_max_order_qty_ri": "Max",
+    "recommended_reorder_point_ri": "ReorderPoint",
+    "stock_uom_ri": "UOM Unit Of Measure",
+    "recommended_preferred_bin_ri": "BIN Location                        (All New Sequence)",
+    "action": "Requested update/Action",
+    "notes": "Notes",
+    "preferred_bin_ri": "Current Bin (Repl. Item)",
+    "reorder_point_ri": "Current Reorder (Repl. Item)",
+}
+
+PRESET_HEADER_OVERRIDES: dict[str, dict[str, str]] = {
+    "inventory_setup": INVENTORY_SETUP_HEADER_OVERRIDES,
+    "par_setup": PAR_SETUP_HEADER_OVERRIDES,
+}
+
+
 def _parse_column_selection(param: str | None) -> list[str]:
     if not param:
         return []
@@ -815,24 +860,26 @@ def export_table(table_key: str):
         requested_fields = _parse_column_selection(legacy_visible_param)
         if not column_mode:
             column_mode = "visible"
-    if column_mode not in {"all", "visible", "custom"}:
+    allowed_column_modes = {"all", "visible"} | CUSTOM_EXPORT_MODES
+    if column_mode not in allowed_column_modes:
         column_mode = "all"
 
     if requested_fields:
         filtered_columns = _filter_export_columns(columns, requested_fields)
-        if column_mode == "custom":
+        if column_mode in CUSTOM_EXPORT_MODES:
             if not filtered_columns or len(filtered_columns) != len(requested_fields):
                 abort(400, description="Requested columns are not available for export.")
             columns = filtered_columns
         elif filtered_columns:
             columns = filtered_columns
-    elif column_mode == "custom":
+    elif column_mode in CUSTOM_EXPORT_MODES:
         abort(400, description="No columns selected for export.")
 
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = sheet_name[:31]
-    worksheet.append([header for header, _ in columns])
+    header_overrides = PRESET_HEADER_OVERRIDES.get(column_mode, {})
+    worksheet.append([header_overrides.get(field, header) for header, field in columns])
     for data_row in rows:
         worksheet.append([_coerce_excel_value(data_row.get(field)) for _, field in columns])
 

@@ -144,6 +144,8 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="inv-col-company" data-field="company" class="col-text col-company">Company</th>
+                <th id="inv-col-location-name" data-field="location_text" class="col-text col-location-name">Location Name</th>
                 <th id="inv-col-group-type" data-field="group_type" class="col-group-type">Group Type</th>
                 <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
@@ -203,6 +205,8 @@
               <tr class="column-filter-row text-nowrap">
                 <th class="col-stage column-filter-cell" id="inv-filter-stage" data-column-id="inv-col-stage"></th>
                 <th class="col-group column-filter-cell" id="inv-filter-group" data-column-id="inv-col-group"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-company" data-column-id="inv-col-company"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-location-name" data-column-id="inv-col-location-name"></th>
                 <th class="col-group-type column-filter-cell" id="inv-filter-group-type" data-column-id="inv-col-group-type"></th>
                 <th class="col-num column-filter-cell" id="inv-filter-weekly-group" data-column-id="inv-col-weekly-group"></th>
                 <th class="col-item column-filter-cell" id="inv-filter-item" data-column-id="inv-col-item"></th>
@@ -306,6 +310,8 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="par-col-stage" data-field="stage" class="col-stage">Stage</th>
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="par-col-company" data-field="company" class="col-text col-company">Company</th>
+                <th id="par-col-location-name" data-field="location_text" class="col-text col-location-name">Location Name</th>
                 <th id="par-col-group-type" data-field="group_type" class="col-group-type">Group Type</th>
                 <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
@@ -363,6 +369,8 @@
               <tr class="column-filter-row text-nowrap">
                 <th class="col-stage column-filter-cell" id="par-filter-stage" data-column-id="par-col-stage"></th>
                 <th class="col-group column-filter-cell" id="par-filter-group" data-column-id="par-col-group"></th>
+                <th class="col-text column-filter-cell" id="par-filter-company" data-column-id="par-col-company"></th>
+                <th class="col-text column-filter-cell" id="par-filter-location-name" data-column-id="par-col-location-name"></th>
                 <th class="col-group-type column-filter-cell" id="par-filter-group-type" data-column-id="par-col-group-type"></th>
                 <th class="col-num column-filter-cell" id="par-filter-weekly-group" data-column-id="par-col-weekly-group"></th>
                 <th class="col-item column-filter-cell" id="par-filter-item" data-column-id="par-col-item"></th>
@@ -661,30 +669,41 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportPresetFields = {
     inventory: {
       inventory_setup: [
+        'company',
         'location_ri',
-        'item_ri',
-        'transaction_uom_ri',
+        'replacement_item',
         'recommended_transaction_uom_ri',
-        'recommended_transaction_uom_multiplier_ri',
-        'preferred_bin_ri',
+        'recommended_preferred_bin_ri',
         'recommended_min_order_qty_ri',
         'recommended_max_order_qty_ri',
         'recommended_reorder_point_ri',
         'recommended_auto_replenishment_ri',
         'manufacturer_number_ri',
+        'action',
+        'notes',
+        'preferred_bin_ri',
+        'min_order_qty_ri',
+        'max_order_qty_ri',
+        'reorder_point_ri',
       ],
     },
     par: {
       par_setup: [
+        'company',
         'location_ri',
-        'item_ri',
+        'location_text',
+        'replacement_item',
         'manufacturer_number_ri',
         'item_description_ri',
         'recommended_min_order_qty_ri',
         'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'stock_uom_ri',
+        'recommended_preferred_bin_ri',
+        'action',
+        'notes',
         'preferred_bin_ri',
-        'recommended_transaction_uom_ri',
-        'recommended_transaction_uom_multiplier_ri',
+        'reorder_point_ri',
       ],
     },
   };
@@ -1138,6 +1157,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const setupColumns = [
     'stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
     'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+    'company', 'location_text',
     'min_order_qty', 'max_order_qty', 'manufacturer_number',
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
@@ -1681,6 +1701,8 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="col-text text-center">${fmt(r.company)}</td>
+          <td class="col-location-name text-start">${fmt(r.location_text)}</td>
           <td class="text-center col-group-type">${fmt(r.group_type)}</td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
@@ -1797,6 +1819,8 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="col-text text-center">${fmt(r.company)}</td>
+          <td class="col-location-name text-start">${fmt(r.location_text)}</td>
           <td class="text-center col-group-type">${fmt(r.group_type)}</td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
@@ -2437,7 +2461,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if(!selected.length){
         throw new Error('Select at least one column before exporting.');
       }
-      params.set('column_mode', 'custom');
+      params.set('column_mode', mode);
       params.set('columns', selected.join(','));
     } else {
       params.set('column_mode', 'all');

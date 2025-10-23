@@ -194,6 +194,7 @@ footer { font-size: .75rem; }
 #table-inventory th.col-group, #table-par th.col-group { width: 120px; }
 #table-inventory th.col-item, #table-par th.col-item { width: 140px; }
 #table-inventory th.col-location, #table-par th.col-location { width: 140px; }
+#table-inventory th.col-location-name, #table-par th.col-location-name { width: 120px; }
 #table-inventory th.col-auto, #table-par th.col-auto { width: 110px; }
 #table-inventory th.col-active, #table-inventory th.col-disc,
 #table-par th.col-active, #table-par th.col-disc { width: 70px; }
@@ -310,6 +311,14 @@ footer { font-size: .75rem; }
 #table-par th.text-start,
 #table-par td.text-start {
   text-align: left;
+}
+
+#table-inventory td.col-location-name,
+#table-par td.col-location-name {
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Utility: allow a future .col-nowrap to apply ellipsis anywhere */

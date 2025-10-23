@@ -1620,9 +1620,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (kpiGroups) kpiGroups.textContent = '...';
       if (kpiItems) kpiItems.textContent = '...';
       if (kpiReady) kpiReady.textContent = '...';
-
       const params = buildSharedQueryParams();
-      appendColumnFilterParams(params, 'inventory');
       const resp = await fetch(`/dashboard/api/stats?${params.toString()}`);
       
       if (!resp.ok) {
@@ -2561,17 +2559,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
-  const autoApply = debounce(()=>{ loadKpiStats(); loadInventory(1); loadPar(1); });
+  const refreshTables = debounce(()=>{ loadInventory(1); loadPar(1); });
+  const refreshAll = debounce(()=>{ loadKpiStats(); loadInventory(1); loadPar(1); });
   if(inventoryResetBtn){
     inventoryResetBtn.addEventListener('click', () => {
       resetColumnFiltersFor('inventory');
-      autoApply();
+      refreshTables();
     });
   }
   if(parResetBtn){
     parResetBtn.addEventListener('click', () => {
       resetColumnFiltersFor('par');
-      autoApply();
+      refreshTables();
     });
   }
   if(inventoryExportBtn){
@@ -2586,7 +2585,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   [selStage, inpDescSearch].forEach(ctrl => {
     if(ctrl){
-      ctrl.addEventListener('change', autoApply);
+      ctrl.addEventListener('change', refreshAll);
     }
   });
 
@@ -2607,7 +2606,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dropdown = window.bootstrap.Dropdown.getOrCreateInstance(toggle);
       dropdown.hide();
     }
-    autoApply();
+    refreshTables();
   });
   // Multi-select handling
   function updateItemGroupSelection(triggerChange=true){
@@ -2626,7 +2625,7 @@ document.addEventListener('DOMContentLoaded', () => {
         itemGroupCount.style.display='';
       }
     }
-    if(triggerChange) autoApply();
+    if(triggerChange) refreshAll();
   }
   function attachItemGroupEvents(){
     const selectAllBtn = itemGroupMenu.querySelector('#ig-select-all');
@@ -2700,7 +2699,7 @@ document.addEventListener('DOMContentLoaded', () => {
         locCount.style.display='';
       }
     }
-    if(triggerChange) autoApply();
+    if(triggerChange) refreshAll();
   }
   function attachLocationEvents(){
     const selectAllBtn = locMenu.querySelector('#loc-select-all');
@@ -2758,7 +2757,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   if(inpDescSearch){
-    inpDescSearch.addEventListener('keyup', autoApply);
+    inpDescSearch.addEventListener('keyup', refreshAll);
   }
 
   // Load refresh timestamp

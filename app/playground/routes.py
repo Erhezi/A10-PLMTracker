@@ -5,12 +5,19 @@ from collections import defaultdict
 from flask import Blueprint, render_template, request
 from flask_login import login_required
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from .. import db
 from ..models.relations import ItemLink
 
 bp = Blueprint("playground", __name__, url_prefix="/playground")
+
+DISCONTINUED_STAGE_NAME = "Tracking - Discontinued"
+ALLOWED_STAGES = (
+    "Pending Clinical Readiness",
+    DISCONTINUED_STAGE_NAME,
+    "Tracking - Item Transition",
+)
 
 
 def _is_skip_candidate(raw_value: str | None) -> bool:
@@ -37,17 +44,12 @@ def index():
     search_query_raw = request.args.get("search", default="", type=str) or ""
     search_query = search_query_raw.strip()
 
-    stage_rows = (
-        db.session.query(ItemLink.stage)
-        .filter(ItemLink.stage.isnot(None))
-        .distinct()
-        .order_by(ItemLink.stage.asc())
-        .all()
-    )
-    available_stages = [value.strip() for (value,) in stage_rows if value and value.strip()]
+    trimmed_stage_expr = func.rtrim(func.ltrim(ItemLink.stage))
+
+    available_stages = list(ALLOWED_STAGES)
 
     selected_stages_raw = [s.strip() for s in request.args.getlist("stage") if s and s.strip()]
-    selected_stages = [stage for stage in selected_stages_raw if stage in available_stages]
+    selected_stages = [stage for stage in selected_stages_raw if stage in ALLOWED_STAGES]
 
     query = (
         db.session.query(
@@ -60,11 +62,14 @@ def index():
             ItemLink.repl_item_description,
             ItemLink.repl_manufacturer,
         )
-        .filter(ItemLink.replace_item.isnot(None))
+        .filter(
+            ItemLink.replace_item.isnot(None),
+            trimmed_stage_expr.in_(ALLOWED_STAGES),
+        )
     )
 
     if selected_stages:
-        query = query.filter(ItemLink.stage.in_(selected_stages))
+        query = query.filter(trimmed_stage_expr.in_(selected_stages))
 
     if search_query:
         pattern = f"%{search_query}%"
@@ -85,6 +90,40 @@ def index():
         .limit(limit)
         .all()
     )
+
+    discontinued_rows: list[tuple[str | None, int | None, str | None, str | None, str | None]] = []
+    include_discontinued = not selected_stages or DISCONTINUED_STAGE_NAME in selected_stages
+    if include_discontinued:
+        discontinued_query = (
+            db.session.query(
+                ItemLink.item,
+                ItemLink.item_group,
+                ItemLink.stage,
+                ItemLink.item_description,
+                ItemLink.manufacturer,
+            )
+            .filter(
+                ItemLink.replace_item.is_(None),
+                trimmed_stage_expr == DISCONTINUED_STAGE_NAME,
+            )
+        )
+
+        if search_query:
+            pattern = f"%{search_query}%"
+            discontinued_query = discontinued_query.filter(
+                or_(
+                    ItemLink.item.ilike(pattern),
+                    ItemLink.item_description.ilike(pattern),
+                    ItemLink.manufacturer.ilike(pattern),
+                )
+            )
+
+        discontinued_rows = (
+            discontinued_query
+            .order_by(ItemLink.update_dt.desc(), ItemLink.item_group.desc())
+            .limit(limit)
+            .all()
+        )
 
     node_roles: dict[str, set[str]] = defaultdict(set)
     node_stages: dict[str, set[str]] = defaultdict(set)
@@ -141,6 +180,27 @@ def index():
             }
         )
 
+    for (item, item_group, stage, item_description, manufacturer) in discontinued_rows:
+        item_code = (item or "").strip()
+        if not item_code or _is_skip_candidate(item_code):
+            continue
+
+        node_roles[item_code].add("origin")
+
+        if stage:
+            stage_value = stage.strip()
+            if stage_value:
+                node_stages[item_code].add(stage_value)
+        node_stages[item_code].add(DISCONTINUED_STAGE_NAME)
+
+        if item_group is not None:
+            node_groups[item_code].add(int(item_group))
+
+        if item_description:
+            node_descriptions[item_code].add(item_description.strip())
+        if manufacturer:
+            node_manufacturers[item_code].add(manufacturer.strip())
+
     nodes = []
     for code in sorted({*node_roles, *node_stages, *node_groups}):
         groups_sorted = sorted(node_groups.get(code, []))
@@ -169,6 +229,7 @@ def index():
         "explicit_limit": limit_param,
         "selected_stages": selected_stages,
         "search_query": search_query,
+        "discontinued_nodes": len(discontinued_rows),
     }
 
     return render_template(

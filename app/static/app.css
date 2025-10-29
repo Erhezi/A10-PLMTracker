@@ -6,7 +6,7 @@ body { font-feature-settings: "tnum"; }
 
 /* Light utility palette for supply chain dashboard feel */
 :root {
-  --plm-accent: #074377;  /* Montefiore blue */
+  --plm-accent: #003769;  /* Montefiore blue */
   --plm-accent-pink: #ca006c; /* Montefiore pink */
   --plm-accent-soft: #e7f1ff;
   --plm-accent-soft-pink: #ffe4f1;

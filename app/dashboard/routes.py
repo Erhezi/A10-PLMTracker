@@ -10,6 +10,7 @@ from .. import db
 from ..models.inventory import Requesters365Day
 from ..models.relations import ItemLink, PLMTrackerBase, PLMQty, PLMDailyIssueOutQty
 from openpyxl import Workbook
+from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -884,8 +885,35 @@ def export_table(table_key: str):
     worksheet.title = sheet_name[:31]
     header_overrides = PRESET_HEADER_OVERRIDES.get(column_mode, {})
     worksheet.append([header_overrides.get(field, header) for header, field in columns])
-    for data_row in rows:
+
+    highlight_modes = {"inventory_setup", "par_setup"}
+    should_highlight_notes = column_mode in highlight_modes
+    notes_column_index: int | None = None
+    if should_highlight_notes:
+        for idx, (_, field_name) in enumerate(columns, start=1):
+            if field_name == "notes":
+                notes_column_index = idx
+                break
+        if notes_column_index is None:
+            should_highlight_notes = False
+
+    highlight_fill = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid") if should_highlight_notes else None
+
+    for row_number, data_row in enumerate(rows, start=2):
         worksheet.append([_coerce_excel_value(data_row.get(field)) for _, field in columns])
+
+        if should_highlight_notes and highlight_fill:
+            notes_value = data_row.get("notes")
+            has_notes = False
+            if isinstance(notes_value, str):
+                has_notes = notes_value.strip() != ""
+            elif notes_value is not None:
+                has_notes = str(notes_value).strip() != ""
+
+            if has_notes:
+                for col_idx in range(1, len(columns) + 1):
+                    cell = worksheet.cell(row=row_number, column=col_idx)
+                    cell.fill = highlight_fill
 
     worksheet.freeze_panes = "A2"
     if worksheet.max_row and worksheet.max_column:

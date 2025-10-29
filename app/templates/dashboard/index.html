@@ -54,9 +54,16 @@
       </div>
       <div class="col-6 col-md-2">
         <label class="form-label small text-uppercase text-muted mb-1">Stage</label>
-        <select class="form-select form-select-sm" name="stage">
-          <option value="">All</option>
-        </select>
+        <div class="dropdown w-100" id="stage-multiselect">
+          <button class="form-select form-select-sm text-start d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="stage-button">
+            <span class="flex-grow-1" data-default-label>All</span>
+            <span class="ms-auto small text-muted" id="stage-count" style="display:none;"></span>
+          </button>
+          <div class="dropdown-menu p-2 small" style="max-height:320px; overflow:auto;">
+            <div class="text-muted fst-italic px-2 py-1">Loading...</div>
+          </div>
+          <input type="hidden" name="stage" value="" />
+        </div>
       </div>
       <div class="col-12 col-md-4">
         <label class="form-label small text-uppercase text-muted mb-1">Desc Search</label>
@@ -593,7 +600,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const locButton = document.getElementById('location-button');
   const locDefaultLabel = locButton.querySelector('[data-default-label]');
   const locCount = document.getElementById('location-count');
-  const selStage = filterForm.querySelector('select[name="stage"]');
+  const selStage = filterForm.querySelector('input[name="stage"]');
+  const stageMulti = document.getElementById('stage-multiselect');
+  const stageMenu = stageMulti ? stageMulti.querySelector('.dropdown-menu') : null;
+  const stageButton = document.getElementById('stage-button');
+  const stageDefaultLabel = stageButton ? stageButton.querySelector('[data-default-label]') : null;
+  const stageCount = document.getElementById('stage-count');
   const inpDescSearch = filterForm.querySelector('input[name="desc_search"]');
   const inventoryTable = document.getElementById('table-inventory');
   const parTable = document.getElementById('table-par');
@@ -620,6 +632,72 @@ document.addEventListener('DOMContentLoaded', () => {
   let notifyModalInstance = null;
   if(notifyModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
     notifyModalInstance = bootstrap.Modal.getOrCreateInstance(notifyModalEl);
+  }
+  // Stage multi-select handling
+  function updateStageSelection(triggerChange=true){
+    const checked = Array.from(stageMenu.querySelectorAll('.stage-checkbox:checked')).map(cb => cb.value);
+    selStage.value = checked.join(',');
+    if(!checked.length){
+      stageDefaultLabel.textContent = 'All';
+      stageCount.style.display='none';
+    } else {
+      if(checked.length <= 3){
+        stageDefaultLabel.textContent = checked.join(', ');
+        stageCount.style.display='none';
+      } else {
+        stageDefaultLabel.textContent = 'Stages';
+        stageCount.textContent = checked.length + ' selected';
+        stageCount.style.display='';
+      }
+    }
+    if(triggerChange) refreshAll();
+  }
+  function attachStageEvents(){
+    if(!stageMenu) return;
+    const selectAllBtn = stageMenu.querySelector('#stage-select-all');
+    const clearBtn = stageMenu.querySelector('#stage-clear');
+    const searchInput = stageMenu.querySelector('#stage-search');
+    if(selectAllBtn){
+      selectAllBtn.addEventListener('click', () => {
+        // Only select visible options
+        stageMenu.querySelectorAll('.stage-option:not([data-hidden="1"]) .stage-checkbox').forEach(cb => { cb.checked = true; });
+        updateStageSelection();
+      });
+    }
+    if(clearBtn){
+      clearBtn.addEventListener('click', () => {
+        stageMenu.querySelectorAll('.stage-checkbox').forEach(cb => { cb.checked = false; });
+        updateStageSelection();
+      });
+    }
+    stageMenu.querySelectorAll('.stage-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => updateStageSelection());
+    });
+    if(searchInput){
+      let lastFilter = '';
+      searchInput.addEventListener('input', () => {
+        const term = searchInput.value.trim();
+        if(term === lastFilter) return;
+        lastFilter = term;
+        if(!term){
+          // reset all
+          stageMenu.querySelectorAll('.stage-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
+          return;
+        }
+        const regex = buildWildcardRegex(term);
+        stageMenu.querySelectorAll('.stage-option').forEach(div => {
+          const label = (div.getAttribute('data-label') || '').toLowerCase();
+          const match = !regex || regex.test(label);
+          if(match){
+            div.style.display='';
+            div.removeAttribute('data-hidden');
+          } else {
+            div.style.display='none';
+            div.setAttribute('data-hidden','1');
+          }
+        });
+      });
+    }
   }
   let notifyCopyTooltip = null;
   const notifyCopyDefaultTitle = notifyCopyBtn ? (notifyCopyBtn.getAttribute('title') || 'Copy Email Addresses') : '';
@@ -654,6 +732,21 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"'`]/g, ch => htmlEscapeMap[ch] || ch);
   const escapeAttr = (value) => escapeHtml(value);
+  const escapeRegexLiteral = (value) => String(value ?? '').replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+  function buildWildcardRegex(raw){
+    const term = String(raw ?? '').trim();
+    if(!term){
+      return null;
+    }
+    const hasWildcard = term.includes('*');
+    const patternCore = term.split('*').map(escapeRegexLiteral).join('.*');
+    const pattern = hasWildcard ? `^${patternCore}$` : `.*${patternCore}.*`;
+    try {
+      return new RegExp(pattern, 'i');
+    } catch {
+      return null;
+    }
+  }
   const columnState = {
     inventory: {},
     par: {},
@@ -1105,27 +1198,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let lastFilter = '';
     searchInput.addEventListener('input', () => {
-      const raw = searchInput.value.trim();
-      if(raw === lastFilter) return;
-      lastFilter = raw;
-      if(!raw){
+      const term = searchInput.value.trim();
+      if(term === lastFilter) return;
+      lastFilter = term;
+      if(!term){
         optionsContainer.querySelectorAll('.column-option').forEach(option => {
           option.style.display = '';
           option.removeAttribute('data-hidden');
         });
         return;
       }
-      let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
-      patternEsc = patternEsc.replace(/\\\*/g, '.*');
-      if(!raw.includes('*')){
-        patternEsc = '.*' + patternEsc + '.*';
-      }
-      let regex = null;
-      try {
-        regex = new RegExp(patternEsc, 'i');
-      } catch {
-        regex = null;
-      }
+      const regex = buildWildcardRegex(term);
       optionsContainer.querySelectorAll('.column-option').forEach(option => {
         const label = option.getAttribute('data-label') || '';
         const match = !regex || regex.test(label);
@@ -1541,8 +1624,32 @@ document.addEventListener('DOMContentLoaded', () => {
           <div id="loc-options-container">${locItemsHtml}</div>`;
       }
       attachLocationEvents();
-      // Stages (restricted)
-      selStage.innerHTML = '<option value="">All</option>' + data.stages.map(s => `<option value="${s}">${s}</option>`).join('');
+      // Stages (restricted) -> build checkbox list to support multi-select
+      const stages = data.stages || [];
+      if(!stages.length){
+        stageMenu.innerHTML = '<div class="px-2 py-1 text-muted">No stages found</div>';
+        selStage.value = '';
+      } else {
+        const stageItemsHtml = stages.map(s => {
+          const val = s;
+          const label = s;
+          const safeId = String(val).replace(/[^a-zA-Z0-9_-]/g,'');
+          return `<div class="form-check stage-option" data-label="${escapeAttr(String(label).toLowerCase())}">
+  <input class="form-check-input stage-checkbox" type="checkbox" value="${val}" id="stage-${safeId}">
+  <label class="form-check-label" for="stage-${safeId}">${escapeHtml(label)}</label>
+</div>`;
+        }).join('');
+        stageMenu.innerHTML = `
+          <input type="text" class="form-control form-control-sm mb-2" id="stage-search" placeholder="Search (use * wildcard)" autocomplete="off" />
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="stage-select-all">Select All</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="stage-clear">Clear</button>
+          </div>
+          <div class="border-top mt-2 pt-2"></div>
+          ${stageItemsHtml}`;
+        selStage.value = '';
+      }
+      attachStageEvents();
     } catch (e) {
       console.error('Failed to load filter options', e);
     }
@@ -2650,24 +2757,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if(searchInput){
       let lastFilter = '';
       searchInput.addEventListener('input', () => {
-        const raw = searchInput.value.trim();
-        if(raw === lastFilter) return;
-        lastFilter = raw;
-        if(!raw){
+        const term = searchInput.value.trim();
+        if(term === lastFilter) return;
+        lastFilter = term;
+        if(!term){
           // reset all
           itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
           return;
         }
-        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
-        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
-        // After escaping, literal '*' became \*; replace with '.*'
-        patternEsc = patternEsc.replace(/\\\*/g, '.*');
-        if(!raw.includes('*')){
-          // Implicit contains match
-          patternEsc = '.*' + patternEsc + '.*';
-        }
-        let regex = null;
-        try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        const regex = buildWildcardRegex(term);
         itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => {
           const label = (div.getAttribute('data-label') || '').toLowerCase();
           const match = !regex || regex.test(label);
@@ -2724,24 +2822,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if(searchInput){
       let lastFilter = '';
       searchInput.addEventListener('input', () => {
-        const raw = searchInput.value.trim();
-        if(raw === lastFilter) return;
-        lastFilter = raw;
-        if(!raw){
+        const term = searchInput.value.trim();
+        if(term === lastFilter) return;
+        lastFilter = term;
+        if(!term){
           // reset all
           locMenu.querySelectorAll('.location-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
           return;
         }
-        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
-        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
-        // After escaping, literal '*' became \*; replace with '.*'
-        patternEsc = patternEsc.replace(/\\\*/g, '.*');
-        if(!raw.includes('*')){
-          // Implicit contains match
-          patternEsc = '.*' + patternEsc + '.*';
-        }
-  let regex = null;
-  try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        const regex = buildWildcardRegex(term);
         locMenu.querySelectorAll('.location-option').forEach(div => {
           const label = (div.getAttribute('data-label') || '').toLowerCase();
           const match = !regex || regex.test(label);

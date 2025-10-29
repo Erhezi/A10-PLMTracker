@@ -32,6 +32,8 @@
       <option value="not-contains">Not Contains (any col)</option>
   <option value="item-group">By Item Group</option>
   <option value="stage">By Stage</option>
+      <option value="item">Item</option>
+      <option value="replace-item">Replace Item</option>
     </select>
   </div>
   <div class="flex-grow-1" style="max-width:720px;">
@@ -296,8 +298,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const filterClearBtn = document.getElementById('filter-clear-btn');
   const filterMode = document.getElementById('filter-mode');
   const filterHint = document.getElementById('filter-hint');
-  const hintDefaultText = 'Use ";" to search multiple terms (max 10).';
-  const hintOverflowText = 'Use ";" to search multiple terms (max 10). Only the first 10 terms are applied.';
+  const MAX_TERMS_DEFAULT = 10;
+  const MAX_TERMS_COLUMN = 100;
+  const COLUMN_TOKEN_MODES = new Set(['item','replace-item']);
+  const buildHintMessage = (limit) => `Use ";" to search multiple terms (max ${limit}).`;
+  const buildOverflowMessage = (limit) => `Use ";" to search multiple terms (max ${limit}). Only the first ${limit} terms are applied.`;
+  const setFilterHint = (limit, truncated) => {
+    if(!filterHint) return;
+    if(truncated){
+      filterHint.classList.remove('text-muted');
+      filterHint.classList.add('text-danger');
+      filterHint.textContent = buildOverflowMessage(limit);
+    } else {
+      filterHint.classList.add('text-muted');
+      filterHint.classList.remove('text-danger');
+      filterHint.textContent = buildHintMessage(limit);
+    }
+  };
+  const getTokenLimit = (mode) => COLUMN_TOKEN_MODES.has(mode) ? MAX_TERMS_COLUMN : MAX_TERMS_DEFAULT;
   const visibleCountEl = document.getElementById('visible-count');
   const selectedCountContainer = document.getElementById('selected-count-container');
   const selectedCountEl = document.getElementById('selected-count');
@@ -385,6 +403,25 @@ document.addEventListener('DOMContentLoaded', () => {
     item: row.dataset.item,
     replace_item: normalizeReplace(row.dataset.replaceItem),
   }));
+  const normalizeTextValue = (value) => {
+    if(value === null || value === undefined) return '';
+    return String(value).trim().toLowerCase();
+  };
+  const getCellText = (row, selector) => {
+    const cell = row.querySelector(selector);
+    return normalizeTextValue(cell ? cell.innerText : '');
+  };
+  const getRowValueForMode = (row, mode) => {
+    if(mode === 'item'){
+      const dataVal = normalizeTextValue(row.dataset.item);
+      return dataVal || getCellText(row, 'td.col-src');
+    }
+    if(mode === 'replace-item'){
+      const dataVal = normalizeTextValue(row.dataset.replaceItem);
+      return dataVal || getCellText(row, 'td.col-repl');
+    }
+    return '';
+  };
   const updateDeletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
     const countEl = document.getElementById('clear-deleted-count');
     const btn = document.getElementById('clear-deleted-btn');
@@ -752,20 +789,11 @@ document.addEventListener('DOMContentLoaded', () => {
       .split(';')
       .map(part => part.trim().toLowerCase())
       .filter(Boolean);
-    const tokens = rawTokens.slice(0, 10);
-    const truncated = rawTokens.length > tokens.length;
-    if(filterHint){
-      if(truncated){
-        filterHint.classList.remove('text-muted');
-        filterHint.classList.add('text-danger');
-        filterHint.textContent = hintOverflowText;
-      } else {
-        filterHint.classList.add('text-muted');
-        filterHint.classList.remove('text-danger');
-        filterHint.textContent = hintDefaultText;
-      }
-    }
     const mode = filterMode.value;
+    const tokenLimit = getTokenLimit(mode);
+    const tokens = rawTokens.slice(0, tokenLimit);
+    const truncated = rawTokens.length > tokens.length;
+    setFilterHint(tokenLimit, truncated);
     const rows = table.tBodies[0].rows;
     let visible = 0;
 
@@ -790,6 +818,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const stageCell = tr.querySelector('.stage-cell .stage-badge');
           const stageText = stageCell ? stageCell.innerText.trim().toLowerCase() : '';
           match = tokens.some(token => stageText.includes(token));
+        } else if(mode === 'item' || mode === 'replace-item'){
+          const value = getRowValueForMode(tr, mode);
+          match = tokens.some(token => value.includes(token));
         }
       }
 

@@ -56,6 +56,11 @@
         Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
       </button>
     </form>
+    <form id="archive-completed-form" method="post" action="{{ url_for('collector.archive_completed') }}" onsubmit="return confirm('Archive all rows with stage=Tracking Completed? This removes them from the tracker.');" class="m-0">
+      <button id="archive-completed-btn" type="submit" class="btn btn-sm btn-outline-secondary" {% if count_completed == 0 %}disabled{% endif %}>
+        Archive Completed (<span id="archive-completed-count">{{ count_completed }}</span>)
+      </button>
+    </form>
   </div>
 </div>
 
@@ -302,6 +307,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const MAX_TERMS_DEFAULT = 10;
   const MAX_TERMS_COLUMN = 100;
   const COLUMN_TOKEN_MODES = new Set(['item','replace-item']);
+  const TRACKING_COMPLETED_STAGE = 'Tracking Completed';
+  const TRACKING_COMPLETED_WARNING = 'Once set to Tracking Completed, this row cannot move to another stage. To revive it, archive the completed row and create a new entry. Continue?';
   const buildHintMessage = (limit) => `Use ";" to search multiple terms (max ${limit}).`;
   const buildOverflowMessage = (limit) => `Use ";" to search multiple terms (max ${limit}). Only the first ${limit} terms are applied.`;
   const setFilterHint = (limit, truncated) => {
@@ -449,6 +456,32 @@ document.addEventListener('DOMContentLoaded', () => {
     countEl.textContent = current;
     btn.disabled = current === 0;
   };
+  const updateCompletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
+    const countEl = document.getElementById('archive-completed-count');
+    const btn = document.getElementById('archive-completed-btn');
+    if(!countEl || !btn) return;
+    if(providedCount !== undefined && providedCount !== null){
+      const num = Number(providedCount);
+      if(!Number.isNaN(num)){
+        const safe = Math.max(0, num);
+        countEl.textContent = safe;
+        btn.disabled = safe === 0;
+        return;
+      }
+    }
+    if(oldStage === undefined || newStage === undefined) return;
+    const oldNorm = (oldStage || '').trim().toLowerCase();
+    const newNorm = (newStage || '').trim().toLowerCase();
+    let current = parseInt(countEl.textContent || '0', 10);
+    if(Number.isNaN(current)) current = 0;
+    if(oldNorm === 'tracking completed' && newNorm !== 'tracking completed'){
+      current = Math.max(0, current - 1);
+    } else if(oldNorm !== 'tracking completed' && newNorm === 'tracking completed'){
+      current += 1;
+    }
+    countEl.textContent = current;
+    btn.disabled = current === 0;
+  };
   const applyRecordToRow = (row, rec) => {
     if(!row || !rec) return;
     if(Object.prototype.hasOwnProperty.call(rec, 'replace_item')){
@@ -550,6 +583,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if(Object.prototype.hasOwnProperty.call(summary, 'count_deleted')){
       updateDeletedCountUI({ providedCount: summary.count_deleted });
+    }
+    if(Object.prototype.hasOwnProperty.call(summary, 'count_completed')){
+      updateCompletedCountUI({ providedCount: summary.count_completed });
     }
     showBatchSummary(summary, failureMessages);
     activateShowSelectedView({ auto: true });
@@ -653,6 +689,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         stageSelect.focus();
         return;
+      }
+      if(targetStage === TRACKING_COMPLETED_STAGE){
+        if(!window.confirm(TRACKING_COMPLETED_WARNING)){
+          return;
+        }
       }
       await withBusyState(stageConfirm, async () => {
         const payload = { stage: targetStage, rows: buildPayload(selectedRows) };
@@ -1017,7 +1058,9 @@ document.addEventListener('DOMContentLoaded', () => {
         Array.from(sel.options).forEach(opt => {
           if(!opt.value) return; // skip blank
           let allow = true;
-          if(current === 'Tracking - Discontinued'){
+          if(current === TRACKING_COMPLETED_STAGE){
+            allow = opt.value === TRACKING_COMPLETED_STAGE;
+          } else if(current === 'Tracking - Discontinued'){
             // Only allow Deleted or Tracking Completed or remain Tracking - Discontinued
             if(!['Tracking - Discontinued','Deleted','Tracking Completed'].includes(opt.value)) allow = false;
           } else {
@@ -1026,6 +1069,12 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           opt.disabled = !allow;
         });
+
+        if(current === TRACKING_COMPLETED_STAGE){
+          sel.title = 'Tracking Completed is final. Archive to revive the row.';
+        } else {
+          sel.removeAttribute('title');
+        }
         
         // Ensure the current value is selected
         sel.value = current;
@@ -1061,8 +1110,16 @@ document.addEventListener('DOMContentLoaded', () => {
   async function saveRow(row){
     const item = row.dataset.item;
     const replaceItem = row.dataset['replaceItem'];
-    const stage = row.querySelector('select[name="stage"]').value;
+    const stageSelect = row.querySelector('select[name="stage"]');
+    const stage = stageSelect ? stageSelect.value.trim() : '';
     const dateVal = row.querySelector('input[name="expected_go_live_date"]').value;
+    const currentStage = (row.querySelector('.stage-cell')?.dataset.value || '').trim();
+
+    if(stage === TRACKING_COMPLETED_STAGE && currentStage !== TRACKING_COMPLETED_STAGE){
+      if(!window.confirm(TRACKING_COMPLETED_WARNING)){
+        return;
+      }
+    }
     
     try {
       const formData = new FormData();
@@ -1093,29 +1150,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Update UI with returned record
       const rec = data.record;
+      const newStage = (rec.stage || '').trim();
       // Maintain deleted count and toggle Clear Deleted button if stage changed
       try {
-        const oldStage = (row.querySelector('.stage-cell')?.dataset.value || '').trim();
-        const newStage = (rec.stage || '').trim();
-        const countEl = document.getElementById('clear-deleted-count');
-        const btn = document.getElementById('clear-deleted-btn');
-        // Prefer server authoritative count if provided
-        if(typeof data.count_deleted !== 'undefined' && countEl && btn){
-          const cur = parseInt(data.count_deleted || '0', 10) || 0;
-          countEl.textContent = cur;
-          btn.disabled = cur === 0;
-        } else if(oldStage !== newStage && countEl && btn){
-          // fallback local adjustment
-          let cur = parseInt(countEl.textContent || '0', 10) || 0;
-          if(oldStage.toLowerCase() === 'deleted' && newStage.toLowerCase() !== 'deleted'){
-            cur = Math.max(0, cur - 1);
-          } else if(oldStage.toLowerCase() !== 'deleted' && newStage.toLowerCase() === 'deleted'){
-            cur = cur + 1;
-          }
-          countEl.textContent = cur;
-          btn.disabled = cur === 0;
-        }
-      } catch(e){ console.warn('Could not update deleted count', e); }
+        updateDeletedCountUI({ providedCount: data.count_deleted, oldStage: currentStage, newStage });
+        updateCompletedCountUI({ providedCount: data.count_completed, oldStage: currentStage, newStage });
+  } catch(e){ console.warn('Could not update stage counters', e); }
       // Stage update
       const stageCell = row.querySelector('.stage-cell');
       if(stageCell){

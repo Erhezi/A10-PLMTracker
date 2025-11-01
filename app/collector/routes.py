@@ -13,6 +13,7 @@ from ..models import now_ny_naive
 from ..models.relations import (
     ItemLink,
     ItemLinkWrike,
+    ItemLinkArchived,
     ItemGroup,
     PendingItems,
     ItemGroupConflictError,
@@ -89,7 +90,14 @@ def groups():
     )
     # Count rows currently flagged as deleted
     count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
-    return render_template("collector/groups.html", items=items, allowed_stages=ALLOWED_STAGES, count_deleted=count_deleted)
+    count_completed = ItemLink.query.filter(ItemLink.stage == 'Tracking Completed').count()
+    return render_template(
+        "collector/groups.html",
+        items=items,
+        allowed_stages=ALLOWED_STAGES,
+        count_deleted=count_deleted,
+        count_completed=count_completed,
+    )
 
 @bp.post('/groups/clear-deleted')
 @login_required
@@ -103,6 +111,52 @@ def clear_deleted():
     q.delete(synchronize_session=False)
     db.session.commit()
     flash(f'Removed {count} deleted item link(s)', 'success')
+    return redirect(url_for('collector.groups'))
+
+@bp.post('/groups/archive-completed')
+@login_required
+def archive_completed():
+    # Move Tracking Completed rows into the archive table, preserving history
+    completed_query = ItemLink.query.filter(ItemLink.stage == 'Tracking Completed')
+    records = completed_query.all()
+    if not records:
+        flash('No completed item link rows to archive', 'info')
+        return redirect(url_for('collector.groups'))
+
+    archived_rows: list[ItemLinkArchived] = []
+    archive_time = now_ny_naive()
+    for record in records:
+        archived_rows.append(
+            ItemLinkArchived(
+                item_group=record.item_group,
+                item=record.item,
+                replace_item=record.replace_item,
+                mfg_part_num=record.mfg_part_num,
+                manufacturer=record.manufacturer,
+                item_description=record.item_description,
+                repl_mfg_part_num=record.repl_mfg_part_num,
+                repl_manufacturer=record.repl_manufacturer,
+                repl_item_description=record.repl_item_description,
+                stage=record.stage,
+                expected_go_live_date=record.expected_go_live_date,
+                create_dt=record.create_dt,
+                update_dt=record.update_dt,
+                item_link_id=record.pkid,
+                archived_dt=archive_time,
+            )
+        )
+
+    try:
+        if archived_rows:
+            db.session.add_all(archived_rows)
+        completed_query.delete(synchronize_session=False)
+        db.session.commit()
+    except Exception as exc:  # pragma: no cover - safety rollback
+        db.session.rollback()
+        flash(f'Archiving failed: {exc}', 'danger')
+        return redirect(url_for('collector.groups'))
+
+    flash(f'Archived {len(archived_rows)} completed item link(s)', 'success')
     return redirect(url_for('collector.groups'))
 
 
@@ -179,6 +233,7 @@ def update_item(item: str, replace_item: str):
     if wants_json:
         # Also return current deleted count for client-side UI updates
         count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
+        count_completed = ItemLink.query.filter(ItemLink.stage == 'Tracking Completed').count()
         return jsonify({
             "status":"ok",
             "message":"ItemLink updated",
@@ -193,6 +248,7 @@ def update_item(item: str, replace_item: str):
                 "update_dt": record.update_dt.isoformat() if record.update_dt else None,
             },
             "count_deleted": count_deleted,
+            "count_completed": count_completed,
             "transition_note": decision.reason,
         })
     flash("ItemLink updated", "success")

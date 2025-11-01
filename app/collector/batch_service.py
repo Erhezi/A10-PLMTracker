@@ -228,11 +228,13 @@ def summarize_results(results: Iterable[BatchResult]) -> dict:
     successes = sum(1 for r in results_list if r.success)
     failures = len(results_list) - successes
     count_deleted = db.session.query(ItemLink).filter(ItemLink.stage == "Deleted").count()
+    count_completed = db.session.query(ItemLink).filter(ItemLink.stage == "Tracking Completed").count()
     return {
         "status": "ok" if failures == 0 else "partial",
         "success": successes,
         "failed": failures,
         "count_deleted": count_deleted,
+        "count_completed": count_completed,
         "results": [
             {
                 "item": r.item,

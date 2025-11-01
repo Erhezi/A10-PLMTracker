@@ -91,12 +91,18 @@ def groups():
     # Count rows currently flagged as deleted
     count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
     count_completed = ItemLink.query.filter(ItemLink.stage == 'Tracking Completed').count()
+    stage_transitions = {
+        stage: sorted(StageTransitionHelper.allowed_targets(stage))
+        for stage in ALLOWED_STAGES
+    }
+    stage_transitions["__new__"] = list(ALLOWED_STAGES)
     return render_template(
         "collector/groups.html",
         items=items,
         allowed_stages=ALLOWED_STAGES,
         count_deleted=count_deleted,
         count_completed=count_completed,
+        stage_transitions=stage_transitions,
     )
 
 @bp.post('/groups/clear-deleted')

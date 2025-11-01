@@ -271,6 +271,9 @@
   </div>
 </div>
 
+<script type="application/json" id="stage-transition-map">
+  {{ {"map": stage_transitions, "stages": allowed_stages}|tojson }}
+</script>
 <script type="application/json" id="batch-endpoints-json">
   {{ {
     "stage": url_for("collector.batch_update_stage"),
@@ -352,6 +355,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const stageConfirm = document.getElementById('batch-stage-confirm');
   const wrikeConfirm = document.getElementById('batch-wrike-confirm');
   const goLiveConfirm = document.getElementById('batch-go-live-confirm');
+  const stageMeta = (() => {
+    const el = document.getElementById('stage-transition-map');
+    if(!el) return { map: {}, stages: [] };
+    try {
+      return JSON.parse(el.textContent);
+    } catch (err) {
+      console.error('Unable to parse stage transition map', err);
+      return { map: {}, stages: [] };
+    }
+  })();
+  const stageTransitionMap = stageMeta.map || {};
+  const allStages = stageMeta.stages || [];
+  const allowedTargetsForStage = (stage) => {
+    const key = (stage || '').trim();
+    const rawList = stageTransitionMap[key] || stageTransitionMap.__new__ || allStages;
+    const list = Array.isArray(rawList) ? rawList : allStages;
+    const set = new Set(list);
+    if(key) set.add(key);
+    return set;
+  };
   const getSelectedCheckboxes = () => {
     if(!table) return [];
     return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => cb.checked);
@@ -1049,25 +1072,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const current = stageCell.dataset.value || '';
       const sel = stageCell.querySelector('select[name="stage"]');
       if(sel){
-        // First reset all options to enabled
+        const allowedTargets = allowedTargetsForStage(current);
         Array.from(sel.options).forEach(opt => {
-          opt.disabled = false;
-        });
-        
-        // Then apply rules
-        Array.from(sel.options).forEach(opt => {
-          if(!opt.value) return; // skip blank
-          let allow = true;
-          if(current === TRACKING_COMPLETED_STAGE){
-            allow = opt.value === TRACKING_COMPLETED_STAGE;
-          } else if(current === 'Tracking - Discontinued'){
-            // Only allow Deleted or Tracking Completed or remain Tracking - Discontinued
-            if(!['Tracking - Discontinued','Deleted','Tracking Completed'].includes(opt.value)) allow = false;
-          } else {
-            // Disallow selecting Tracking - Discontinued
-            if(opt.value === 'Tracking - Discontinued') allow = false;
+          if(!opt.value){
+            opt.disabled = false;
+            return;
           }
-          opt.disabled = !allow;
+          opt.disabled = !allowedTargets.has(opt.value);
         });
 
         if(current === TRACKING_COMPLETED_STAGE){

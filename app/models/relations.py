@@ -132,6 +132,50 @@ class ItemLinkArchived(db.Model):
 	def __repr__(self):
 		return f"<ItemLinkArchived id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
 
+class ItemLinkDeleted(db.Model):
+	"""Mapping to PLM.ItemLinkDeleted table capturing ItemLink rows that have been deleted.
+	   it looks like the copy of ItemLink and will only take records that are marked as
+	   'Deleted', with added field 'deleted_dt' to indicate the time of deletion, 
+	   and item_link_id to reference the original ItemLink PKID row(s). note that here the item_link_id
+	   should not be a foreign key contraint, it is just for reference purpose only."""
+
+	__tablename__ = "ItemLinkDeleted"
+	__table_args__ = (
+		Index("IX_ItemLinkDeleted_Item", "Item"),
+		Index("IX_ItemLinkDeleted_ItemGroup", "Item Group"),
+		Index("IX_ItemLinkDeleted_ReplaceItem", "Replace Item"),
+		Index("IX_ItemLinkDeleted_Stage", "Stage"),
+		{"schema": "PLM"},
+	)
+
+	# Surrogate primary key (already IDENTITY in SQL Server)
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+
+	# Natural key fields (not PKs anymore)
+	item_group      = db.Column("Item Group", db.Integer,    nullable=False)  
+	item            = db.Column("Item",       db.String(10),  nullable=False)
+	replace_item    = db.Column("Replace Item", db.String(250), nullable=True)  
+
+	# Metadata columns
+	mfg_part_num        = db.Column("Manufacturer Part Num",           db.String(100))
+	manufacturer        = db.Column("Manufacturer",                    db.String(100))
+	item_description    = db.Column("Item Description",                db.String(500))
+
+	repl_mfg_part_num   = db.Column("Replace Item Manufacturer Part Num", db.String(100))
+	repl_manufacturer   = db.Column("Replace Item Manufacturer",          db.String(100))
+	repl_item_description = db.Column("Replace Item Item Description",    db.String(500))
+
+	stage                 = db.Column("Stage", db.String(100))
+	expected_go_live_date = db.Column("Expected Go Live Date", db.Date)
+
+	create_dt           = db.Column("CreateDT", db.DateTime(timezone=False))
+	update_dt           = db.Column("UpdateDT", db.DateTime(timezone=False))
+
+	item_link_id       = db.Column("item_link_id", db.BigInteger, nullable=False)
+	deleted_dt         = db.Column("DeletedDT", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+
+	def __repr__(self):
+		return f"<ItemLinkDeleted id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
 
 class ItemLinkWrike(db.Model):
 	"""Mapping to PLM.ItemLinkWrike table capturing Wrike task IDs for ItemLink rows.

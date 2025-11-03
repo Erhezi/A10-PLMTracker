@@ -14,6 +14,7 @@ from ..models.relations import (
     ItemLink,
     ItemLinkWrike,
     ItemLinkArchived,
+    ItemLinkDeleted,
     ItemGroup,
     PendingItems,
     ItemGroupConflictError,
@@ -108,15 +109,47 @@ def groups():
 @bp.post('/groups/clear-deleted')
 @login_required
 def clear_deleted():
-    # Delete only rows whose stage is Deleted
-    q = ItemLink.query.filter(ItemLink.stage == 'Deleted')
-    count = q.count()
-    if count == 0:
+    # Move rows marked Deleted into the dedicated history table before removal
+    deleted_query = ItemLink.query.filter(ItemLink.stage == 'Deleted')
+    records = deleted_query.all()
+    if not records:
         flash('No rows with stage Deleted to remove', 'info')
         return redirect(url_for('collector.groups'))
-    q.delete(synchronize_session=False)
-    db.session.commit()
-    flash(f'Removed {count} deleted item link(s)', 'success')
+
+    deleted_rows: list[ItemLinkDeleted] = []
+    deleted_time = now_ny_naive()
+    for record in records:
+        deleted_rows.append(
+            ItemLinkDeleted(
+                item_group=record.item_group,
+                item=record.item,
+                replace_item=record.replace_item,
+                mfg_part_num=record.mfg_part_num,
+                manufacturer=record.manufacturer,
+                item_description=record.item_description,
+                repl_mfg_part_num=record.repl_mfg_part_num,
+                repl_manufacturer=record.repl_manufacturer,
+                repl_item_description=record.repl_item_description,
+                stage=record.stage,
+                expected_go_live_date=record.expected_go_live_date,
+                create_dt=record.create_dt,
+                update_dt=record.update_dt,
+                item_link_id=record.pkid,
+                deleted_dt=deleted_time,
+            )
+        )
+
+    try:
+        if deleted_rows:
+            db.session.add_all(deleted_rows)
+        deleted_query.delete(synchronize_session=False)
+        db.session.commit()
+    except Exception as exc:  # pragma: no cover - rollback safety
+        db.session.rollback()
+        flash(f'Clearing deleted rows failed: {exc}', 'danger')
+        return redirect(url_for('collector.groups'))
+
+    flash(f'Cleared {len(deleted_rows)} deleted item link(s)', 'success')
     return redirect(url_for('collector.groups'))
 
 @bp.post('/groups/archive-completed')

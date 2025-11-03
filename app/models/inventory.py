@@ -382,6 +382,37 @@ class PLMZDate(db.Model):
             f"company={self.Company} loc={self.Location} item={self.Item} "
             f"plm_zdate={self.PLM_Zdate} status={self.br_calc_status}>"
         )
+
+class PLMPendingItemsExport(db.Model):
+    """
+    Mapping to PLM.vw_PLMPendingItemsExport (SQL Server VIEW).
+    View holds the list of PLM ItemLink items that are pending to be added into PLM inventory system.
+    Combines pending items with their corresponding contract line details.
+    Read-only
+    """
+
+    __tablename__ = "vw_PLMPendingItemsExport"
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
+
+    # Columns from PendingItems
+    contract_id = db.Column(db.String(50), primary_key=True)
+    mfg_part_num = db.Column(db.String(100), primary_key=True)
+    
+    # Columns from CONTRACTLINE
+    WorkingContractID = db.Column(db.String(50), nullable=True)
+    ManufacturerNumber = db.Column(db.String(100), nullable=True)
+    VendorItem = db.Column(db.String(255), nullable=True)
+    ItemDescription = db.Column(db.String(500), nullable=True)
+    BaseCost = db.Column(db.Numeric(18, 2), nullable=True)
+    UOM = db.Column(db.String(50), nullable=True)
+    DerivedUOMConversion = db.Column(db.Numeric(18, 4), nullable=True)
+    EffectiveDate = db.Column(db.Date, nullable=True)
+    ExpirationDate = db.Column(db.Date, nullable=True)
+
+    def __repr__(self):
+        return (f"<PLMPendingItemsExport contract={self.contract_id} "
+                f"mfg_part={self.mfg_part_num} vendor={self.VendorItem}>")
+
     
 #-------------------------------------------------------
 # Table Mappings - PLM ItemLink specific (only contains ItemLink items)

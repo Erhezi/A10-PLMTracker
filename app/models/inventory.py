@@ -397,6 +397,7 @@ class PLMPendingItemsExport(db.Model):
     # Columns from PendingItems
     contract_id = db.Column(db.String(50), primary_key=True)
     mfg_part_num = db.Column(db.String(100), primary_key=True)
+    item_link_id = db.Column(db.BIGINT, nullable=False, primary_key=True)
     
     # Columns from CONTRACTLINE
     WorkingContractID = db.Column(db.String(50), nullable=True)

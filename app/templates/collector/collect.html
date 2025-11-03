@@ -23,9 +23,13 @@
         <label class="form-label small text-uppercase">Replacement Items</label>
    <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement (by 6-digit Infor Item Number)..." autocomplete="off"
      hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" hx-vals='{"picker":"replace"}' />
-        <div class="d-flex gap-2 mb-2">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="NO REPLACEMENT">Add NO REPLACEMENT</button>
           <button type="button" class="btn btn-sm btn-outline-primary" id="toggle-repl-mode" data-mode="item" title="Toggle search between Item and Contract Item">Mode: Item</button>
+          <div id="contract-auto-select-wrapper" class="form-check form-switch small d-none">
+            <input class="form-check-input" type="checkbox" id="contract-auto-select" checked>
+            <label class="form-check-label mb-0" for="contract-auto-select" title="When on, selecting a row picks all matching contract rows automatically.">Auto-pick duplicates (by Item)</label>
+          </div>
         </div>
         <div id="repl-selected" class="mb-2"></div>
         <div id="repl-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
@@ -268,9 +272,152 @@
   const MAX_PER_SIDE = batchLimits.max_per_side;
   const MAX_COMBINATIONS = batchLimits.max_combinations;
 
+  const contractAutoSelectWrapper = document.getElementById('contract-auto-select-wrapper');
+  const contractAutoSelectInput = document.getElementById('contract-auto-select');
+  let contractAutoSelectEnabled = contractAutoSelectInput ? contractAutoSelectInput.checked : true;
+  const replCounts = new Map();
+
   let items = [];
   let repls = [];
   let pendingMeta = {}; // map PENDING***<part> -> { contract_id, mfg_part_num }
+
+  function forEachReplCheckbox(callback){
+    document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(callback);
+  }
+
+  function prunePendingMeta(){
+    Object.keys(pendingMeta).forEach((key) => {
+      if(!replCounts.has(key)){
+        delete pendingMeta[key];
+      }
+    });
+  }
+
+  function syncReplsFromCounts(){
+    repls = Array.from(replCounts.keys());
+    prunePendingMeta();
+  }
+
+  function addReplacementCode(code){
+    if(SENTINELS.includes(code)){
+      replCounts.clear();
+      pendingMeta = {};
+      replCounts.set(code, 1);
+      syncReplsFromCounts();
+      return;
+    }
+    let removedSentinel = false;
+    SENTINELS.forEach((sentinel) => {
+      if(replCounts.has(sentinel)){
+        replCounts.delete(sentinel);
+        removedSentinel = true;
+      }
+    });
+    if(removedSentinel){
+      forEachReplCheckbox((cb) => {
+        if(SENTINELS.includes(cb.value)){
+          cb.checked = false;
+        }
+      });
+    }
+    const current = replCounts.get(code) || 0;
+    replCounts.set(code, current + 1);
+    syncReplsFromCounts();
+  }
+
+  function removeReplacementCode(code){
+    if(!replCounts.has(code)){
+      return;
+    }
+    if(SENTINELS.includes(code)){
+      replCounts.delete(code);
+      syncReplsFromCounts();
+      return;
+    }
+    const current = replCounts.get(code) || 0;
+    if(current <= 1){
+      replCounts.delete(code);
+    } else {
+      replCounts.set(code, current - 1);
+    }
+    syncReplsFromCounts();
+  }
+
+  function removeReplacementCompletely(code){
+    if(replCounts.has(code)){
+      replCounts.delete(code);
+      syncReplsFromCounts();
+    }
+    forEachReplCheckbox((cb) => {
+      if(cb.value === code){
+        cb.checked = false;
+      }
+    });
+  }
+
+  function capturePendingMeta(code, contractId, mfgPart){
+    if(!code || !/^PENDING\*\*\*/.test(code) || !contractId || !mfgPart){
+      return;
+    }
+    pendingMeta[code] = { contract_id: contractId, mfg_part_num: mfgPart };
+  }
+
+  function clearAllReplacementSelections(){
+    replCounts.clear();
+    pendingMeta = {};
+    syncReplsFromCounts();
+  }
+
+  function alignContractAutoSelections(){
+    if(!contractAutoSelectEnabled){
+      return;
+    }
+    const updatedCounts = new Map();
+    forEachReplCheckbox((cb) => {
+      if(cb.disabled){
+        return;
+      }
+      if(replCounts.has(cb.value)){
+        cb.checked = true;
+      }
+      if(cb.checked){
+        if(cb.hasAttribute('data-pending-placeholder')){
+          capturePendingMeta(cb.value, cb.getAttribute('data-contract-id'), cb.getAttribute('data-mfg-part'));
+        }
+        updatedCounts.set(cb.value, (updatedCounts.get(cb.value) || 0) + 1);
+      }
+    });
+    updatedCounts.forEach((count, code) => {
+      replCounts.set(code, count);
+    });
+    syncReplsFromCounts();
+  }
+
+  function setContractMode(isContract){
+    if(contractAutoSelectWrapper){
+      contractAutoSelectWrapper.classList.toggle('d-none', !isContract);
+    }
+    if(contractAutoSelectInput){
+      contractAutoSelectInput.disabled = !isContract;
+      if(isContract){
+        contractAutoSelectEnabled = contractAutoSelectInput.checked;
+        if(contractAutoSelectEnabled){
+          alignContractAutoSelections();
+        }
+      }
+    }
+  }
+
+  setContractMode(false);
+
+  if(contractAutoSelectInput){
+    contractAutoSelectInput.addEventListener('change', () => {
+      contractAutoSelectEnabled = contractAutoSelectInput.checked;
+      if(contractAutoSelectEnabled){
+        alignContractAutoSelections();
+      }
+    });
+  }
 
   function renderSelections(){
   const pill = (c,kind)=>`<span class='badge bg-secondary me-1 mb-1' data-code='${c}' data-kind='${kind}'>${c} <span class='ms-1' data-remove='x' style='cursor:pointer' aria-label='Remove'>&times;</span></span>`;
@@ -293,8 +440,24 @@
   }
 
   function enforceLimits(){
-    if(items.length > MAX_PER_SIDE) items = items.slice(0, MAX_PER_SIDE);
-    if(repls.length > MAX_PER_SIDE) repls = repls.slice(0, MAX_PER_SIDE);
+    if(items.length > MAX_PER_SIDE){
+      items = items.slice(0, MAX_PER_SIDE);
+    }
+    if(replCounts.size > MAX_PER_SIDE){
+      const allowedKeys = Array.from(replCounts.keys()).slice(0, MAX_PER_SIDE);
+      const allowedSet = new Set(allowedKeys);
+      Array.from(replCounts.keys()).forEach((code) => {
+        if(!allowedSet.has(code)){
+          replCounts.delete(code);
+          forEachReplCheckbox((cb) => {
+            if(cb.value === code){
+              cb.checked = false;
+            }
+          });
+        }
+      });
+    }
+    syncReplsFromCounts();
   }
 
   function renderInvalidRows(rows, container){
@@ -403,8 +566,7 @@
 
     if(resetSelections){
       items = [];
-      repls = [];
-      pendingMeta = {};
+      clearAllReplacementSelections();
       document.querySelectorAll('input[data-pick-checkbox]').forEach((cb) => { cb.checked = false; });
       renderSelections();
     }
@@ -464,6 +626,7 @@
     const was = replSearch.getAttribute('data-mode') || 'item';
     const toContract = mode === 'contract';
     const endpoint = toContract ? CONTRACT_ITEM_ENDPOINT : ORIGINAL_REPL_ENDPOINT;
+    setContractMode(toContract);
     
     replSearch.setAttribute('data-mode', mode);
     replSearch.setAttribute('hx-get', endpoint);
@@ -491,9 +654,9 @@
     const sentinelBtn = e.target.closest('button[data-sentinel]');
     if(sentinelBtn){
       const code = sentinelBtn.getAttribute('data-sentinel');
-      if(code==='NO REPLACEMENT'){
-        repls = ['NO REPLACEMENT'];
-        document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
+      if(code && SENTINELS.includes(code)){
+        forEachReplCheckbox(cb => { cb.checked = false; });
+        addReplacementCode(code);
         renderSelections();
       }
       return;
@@ -505,9 +668,17 @@
       if(badge){
         const code = badge.getAttribute('data-code');
         const kind = badge.getAttribute('data-kind');
-        if(kind==='item') items = items.filter(i=>i!==code); else repls = repls.filter(r=>r!==code);
-        document.querySelectorAll(`input[data-pick-checkbox][value="${code}"]`).forEach(cb=> cb.checked=false);
-        // If a sentinel was removed (kind repl) nothing special needed; stage updates via renderSelections
+        if(kind==='item'){
+          items = items.filter(i=>i!==code);
+          document.querySelectorAll('#item-results input[data-pick-checkbox]').forEach(cb => {
+            if(cb.value === code){
+              cb.checked = false;
+            }
+          });
+        } else {
+          removeReplacementCompletely(code);
+        }
+        enforceLimits();
         renderSelections();
       }
     }
@@ -517,52 +688,76 @@
     const tgt = evt.target;
     if(tgt.id==='item-results' || tgt.id==='repl-results'){
       const isRepl = tgt.id==='repl-results';
+      const currentMode = replSearch.getAttribute('data-mode') || 'item';
+      const shouldAutoSelectAll = isRepl && currentMode === 'contract' && contractAutoSelectEnabled;
+      const replSelectionSnapshot = isRepl ? new Map() : null;
       tgt.querySelectorAll('input[data-pick-checkbox]').forEach(cb => {
         // Re-check if already selected (fresh content)
-        if((isRepl? repls: items).includes(cb.value)) cb.checked = true;
+        if(isRepl){
+          const allowed = replCounts.get(cb.value) || 0;
+          if(allowed > 0){
+            if(shouldAutoSelectAll){
+              cb.checked = true;
+            } else {
+              const used = replSelectionSnapshot.get(cb.value) || 0;
+              if(used < allowed){
+                cb.checked = true;
+                replSelectionSnapshot.set(cb.value, used + 1);
+              } else {
+                cb.checked = false;
+              }
+            }
+          } else {
+            cb.checked = false;
+          }
+        } else if(items.includes(cb.value)){
+          cb.checked = true;
+        }
         cb.addEventListener('change', () => {
           const code = cb.value;
           const contractId = cb.getAttribute('data-contract-id');
           const mfgPart = cb.getAttribute('data-mfg-part');
           const isPendingPlaceholder = cb.hasAttribute('data-pending-placeholder');
-          if(isPendingPlaceholder && /^PENDING\*\*\*/.test(code) && contractId && mfgPart){
-            pendingMeta[code] = { contract_id: contractId, mfg_part_num: mfgPart };
-          }
+          const currentMode = replSearch.getAttribute('data-mode') || 'item';
+          const autoSelect = currentMode === 'contract' && contractAutoSelectEnabled;
           if(isRepl){
             if(cb.checked){
-              // If selecting NO REPLACEMENT sentinel
+              capturePendingMeta(code, contractId, mfgPart);
               if(SENTINELS.includes(code)){
-                // Uncheck all other checkboxes first to keep UI consistent
-                document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(other => { if(other!==cb) other.checked=false; });
-                repls = [code];
-              } else if(/^PENDING\*\*\*/.test(code)) {
-                // Dynamic pending placeholder; allow mixing with normal items? Requirement: mixing allowed.
-                if(!repls.includes(code)) repls.push(code);
+                forEachReplCheckbox(other => { if(other !== cb){ other.checked = false; } });
+                addReplacementCode(code);
               } else {
-                // Block selecting if sentinel already chosen
-                if(repls.length===1 && SENTINELS.includes(repls[0])) { cb.checked=false; return; }
-                if(!repls.includes(code)) repls.push(code);
+                addReplacementCode(code);
+                if(autoSelect){
+                  tgt.querySelectorAll('input[data-pick-checkbox]').forEach((peer) => {
+                    if(peer !== cb && peer.value === code && !peer.disabled){
+                      if(!peer.checked){
+                        peer.checked = true;
+                        capturePendingMeta(code, peer.getAttribute('data-contract-id'), peer.getAttribute('data-mfg-part'));
+                        addReplacementCode(code);
+                      }
+                    }
+                  });
+                }
               }
             } else {
-              repls = repls.filter(c=>c!==code);
-            }
-            // If in contract mode and code not empty, mirror state across all same-value checkboxes in current result pane
-            const currentMode = replSearch.getAttribute('data-mode') || 'item';
-            if(currentMode === 'contract' && code){
-              // Gather all checkboxes with same value
-              const peerCbs = tgt.querySelectorAll(`input[data-pick-checkbox][value="${code}"]`);
-              peerCbs.forEach(p => { if(p !== cb) p.checked = cb.checked; });
-              // Ensure repls contains (or removes) code exactly once
-              if(cb.checked){
-                if(SENTINELS.includes(code)) repls = [code];
-                else if(!repls.includes(code)) repls.push(code);
-              } else {
-                repls = repls.filter(r=>r!==code);
+              if(autoSelect){
+                tgt.querySelectorAll('input[data-pick-checkbox]').forEach((peer) => {
+                  if(peer !== cb && peer.value === code){
+                    peer.checked = false;
+                  }
+                });
               }
+              removeReplacementCode(code);
             }
+            enforceLimits();
+            renderSelections();
+            return;
+          }
+          if(cb.checked){
+            if(!items.includes(code)) items.push(code);
           } else {
-            if(cb.checked){ if(!items.includes(code)) items.push(code); }
-            else { items = items.filter(c=>c!==code); }
+            items = items.filter(c=>c!==code);
           }
           enforceLimits();
           renderSelections();
@@ -671,8 +866,8 @@
       const newMode = currentMode === 'item' ? 'contract' : 'item';
       
       // 1) Clear current replacement selections
-      repls = [];
-      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb => cb.checked = false);
+  clearAllReplacementSelections();
+  forEachReplCheckbox(cb => { cb.checked = false; });
       
       // 2) Clear the search input
       replSearch.value = '';

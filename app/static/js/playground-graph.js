@@ -20,6 +20,25 @@
     return;
   }
 
+  const animationToggle = document.getElementById("toggle-animation");
+  const ANIMATION_STORAGE_KEY = "playgroundAnimationEnabled";
+  let storedAnimationPreference = null;
+
+  if (animationToggle) {
+    try {
+      storedAnimationPreference = window.localStorage.getItem(ANIMATION_STORAGE_KEY);
+      if (storedAnimationPreference !== null) {
+        animationToggle.checked = storedAnimationPreference === "1";
+        storedAnimationPreference = animationToggle.checked ? "1" : "0";
+      }
+    } catch (storageError) {
+      console.warn("Unable to access animation preference storage", storageError);
+      storedAnimationPreference = null;
+    }
+  }
+
+  let animationEnabled = animationToggle ? animationToggle.checked : true;
+
   const nodes = data.nodes.map((node) => ({ ...node }));
   const links = data.links.map((link) => ({ ...link }));
 
@@ -204,7 +223,11 @@
       if (event.sourceEvent && typeof event.sourceEvent.stopPropagation === "function") {
         event.sourceEvent.stopPropagation();
       }
-      if (!event.active) simulation.alphaTarget(0.3).restart();
+      if (animationEnabled) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+      } else {
+        simulation.stop();
+      }
       node.fx = node.x;
       node.fy = node.y;
       d3.select(this).style("cursor", "grabbing");
@@ -212,11 +235,22 @@
     .on("drag", function (event, node) {
       node.fx = event.x;
       node.fy = event.y;
+      node.x = event.x;
+      node.y = event.y;
+      if (!animationEnabled) {
+        ticked();
+      }
     })
     .on("end", function (event, node) {
-      if (!event.active) simulation.alphaTarget(0);
-      node.fx = null;
-      node.fy = null;
+      if (animationEnabled) {
+        if (!event.active) simulation.alphaTarget(0);
+        node.fx = null;
+        node.fy = null;
+      } else {
+        node.fx = null;
+        node.fy = null;
+        ticked();
+      }
       d3.select(this).style("cursor", node.isDraggable ? "grab" : "default");
     });
 
@@ -317,6 +351,28 @@
     )
     .on("tick", ticked);
 
+  function settleSimulation(iterations = 160) {
+    simulation.alpha(1);
+    for (let i = 0; i < iterations; i += 1) {
+      simulation.tick();
+    }
+    ticked();
+    simulation.alpha(0);
+    simulation.stop();
+  }
+
+  function setAnimationEnabled(enabled) {
+    if (enabled === animationEnabled) {
+      return;
+    }
+    animationEnabled = enabled;
+    if (enabled) {
+      simulation.alpha(1).restart();
+    } else {
+      settleSimulation();
+    }
+  }
+
   function ticked() {
     link
       .attr("x1", (link) => link.source.x)
@@ -325,6 +381,23 @@
       .attr("y2", (link) => link.target.y);
 
     nodeGroup.attr("transform", (node) => `translate(${node.x}, ${node.y})`);
+  }
+
+  if (animationToggle) {
+    animationToggle.addEventListener("change", (event) => {
+      const enabled = event.target.checked;
+      setAnimationEnabled(enabled);
+      try {
+        window.localStorage.setItem(ANIMATION_STORAGE_KEY, enabled ? "1" : "0");
+        storedAnimationPreference = enabled ? "1" : "0";
+      } catch (storageError) {
+        console.warn("Unable to persist animation preference", storageError);
+      }
+    });
+  }
+
+  if (!animationEnabled) {
+    settleSimulation();
   }
 
   const zoomBehaviour = d3
@@ -508,7 +581,11 @@
         svg.attr("viewBox", `0 0 ${width} ${height}`);
         svg.select("rect").attr("width", width);
         groupCenters = computeGroupCenters(width, height);
-        simulation.alpha(0.35).restart();
+        if (animationEnabled) {
+          simulation.alpha(0.35).restart();
+        } else {
+          settleSimulation();
+        }
       }
     }
   });

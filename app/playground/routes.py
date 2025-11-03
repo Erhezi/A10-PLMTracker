@@ -13,11 +13,16 @@ from ..models.relations import ItemLink
 bp = Blueprint("playground", __name__, url_prefix="/playground")
 
 DISCONTINUED_STAGE_NAME = "Tracking - Discontinued"
-ALLOWED_STAGES = (
+DEFAULT_TRANSITION_STAGES = (
     "Pending Clinical Readiness",
     DISCONTINUED_STAGE_NAME,
     "Tracking - Item Transition",
 )
+EXPANDED_STAGE_ADDITIONS = (
+    "Tracking Completed",
+    "Deleted",
+)
+PENDING_ITEM_STAGE_NAME = "Pending Item Number"
 
 
 def _is_skip_candidate(raw_value: str | None) -> bool:
@@ -44,12 +49,20 @@ def index():
     search_query_raw = request.args.get("search", default="", type=str) or ""
     search_query = search_query_raw.strip()
 
+    expanded_param = request.args.get("expanded", default=0, type=int)
+    expanded_scope = bool(expanded_param)
+
     trimmed_stage_expr = func.rtrim(func.ltrim(ItemLink.stage))
 
-    available_stages = list(ALLOWED_STAGES)
+    stage_options = (
+        DEFAULT_TRANSITION_STAGES + EXPANDED_STAGE_ADDITIONS
+        if expanded_scope
+        else DEFAULT_TRANSITION_STAGES
+    )
+    available_stages = list(stage_options)
 
     selected_stages_raw = [s.strip() for s in request.args.getlist("stage") if s and s.strip()]
-    selected_stages = [stage for stage in selected_stages_raw if stage in ALLOWED_STAGES]
+    selected_stages = [stage for stage in selected_stages_raw if stage in available_stages]
 
     query = (
         db.session.query(
@@ -64,9 +77,18 @@ def index():
         )
         .filter(
             ItemLink.replace_item.isnot(None),
-            trimmed_stage_expr.in_(ALLOWED_STAGES),
         )
     )
+
+    if expanded_scope:
+        query = query.filter(
+            or_(
+                ItemLink.stage.is_(None),
+                trimmed_stage_expr != PENDING_ITEM_STAGE_NAME,
+            )
+        )
+    else:
+        query = query.filter(trimmed_stage_expr.in_(DEFAULT_TRANSITION_STAGES))
 
     if selected_stages:
         query = query.filter(trimmed_stage_expr.in_(selected_stages))
@@ -130,6 +152,7 @@ def index():
     node_groups: dict[str, set[int]] = defaultdict(set)
     node_descriptions: dict[str, set[str]] = defaultdict(set)
     node_manufacturers: dict[str, set[str]] = defaultdict(set)
+    stage_relation_counts: dict[str, int] = defaultdict(int)
     links: list[dict[str, object]] = []
 
     for (
@@ -166,6 +189,7 @@ def index():
             if stage_value:
                 node_stages[item_code].add(stage_value)
                 node_stages[repl_code].add(stage_value)
+                stage_relation_counts[stage_value] += 1
 
         if item_group is not None:
             node_groups[item_code].add(int(item_group))
@@ -192,6 +216,7 @@ def index():
             if stage_value:
                 node_stages[item_code].add(stage_value)
         node_stages[item_code].add(DISCONTINUED_STAGE_NAME)
+        stage_relation_counts[DISCONTINUED_STAGE_NAME] += 1
 
         if item_group is not None:
             node_groups[item_code].add(int(item_group))
@@ -222,6 +247,8 @@ def index():
         "links": links,
     }
 
+    stage_counts = {stage: stage_relation_counts.get(stage, 0) for stage in available_stages}
+
     summary = {
         "requested_limit": limit,
         "rendered_links": len(links),
@@ -230,6 +257,7 @@ def index():
         "selected_stages": selected_stages,
         "search_query": search_query,
         "discontinued_nodes": len(discontinued_rows),
+        "expanded_scope": expanded_scope,
     }
 
     return render_template(
@@ -239,4 +267,6 @@ def index():
         stages=available_stages,
         selected_stages=selected_stages,
         search_query=search_query,
+        expanded_scope=expanded_scope,
+        stage_counts=stage_counts,
     )

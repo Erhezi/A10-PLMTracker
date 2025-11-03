@@ -7,7 +7,13 @@
   <div class="col-12 col-xl-3">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body">
-        <h5 class="card-title text-primary fw-semibold">Playground</h5>
+        <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
+          <h5 class="card-title text-primary fw-semibold mb-0">Playground</h5>
+          <div class="form-check form-switch small ms-auto me-1">
+            <input class="form-check-input" type="checkbox" id="toggle-animation" checked>
+            <label class="form-check-label" for="toggle-animation">Animate layout</label>
+          </div>
+        </div>
         <p class="card-text small text-muted mb-3">
           Experimental visual sandbox for exploring replacement relationships. This view pulls a recent
           slice of <code>ItemLink</code> pairs and lays them out as a playful, force-directed graph.
@@ -22,7 +28,11 @@
             {% if summary.selected_stages %}
               {{ summary.selected_stages | join(', ') }}
             {% else %}
-              All stages
+              {% if summary.expanded_scope %}
+                All stages
+              {% else %}
+                Transition stages
+              {% endif %}
             {% endif %}
           </dd>
           <dt class="col-6 text-muted">Search filter</dt>
@@ -41,13 +51,18 @@
           {% endif %}
           <label class="form-label text-muted text-uppercase fw-semibold" style="letter-spacing: 0.08em; font-size: 0.7rem;">Search items</label>
           <input type="search" name="search" value="{{ search_query }}" class="form-control form-control-sm mb-3" placeholder="Manufacturer, item, or description" />
+          <div class="form-check form-switch small mb-2">
+            <input class="form-check-input" type="checkbox" id="toggle-expanded-scope" name="expanded" value="1" {% if expanded_scope %}checked{% endif %}>
+            <label class="form-check-label" for="toggle-expanded-scope">Include all stages</label>
+          </div>
+          <p class="small text-muted mb-3">Adds Tracking Completed and Deleted; excludes Pending Item Number rows.</p>
           <label class="form-label text-muted text-uppercase fw-semibold" style="letter-spacing: 0.08em; font-size: 0.7rem;">Filter by stage</label>
           <div class="border rounded-3 p-2 bg-light-subtle overflow-auto" style="max-height: 220px;">
             {% if stages %}
               {% for stage in stages %}
               <div class="form-check mb-1">
-                <input class="form-check-input" type="checkbox" name="stage" value="{{ stage }}" id="stage-{{ loop.index }}" {% if stage in selected_stages %}checked{% endif %}>
-                <label class="form-check-label" for="stage-{{ loop.index }}">{{ stage }}</label>
+                <input class="form-check-input" type="checkbox" name="stage" value="{{ stage }}" id="stage-{{ loop.index }}" {% if selected_stages %}{% if stage in selected_stages %}checked{% endif %}{% else %}checked{% endif %}>
+                <label class="form-check-label" for="stage-{{ loop.index }}">{{ stage }} ({{ stage_counts.get(stage, 0) }})</label>
               </div>
               {% endfor %}
             {% else %}
@@ -57,7 +72,7 @@
           <div class="d-flex align-items-center gap-2 mt-3">
             <button class="btn btn-primary btn-sm" type="submit">Apply filters</button>
             {% if selected_stages %}
-            <a class="btn btn-link btn-sm text-decoration-none" href="{{ url_for('playground.index') }}">Clear</a>
+            <a class="btn btn-link btn-sm text-decoration-none" href="{% if expanded_scope %}{{ url_for('playground.index', expanded=1) }}{% else %}{{ url_for('playground.index') }}{% endif %}">Clear</a>
             {% endif %}
           </div>
         </form>
@@ -94,6 +109,28 @@
   <script src="https://d3js.org/d3.v7.min.js" defer></script>
   <script id="playground-data" type="application/json">
     {{ graph_data | tojson(indent=2) }}
+  </script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const scopeToggle = document.getElementById("toggle-expanded-scope");
+      if (!scopeToggle) {
+        return;
+      }
+      const scopeForm = scopeToggle.closest("form");
+      if (!scopeForm) {
+        return;
+      }
+      scopeToggle.addEventListener("change", function () {
+        if (scopeToggle.checked) {
+          const stageInputs = scopeForm.querySelectorAll('input[name="stage"]');
+          stageInputs.forEach((input) => {
+            input.checked = false;
+            input.disabled = true;
+          });
+        }
+        scopeForm.requestSubmit();
+      });
+    });
   </script>
   <script src="{{ url_for('static', filename='js/playground-graph.js') }}" defer></script>
 {% endblock %}

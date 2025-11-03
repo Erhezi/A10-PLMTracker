@@ -999,6 +999,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     suppressHideSync = false;
     if(!skipReload){
+      loadKpiStats();
       loadInventory(currentPage);
       loadPar(parCurrentPage);
     }
@@ -1661,6 +1662,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if(selLocation.value) params.set('location', selLocation.value);
     if(selStage.value) params.set('stage', selStage.value);
     if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
+    if(hideROnly){
+      params.set('hide_r_only', 'true');
+    }
     return params;
   }
 

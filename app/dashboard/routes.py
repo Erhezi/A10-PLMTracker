@@ -2,7 +2,7 @@ import io
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, render_template, request, jsonify, send_file, abort
+from flask import Blueprint, render_template, request, jsonify, send_file, abort, current_app
 from flask_login import login_required
 from sqlalchemy import select, func
 from ..utility.item_locations import build_location_pairs
@@ -22,6 +22,41 @@ ALLOWED_STAGE_VALUES = {
     "Tracking - Item Transition",
     "Pending Clinical Readiness",
 }
+
+
+def _looks_like_or_location(value: object | None) -> bool:
+    """Check if a location name ends with 'OR' (Operating Room).
+    
+    Examples that match: "MAIN OR", "SURGERY-OR", "12345 OR", "CARDIAC_OR"
+    """
+    if not value:
+        return False
+    normalized = str(value).strip().upper()
+    if not normalized:
+        return False
+    # Simply check if the string ends with "OR"
+    return normalized.endswith("OR")
+
+
+def _row_is_or_location(row: dict) -> bool:
+    """Check if an inventory location row has a location name ending with 'OR'.
+    
+    Only filters rows where location_type is 'Inventory Location' and 
+    the location name ends with 'OR'.
+    """
+    if not isinstance(row, dict):
+        return False
+    
+    # Only filter Inventory Locations (not Par Locations)
+    location_type = row.get("location_type")
+    if location_type != "Inventory Location":
+        return False
+    
+    # Check if the location name ends with "OR"
+    for key in ("group_location", "location", "location_text"):
+        if _looks_like_or_location(row.get(key)):
+            return True
+    return False
 
 
 @bp.route("/documents/order-point-calculation")
@@ -261,14 +296,21 @@ def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
         require_active = False
         desc_search_lower = ""
 
+    include_or_locations = current_app.config.get("INCLUDE_OR_INVENTORY_LOCATIONS")
+    location_types = ["Inventory Location"]
+    if include_or_locations:
+        location_types.append("*OR")
+
     all_rows = build_location_pairs(
         stages=stages_list,
         company=company,
         location=None,
         require_active=require_active,
         include_par=False,
-        location_types=["Inventory Location"],
+        location_types=location_types,
     )
+    if not include_or_locations:
+        all_rows = [row for row in all_rows if not _row_is_or_location(row)]
     if location_filters:
         loc_set = set(location_filters)
         all_rows = [r for r in all_rows if (r.get("group_location") in loc_set)]
@@ -661,7 +703,14 @@ def api_filter_options():
         .order_by(v.LocationType, v.Group_Locations)
     )
     locations = []
+    include_or_locations = current_app.config.get("INCLUDE_OR_INVENTORY_LOCATIONS")
+    
     for lt, group_loc in db.session.execute(loc_query).all():
+        # Filter out OR inventory locations if config is disabled
+        if lt == "Inventory Location" and not include_or_locations:
+            if _looks_like_or_location(group_loc):
+                continue
+        
         label = f"{lt} - {group_loc}" if lt else group_loc
         locations.append({"value": group_loc, "type": lt, "label": label})
 
@@ -793,6 +842,12 @@ def api_stats():
     """
     inventory_rows = _filtered_inventory_rows(request.args)
     par_rows = _filtered_par_rows(request.args)
+
+    # Apply hide_r_only filter if requested
+    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    if hide_r_only:
+        inventory_rows = [row for row in inventory_rows if not _is_r_only_location(row)]
+        par_rows = [row for row in par_rows if not _is_r_only_location(row)]
 
     # Collect distinct item groups
     groups_set = set()

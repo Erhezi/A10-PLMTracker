@@ -279,7 +279,90 @@
 
   let items = [];
   let repls = [];
-  let pendingMeta = {}; // map PENDING***<part> -> { contract_id, mfg_part_num }
+  let pendingMeta = {}; // map PENDING***<part> -> { entries: [{ contract_id, mfg_part_num, ... }] }
+
+  function pendingEntriesFor(code){
+    const meta = pendingMeta[code];
+    if(!meta){
+      return [];
+    }
+    if(Array.isArray(meta.entries)){
+      return meta.entries.map((entry) => ({ ...entry }));
+    }
+    if(Array.isArray(meta)){
+      return meta.map((entry) => ({ ...entry }));
+    }
+    if(typeof meta === 'object'){
+      const copy = { ...meta };
+      if(Object.keys(copy).length === 0){
+        return [];
+      }
+      return [copy];
+    }
+    return [];
+  }
+
+  function setPendingEntries(code, entries){
+    if(!entries.length){
+      delete pendingMeta[code];
+      return;
+    }
+    pendingMeta[code] = { entries: entries.map((entry) => ({ ...entry })) };
+  }
+
+  function appendPendingEntry(code, contractId, mfgPart, extra){
+    if(!code || !/^PENDING\*\*\*/.test(code) || !contractId || !mfgPart){
+      return;
+    }
+    const entries = pendingEntriesFor(code);
+    const exists = entries.some((entry) => entry.contract_id === contractId && entry.mfg_part_num === mfgPart);
+    if(exists){
+      return;
+    }
+    const payload = { contract_id: contractId, mfg_part_num: mfgPart };
+    if(extra && typeof extra === 'object'){
+      Object.keys(extra).forEach((key) => {
+        if(extra[key] !== undefined){
+          payload[key] = extra[key];
+        }
+      });
+    }
+    entries.push(payload);
+    setPendingEntries(code, entries);
+  }
+
+  function removePendingEntry(code, contractId, mfgPart){
+    if(!code || !contractId || !mfgPart){
+      return;
+    }
+    const entries = pendingEntriesFor(code).filter((entry) => !(entry.contract_id === contractId && entry.mfg_part_num === mfgPart));
+    setPendingEntries(code, entries);
+  }
+
+  function addPendingEntryForCheckbox(cb){
+    if(!cb || !cb.hasAttribute('data-pending-placeholder')){
+      return;
+    }
+    appendPendingEntry(
+      cb.value,
+      cb.getAttribute('data-contract-id'),
+      cb.getAttribute('data-mfg-part'),
+      {
+        item_description: cb.getAttribute('data-item-description') || undefined,
+      }
+    );
+  }
+
+  function removePendingEntryForCheckbox(cb){
+    if(!cb || !cb.hasAttribute('data-pending-placeholder')){
+      return;
+    }
+    removePendingEntry(
+      cb.value,
+      cb.getAttribute('data-contract-id'),
+      cb.getAttribute('data-mfg-part')
+    );
+  }
 
   function forEachReplCheckbox(callback){
     document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(callback);
@@ -353,13 +436,7 @@
         cb.checked = false;
       }
     });
-  }
-
-  function capturePendingMeta(code, contractId, mfgPart){
-    if(!code || !/^PENDING\*\*\*/.test(code) || !contractId || !mfgPart){
-      return;
-    }
-    pendingMeta[code] = { contract_id: contractId, mfg_part_num: mfgPart };
+    delete pendingMeta[code];
   }
 
   function clearAllReplacementSelections(){
@@ -382,7 +459,7 @@
       }
       if(cb.checked){
         if(cb.hasAttribute('data-pending-placeholder')){
-          capturePendingMeta(cb.value, cb.getAttribute('data-contract-id'), cb.getAttribute('data-mfg-part'));
+          addPendingEntryForCheckbox(cb);
         }
         updatedCounts.set(cb.value, (updatedCounts.get(cb.value) || 0) + 1);
       }
@@ -715,14 +792,11 @@
         }
         cb.addEventListener('change', () => {
           const code = cb.value;
-          const contractId = cb.getAttribute('data-contract-id');
-          const mfgPart = cb.getAttribute('data-mfg-part');
-          const isPendingPlaceholder = cb.hasAttribute('data-pending-placeholder');
           const currentMode = replSearch.getAttribute('data-mode') || 'item';
           const autoSelect = currentMode === 'contract' && contractAutoSelectEnabled;
           if(isRepl){
             if(cb.checked){
-              capturePendingMeta(code, contractId, mfgPart);
+              addPendingEntryForCheckbox(cb);
               if(SENTINELS.includes(code)){
                 forEachReplCheckbox(other => { if(other !== cb){ other.checked = false; } });
                 addReplacementCode(code);
@@ -733,7 +807,7 @@
                     if(peer !== cb && peer.value === code && !peer.disabled){
                       if(!peer.checked){
                         peer.checked = true;
-                        capturePendingMeta(code, peer.getAttribute('data-contract-id'), peer.getAttribute('data-mfg-part'));
+                        addPendingEntryForCheckbox(peer);
                         addReplacementCode(code);
                       }
                     }
@@ -744,10 +818,12 @@
               if(autoSelect){
                 tgt.querySelectorAll('input[data-pick-checkbox]').forEach((peer) => {
                   if(peer !== cb && peer.value === code){
+                    removePendingEntryForCheckbox(peer);
                     peer.checked = false;
                   }
                 });
               }
+              removePendingEntryForCheckbox(cb);
               removeReplacementCode(code);
             }
             enforceLimits();

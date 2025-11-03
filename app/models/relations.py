@@ -482,10 +482,14 @@ class ItemGroup(db.Model):
 class PendingItems(db.Model):
 	__tablename__ = "PendingItems"
 	__table_args__ = (
-		# unique constraint on (item_link_id, replace_item_pending)
-		# to prevent duplicate pending entries for same link and part num
-		UniqueConstraint("item_link_id", "replace_item_pending", 
-				         name="UX_PendingItems_Link_ReplacePending"),
+		# unique constraint on (item_link_id, contract_id, replace_item_pending)
+		# to prevent duplicate pending entries for same link, contract, and part num
+		UniqueConstraint(
+			"item_link_id",
+			"contract_id",
+			"replace_item_pending",
+			name="UX_PendingItems_Link_ContractReplace",
+		),
 		# index for filtering
 		Index("IX_PendingItems_Status", "status"),
 		Index("IX_PendingItems_ReplaceItemPending", "replace_item_pending"),

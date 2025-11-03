@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from sqlalchemy.orm import Session
 
@@ -55,7 +55,7 @@ class AddItemPairs:
         *,
         items: List[str],
         replace_items: List[str],
-        pending_meta: Optional[Dict[str, Dict[str, str]]] = None,
+        pending_meta: Optional[Dict[str, Union[Dict[str, str], List[Dict[str, str]]]]] = None,
         explicit_stage: Optional[str] = None,
         expected_go_live_date_raw: Optional[str] = None,
         sentinel_replacements: Optional[Set[str]] = None,
@@ -529,23 +529,28 @@ class AddItemPairs:
         repl_mfg_part = None
         repl_manufacturer = None
         repl_desc = None
+        pending_meta_entries: List[Dict[str, str]] = []
+        primary_pending_meta: Dict[str, str] = {}
 
         if addition_type == "discontinue":
             link_stage = "Tracking - Discontinued"
             repl_value_for_model = None
         elif addition_type == "pending":
             link_stage = "Pending Item Number"
-            meta = self.pending_meta.get(normalized_replace or "", {})
+            pending_meta_entries = self._pending_meta_entries(normalized_replace or "")
+            primary_pending_meta = pending_meta_entries[0] if pending_meta_entries else {}
             part = self._extract_pending_part(raw_replace)
             contract = self.pending_ci_map.get(part)
-            repl_mfg_part = contract.mfg_part_num if contract else part
+            repl_mfg_part = contract.mfg_part_num if contract else (primary_pending_meta.get("mfg_part_num") or part)
             repl_manufacturer = contract.manufacturer if contract else "(Pending)"
             repl_desc = (
                 contract.item_description
                 if contract and contract.item_description
-                else meta.get("item_description")
+                else primary_pending_meta.get("item_description")
                 or "Pending replacement item"
             )
+            if not repl_mfg_part:
+                repl_mfg_part = self._extract_pending_part(normalized_replace)
         else:
             repl_item = self.items_map.get(normalized_replace)
             if repl_item:
@@ -572,13 +577,37 @@ class AddItemPairs:
         link.wrike = ItemLinkWrike.from_item_link(link)
 
         if addition_type == "pending" and repl_value_for_model:
-            meta = self.pending_meta.get(repl_value_for_model, {})
-            contract_id = meta.get("contract_id")
-            part = meta.get("mfg_part_num") or self._extract_pending_part(repl_value_for_model)
-            if contract_id and part:
-                self.pending_items_to_create.append((link, contract_id, part))
+            entries = pending_meta_entries or ([primary_pending_meta] if primary_pending_meta else [])
+            fallback_part = primary_pending_meta.get("mfg_part_num") or self._extract_pending_part(repl_value_for_model)
+            seen_pairs: Set[Tuple[str, str]] = set()
+            for entry in entries:
+                contract_id_raw = entry.get("contract_id")
+                contract_id = str(contract_id_raw).strip() if contract_id_raw else ""
+                part_raw = entry.get("mfg_part_num") or fallback_part
+                mfg_part = str(part_raw).strip() if part_raw else ""
+                if not contract_id or not mfg_part:
+                    continue
+                pair_key = (contract_id, mfg_part)
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+                self.pending_items_to_create.append((link, contract_id, mfg_part))
 
         return link
+
+    def _pending_meta_entries(self, placeholder: Optional[str]) -> List[Dict[str, str]]:
+        if not placeholder:
+            return []
+        raw_meta = self.pending_meta.get(placeholder)
+        if raw_meta is None:
+            return []
+        if isinstance(raw_meta, dict):
+            if "entries" in raw_meta and isinstance(raw_meta["entries"], list):
+                return [dict(entry) for entry in raw_meta["entries"] if isinstance(entry, dict)]
+            return [dict(raw_meta)]
+        if isinstance(raw_meta, list):
+            return [dict(entry) for entry in raw_meta if isinstance(entry, dict)]
+        return []
 
     def _log_conflict(
         self,
@@ -626,9 +655,29 @@ class AddItemPairs:
     def _create_pending_items(self) -> None:
         if not self.pending_items_to_create:
             return
+        seen: Set[Tuple[int, str, str]] = set()
         for link, contract_id, mfg_part in self.pending_items_to_create:
+            link_id = link.pkid
+            if not link_id:
+                continue
+            key = (int(link_id), contract_id, mfg_part)
+            if key in seen:
+                continue
+            seen.add(key)
+            placeholder = f"PENDING***{mfg_part}"
+            exists = (
+                self.session.query(PendingItems.pkid)
+                .filter(
+                    PendingItems.item_link_id == link_id,
+                    PendingItems.contract_id == contract_id,
+                    PendingItems.replace_item_pending == placeholder,
+                )
+                .first()
+            )
+            if exists:
+                continue
             pending = PendingItems.create_from_contract_item(
-                item_link_id=link.pkid,
+                item_link_id=int(link_id),
                 contract_id=contract_id,
                 mfg_part_num=mfg_part,
             )

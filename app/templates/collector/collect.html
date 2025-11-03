@@ -57,11 +57,14 @@
 <div class="mt-4">
   <div class="card shadow-sm border-0">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div class="d-flex justify-content-between align-items-start mb-2">
         <h2 class="h6 fw-semibold mb-0">Batch Upload (Excel)</h2>
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="batch-upload-toggle" aria-expanded="true" aria-controls="batch-upload-panel">Hide</button>
+        <div class="form-check form-switch small ms-auto">
+          <input class="form-check-input" type="checkbox" id="batch-upload-toggle" />
+          <label class="form-check-label small mb-0" for="batch-upload-toggle">Batch upload</label>
+        </div>
       </div>
-      <div id="batch-upload-panel">
+  <div id="batch-upload-panel">
         <p class="text-muted small mb-3">
           Upload an Excel workbook with columns <code>Item</code> and <code>Replace Item</code>. Values must be six-digit item numbers without leading zeros. Use <code>NO REPLACEMENT</code> to mark discontinued rows.
         </p>
@@ -151,12 +154,35 @@
     uploadInvalid.style.display = 'none';
   }
   if(batchPanel && batchToggle){
-    batchToggle.addEventListener('click', () => {
-      const hidden = batchPanel.classList.toggle('d-none');
-      const expanded = hidden ? 'false' : 'true';
-      batchToggle.setAttribute('aria-expanded', expanded);
-      batchToggle.textContent = hidden ? 'Show' : 'Hide';
-    });
+    // Ensure control has aria-controls for accessibility
+    batchToggle.setAttribute('aria-controls', 'batch-upload-panel');
+
+    // Support either a checkbox switch (preferred) or a fallback button
+    const isSwitch = batchToggle.tagName === 'INPUT' && batchToggle.type === 'checkbox';
+    const panelHiddenOnLoad = batchPanel.classList.contains('d-none');
+
+    if(isSwitch){
+      // For switch: checked === visible
+      batchToggle.checked = !panelHiddenOnLoad;
+      batchToggle.setAttribute('aria-expanded', batchToggle.checked ? 'true' : 'false');
+      batchToggle.addEventListener('change', () => {
+        const expanded = batchToggle.checked;
+        batchPanel.classList.toggle('d-none', !expanded);
+        batchToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      });
+    } else {
+      // Fallback for button-style toggles
+      batchToggle.setAttribute('aria-expanded', panelHiddenOnLoad ? 'false' : 'true');
+      batchToggle.classList.toggle('collapsed', panelHiddenOnLoad);
+      batchToggle.textContent = panelHiddenOnLoad ? 'Show' : 'Hide';
+      batchToggle.addEventListener('click', () => {
+        const hidden = batchPanel.classList.toggle('d-none');
+        const expanded = !hidden;
+        batchToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        batchToggle.classList.toggle('collapsed', !expanded);
+        batchToggle.textContent = hidden ? 'Show' : 'Hide';
+      });
+    }
   }
   const ORIGINAL_REPL_ENDPOINT = '/api/items/search';
   const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';

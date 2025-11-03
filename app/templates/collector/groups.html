@@ -102,7 +102,7 @@
               <button class="btn btn-secondary btn-sm cancel-btn" type="button" title="Cancel edits">Cancel</button>
             </div>
           </td>
-          <td class="text-center fw-semibold" style="min-width:50px;">{{ r.item_group }}</td>
+          <td class="text-center fw-semibold" data-column="item-group" style="min-width:50px;">{{ r.item_group }}</td>
           <td class="font-monospace col-src">{{ r.item }}</td>
           <td title="{{ r.mfg_part_num }}" class="text-truncate col-src" style="max-width:140px;">{{ r.mfg_part_num }}</td>
           <td class="text-truncate col-src" style="max-width:120px;">{{ r.manufacturer }}</td>
@@ -437,6 +437,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const normalizeTextValue = (value) => {
     if(value === null || value === undefined) return '';
     return String(value).trim().toLowerCase();
+  };
+  const getItemGroupValue = (row) => {
+    const dataValue = normalizeTextValue(row.dataset.itemGroup);
+    if(dataValue) return dataValue;
+    const cell = row.querySelector('td[data-column="item-group"]');
+    return normalizeTextValue(cell ? cell.innerText : '');
   };
   const getCellText = (row, selector) => {
     const cell = row.querySelector(selector);
@@ -1017,9 +1023,8 @@ document.addEventListener('DOMContentLoaded', () => {
           const rowText = tr.innerText.toLowerCase();
           match = tokens.every(token => !rowText.includes(token));
         } else if(mode === 'item-group'){
-          const cell = tr.children[1]; // Item Group column
-          const cellText = (cell ? cell.innerText : '').trim().toLowerCase();
-          match = tokens.some(token => cellText === token);
+          const groupValue = getItemGroupValue(tr);
+          match = tokens.some(token => groupValue === token);
         } else if(mode === 'stage'){
           const stageCell = tr.querySelector('.stage-cell .stage-badge');
           const stageText = stageCell ? stageCell.innerText.trim().toLowerCase() : '';

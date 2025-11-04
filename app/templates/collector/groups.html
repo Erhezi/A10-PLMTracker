@@ -91,7 +91,7 @@
     <tbody class="small">
       {% if items %}
         {% for r in items %}
-          <tr data-item="{{ r.item }}" data-replace-item="{{ r.replace_item }}" data-item-group="{{ r.item_group }}">
+          <tr data-item="{{ r.item }}" data-replace-item="{{ r.replace_item }}" data-item-group="{{ r.item_group }}" data-pkid="{{ r.pkid }}">
           <td class="text-center select-cell d-none">
             <input type="checkbox" class="form-check-input row-select" />
           </td>
@@ -430,10 +430,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     return map;
   };
-  const buildPayload = (rows) => rows.map(row => ({
-    item: row.dataset.item,
-    replace_item: normalizeReplace(row.dataset.replaceItem),
-  }));
+  const buildPayload = (rows) => rows.map(row => {
+    const payload = {
+      item: row.dataset.item,
+      replace_item: normalizeReplace(row.dataset.replaceItem),
+    };
+    if(row.dataset.pkid){
+      payload.pkid = row.dataset.pkid;
+    }
+    return payload;
+  });
   const normalizeTextValue = (value) => {
     if(value === null || value === undefined) return '';
     return String(value).trim().toLowerCase();
@@ -787,7 +793,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const wrikeDownloadBtn = document.getElementById('batch-wrike-download-excel');
   // Keep export configuration aligned with dashboard presets so generated sheets match expectations
   const wrikeExportTargets = {
+    wrike_id1: {
+      mode: 'pendingItems',
+      columns: [
+        'WorkingContractID',
+        'ManufacturerNumber',
+        'VendorItem',
+        'ItemDescription',
+        'BaseCost',
+        'UOM',
+        'DerivedUOMConversion',
+        'EffectiveDate',
+        'ExpirationDate',
+      ],
+    },
     wrike_id2: {
+      mode: 'dashboard',
       tableKey: 'inventory',
       columnMode: 'inventory_setup',
       columns: [
@@ -810,6 +831,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ],
     },
     wrike_id3: {
+      mode: 'dashboard',
       tableKey: 'par',
       columnMode: 'par_setup',
       columns: [
@@ -884,6 +906,66 @@ document.addEventListener('DOMContentLoaded', () => {
       return false;
     }
   };
+  const downloadPendingItemsExport = async (itemLinkIds, columns) => {
+    const payload = {
+      item_link_ids: itemLinkIds,
+      columns,
+    };
+    try {
+      const resp = await fetch('/groups/batch/wrike/export/item-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const contentType = resp.headers.get('Content-Type') || '';
+      if(!resp.ok){
+        if(contentType.includes('application/json')){
+          try {
+            const data = await resp.json();
+            throw new Error(data && data.message ? data.message : 'Download failed.');
+          } catch (err) {
+            throw new Error(err && err.message ? err.message : 'Download failed.');
+          }
+        }
+        throw new Error(`Download failed (${resp.status})`);
+      }
+      if(!contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')){
+        if(contentType.includes('application/json')){
+          const data = await resp.json();
+          throw new Error(data && data.message ? data.message : 'Unexpected response.');
+        }
+        throw new Error('Unexpected response type.');
+      }
+      const blob = await resp.blob();
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      let filename = 'wrike-get-item-numbers.xlsx';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+      if(match && match[1]){
+        const rawName = match[1].replace(/^"|"$/g, '');
+        try {
+          filename = decodeURIComponent(rawName);
+        } catch {
+          filename = rawName;
+        }
+      }
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      link.remove();
+      return true;
+    } catch (err) {
+      console.error('Pending items download failed', err);
+      showWrikeDownloadError(err && err.message ? err.message : 'Download failed.');
+      return false;
+    }
+  };
   if(wrikeDownloadBtn){
     wrikeDownloadBtn.addEventListener('click', async () => {
       if(wrikeDownloadBtn.dataset.busy === '1') return;
@@ -896,32 +978,50 @@ document.addEventListener('DOMContentLoaded', () => {
       const field = wrikeModalEl ? wrikeModalEl.dataset.field : null;
       const config = field ? wrikeExportTargets[field] : null;
       if(!config){
-        showWrikeDownloadError('Excel export is only available for Set-up Inv. or Set-up Par tasks.');
+        showWrikeDownloadError('Excel export is unavailable for this task.');
         return;
       }
-      const itemGroups = [];
-      selectedRows.forEach(tr => {
-        const raw = tr.dataset.itemGroup;
-        if(!raw) return;
-        const value = raw.trim();
-        if(!value) return;
-        if(!/^\d+$/.test(value)) return;
-        if(!itemGroups.includes(value)){
-          itemGroups.push(value);
+      if(config.mode === 'pendingItems'){
+        const payloadRows = buildPayload(selectedRows);
+        const itemLinkIds = payloadRows
+          .map(row => row.pkid)
+          .filter(value => value !== undefined && value !== null && String(value).trim() !== '');
+        if(!itemLinkIds.length){
+          showWrikeDownloadError('Selected rows are missing ItemLink identifiers.');
+          return;
         }
-      });
-      if(!itemGroups.length){
-        showWrikeDownloadError('Selected rows are missing item group values.');
+        await withBusyState(wrikeDownloadBtn, async () => {
+          await downloadPendingItemsExport(itemLinkIds, config.columns);
+        });
         return;
       }
-      const params = new URLSearchParams();
-      params.set('row_scope', 'filtered');
-      params.set('item_group', itemGroups.join(','));
-      params.set('column_mode', config.columnMode);
-      params.set('columns', config.columns.join(','));
-      await withBusyState(wrikeDownloadBtn, async () => {
-        await downloadDashboardExport(config.tableKey, params);
-      });
+      if(config.mode === 'dashboard'){
+        const itemGroups = [];
+        selectedRows.forEach(tr => {
+          const raw = tr.dataset.itemGroup;
+          if(!raw) return;
+          const value = raw.trim();
+          if(!value) return;
+          if(!/^\d+$/.test(value)) return;
+          if(!itemGroups.includes(value)){
+            itemGroups.push(value);
+          }
+        });
+        if(!itemGroups.length){
+          showWrikeDownloadError('Selected rows are missing item group values.');
+          return;
+        }
+        const params = new URLSearchParams();
+        params.set('row_scope', 'filtered');
+        params.set('item_group', itemGroups.join(','));
+        params.set('column_mode', config.columnMode);
+        params.set('columns', config.columns.join(','));
+        await withBusyState(wrikeDownloadBtn, async () => {
+          await downloadDashboardExport(config.tableKey, params);
+        });
+        return;
+      }
+      showWrikeDownloadError('Excel export configuration is invalid for this task.');
     });
   }
 

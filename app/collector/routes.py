@@ -1,12 +1,13 @@
 import re
 from io import BytesIO
+from decimal import Decimal
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from datetime import date, datetime, timedelta
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 
 from .. import db
 from ..models import now_ny_naive
@@ -20,7 +21,7 @@ from ..models.relations import (
     ItemGroupConflictError,
     ConflictError,
 )
-from ..models.inventory import Item, ContractItem
+from ..models.inventory import Item, ContractItem, PLMPendingItemsExport
 from ..models.log import BurnRateRefreshJob
 from ..utility.item_group import BatchValidationError
 from ..utility.add_pairs import AddItemPairs
@@ -326,6 +327,110 @@ def batch_update_wrike(field: str):
         return jsonify({"status": "error", "message": str(exc)}), 400
     summary = summarize_results(results)
     return jsonify(summary)
+
+
+@bp.post("/groups/batch/wrike/export/item-numbers")
+@login_required
+def batch_export_wrike_item_numbers():
+    payload = request.get_json(silent=True) or {}
+    raw_ids = payload.get("item_link_ids") or []
+    raw_columns = payload.get("columns") or []
+
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"status": "error", "message": "No item link IDs provided."}), 400
+
+    item_link_ids: list[int] = []
+    for raw in raw_ids:
+        if raw is None:
+            continue
+        try:
+            value = int(str(raw).strip())
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "Invalid item link ID supplied."}), 400
+        if value <= 0:
+            return jsonify({"status": "error", "message": "Item link IDs must be positive integers."}), 400
+        item_link_ids.append(value)
+
+    if not item_link_ids:
+        return jsonify({"status": "error", "message": "No valid item link IDs supplied."}), 400
+
+    allowed_columns = [
+        "WorkingContractID",
+        "ManufacturerNumber",
+        "VendorItem",
+        "ItemDescription",
+        "BaseCost",
+        "UOM",
+        "DerivedUOMConversion",
+        "EffectiveDate",
+        "ExpirationDate",
+    ]
+
+    if raw_columns:
+        if not isinstance(raw_columns, list):
+            return jsonify({"status": "error", "message": "Columns payload must be a list."}), 400
+        invalid_columns = [col for col in raw_columns if col not in allowed_columns]
+        if invalid_columns:
+            return jsonify({
+                "status": "error",
+                "message": f"Unsupported column(s) requested: {', '.join(invalid_columns)}",
+            }), 400
+        selected_columns = [col for col in raw_columns if col in allowed_columns]
+    else:
+        selected_columns = allowed_columns.copy()
+
+    if not selected_columns:
+        return jsonify({"status": "error", "message": "No columns selected for export."}), 400
+
+    records = (
+        PLMPendingItemsExport.query
+        .filter(PLMPendingItemsExport.item_link_id.in_(item_link_ids))
+        .order_by(
+            PLMPendingItemsExport.item_link_id.asc(),
+            PLMPendingItemsExport.WorkingContractID.asc(),
+            PLMPendingItemsExport.ManufacturerNumber.asc(),
+        )
+        .all()
+    )
+
+    records_by_id: dict[int, list[PLMPendingItemsExport]] = {}
+    for record in records:
+        records_by_id.setdefault(record.item_link_id, []).append(record)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "PendingItems"
+    headers = ["ItemLinkID", *selected_columns]
+    sheet.append(headers)
+    sheet.freeze_panes = "A2"
+
+    def normalize_value(value):
+        if isinstance(value, Decimal):
+            return float(value)
+        return value
+
+    for item_id in item_link_ids:
+        rows_for_id = records_by_id.get(item_id)
+        if not rows_for_id:
+            sheet.append([item_id] + [None] * len(selected_columns))
+            continue
+        for record in rows_for_id:
+            row_values = [item_id]
+            for column in selected_columns:
+                row_values.append(normalize_value(getattr(record, column, None)))
+            sheet.append(row_values)
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    filename = f"wrike_get_item_numbers_{timestamp}.xlsx"
+
+    response = make_response(output.getvalue())
+    response.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    response.headers["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+    return response
 
 
 @bp.post("/groups/batch/go-live")

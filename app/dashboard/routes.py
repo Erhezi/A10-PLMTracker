@@ -1,4 +1,5 @@
 import io
+import string
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -533,7 +534,7 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
 ]
 
 
-CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup"}
+CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup_replacement", "par_setup_original"}
 
 INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "company": "Company",
@@ -556,7 +557,7 @@ INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "reorder_point_ri": "Current Reorder (Repl. Item)",
 }
 
-PAR_SETUP_HEADER_OVERRIDES: dict[str, str] = {
+PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {
     "company": "Company",
     "location_ri": "Inventory Location",
     "location_text": "Inventory Location Name",
@@ -576,10 +577,33 @@ PAR_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "reorder_point_ri": "Current Reorder (Repl. Item)",
 }
 
+PAR_SETUP_ORIGINAL_HEADER_OVERRIDES: dict[str, str] = {
+    "company": "Company",
+    "location": "Inventory Location",
+    "location_text": "Inventory Location Name",
+    "group_type": "Group Type",
+    "item": "Item",
+    "manufacturer_number": "Item Manufacturer Number",
+    "item_description": "Item.Description",
+    "min_order_qty": "Min",
+    "max_order_qty": "Max",
+    "reorder_point": "ReorderPoint",
+    "stock_uom": "UOM Unit Of Measure",
+    "preferred_bin": "BIN Location                        (All New Sequence)",
+    "action": "Requested update/Action",
+    "notes": "Notes",
+    "preferred_bin_ri": "Current Bin (Repl. Item)",
+    "reorder_point_ri": "Current Reorder (Repl. Item)",
+    "replacement_item": "Replacement Item",
+}
+
 PRESET_HEADER_OVERRIDES: dict[str, dict[str, str]] = {
     "inventory_setup": INVENTORY_SETUP_HEADER_OVERRIDES,
-    "par_setup": PAR_SETUP_HEADER_OVERRIDES,
+    "par_setup_replacement": PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES,
+    "par_setup_original": PAR_SETUP_ORIGINAL_HEADER_OVERRIDES,
 }
+
+MAX_PREFERRED_BIN_LENGTH = 10
 
 
 def _parse_column_selection(param: str | None) -> list[str]:
@@ -609,6 +633,76 @@ def _filter_export_columns(
         if column and column not in filtered:
             filtered.append(column)
     return filtered
+
+
+def _letter_suffix(index: int) -> str:
+    if index < 0:
+        return ""
+    alphabet = string.ascii_lowercase
+    base = len(alphabet)
+    result = ""
+    idx = index
+    while True:
+        idx, remainder = divmod(idx, base)
+        result = alphabet[remainder] + result
+        if idx == 0:
+            break
+        idx -= 1
+    return result or alphabet[0]
+
+
+def _format_par_original_preferred_bin(row: dict, counters: dict[tuple[str, str], int]) -> str:
+    replacement_raw = row.get("replacement_item")
+    replacement = str(replacement_raw or "").strip()
+    if not replacement:
+        return "Now"
+
+    relation = (row.get("item_replace_relation") or "").strip().lower()
+    if relation == "many-1":
+        key = (
+            replacement.lower(),
+            str(row.get("group_location") or row.get("location") or "").lower(),
+        )
+        index = counters.get(key, 0)
+        suffix = _letter_suffix(index)
+        counters[key] = index + 1
+        prefix = "Now"
+        sanitized_replacement = replacement.replace(" ", "")
+        available = MAX_PREFERRED_BIN_LENGTH - len(prefix) - len(suffix)
+        truncated = sanitized_replacement[:available] if available > 0 else ""
+        candidate = f"{prefix}{truncated}{suffix}".rstrip()
+    else:
+        prefix = "Now "
+        available = MAX_PREFERRED_BIN_LENGTH - len(prefix)
+        truncated = replacement[:available] if available > 0 else ""
+        candidate = f"{prefix}{truncated}".rstrip()
+
+    return candidate or "Now"
+
+
+def _prepare_par_setup_original_rows(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    letter_counters: dict[tuple[str, str], int] = {}
+    prepared: list[dict] = []
+    for row in rows:
+        updated = dict(row)
+
+        action_raw = str(row.get("action") or "").strip()
+        if action_raw.lower() in {"create", "update"}:
+            updated["action"] = "Replace"
+        else:
+            updated["action"] = action_raw or None
+
+        item_display = str(row.get("item") or "").strip() or "N/A"
+        original_bin = str(row.get("preferred_bin") or "").strip() or "N/A"
+        updated["notes"] = f"{item_display} currently is in bin {original_bin}"
+
+        updated["preferred_bin"] = _format_par_original_preferred_bin(row, letter_counters)
+        prepared.append(updated)
+
+    return prepared
 
 
 @bp.route("/")
@@ -935,13 +1029,16 @@ def export_table(table_key: str):
     elif column_mode in CUSTOM_EXPORT_MODES:
         abort(400, description="No columns selected for export.")
 
+    if column_mode == "par_setup_original":
+        rows = _prepare_par_setup_original_rows(rows)
+
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = sheet_name[:31]
     header_overrides = PRESET_HEADER_OVERRIDES.get(column_mode, {})
     worksheet.append([header_overrides.get(field, header) for header, field in columns])
 
-    highlight_modes = {"inventory_setup", "par_setup"}
+    highlight_modes = {"inventory_setup", "par_setup_replacement", "par_setup_original"}
     should_highlight_notes = column_mode in highlight_modes
     notes_column_index: int | None = None
     if should_highlight_notes:

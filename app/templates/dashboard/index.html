@@ -521,8 +521,12 @@
             <label class="form-check-label" for="export-column-inventory-setup">Inventory set up</label>
           </div>
           <div class="form-check export-column-mode-option d-none" data-table="par">
-            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup" value="par_setup" data-table="par">
-            <label class="form-check-label" for="export-column-par-setup">Par set up</label>
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-replacement" value="par_setup_replacement" data-table="par">
+            <label class="form-check-label" for="export-column-par-setup-replacement">Par set up (replacement)</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="par">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-original" value="par_setup_original" data-table="par">
+            <label class="form-check-label" for="export-column-par-setup-original">Par set up (original)</label>
           </div>
         </div>
         <div id="export-column-picker" class="export-column-picker d-none">
@@ -788,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ],
     },
     par: {
-      par_setup: [
+      par_setup_replacement: [
         'company',
         'location_ri',
         'location_text',
@@ -805,9 +809,26 @@ document.addEventListener('DOMContentLoaded', () => {
         'preferred_bin_ri',
         'reorder_point_ri',
       ],
+      par_setup_original: [
+        'company',
+        'location',
+        'location_text',
+        'item',
+        'manufacturer_number',
+        'item_description',
+        'min_order_qty',
+        'max_order_qty',
+        'reorder_point',
+        'stock_uom',
+        'preferred_bin',
+        'action',
+        'notes',
+        'preferred_bin_ri',
+        'reorder_point_ri',
+      ],
     },
   };
-  const customExportModes = new Set(['custom', 'inventory_setup', 'par_setup']);
+  const customExportModes = new Set(['custom', 'inventory_setup', 'par_setup_replacement', 'par_setup_original']);
   const exportState = {
     tableKey: null,
     rowScope: 'filtered',
@@ -2402,11 +2423,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setExportColumnMode(mode){
-    const allowedModes = ['all', 'visible', 'custom', 'inventory_setup', 'par_setup'];
+    const parModes = ['par_setup_replacement', 'par_setup_original'];
+    const allowedModes = ['all', 'visible', 'custom', 'inventory_setup', ...parModes];
     let normalized = allowedModes.includes(mode) ? mode : 'all';
     if(normalized === 'inventory_setup' && exportState.tableKey !== 'inventory'){
       normalized = 'all';
-    } else if(normalized === 'par_setup' && exportState.tableKey !== 'par'){
+    } else if(parModes.includes(normalized) && exportState.tableKey !== 'par'){
       normalized = 'all';
     }
     exportState.columnMode = normalized;
@@ -2417,7 +2439,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if(exportState.allColumns.length){
         exportState.selectedFields = exportState.allColumns.map(col => col.field);
       }
-    } else if(normalized === 'inventory_setup' || normalized === 'par_setup'){
+    } else if(normalized === 'inventory_setup' || parModes.includes(normalized)){
       const presets = (exportPresetFields[exportState.tableKey] || {})[normalized] || [];
       const availableFields = new Set(exportState.allColumns.map(col => col.field));
       const filtered = presets.filter(field => availableFields.has(field));

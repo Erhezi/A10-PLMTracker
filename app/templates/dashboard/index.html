@@ -747,6 +747,13 @@ document.addEventListener('DOMContentLoaded', () => {
       return null;
     }
   }
+  function formatWithTbd(value, formatter){
+    const formatted = formatter ? formatter(value) : value;
+    if(formatted === null || formatted === undefined) return 'TBD';
+    const text = typeof formatted === 'string' ? formatted.trim() : String(formatted).trim();
+    if(text === '') return 'TBD';
+    return formatted;
+  }
   const columnState = {
     inventory: {},
     par: {},
@@ -1802,6 +1809,12 @@ document.addEventListener('DOMContentLoaded', () => {
           if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
           return normalized;
         }
+        const actionNormalized = String(r.action || '').trim().toLowerCase();
+        const recommendedPreferredBinDisplay = (setupMode && actionNormalized === 'create')
+          ? 'NEW ITEM'
+          : formatWithTbd(r.recommended_preferred_bin_ri, fmt);
+        const recommendedAutoReplDisplay = formatWithTbd(r.recommended_auto_replenishment_ri, fmt);
+        const recommendedReorderPolicyDisplay = formatWithTbd(r.recommended_reorder_quantity_code_ri, reorderCode);
     tr.dataset.itemGroup = r.item_group;
     tr.dataset.item = r.item;
     tr.dataset.location = r.location || '';
@@ -1838,9 +1851,9 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
           <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
-          <td class="col-repl col-recom text-center">${fmt(r.recommended_preferred_bin_ri)}</td>
+          <td class="col-repl col-recom text-center">${recommendedPreferredBinDisplay}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
-          <td class="col-repl col-recom text-center">${fmt(r.recommended_auto_replenishment_ri)}</td>
+          <td class="col-repl col-recom text-center">${recommendedAutoReplDisplay}</td>
           <td class="col-repl text-center">${fmt(r.active_ri)}</td>
           <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
           <td class="col-repl text-center">${num(r.current_qty_ri,0)}</td>
@@ -1855,7 +1868,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
           <td class="col-repl col-recom text-center">${num(r.recommended_transaction_uom_multiplier_ri, 0)}</td>
           <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
-          <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+          <td class="col-repl col-recom text-center">${recommendedReorderPolicyDisplay}</td>
           <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
           <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
           <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
@@ -1918,6 +1931,9 @@ document.addEventListener('DOMContentLoaded', () => {
           if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
           return normalized;
         }
+        const recommendedPreferredBinDisplay = formatWithTbd(r.recommended_preferred_bin_ri, fmt);
+        const recommendedAutoReplDisplay = formatWithTbd(r.recommended_auto_replenishment_ri, fmt);
+        const recommendedReorderPolicyDisplay = formatWithTbd(r.recommended_reorder_quantity_code_ri, reorderCode);
         const tr = document.createElement('tr');
   tr.dataset.itemGroup = r.item_group || '';
   tr.dataset.item = r.item || '';
@@ -1955,9 +1971,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
             <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
-            <td class="col-repl col-recom text-center">${fmt(r.recommended_preferred_bin_ri)}</td>
+            <td class="col-repl col-recom text-center">${recommendedPreferredBinDisplay}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
-            <td class="col-repl col-recom text-center">${fmt(r.recommended_auto_replenishment_ri)}</td>
+            <td class="col-repl col-recom text-center">${recommendedAutoReplDisplay}</td>
             <td class="col-repl text-center">${fmt(r.active_ri)}</td>
             <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
             <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
@@ -1972,7 +1988,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
             <td class="col-repl col-recom text-center">${num(r.recommended_transaction_uom_multiplier_ri, 0)}</td>
             <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
-            <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+            <td class="col-repl col-recom text-center">${recommendedReorderPolicyDisplay}</td>
             <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
             <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
             <td class="col-repl col-recom text-center">${num(r.recommended_min_order_qty_ri,0)}</td>

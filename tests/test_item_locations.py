@@ -248,3 +248,25 @@ def test_one_to_many_par_simple():
     assert second["recommended_reorder_point_ri"] == 25
     assert second["recommended_min_order_qty_ri"] == 12
     assert second["recommended_max_order_qty_ri"] == 9
+
+
+def test_one_to_zero_marks_not_applicable():
+    rows = [
+        {
+            "item_group": 808,
+            "group_location": "LOC-DISC",
+            "item": "DISC-ITEM",
+            "replacement_item": None,
+            "reorder_quantity_code": "STD",
+        }
+    ]
+
+    _annotate_replacement_setups(rows, br_calc_type="simple")
+
+    row = rows[0]
+    assert row["item_replace_relation"] == "1-0"
+    assert row["group_type"] == "1-0"
+    assert row["recommended_preferred_bin_ri"] == "N.A."
+    assert row["recommended_auto_replenishment_ri"] == "N.A."
+    assert row["recommended_reorder_quantity_code_ri"] == "N.A."
+    assert row["recommended_transaction_uom_ri"] == "N.A."

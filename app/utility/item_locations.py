@@ -195,6 +195,10 @@ def _relation_display_label(relation: Optional[str]) -> Optional[str]:
         "1-many": "1-M",
         "many-1": "M-1",
         "many-many": "M-M",
+        "1-0": "1-0",
+        "many-0": "M-0",
+        "0-1": "0-1",
+        "0-many": "0-M",
         "unknown": "Unknown",
     }
     if not relation:
@@ -273,14 +277,25 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         items = {r.get("item") for r in group_rows if r.get("item")}
         replacements = {r.get("replacement_item") for r in group_rows if r.get("replacement_item")}
 
-        if len(items) == 1 and len(replacements) == 1:
-            relation = "1-1"
-        elif len(items) <= 1 and len(replacements) > 1:
-            relation = "1-many"
-        elif len(items) > 1 and len(replacements) <= 1:
-            relation = "many-1"
-        elif not items and not replacements:
+        item_count = len(items)
+        replacement_count = len(replacements)
+
+        if item_count == 0 and replacement_count == 0:
             relation = "unknown"
+        elif item_count == 1 and replacement_count == 0:
+            relation = "1-0"
+        elif item_count > 1 and replacement_count == 0:
+            relation = "many-0"
+        elif item_count == 0 and replacement_count == 1:
+            relation = "0-1"
+        elif item_count == 0 and replacement_count > 1:
+            relation = "0-many"
+        elif item_count == 1 and replacement_count == 1:
+            relation = "1-1"
+        elif item_count == 1 and replacement_count > 1:
+            relation = "1-many"
+        elif item_count > 1 and replacement_count == 1:
+            relation = "many-1"
         else:
             relation = "many-many"
 
@@ -321,9 +336,18 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         elif relation in {"1-many", "many-1", "many-many"}:
             for row in group_rows:
                 row["recommended_preferred_bin_ri"] = "TBD"
+        elif relation in {"1-0", "many-0"}:
+            for row in group_rows:
+                row["recommended_preferred_bin_ri"] = "N.A."
+                row["recommended_auto_replenishment_ri"] = "N.A."
+                row["recommended_reorder_quantity_code_ri"] = "N.A."
+                row["recommended_transaction_uom_ri"] = "N.A."
 
         reorder_policy = _recommended_reorder_policy_for_group(group_rows)
         for row in group_rows:
+            current_policy = row.get("recommended_reorder_quantity_code_ri")
+            if current_policy and current_policy != "TBD":
+                continue
             if reorder_policy == "TBD":
                 row["recommended_reorder_quantity_code_ri"] = "TBD"
             elif reorder_policy is not None:
@@ -349,6 +373,14 @@ def _is_tbd(value: object | None) -> bool:
     if not value:
         return False
     if isinstance(value, str) and value.strip().lower() == "tbd":
+        return True
+    return False
+
+
+def _is_new_item(value: object | None) -> bool:
+    if not value:
+        return False
+    if isinstance(value, str) and value.strip().lower() == "new item":
         return True
     return False
 
@@ -401,9 +433,21 @@ def _populate_notes(rows: List[Dict]) -> None:
     uom_lookup = _build_transaction_uom_lookup(items_needing_uoms)
 
     for row in rows:
+        is_par_location = _is_par_location(row)
+        preferred_bin_status = row.get("recommended_preferred_bin_ri")
+        action_value = (row.get("action") or "").strip().lower()
         notes: list[str] = []
 
-        if _is_tbd(row.get("recommended_preferred_bin_ri")):
+        treat_as_new_item = False
+        if not is_par_location:
+            treat_as_new_item = _is_new_item(preferred_bin_status) or action_value == "create"
+
+        if is_par_location:
+            needs_preferred_bin_note = _is_tbd(preferred_bin_status)
+        else:
+            needs_preferred_bin_note = _is_tbd(preferred_bin_status) or treat_as_new_item
+
+        if needs_preferred_bin_note:
             item_raw = row.get("item")
             bin_raw = row.get("preferred_bin")
             item_code = str(item_raw).strip() if item_raw is not None else "unknown item"

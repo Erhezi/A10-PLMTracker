@@ -97,3 +97,62 @@ def test_api_stats_respects_hide_r_only(monkeypatch):
         assert data["distinct_locations"] == 2
         assert data["distinct_groups"] == 3
         assert data["distinct_items"] == 3
+
+
+def test_api_filter_options_limits_item_groups_to_active_stages(monkeypatch):
+    captured_queries = []
+
+    class DummyResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    def fake_execute(statement):  # pragma: no cover - helper
+        captured_queries.append(statement)
+        if len(captured_queries) == 1:
+            return DummyResult([(101,), (202,)])
+        if len(captured_queries) == 2:
+            return DummyResult([
+                (101, "ITEM-A"),
+                (101, "ITEM-B"),
+                (202, "ITEM-C"),
+            ])
+        raise AssertionError("Unexpected query execution")
+
+    monkeypatch.setattr(routes.db.session, "execute", fake_execute)
+
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.config["INCLUDE_OR_INVENTORY_LOCATIONS"] = False
+
+    with app.test_request_context("/dashboard/api/filter-options"):
+        response = routes.api_filter_options()
+        payload = response.get_json()
+
+    assert payload["item_groups"] == [
+        {
+            "value": 101,
+            "items": ["ITEM-A", "ITEM-B"],
+            "label": "101 - ITEM-A, ITEM-B",
+        },
+        {
+            "value": 202,
+            "items": ["ITEM-C"],
+            "label": "202 - ITEM-C",
+        },
+    ]
+
+    first_query = captured_queries[0]
+    stage_clause = next(
+        (
+            criteria
+            for criteria in first_query._where_criteria
+            if getattr(criteria, "left", None) is not None and criteria.left.compare(routes.ItemLink.stage)
+        ),
+        None,
+    )
+    assert stage_clause is not None
+    stage_values = stage_clause.right.value or ()
+    assert set(stage_values) == routes.ALLOWED_STAGE_VALUES

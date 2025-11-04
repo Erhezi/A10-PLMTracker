@@ -84,6 +84,14 @@ class ItemLink(db.Model):
         lazy="joined",
     )
 
+    group_links = relationship(
+        "ItemGroupLink",
+        back_populates="item_link",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
 
@@ -400,14 +408,7 @@ class ConflictError(db.Model):
 
 
 class ItemGroup(db.Model):
-	""" Mapping to PLM.ItemGroup table.
-	Store the pair of (Item, Item Group, Side) information
-	When the item link pair(s) are validated and created, the 
-	information will be write to this table for easy reference
-	and easy check. 
-	The side is either 'O' for original item or 'R' for replacement item.
-	table will have unique constraint on (Item, Item Group, Side)
-	"""
+	"""Mapping to PLM.ItemGroup table describing group membership by side."""
 
 	__tablename__ = "ItemGroup"
 	__table_args__ = (
@@ -417,21 +418,19 @@ class ItemGroup(db.Model):
 		{"schema": "PLM"},
 	)
 
-	# Surrogate primary key (already IDENTITY in SQL Server)
 	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
-	# foreign key reference back to ItemLink
-	item_link_id = db.Column("item_link_id", db.BigInteger, db.ForeignKey("PLM.ItemLink.PKID", ondelete='CASCADE'), nullable=False)
-
 	item = db.Column("Item", db.String(10), nullable=False)
 	item_group = db.Column("Item Group", db.Integer, nullable=False)
-	side = db.Column("Side", db.String(1), nullable=False)  # 'O' or 'R' or 'D' (discontinued)
+	side = db.Column("Side", db.String(1), nullable=False)  # 'O', 'R', or 'D'
 	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
 	update_dt = db.Column("update_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive, onupdate=now_ny_naive)
 
-	item_link = relationship(
-		"ItemLink",
-		backref=backref("item_groups", cascade="all, delete-orphan", passive_deletes=True),
-		foreign_keys=[item_link_id],
+	links = relationship(
+		"ItemGroupLink",
+		back_populates="membership",
+		cascade="all, delete-orphan",
+		passive_deletes=True,
+		lazy="selectin",
 	)
 
 	def __repr__(self):
@@ -448,40 +447,72 @@ class ItemGroup(db.Model):
 		return db.session
 
 	@classmethod
-	def ensure_allowed_side(cls, item_group: int, item_code: str | None, side: str, *, session=None, item_link_id: int | None = None):
+	def ensure_allowed_side(
+		cls,
+		item_group: int,
+		item_code: str | None,
+		side: str,
+		*,
+		session=None,
+		item_link_id: int | None = None,
+	) -> None:
 		"""Validate that an item within a group can take the requested side."""
 		if not item_code or _is_pending_placeholder(item_code):
 			return
 		session = cls._resolve_session(session)
-		existing = (
+		existing: ItemGroup | None = (
 			session.query(cls)
 			.filter(cls.item_group == item_group, cls.item == item_code)
 			.first()
 		)
-		if existing and existing.side != side and existing.item_link_id != item_link_id:
+		if not existing or existing.side == side:
+			return
+		if item_link_id is None:
+			raise ItemGroupConflictError(item_group, item_code, existing.side, side)
+		conflict_exists = (
+			session.query(ItemGroupLink.pkid)
+			.filter(ItemGroupLink.item_group_pkid == existing.pkid)
+			.filter(ItemGroupLink.item_link_id != item_link_id)
+			.first()
+		)
+		if conflict_exists:
 			raise ItemGroupConflictError(item_group, item_code, existing.side, side)
 
 	@classmethod
-	def sync_from_item_link(cls, item_link: ItemLink, *, session=None):
-		"""Ensure ItemGroup rows reflect the provided ItemLink."""
+	def sync_from_item_link(cls, item_link: ItemLink, *, session=None) -> None:
+		"""Ensure ItemGroup rows and pivot links reflect the provided ItemLink."""
 		if item_link.pkid is None:
 			raise ValueError("ItemLink must be flushed before syncing ItemGroup entries")
 		session = cls._resolve_session(session, item_link)
 		desired_pairs = cls._desired_pairs_for_link(item_link)
-		desired_keys = {(code, side) for code, side in desired_pairs if code}
-
-		# Remove stale rows tied to this link that are no longer represented
-		existing_rows = (
-			session.query(cls)
-			.filter(cls.item_link_id == item_link.pkid)
-			.all()
-		)
-		for row in existing_rows:
-			if (row.item, row.side) not in desired_keys:
-				session.delete(row)
+		desired_memberships: list[ItemGroup] = []
 
 		for code, side in desired_pairs:
-			cls._upsert(session, item_link, code, side)
+			membership = cls._upsert(session, item_link, code, side)
+			if membership is not None:
+				desired_memberships.append(membership)
+
+		if desired_memberships:
+			session.flush(desired_memberships)
+
+		existing_links = (
+			session.query(ItemGroupLink)
+			.filter(ItemGroupLink.item_link_id == item_link.pkid)
+			.all()
+		)
+		desired_ids = {membership.pkid for membership in desired_memberships}
+
+		for membership in desired_memberships:
+			ItemGroupLink.ensure(session, membership, item_link)
+
+		removed_membership_ids: set[int] = set()
+		for link in existing_links:
+			if link.item_group_pkid not in desired_ids:
+				removed_membership_ids.add(link.item_group_pkid)
+				session.delete(link)
+
+		if removed_membership_ids:
+			cls._prune_orphans(session, removed_membership_ids)
 
 	@staticmethod
 	def _desired_pairs_for_link(item_link: ItemLink) -> list[tuple[str | None, str]]:
@@ -496,23 +527,28 @@ class ItemGroup(db.Model):
 		return [(item_link.item, "D")]
 
 	@classmethod
-	def _upsert(cls, session, item_link: ItemLink, item_code: str | None, side: str):
+	def _upsert(cls, session, item_link: ItemLink, item_code: str | None, side: str) -> ItemGroup | None:
 		if not item_code:
-			return
-		existing = (
+			return None
+		existing: ItemGroup | None = (
 			session.query(cls)
 			.filter(cls.item_group == item_link.item_group, cls.item == item_code)
 			.first()
 		)
 		if existing:
-			if existing.side != side and existing.item_link_id != item_link.pkid:
-				raise ItemGroupConflictError(item_link.item_group, item_code, existing.side, side)
-			existing.side = side
-			existing.item_link_id = item_link.pkid
+			if existing.side != side:
+				conflict_exists = (
+					session.query(ItemGroupLink.pkid)
+					.filter(ItemGroupLink.item_group_pkid == existing.pkid)
+					.filter(ItemGroupLink.item_link_id != item_link.pkid)
+					.first()
+				)
+				if conflict_exists:
+					raise ItemGroupConflictError(item_link.item_group, item_code, existing.side, side)
+				existing.side = side
 			existing.update_dt = now_ny_naive()
 			return existing
 		new_entry = cls(
-			item_link_id=item_link.pkid,
 			item=item_code,
 			item_group=item_link.item_group,
 			side=side,
@@ -521,6 +557,70 @@ class ItemGroup(db.Model):
 		)
 		session.add(new_entry)
 		return new_entry
+
+	@classmethod
+	def _prune_orphans(cls, session, membership_ids: set[int]) -> None:
+		if not membership_ids:
+			return
+		for membership_id in membership_ids:
+			still_linked = (
+				session.query(ItemGroupLink.pkid)
+				.filter(ItemGroupLink.item_group_pkid == membership_id)
+				.first()
+			)
+			if still_linked:
+				continue
+			membership = session.get(cls, membership_id)
+			if membership is not None:
+				session.delete(membership)
+
+
+class ItemGroupLink(db.Model):
+	"""Pivot table linking ItemGroup memberships back to PLM.ItemLink rows."""
+
+	__tablename__ = "ItemGroupLink"
+	__table_args__ = (
+		UniqueConstraint("item_group_pkid", "item_link_id", name="UX_ItemGroupLink_Group_Link"),
+		Index("IX_ItemGroupLink_Group", "item_group_pkid"),
+		Index("IX_ItemGroupLink_ItemLink", "item_link_id"),
+		{"schema": "PLM"},
+	)
+
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+	item_group_pkid = db.Column(
+		"item_group_pkid",
+		db.BigInteger,
+		db.ForeignKey("PLM.ItemGroup.PKID", ondelete="CASCADE"),
+		nullable=False,
+	)
+	item_link_id = db.Column(
+		"item_link_id",
+		db.BigInteger,
+		db.ForeignKey("PLM.ItemLink.PKID", ondelete="CASCADE"),
+		nullable=False,
+	)
+	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+
+	membership = relationship("ItemGroup", back_populates="links")
+	item_link = relationship("ItemLink", back_populates="group_links")
+
+	def __repr__(self):
+		return f"<ItemGroupLink id={self.pkid} membership={self.item_group_pkid} item_link={self.item_link_id}>"
+
+	@classmethod
+	def ensure(cls, session, membership: ItemGroup, item_link: ItemLink) -> "ItemGroupLink":
+		if membership.pkid is None:
+			session.flush([membership])
+		existing = (
+			session.query(cls)
+			.filter(cls.item_group_pkid == membership.pkid, cls.item_link_id == item_link.pkid)
+			.first()
+		)
+		if existing:
+			return existing
+		record = cls(item_group_pkid=membership.pkid, item_link_id=item_link.pkid)
+		session.add(record)
+		return record
 
 
 class PendingItems(db.Model):

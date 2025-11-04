@@ -450,6 +450,32 @@ def _filtered_par_rows(args, *, apply_filters: bool = True) -> list[dict]:
     return all_rows
 
 
+def _apply_inventory_recommended_bin_display(rows: list[dict]) -> None:
+    """Mirror UI fallback rules for recommended preferred bin when exporting."""
+
+    if not rows:
+        return
+
+    for row in rows:
+        if not isinstance(row, dict):  # defensive guard; rows should be dicts
+            continue
+
+        action_value = str(row.get("action") or "").strip().lower()
+        if action_value == "create":
+            row["recommended_preferred_bin_ri"] = "NEW ITEM"
+            continue
+
+        current_value = row.get("recommended_preferred_bin_ri")
+        if isinstance(current_value, str):
+            trimmed = current_value.strip()
+            row["recommended_preferred_bin_ri"] = trimmed or "TBD"
+        elif current_value is None:
+            row["recommended_preferred_bin_ri"] = "TBD"
+        else:
+            text_value = str(current_value).strip()
+            row["recommended_preferred_bin_ri"] = text_value or "TBD"
+
+
 INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
     ("Item Group", "item_group"),
@@ -747,6 +773,59 @@ def _prepare_par_setup_original_rows(rows: list[dict]) -> list[dict]:
         prepared.append(updated)
 
     return prepared
+
+
+def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
+    """Normalize inventory setup specific fields before export."""
+
+    if not rows:
+        return []
+
+    prepared: list[dict] = []
+    for row in rows:
+        updated = dict(row)
+        raw_value = updated.get("recommended_auto_replenishment_ri")
+        normalized = str(raw_value).strip().lower() if raw_value is not None else ""
+        if normalized == "yes":
+            updated["recommended_auto_replenishment_ri"] = "True"
+        elif normalized == "no":
+            updated["recommended_auto_replenishment_ri"] = "False"
+        elif normalized in {"true", "false"}:
+            updated["recommended_auto_replenishment_ri"] = normalized.capitalize()
+        elif normalized == "tbd":
+            updated["recommended_auto_replenishment_ri"] = "TBD"
+        else:
+            updated["recommended_auto_replenishment_ri"] = "TBD"
+        prepared.append(updated)
+
+    return prepared
+
+
+def _sort_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return str(value)
+
+
+def _sort_export_rows(rows: list[dict], column_mode: str) -> list[dict]:
+    if not rows:
+        return rows
+
+    if column_mode == "inventory_setup":
+        key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
+    elif column_mode == "par_setup_replacement":
+        key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
+    elif column_mode == "par_setup_original":
+        key_fields = ("company", "location", "preferred_bin")
+    else:
+        return rows
+
+    def sort_key(row: dict) -> tuple[str, ...]:
+        return tuple(_sort_value(row.get(field)) for field in key_fields)
+
+    return sorted(rows, key=sort_key)
 
 
 @bp.route("/")
@@ -1074,6 +1153,9 @@ def export_table(table_key: str):
     if hide_r_only:
         rows = [row for row in rows if not _is_r_only_location(row)]
 
+    if table_key_normalized == "inventory":
+        _apply_inventory_recommended_bin_display(rows)
+
     column_mode = (request.args.get("column_mode") or "").strip().lower()
     requested_fields = _parse_column_selection(request.args.get("columns"))
     legacy_visible_param = request.args.get("visible_columns")
@@ -1096,8 +1178,12 @@ def export_table(table_key: str):
     elif column_mode in CUSTOM_EXPORT_MODES:
         abort(400, description="No columns selected for export.")
 
+    if column_mode == "inventory_setup":
+        rows = _prepare_inventory_setup_rows(rows)
     if column_mode == "par_setup_original":
         rows = _prepare_par_setup_original_rows(rows)
+
+    rows = _sort_export_rows(rows, column_mode)
 
     workbook = Workbook()
     worksheet = workbook.active

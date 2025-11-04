@@ -22,7 +22,6 @@ EXPANDED_STAGE_ADDITIONS = (
     "Tracking Completed",
     "Deleted",
 )
-PENDING_ITEM_STAGE_NAME = "Pending Item Number"
 
 
 def _is_skip_candidate(raw_value: str | None) -> bool:
@@ -39,12 +38,25 @@ def _is_skip_candidate(raw_value: str | None) -> bool:
     return False
 
 
+def _build_search_filter(term: str):
+    like_pattern = f"%{term}%"
+    return or_(
+        ItemLink.item.ilike(like_pattern),
+        ItemLink.replace_item.ilike(like_pattern),
+        ItemLink.item_description.ilike(like_pattern),
+        ItemLink.repl_item_description.ilike(like_pattern),
+        ItemLink.manufacturer.ilike(like_pattern),
+        ItemLink.repl_manufacturer.ilike(like_pattern),
+    )
+
+
 @bp.route("/")
 @login_required
 def index():
     limit_param = request.args.get("limit", type=int)
     limit = limit_param if limit_param is not None else 50
     limit = max(50, min(limit, 1500))
+    row_limit = limit * 3
 
     search_query_raw = request.args.get("search", default="", type=str) or ""
     search_query = search_query_raw.strip()
@@ -54,15 +66,23 @@ def index():
 
     trimmed_stage_expr = func.rtrim(func.ltrim(ItemLink.stage))
 
-    stage_options = (
+    stage_scope = (
         DEFAULT_TRANSITION_STAGES + EXPANDED_STAGE_ADDITIONS
         if expanded_scope
         else DEFAULT_TRANSITION_STAGES
     )
-    available_stages = list(stage_options)
+    available_stages = list(stage_scope)
 
     selected_stages_raw = [s.strip() for s in request.args.getlist("stage") if s and s.strip()]
     selected_stages = [stage for stage in selected_stages_raw if stage in available_stages]
+
+    base_filters = [
+        ItemLink.replace_item.isnot(None),
+        trimmed_stage_expr.in_(stage_scope),
+    ]
+
+    search_filter = None
+    search_pattern: str | None = None
 
     query = (
         db.session.query(
@@ -75,41 +95,31 @@ def index():
             ItemLink.repl_item_description,
             ItemLink.repl_manufacturer,
         )
-        .filter(
-            ItemLink.replace_item.isnot(None),
-        )
+        .filter(*base_filters)
     )
-
-    if expanded_scope:
-        query = query.filter(
-            or_(
-                ItemLink.stage.is_(None),
-                trimmed_stage_expr != PENDING_ITEM_STAGE_NAME,
-            )
-        )
-    else:
-        query = query.filter(trimmed_stage_expr.in_(DEFAULT_TRANSITION_STAGES))
 
     if selected_stages:
         query = query.filter(trimmed_stage_expr.in_(selected_stages))
 
     if search_query:
-        pattern = f"%{search_query}%"
-        query = query.filter(
-            or_(
-                ItemLink.item.ilike(pattern),
-                ItemLink.replace_item.ilike(pattern),
-                ItemLink.item_description.ilike(pattern),
-                ItemLink.repl_item_description.ilike(pattern),
-                ItemLink.manufacturer.ilike(pattern),
-                ItemLink.repl_manufacturer.ilike(pattern),
-            )
+        search_pattern = f"%{search_query}%"
+        search_filter = _build_search_filter(search_query)
+        query = query.filter(search_filter)
+        base_filters.append(search_filter)
+
+    stage_counts_query = (
+        db.session.query(
+            trimmed_stage_expr.label("stage"),
+            func.count(func.distinct(ItemLink.item_group)).label("group_count"),
         )
+        .filter(*base_filters)
+        .group_by(trimmed_stage_expr)
+    )
 
     rows = (
         query
-        .order_by(ItemLink.update_dt.desc(), ItemLink.item_group.desc())
-        .limit(limit)
+    .order_by(ItemLink.update_dt.desc(), ItemLink.item_group.desc())
+    .limit(row_limit)
         .all()
     )
 
@@ -130,20 +140,19 @@ def index():
             )
         )
 
-        if search_query:
-            pattern = f"%{search_query}%"
+        if search_pattern:
             discontinued_query = discontinued_query.filter(
                 or_(
-                    ItemLink.item.ilike(pattern),
-                    ItemLink.item_description.ilike(pattern),
-                    ItemLink.manufacturer.ilike(pattern),
+                    ItemLink.item.ilike(search_pattern),
+                    ItemLink.item_description.ilike(search_pattern),
+                    ItemLink.manufacturer.ilike(search_pattern),
                 )
             )
 
         discontinued_rows = (
             discontinued_query
             .order_by(ItemLink.update_dt.desc(), ItemLink.item_group.desc())
-            .limit(limit)
+            .limit(row_limit)
             .all()
         )
 
@@ -152,7 +161,6 @@ def index():
     node_groups: dict[str, set[int]] = defaultdict(set)
     node_descriptions: dict[str, set[str]] = defaultdict(set)
     node_manufacturers: dict[str, set[str]] = defaultdict(set)
-    stage_relation_counts: dict[str, int] = defaultdict(int)
     links: list[dict[str, object]] = []
 
     for (
@@ -189,7 +197,6 @@ def index():
             if stage_value:
                 node_stages[item_code].add(stage_value)
                 node_stages[repl_code].add(stage_value)
-                stage_relation_counts[stage_value] += 1
 
         if item_group is not None:
             node_groups[item_code].add(int(item_group))
@@ -216,7 +223,6 @@ def index():
             if stage_value:
                 node_stages[item_code].add(stage_value)
         node_stages[item_code].add(DISCONTINUED_STAGE_NAME)
-        stage_relation_counts[DISCONTINUED_STAGE_NAME] += 1
 
         if item_group is not None:
             node_groups[item_code].add(int(item_group))
@@ -247,10 +253,38 @@ def index():
         "links": links,
     }
 
-    stage_counts = {stage: stage_relation_counts.get(stage, 0) for stage in available_stages}
+    stage_counts_lookup = {
+        (stage_name or ""): count
+        for stage_name, count in stage_counts_query.all()
+    }
+
+    if DISCONTINUED_STAGE_NAME in available_stages:
+        discontinued_count_query = (
+            db.session.query(func.count(func.distinct(ItemLink.item_group)))
+            .filter(
+                ItemLink.replace_item.is_(None),
+                trimmed_stage_expr == DISCONTINUED_STAGE_NAME,
+            )
+        )
+        if search_pattern:
+            discontinued_count_query = discontinued_count_query.filter(
+                or_(
+                    ItemLink.item.ilike(search_pattern),
+                    ItemLink.item_description.ilike(search_pattern),
+                    ItemLink.manufacturer.ilike(search_pattern),
+                )
+            )
+        discontinued_group_count = discontinued_count_query.scalar() or 0
+        if discontinued_group_count:
+            stage_counts_lookup[DISCONTINUED_STAGE_NAME] = (
+                stage_counts_lookup.get(DISCONTINUED_STAGE_NAME, 0) + discontinued_group_count
+            )
+
+    stage_counts = {stage: stage_counts_lookup.get(stage, 0) for stage in available_stages}
 
     summary = {
         "requested_limit": limit,
+        "row_limit": row_limit,
         "rendered_links": len(links),
         "rendered_nodes": len(nodes),
         "explicit_limit": limit_param,

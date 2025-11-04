@@ -67,6 +67,33 @@
 
   const toList = (value) => (Array.isArray(value) ? value : []);
 
+  function compareGroupKeys(a, b) {
+    const aIsUngrouped = a === "__ungrouped__";
+    const bIsUngrouped = b === "__ungrouped__";
+    if (aIsUngrouped || bIsUngrouped) {
+      return aIsUngrouped ? 1 : -1;
+    }
+
+    const aNum = Number(a);
+    const bNum = Number(b);
+    const aIsNum = Number.isFinite(aNum);
+    const bIsNum = Number.isFinite(bNum);
+
+    if (aIsNum && bIsNum) {
+      if (aNum !== bNum) {
+        return aNum - bNum;
+      }
+      return 0;
+    }
+    if (aIsNum) {
+      return -1;
+    }
+    if (bIsNum) {
+      return 1;
+    }
+    return String(a).localeCompare(String(b));
+  }
+
   nodes.forEach((node) => {
     node.roles = toList(node.roles);
     node.stages = toList(node.stages);
@@ -131,7 +158,7 @@
   const height = 600;
   let width = container.clientWidth || 960;
 
-  const uniqueGroups = Array.from(new Set(nodes.map((node) => node.groupKey)));
+  const uniqueGroups = Array.from(new Set(nodes.map((node) => node.groupKey))).sort(compareGroupKeys);
 
   function computeGroupCenters(currentWidth, currentHeight) {
     const centers = new Map();
@@ -351,6 +378,10 @@
     )
     .on("tick", ticked);
 
+  simulation.on("end", () => {
+    fitViewToNodes(animationEnabled);
+  });
+
   function settleSimulation(iterations = 160) {
     simulation.alpha(1);
     for (let i = 0; i < iterations; i += 1) {
@@ -359,6 +390,7 @@
     ticked();
     simulation.alpha(0);
     simulation.stop();
+    fitViewToNodes(false);
   }
 
   function setAnimationEnabled(enabled) {
@@ -396,41 +428,69 @@
     });
   }
 
-  if (!animationEnabled) {
-    settleSimulation();
-  }
-
   const zoomBehaviour = d3
     .zoom()
     .scaleExtent([0.5, 3])
     .on("zoom", (event) => {
       zoomLayer.attr("transform", event.transform);
     });
+  const ZOOM_FIT_PADDING = 60;
+  const ZOOM_ANIMATION_MS = 450;
 
-  const initialScale = 0.8;
+  function fitViewToNodes(withAnimation = false) {
+    if (!nodes.length) {
+      return;
+    }
 
-  function computeDefaultTransform() {
-    return d3.zoomIdentity
-      .translate((width * (1 - initialScale)) / 2, (height * (1 - initialScale)) / 2)
-      .scale(initialScale);
-  }
+    const positionedNodes = nodes.filter((node) => Number.isFinite(node.x) && Number.isFinite(node.y));
+    if (positionedNodes.length === 0) {
+      return;
+    }
 
-  function applyDefaultTransform(withAnimation = false) {
-    const transform = computeDefaultTransform();
+    const minX = d3.min(positionedNodes, (node) => node.x);
+    const maxX = d3.max(positionedNodes, (node) => node.x);
+    const minY = d3.min(positionedNodes, (node) => node.y);
+    const maxY = d3.max(positionedNodes, (node) => node.y);
+
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+      return;
+    }
+
+    const contentWidth = Math.max(maxX - minX, 1);
+    const contentHeight = Math.max(maxY - minY, 1);
+    const paddedWidth = contentWidth + ZOOM_FIT_PADDING * 2;
+    const paddedHeight = contentHeight + ZOOM_FIT_PADDING * 2;
+
+    const [minScale, maxScale] = zoomBehaviour.scaleExtent();
+    const fitScale = Math.min(width / paddedWidth, height / paddedHeight);
+    const boundedScale = Math.max(minScale, Math.min(maxScale, fitScale));
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    const transform = d3.zoomIdentity
+      .translate(width / 2, height / 2)
+      .scale(boundedScale)
+      .translate(-centerX, -centerY);
+
     if (withAnimation) {
-      svg.transition().duration(450).call(zoomBehaviour.transform, transform);
+      svg.transition().duration(ZOOM_ANIMATION_MS).call(zoomBehaviour.transform, transform);
     } else {
       svg.call(zoomBehaviour.transform, transform);
     }
   }
 
   svg.call(zoomBehaviour);
-  applyDefaultTransform(false);
+  fitViewToNodes(false);
 
   svg.on("dblclick.zoom", null).on("dblclick", (event) => {
     event.preventDefault();
-    applyDefaultTransform(true);
+    fitViewToNodes(true);
   });
+
+  if (!animationEnabled) {
+    settleSimulation();
+  }
 
   const roleLegendEntries = [
     {
@@ -586,6 +646,7 @@
         } else {
           settleSimulation();
         }
+        fitViewToNodes(false);
       }
     }
   });

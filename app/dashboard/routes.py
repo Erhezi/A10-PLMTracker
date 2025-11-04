@@ -604,7 +604,27 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
 ]
 
 
-CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup_replacement", "par_setup_original"}
+PAR_SETUP_COMBINED_EXPORT_COLUMNS: list[tuple[str, str]] = [
+    ("Company", "company"),
+    ("Inventory Location", "location_ri"),
+    ("Inventory Location Name", "location_text"),
+    ("Item", "replacement_item"),
+    ("Item Manufacturer Number", "manufacturer_number_ri"),
+    ("Item.Description", "item_description_ri"),
+    ("Min", "recommended_min_order_qty_ri"),
+    ("Max", "recommended_max_order_qty_ri"),
+    ("ReorderPoint", "recommended_reorder_point_ri"),
+    ("UOM Unit Of Measure", "stock_uom_ri"),
+    ("BIN Location                        (All New Sequence)", "recommended_preferred_bin_ri"),
+    ("Requested update/Action", "action"),
+    ("Notes", "notes"),
+    ("Current Bin (Repl. Item)", "preferred_bin_ri"),
+    ("Current Reorder (Repl. Item)", "reorder_point_ri"),
+    ("Item Set", "item_set"),
+]
+
+
+CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup_replacement", "par_setup_original", "par_setup_combined"}
 
 INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "company": "Company",
@@ -775,6 +795,69 @@ def _prepare_par_setup_original_rows(rows: list[dict]) -> list[dict]:
     return prepared
 
 
+def _prepare_par_setup_combined_rows(rows: list[dict]) -> list[dict]:
+    """Stack replacement and original setup rows into a single collection."""
+
+    if not rows:
+        return []
+
+    replacement_rows = _apply_setup_action_rules(rows)
+    original_prepared = _prepare_par_setup_original_rows(rows)
+    original_rows = _apply_setup_action_rules(original_prepared)
+
+    combined: list[dict] = []
+
+    for row in _sort_export_rows(replacement_rows, "par_setup_replacement"):
+        combined.append({
+            "company": row.get("company"),
+            "location_ri": row.get("location_ri"),
+            "location_text": row.get("location_text"),
+            "replacement_item": row.get("replacement_item"),
+            "manufacturer_number_ri": row.get("manufacturer_number_ri"),
+            "item_description_ri": row.get("item_description_ri"),
+            "recommended_min_order_qty_ri": row.get("recommended_min_order_qty_ri"),
+            "recommended_max_order_qty_ri": row.get("recommended_max_order_qty_ri"),
+            "recommended_reorder_point_ri": row.get("recommended_reorder_point_ri"),
+            "stock_uom_ri": row.get("stock_uom_ri"),
+            "recommended_preferred_bin_ri": row.get("recommended_preferred_bin_ri"),
+            "action": row.get("action"),
+            "notes": row.get("notes"),
+            "preferred_bin_ri": row.get("preferred_bin_ri"),
+            "reorder_point_ri": row.get("reorder_point_ri"),
+            "item_set": "Replacement",
+        })
+
+    for row in _sort_export_rows(original_rows, "par_setup_original"):
+        combined.append({
+            "company": row.get("company"),
+            "location_ri": row.get("location"),
+            "location_text": row.get("location_text"),
+            "replacement_item": row.get("item"),
+            "manufacturer_number_ri": row.get("manufacturer_number"),
+            "item_description_ri": row.get("item_description"),
+            "recommended_min_order_qty_ri": row.get("min_order_qty"),
+            "recommended_max_order_qty_ri": row.get("max_order_qty"),
+            "recommended_reorder_point_ri": row.get("reorder_point"),
+            "stock_uom_ri": row.get("stock_uom"),
+            "recommended_preferred_bin_ri": row.get("preferred_bin"),
+            "action": row.get("action"),
+            "notes": row.get("notes"),
+            "preferred_bin_ri": row.get("preferred_bin_ri"),
+            "reorder_point_ri": row.get("reorder_point_ri"),
+            "item_set": "Original",
+        })
+
+    def _combined_sort_key(entry: dict) -> tuple[str, str, str]:
+        return (
+            _sort_value(entry.get("company")),
+            _sort_value(entry.get("location_ri")),
+            _sort_value(entry.get("recommended_preferred_bin_ri")),
+        )
+
+    combined.sort(key=_combined_sort_key)
+    return combined
+
+
 def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
     """Normalize inventory setup specific fields before export."""
 
@@ -799,6 +882,33 @@ def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
         prepared.append(updated)
 
     return prepared
+
+
+def _apply_setup_action_rules(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    normalized: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        action_raw = row.get("action")
+        action_text = str(action_raw or "").strip()
+        action_key = action_text.lower().replace("-", " ")
+        if action_key in {"mute", "ri only"}:
+            continue
+
+        updated = dict(row)
+        if action_key == "create":
+            updated["action"] = "Add"
+        elif action_key == "update":
+            updated["action"] = "Replace"
+        else:
+            updated["action"] = action_raw
+
+        normalized.append(updated)
+
+    return normalized
 
 
 def _sort_value(value) -> str:
@@ -1167,6 +1277,9 @@ def export_table(table_key: str):
     if column_mode not in allowed_column_modes:
         column_mode = "all"
 
+    if column_mode == "par_setup_combined":
+        columns = PAR_SETUP_COMBINED_EXPORT_COLUMNS
+
     if requested_fields:
         filtered_columns = _filter_export_columns(columns, requested_fields)
         if column_mode in CUSTOM_EXPORT_MODES:
@@ -1178,12 +1291,18 @@ def export_table(table_key: str):
     elif column_mode in CUSTOM_EXPORT_MODES:
         abort(400, description="No columns selected for export.")
 
-    if column_mode == "inventory_setup":
-        rows = _prepare_inventory_setup_rows(rows)
-    if column_mode == "par_setup_original":
-        rows = _prepare_par_setup_original_rows(rows)
+    if column_mode == "par_setup_combined":
+        rows = _prepare_par_setup_combined_rows(rows)
+    else:
+        if column_mode == "inventory_setup":
+            rows = _prepare_inventory_setup_rows(rows)
+        if column_mode == "par_setup_original":
+            rows = _prepare_par_setup_original_rows(rows)
 
-    rows = _sort_export_rows(rows, column_mode)
+        if column_mode in {"inventory_setup", "par_setup_replacement", "par_setup_original"}:
+            rows = _apply_setup_action_rules(rows)
+
+        rows = _sort_export_rows(rows, column_mode)
 
     workbook = Workbook()
     worksheet = workbook.active
@@ -1191,7 +1310,7 @@ def export_table(table_key: str):
     header_overrides = PRESET_HEADER_OVERRIDES.get(column_mode, {})
     worksheet.append([header_overrides.get(field, header) for header, field in columns])
 
-    highlight_modes = {"inventory_setup", "par_setup_replacement", "par_setup_original"}
+    highlight_modes = {"inventory_setup", "par_setup_replacement", "par_setup_combined"}
     should_highlight_notes = column_mode in highlight_modes
     notes_column_index: int | None = None
     if should_highlight_notes:

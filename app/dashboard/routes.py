@@ -870,9 +870,9 @@ def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
         raw_value = updated.get("recommended_auto_replenishment_ri")
         normalized = str(raw_value).strip().lower() if raw_value is not None else ""
         if normalized == "yes":
-            updated["recommended_auto_replenishment_ri"] = "True"
+            updated["recommended_auto_replenishment_ri"] = "TRUE"
         elif normalized == "no":
-            updated["recommended_auto_replenishment_ri"] = "False"
+            updated["recommended_auto_replenishment_ri"] = "FALSE"
         elif normalized in {"true", "false"}:
             updated["recommended_auto_replenishment_ri"] = normalized.capitalize()
         elif normalized == "tbd":
@@ -1321,7 +1321,9 @@ def export_table(table_key: str):
         if notes_column_index is None:
             should_highlight_notes = False
 
-    highlight_fill = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid") if should_highlight_notes else None
+    # Use a pale red background for exported rows that have notes (was pale yellow FFF9C4)
+    # Pale red chosen: #F8D7DA (Bootstrap danger background-like, soft/pale red)
+    highlight_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") if should_highlight_notes else None
 
     for row_number, data_row in enumerate(rows, start=2):
         worksheet.append([_coerce_excel_value(data_row.get(field)) for _, field in columns])
@@ -1334,10 +1336,20 @@ def export_table(table_key: str):
             elif notes_value is not None:
                 has_notes = str(notes_value).strip() != ""
 
-            if has_notes:
-                for col_idx in range(1, len(columns) + 1):
-                    cell = worksheet.cell(row=row_number, column=col_idx)
-                    cell.fill = highlight_fill
+                if has_notes:
+                    # For the combined PAR setup export we include both Replacement and
+                    # Original item rows. Per request, do NOT apply the highlight to
+                    # rows that are marked as the Original item set.
+                    skip_highlight = False
+                    if column_mode == "par_setup_combined":
+                        item_set_val = data_row.get("item_set")
+                        if isinstance(item_set_val, str) and item_set_val.strip().lower() == "original":
+                            skip_highlight = True
+
+                    if not skip_highlight:
+                        for col_idx in range(1, len(columns) + 1):
+                            cell = worksheet.cell(row=row_number, column=col_idx)
+                            cell.fill = highlight_fill
 
     worksheet.freeze_panes = "A2"
     if worksheet.max_row and worksheet.max_column:

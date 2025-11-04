@@ -41,6 +41,10 @@
 
   const nodes = data.nodes.map((node) => ({ ...node }));
   const links = data.links.map((link) => ({ ...link }));
+  const applyQuantityEnabled = Boolean(data.meta && data.meta.apply_quantity);
+  const quantityLocationCode = data.meta && data.meta.selected_location ? data.meta.selected_location : null;
+  const quantityLocationLabel = data.meta && data.meta.selected_location_label ? data.meta.selected_location_label : null;
+  const positiveQuantities = [];
 
   const degreeMap = new Map();
   links.forEach((link) => {
@@ -115,6 +119,102 @@
     node.isTarget = node.roles.includes("replacement");
     node.isHybrid = node.roles.includes("origin") && node.roles.includes("replacement");
     node.isDraggable = node.isSourceOnly || node.isTarget || node.isHybrid;
+
+    if (applyQuantityEnabled) {
+      let availableQuantity = null;
+      if (typeof node.available_quantity === "number") {
+        availableQuantity = node.available_quantity;
+      } else if (node.available_quantity !== null && node.available_quantity !== undefined) {
+        const parsedQuantity = Number(node.available_quantity);
+        availableQuantity = Number.isFinite(parsedQuantity) ? parsedQuantity : null;
+      }
+      node.availableQuantity = availableQuantity;
+      if (typeof availableQuantity === "number" && availableQuantity > 0) {
+        positiveQuantities.push(availableQuantity);
+      }
+    } else {
+      node.availableQuantity = null;
+    }
+  });
+
+  const hasPositiveQuantities = applyQuantityEnabled && positiveQuantities.length > 0;
+  const maxPositiveQuantity = hasPositiveQuantities ? d3.max(positiveQuantities) : null;
+  const quantityScale = hasPositiveQuantities && maxPositiveQuantity && maxPositiveQuantity > 1
+    ? d3.scaleLog().domain([1, maxPositiveQuantity]).range([1, 5])
+    : null;
+
+  const ZERO_QUANTITY_RADIUS = 6;
+  const QUANTITY_RADIUS_BASE = 10;
+  const QUANTITY_RADIUS_STEP = 4;
+
+  function getDefaultRadius(node) {
+    return 14 + Math.min(node.degree, 6) * 2.1;
+  }
+
+  function computeQuantityBucket(node) {
+    if (!applyQuantityEnabled) {
+      return null;
+    }
+    if (node.availableQuantity === null || node.availableQuantity === undefined) {
+      return null;
+    }
+    if (node.availableQuantity <= 0) {
+      return 0;
+    }
+    if (!maxPositiveQuantity || maxPositiveQuantity <= 1 || !quantityScale) {
+      return 1;
+    }
+    const scaledValue = quantityScale(Math.max(node.availableQuantity, 1));
+    const bucket = Math.round(scaledValue);
+    return Math.max(1, Math.min(5, bucket));
+  }
+
+  function computeRenderRadius(node) {
+    if (!applyQuantityEnabled) {
+      return getDefaultRadius(node);
+    }
+    if (node.availableQuantity === null || node.availableQuantity === undefined) {
+      return getDefaultRadius(node);
+    }
+    if (node.availableQuantity <= 0) {
+      return ZERO_QUANTITY_RADIUS;
+    }
+    const bucket = node.quantityBucket || computeQuantityBucket(node) || 1;
+    return QUANTITY_RADIUS_BASE + bucket * QUANTITY_RADIUS_STEP;
+  }
+
+  function nodeRoleColour(node) {
+    if (node.isSourceOnly) return ROLE_COLORS.source;
+    if (node.isHybrid) return ROLE_COLORS.both;
+    if (node.isTarget) return ROLE_COLORS.target;
+    return ROLE_COLORS.fallback;
+  }
+
+  function nodeFillOpacity(node) {
+    if (applyQuantityEnabled && node.availableQuantity !== null && node.availableQuantity !== undefined) {
+      if (node.availableQuantity <= 0) {
+        return 0;
+      }
+    }
+    return 1;
+  }
+
+  function nodeStrokeWidth(node) {
+    if (applyQuantityEnabled && node.availableQuantity !== null && node.availableQuantity !== undefined) {
+      if (node.availableQuantity <= 0) {
+        return 2;
+      }
+    }
+    return 0.001;
+  }
+
+  function nodeStrokeColour(node) {
+    return nodeRoleColour(node);
+  }
+
+  nodes.forEach((node) => {
+    node.quantityBucket = computeQuantityBucket(node);
+    node.renderRadius = computeRenderRadius(node);
   });
 
   const tooltip = document.createElement("div");
@@ -133,6 +233,15 @@
     const stageSummary = node.stages.length > 0 ? node.stages.join(", ") : "Unspecified";
     const description = node.primaryDescription || "Description unavailable";
     const manufacturer = node.primaryManufacturer || "Manufacturer unavailable";
+    let quantityRow = "";
+    if (applyQuantityEnabled) {
+      const locationLabel = quantityLocationLabel || quantityLocationCode;
+      const locationSuffix = locationLabel ? ` @ ${locationLabel}` : "";
+      const quantityValueText = node.availableQuantity === null || node.availableQuantity === undefined
+        ? "Not available"
+        : node.availableQuantity;
+      quantityRow = `<div class="small text-muted">Available Qty${locationSuffix}: ${quantityValueText}</div>`;
+    }
 
     tooltip.innerHTML = `
       <div class="card-body p-2">
@@ -143,6 +252,7 @@
         <div class="small text-muted">Manufacturer: ${manufacturer}</div>
         <div class="small text-muted">Groups: ${groupSummary}</div>
         <div class="small text-muted">Connections: ${node.degree}</div>
+        ${quantityRow}
       </div>
     `;
     const margin = 12;
@@ -290,31 +400,26 @@
     .join("g")
     .style("cursor", (node) => (node.isDraggable ? "grab" : "default"))
     .on("mouseenter", function (event, node) {
-      d3.select(this).select("circle").attr("stroke-width", 2);
+      const circle = d3.select(this).select("circle");
+      circle.attr("stroke-width", Math.max(nodeStrokeWidth(node), 2));
       showTooltip(event, node);
     })
     .on("mousemove", showTooltip)
     .on("mouseleave", function (event, node) {
-      d3.select(this).select("circle").attr("stroke-width", 0.001);
+      const circle = d3.select(this).select("circle");
+      circle.attr("stroke-width", nodeStrokeWidth(node));
       d3.select(this).style("cursor", node.isDraggable ? "grab" : "default");
       hideTooltip();
     })
     .call(dragBehaviour);
 
-  function nodeFillColour(node) {
-    if (node.isSourceOnly) return ROLE_COLORS.source;
-    if (node.isHybrid) return ROLE_COLORS.both;
-    if (node.isTarget) return ROLE_COLORS.target;
-    return ROLE_COLORS.fallback;
-  }
-
   nodeGroup
     .append("circle")
-    .attr("r", (node) => 14 + Math.min(node.degree, 6) * 2.1)
-    .attr("fill", nodeFillColour)
-    .attr("fill-opacity", 1)
-    .attr("stroke", nodeFillColour)
-    .attr("stroke-width", 0.001);
+    .attr("r", (node) => node.renderRadius || getDefaultRadius(node))
+    .attr("fill", nodeRoleColour)
+    .attr("fill-opacity", (node) => nodeFillOpacity(node))
+    .attr("stroke", nodeStrokeColour)
+    .attr("stroke-width", (node) => nodeStrokeWidth(node));
 
   const nodeLabelSelection = nodeGroup
     .append("text")
@@ -360,7 +465,14 @@
     .force("charge", d3.forceManyBody().strength(-140))
     .force(
       "collide",
-  d3.forceCollide().radius((node) => 30 + Math.min(node.degree, 8) * 2.8).strength(0.8)
+      d3.forceCollide()
+        .radius((node) => {
+          if (applyQuantityEnabled && typeof node.renderRadius === "number") {
+            return node.renderRadius + 18;
+          }
+          return 30 + Math.min(node.degree, 8) * 2.8;
+        })
+        .strength(0.8)
     )
     .force(
       "clusterX",

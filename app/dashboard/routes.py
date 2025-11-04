@@ -546,7 +546,7 @@ INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "recommended_min_order_qty_ri": "MinimumOrderQuantity",
     "recommended_max_order_qty_ri": "MaximumOrderQuantity",
     "recommended_reorder_point_ri": "ReorderPoint",
-    "recommended_auto_replenishment_ri": "AutomaticPurchaseOrder (True/Falsse)",
+    "recommended_auto_replenishment_ri": "AutomaticPurchaseOrder (True/False)",
     "manufacturer_number_ri": "Item Manufacturer Number",
     "action": "Requested update/Action",
     "notes": "Notes",

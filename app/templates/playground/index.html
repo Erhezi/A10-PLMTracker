@@ -17,6 +17,7 @@
         <p class="card-text small text-muted mb-3">
           Experimental visual sandbox for exploring replacement relationships. This view pulls a recent
           slice of <code>ItemLink</code> pairs and lays them out as a playful, force-directed graph.
+          'Pending Item Number' pairs are excluded from this view.
         </p>
         <dl class="row small mb-0">
           <dt class="col-6 text-muted">Rendered nodes</dt>
@@ -43,16 +44,32 @@
               None
             {% endif %}
           </dd>
+          <dt class="col-6 text-muted">Inventory location</dt>
+          <dd class="col-6">
+            {% if summary.apply_quantity %}
+              {% if summary.selected_inventory_location_label %}
+                {{ summary.selected_inventory_location_label }}
+              {% elif summary.selected_inventory_location %}
+                {{ summary.selected_inventory_location }}
+              {% else %}
+                (location not selected)
+              {% endif %}
+            {% else %}
+              Not applied
+            {% endif %}
+          </dd>
         </dl>
         <hr />
         <form method="get" class="small mb-3">
           {% if summary.explicit_limit %}
           <input type="hidden" name="limit" value="{{ summary.explicit_limit }}" />
           {% endif %}
+          <input type="hidden" name="apply_quantity" value="{{ 1 if apply_quantity else 0 }}" id="hidden-apply-quantity" />
+          <input type="hidden" name="inventory_location" value="{{ selected_inventory_location or '' }}" id="hidden-inventory-location" />
           <label class="form-label text-muted text-uppercase fw-semibold" style="letter-spacing: 0.08em; font-size: 0.7rem;">Search items</label>
           <input type="search" name="search" value="{{ search_query }}" class="form-control form-control-sm mb-3" placeholder="Manufacturer, item, or description" />
           <div class="form-check form-switch small mb-2">
-            <input class="form-check-input" type="checkbox" id="toggle-expanded-scope" name="expanded" value="1" {% if expanded_scope %}checked{% endif %}>
+            <input class="form-check-input" type="checkbox" id="toggle-expanded-scope" name="expanded" value="1" {% if expanded_scope %}checked{% endif %} {% if apply_quantity %}disabled{% endif %}>
             <label class="form-check-label" for="toggle-expanded-scope">Include all stages</label>
           </div>
           <p class="small text-muted mb-3">Adds Tracking Completed and Deleted; excludes Pending Item Number rows.</p>
@@ -81,9 +98,20 @@
           <input class="form-check-input" type="checkbox" role="switch" id="toggle-node-labels">
           <label class="form-check-label" for="toggle-node-labels">Show item numbers on nodes</label>
         </div>
-        <p class="small text-muted mb-0">
-          'Pending Item Number' pairs are excluded from this view.
-        </p>
+        <div class="form-check form-switch small mt-3">
+          <input class="form-check-input" type="checkbox" role="switch" id="toggle-apply-quantity" {% if apply_quantity %}checked{% endif %}>
+          <label class="form-check-label" for="toggle-apply-quantity">Apply available quantity</label>
+        </div>
+        <div id="inventory-location-controls" class="mt-3 {% if not apply_quantity %}d-none{% endif %}">
+          <label class="form-label text-muted text-uppercase fw-semibold" for="inventory-location-select" style="letter-spacing: 0.08em; font-size: 0.7rem;">Inventory location</label>
+          <select class="form-select form-select-sm" id="inventory-location-select">
+            <option value="">Select a location</option>
+            {% for option in inventory_locations %}
+            <option value="{{ option.value }}" {% if option.value == selected_inventory_location %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+          <p class="small text-muted mt-2 mb-0">When enabled, node size reflects ItemLocations.AvailableQty at the selected location and temporarily disables the 'Include all stages' scope.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -113,23 +141,108 @@
   <script>
     document.addEventListener("DOMContentLoaded", function () {
       const scopeToggle = document.getElementById("toggle-expanded-scope");
-      if (!scopeToggle) {
-        return;
-      }
-      const scopeForm = scopeToggle.closest("form");
+      const scopeForm = scopeToggle ? scopeToggle.closest("form") : null;
       if (!scopeForm) {
         return;
       }
-      scopeToggle.addEventListener("change", function () {
-        if (scopeToggle.checked) {
-          const stageInputs = scopeForm.querySelectorAll('input[name="stage"]');
+
+  const stageInputs = Array.from(scopeForm.querySelectorAll('input[name="stage"]'));
+  const originalStageDisabledState = new Map(stageInputs.map((input) => [input, input.disabled]));
+      const applyQuantityToggle = document.getElementById("toggle-apply-quantity");
+      const locationControls = document.getElementById("inventory-location-controls");
+      const locationSelect = document.getElementById("inventory-location-select");
+      const hiddenApplyQuantity = document.getElementById("hidden-apply-quantity");
+      const hiddenLocation = document.getElementById("hidden-inventory-location");
+
+      function setHiddenApplyQuantity(enabled) {
+        if (hiddenApplyQuantity) {
+          hiddenApplyQuantity.value = enabled ? "1" : "0";
+        }
+      }
+
+      function setHiddenLocation(value) {
+        if (hiddenLocation) {
+          hiddenLocation.value = value || "";
+        }
+      }
+
+      function applyScopeState(options = {}) {
+        if (!scopeToggle) {
+          return;
+        }
+        const { checkAllStages = false, disableStageInputs } = options;
+        if (checkAllStages) {
           stageInputs.forEach((input) => {
-            input.checked = false;
-            input.disabled = true;
+            input.checked = true;
           });
         }
-        scopeForm.requestSubmit();
-      });
+        stageInputs.forEach((input) => {
+          if (typeof disableStageInputs === "boolean") {
+            input.disabled = disableStageInputs;
+          } else if (originalStageDisabledState.has(input)) {
+            input.disabled = originalStageDisabledState.get(input);
+          }
+        });
+      }
+
+      function syncQuantityUI(shouldSubmit = false) {
+        const enabled = Boolean(applyQuantityToggle && applyQuantityToggle.checked);
+        setHiddenApplyQuantity(enabled);
+
+        if (scopeToggle) {
+          scopeToggle.disabled = enabled;
+          if (enabled) {
+            scopeToggle.checked = false;
+          }
+        }
+
+        if (locationControls) {
+          locationControls.classList.toggle("d-none", !enabled);
+        }
+
+        if (locationSelect) {
+          if (enabled && !locationSelect.value) {
+            const firstOption = Array.from(locationSelect.options).find((option) => option.value);
+            if (firstOption) {
+              locationSelect.value = firstOption.value;
+            }
+          }
+          setHiddenLocation(locationSelect.value);
+        } else {
+          setHiddenLocation("");
+        }
+
+  applyScopeState({ checkAllStages: false, disableStageInputs: false });
+
+        if (shouldSubmit) {
+          scopeForm.requestSubmit();
+        }
+      }
+
+      if (scopeToggle) {
+        scopeToggle.addEventListener("change", function () {
+          applyScopeState({ checkAllStages: scopeToggle.checked });
+          scopeForm.requestSubmit();
+        });
+      }
+
+      if (applyQuantityToggle) {
+        applyQuantityToggle.addEventListener("change", function () {
+          syncQuantityUI(true);
+        });
+      }
+
+      if (locationSelect) {
+        locationSelect.addEventListener("change", function () {
+          setHiddenLocation(locationSelect.value);
+          if (applyQuantityToggle && applyQuantityToggle.checked) {
+            scopeForm.requestSubmit();
+          }
+        });
+      }
+
+      syncQuantityUI(false);
+      applyScopeState({ checkAllStages: scopeToggle && scopeToggle.checked, disableStageInputs: false });
     });
   </script>
   <script src="{{ url_for('static', filename='js/playground-graph.js') }}" defer></script>

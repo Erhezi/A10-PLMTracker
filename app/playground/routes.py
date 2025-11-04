@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request
 from flask_login import login_required
 
 from sqlalchemy import func, or_
 
 from .. import db
-from ..models.relations import ItemLink
+from ..models.inventory import ItemLocations
+from ..models.relations import ItemLink, PLMItemGroupLocation
 
 bp = Blueprint("playground", __name__, url_prefix="/playground")
 
@@ -22,6 +23,15 @@ EXPANDED_STAGE_ADDITIONS = (
     "Tracking Completed",
     "Deleted",
 )
+
+
+def _looks_like_or_location(value: object | None) -> bool:
+    if not value:
+        return False
+    normalized = str(value).strip().upper()
+    if not normalized:
+        return False
+    return normalized.endswith("OR")
 
 
 def _is_skip_candidate(raw_value: str | None) -> bool:
@@ -61,8 +71,17 @@ def index():
     search_query_raw = request.args.get("search", default="", type=str) or ""
     search_query = search_query_raw.strip()
 
+    apply_quantity_param = request.args.get("apply_quantity", default=0, type=int)
+    apply_quantity = bool(apply_quantity_param)
+    selected_inventory_location_raw = request.args.get("inventory_location", default="", type=str)
+    selected_inventory_location = (
+        selected_inventory_location_raw.strip() or None
+    )
+
     expanded_param = request.args.get("expanded", default=0, type=int)
     expanded_scope = bool(expanded_param)
+    if apply_quantity:
+        expanded_scope = False
 
     trimmed_stage_expr = func.rtrim(func.ltrim(ItemLink.stage))
 
@@ -114,6 +133,40 @@ def index():
         )
         .filter(*base_filters)
         .group_by(trimmed_stage_expr)
+    )
+
+    include_or_locations = current_app.config.get("INCLUDE_OR_INVENTORY_LOCATIONS")
+
+    location_rows = (
+        db.session.query(
+            PLMItemGroupLocation.LocationType,
+            PLMItemGroupLocation.Group_Locations,
+        )
+        .filter(PLMItemGroupLocation.LocationType == "Inventory Location")
+        .filter(PLMItemGroupLocation.Group_Locations.isnot(None))
+        .distinct()
+        .order_by(PLMItemGroupLocation.Group_Locations.asc())
+        .all()
+    )
+
+    inventory_locations = []
+    for location_type, group_location in location_rows:
+        if not include_or_locations and _looks_like_or_location(group_location):
+            continue
+        label = f"{location_type} - {group_location}" if location_type else str(group_location)
+        inventory_locations.append(
+            {
+                "value": group_location,
+                "label": label,
+                "type": location_type,
+            }
+        )
+
+    location_label_lookup = {option["value"]: option["label"] for option in inventory_locations}
+    selected_inventory_location_label = (
+        location_label_lookup.get(selected_inventory_location)
+        if selected_inventory_location
+        else None
     )
 
     rows = (
@@ -232,9 +285,33 @@ def index():
         if manufacturer:
             node_manufacturers[item_code].add(manufacturer.strip())
 
+    location_quantities: dict[str, int | None] = {}
+    if apply_quantity and selected_inventory_location:
+        quantity_rows = (
+            db.session.query(ItemLocations.Item, ItemLocations.AvailableQty)
+            .filter(ItemLocations.Location == selected_inventory_location)
+            .all()
+        )
+        for item_code_raw, available_qty in quantity_rows:
+            code = (item_code_raw or "").strip()
+            if not code:
+                continue
+            if available_qty is None:
+                location_quantities[code] = None
+            else:
+                try:
+                    location_quantities[code] = int(available_qty)
+                except (TypeError, ValueError):
+                    location_quantities[code] = None
+
     nodes = []
     for code in sorted({*node_roles, *node_stages, *node_groups}):
         groups_sorted = sorted(node_groups.get(code, []))
+        available_quantity = (
+            location_quantities.get(code)
+            if apply_quantity and selected_inventory_location
+            else None
+        )
         nodes.append(
             {
                 "id": code,
@@ -245,12 +322,18 @@ def index():
                 "primary_group": groups_sorted[0] if groups_sorted else None,
                 "descriptions": sorted(node_descriptions.get(code, []))[:5],
                 "manufacturers": sorted(node_manufacturers.get(code, []))[:5],
+                "available_quantity": available_quantity,
             }
         )
 
     graph_data = {
         "nodes": nodes,
         "links": links,
+        "meta": {
+            "apply_quantity": apply_quantity,
+            "selected_location": selected_inventory_location,
+            "selected_location_label": selected_inventory_location_label,
+        },
     }
 
     stage_counts_lookup = {
@@ -292,6 +375,9 @@ def index():
         "search_query": search_query,
         "discontinued_nodes": len(discontinued_rows),
         "expanded_scope": expanded_scope,
+        "apply_quantity": apply_quantity,
+        "selected_inventory_location": selected_inventory_location,
+        "selected_inventory_location_label": selected_inventory_location_label,
     }
 
     return render_template(
@@ -303,4 +389,8 @@ def index():
         search_query=search_query,
         expanded_scope=expanded_scope,
         stage_counts=stage_counts,
+        apply_quantity=apply_quantity,
+        inventory_locations=inventory_locations,
+        selected_inventory_location=selected_inventory_location,
+        selected_inventory_location_label=selected_inventory_location_label,
     )

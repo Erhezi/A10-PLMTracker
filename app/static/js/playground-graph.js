@@ -20,8 +20,31 @@
     return;
   }
 
+  const animationToggle = document.getElementById("toggle-animation");
+  const ANIMATION_STORAGE_KEY = "playgroundAnimationEnabled";
+  let storedAnimationPreference = null;
+
+  if (animationToggle) {
+    try {
+      storedAnimationPreference = window.localStorage.getItem(ANIMATION_STORAGE_KEY);
+      if (storedAnimationPreference !== null) {
+        animationToggle.checked = storedAnimationPreference === "1";
+        storedAnimationPreference = animationToggle.checked ? "1" : "0";
+      }
+    } catch (storageError) {
+      console.warn("Unable to access animation preference storage", storageError);
+      storedAnimationPreference = null;
+    }
+  }
+
+  let animationEnabled = animationToggle ? animationToggle.checked : true;
+
   const nodes = data.nodes.map((node) => ({ ...node }));
   const links = data.links.map((link) => ({ ...link }));
+  const applyQuantityEnabled = Boolean(data.meta && data.meta.apply_quantity);
+  const quantityLocationCode = data.meta && data.meta.selected_location ? data.meta.selected_location : null;
+  const quantityLocationLabel = data.meta && data.meta.selected_location_label ? data.meta.selected_location_label : null;
+  const positiveQuantities = [];
 
   const degreeMap = new Map();
   links.forEach((link) => {
@@ -48,6 +71,33 @@
 
   const toList = (value) => (Array.isArray(value) ? value : []);
 
+  function compareGroupKeys(a, b) {
+    const aIsUngrouped = a === "__ungrouped__";
+    const bIsUngrouped = b === "__ungrouped__";
+    if (aIsUngrouped || bIsUngrouped) {
+      return aIsUngrouped ? 1 : -1;
+    }
+
+    const aNum = Number(a);
+    const bNum = Number(b);
+    const aIsNum = Number.isFinite(aNum);
+    const bIsNum = Number.isFinite(bNum);
+
+    if (aIsNum && bIsNum) {
+      if (aNum !== bNum) {
+        return aNum - bNum;
+      }
+      return 0;
+    }
+    if (aIsNum) {
+      return -1;
+    }
+    if (bIsNum) {
+      return 1;
+    }
+    return String(a).localeCompare(String(b));
+  }
+
   nodes.forEach((node) => {
     node.roles = toList(node.roles);
     node.stages = toList(node.stages);
@@ -69,6 +119,102 @@
     node.isTarget = node.roles.includes("replacement");
     node.isHybrid = node.roles.includes("origin") && node.roles.includes("replacement");
     node.isDraggable = node.isSourceOnly || node.isTarget || node.isHybrid;
+
+    if (applyQuantityEnabled) {
+      let availableQuantity = null;
+      if (typeof node.available_quantity === "number") {
+        availableQuantity = node.available_quantity;
+      } else if (node.available_quantity !== null && node.available_quantity !== undefined) {
+        const parsedQuantity = Number(node.available_quantity);
+        availableQuantity = Number.isFinite(parsedQuantity) ? parsedQuantity : null;
+      }
+      node.availableQuantity = availableQuantity;
+      if (typeof availableQuantity === "number" && availableQuantity > 0) {
+        positiveQuantities.push(availableQuantity);
+      }
+    } else {
+      node.availableQuantity = null;
+    }
+  });
+
+  const hasPositiveQuantities = applyQuantityEnabled && positiveQuantities.length > 0;
+  const maxPositiveQuantity = hasPositiveQuantities ? d3.max(positiveQuantities) : null;
+  const quantityScale = hasPositiveQuantities && maxPositiveQuantity && maxPositiveQuantity > 1
+    ? d3.scaleLog().domain([1, maxPositiveQuantity]).range([1, 5])
+    : null;
+
+  const ZERO_QUANTITY_RADIUS = 6;
+  const QUANTITY_RADIUS_BASE = 10;
+  const QUANTITY_RADIUS_STEP = 4;
+
+  function getDefaultRadius(node) {
+    return 14 + Math.min(node.degree, 6) * 2.1;
+  }
+
+  function computeQuantityBucket(node) {
+    if (!applyQuantityEnabled) {
+      return null;
+    }
+    if (node.availableQuantity === null || node.availableQuantity === undefined) {
+      return null;
+    }
+    if (node.availableQuantity <= 0) {
+      return 0;
+    }
+    if (!maxPositiveQuantity || maxPositiveQuantity <= 1 || !quantityScale) {
+      return 1;
+    }
+    const scaledValue = quantityScale(Math.max(node.availableQuantity, 1));
+    const bucket = Math.round(scaledValue);
+    return Math.max(1, Math.min(5, bucket));
+  }
+
+  function computeRenderRadius(node) {
+    if (!applyQuantityEnabled) {
+      return getDefaultRadius(node);
+    }
+    if (node.availableQuantity === null || node.availableQuantity === undefined) {
+      return getDefaultRadius(node);
+    }
+    if (node.availableQuantity <= 0) {
+      return ZERO_QUANTITY_RADIUS;
+    }
+    const bucket = node.quantityBucket || computeQuantityBucket(node) || 1;
+    return QUANTITY_RADIUS_BASE + bucket * QUANTITY_RADIUS_STEP;
+  }
+
+  function nodeRoleColour(node) {
+    if (node.isSourceOnly) return ROLE_COLORS.source;
+    if (node.isHybrid) return ROLE_COLORS.both;
+    if (node.isTarget) return ROLE_COLORS.target;
+    return ROLE_COLORS.fallback;
+  }
+
+  function nodeFillOpacity(node) {
+    if (applyQuantityEnabled && node.availableQuantity !== null && node.availableQuantity !== undefined) {
+      if (node.availableQuantity <= 0) {
+        return 0;
+      }
+    }
+    return 1;
+  }
+
+  function nodeStrokeWidth(node) {
+    if (applyQuantityEnabled && node.availableQuantity !== null && node.availableQuantity !== undefined) {
+      if (node.availableQuantity <= 0) {
+        return 2;
+      }
+    }
+    return 0.001;
+  }
+
+  function nodeStrokeColour(node) {
+    return nodeRoleColour(node);
+  }
+
+  nodes.forEach((node) => {
+    node.quantityBucket = computeQuantityBucket(node);
+    node.renderRadius = computeRenderRadius(node);
   });
 
   const tooltip = document.createElement("div");
@@ -87,6 +233,15 @@
     const stageSummary = node.stages.length > 0 ? node.stages.join(", ") : "Unspecified";
     const description = node.primaryDescription || "Description unavailable";
     const manufacturer = node.primaryManufacturer || "Manufacturer unavailable";
+    let quantityRow = "";
+    if (applyQuantityEnabled) {
+      const locationLabel = quantityLocationLabel || quantityLocationCode;
+      const locationSuffix = locationLabel ? ` @ ${locationLabel}` : "";
+      const quantityValueText = node.availableQuantity === null || node.availableQuantity === undefined
+        ? "Not available"
+        : node.availableQuantity;
+      quantityRow = `<div class="small text-muted">Available Qty${locationSuffix}: ${quantityValueText}</div>`;
+    }
 
     tooltip.innerHTML = `
       <div class="card-body p-2">
@@ -97,6 +252,7 @@
         <div class="small text-muted">Manufacturer: ${manufacturer}</div>
         <div class="small text-muted">Groups: ${groupSummary}</div>
         <div class="small text-muted">Connections: ${node.degree}</div>
+        ${quantityRow}
       </div>
     `;
     const margin = 12;
@@ -112,7 +268,7 @@
   const height = 600;
   let width = container.clientWidth || 960;
 
-  const uniqueGroups = Array.from(new Set(nodes.map((node) => node.groupKey)));
+  const uniqueGroups = Array.from(new Set(nodes.map((node) => node.groupKey))).sort(compareGroupKeys);
 
   function computeGroupCenters(currentWidth, currentHeight) {
     const centers = new Map();
@@ -204,7 +360,11 @@
       if (event.sourceEvent && typeof event.sourceEvent.stopPropagation === "function") {
         event.sourceEvent.stopPropagation();
       }
-      if (!event.active) simulation.alphaTarget(0.3).restart();
+      if (animationEnabled) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+      } else {
+        simulation.stop();
+      }
       node.fx = node.x;
       node.fy = node.y;
       d3.select(this).style("cursor", "grabbing");
@@ -212,11 +372,22 @@
     .on("drag", function (event, node) {
       node.fx = event.x;
       node.fy = event.y;
+      node.x = event.x;
+      node.y = event.y;
+      if (!animationEnabled) {
+        ticked();
+      }
     })
     .on("end", function (event, node) {
-      if (!event.active) simulation.alphaTarget(0);
-      node.fx = null;
-      node.fy = null;
+      if (animationEnabled) {
+        if (!event.active) simulation.alphaTarget(0);
+        node.fx = null;
+        node.fy = null;
+      } else {
+        node.fx = null;
+        node.fy = null;
+        ticked();
+      }
       d3.select(this).style("cursor", node.isDraggable ? "grab" : "default");
     });
 
@@ -229,31 +400,26 @@
     .join("g")
     .style("cursor", (node) => (node.isDraggable ? "grab" : "default"))
     .on("mouseenter", function (event, node) {
-      d3.select(this).select("circle").attr("stroke-width", 2);
+      const circle = d3.select(this).select("circle");
+      circle.attr("stroke-width", Math.max(nodeStrokeWidth(node), 2));
       showTooltip(event, node);
     })
     .on("mousemove", showTooltip)
     .on("mouseleave", function (event, node) {
-      d3.select(this).select("circle").attr("stroke-width", 0.001);
+      const circle = d3.select(this).select("circle");
+      circle.attr("stroke-width", nodeStrokeWidth(node));
       d3.select(this).style("cursor", node.isDraggable ? "grab" : "default");
       hideTooltip();
     })
     .call(dragBehaviour);
 
-  function nodeFillColour(node) {
-    if (node.isSourceOnly) return ROLE_COLORS.source;
-    if (node.isHybrid) return ROLE_COLORS.both;
-    if (node.isTarget) return ROLE_COLORS.target;
-    return ROLE_COLORS.fallback;
-  }
-
   nodeGroup
     .append("circle")
-    .attr("r", (node) => 14 + Math.min(node.degree, 6) * 2.1)
-    .attr("fill", nodeFillColour)
-    .attr("fill-opacity", 1)
-    .attr("stroke", nodeFillColour)
-    .attr("stroke-width", 0.001);
+    .attr("r", (node) => node.renderRadius || getDefaultRadius(node))
+    .attr("fill", nodeRoleColour)
+    .attr("fill-opacity", (node) => nodeFillOpacity(node))
+    .attr("stroke", nodeStrokeColour)
+    .attr("stroke-width", (node) => nodeStrokeWidth(node));
 
   const nodeLabelSelection = nodeGroup
     .append("text")
@@ -299,7 +465,14 @@
     .force("charge", d3.forceManyBody().strength(-140))
     .force(
       "collide",
-  d3.forceCollide().radius((node) => 30 + Math.min(node.degree, 8) * 2.8).strength(0.8)
+      d3.forceCollide()
+        .radius((node) => {
+          if (applyQuantityEnabled && typeof node.renderRadius === "number") {
+            return node.renderRadius + 18;
+          }
+          return 30 + Math.min(node.degree, 8) * 2.8;
+        })
+        .strength(0.8)
     )
     .force(
       "clusterX",
@@ -317,6 +490,33 @@
     )
     .on("tick", ticked);
 
+  simulation.on("end", () => {
+    fitViewToNodes(animationEnabled);
+  });
+
+  function settleSimulation(iterations = 160) {
+    simulation.alpha(1);
+    for (let i = 0; i < iterations; i += 1) {
+      simulation.tick();
+    }
+    ticked();
+    simulation.alpha(0);
+    simulation.stop();
+    fitViewToNodes(false);
+  }
+
+  function setAnimationEnabled(enabled) {
+    if (enabled === animationEnabled) {
+      return;
+    }
+    animationEnabled = enabled;
+    if (enabled) {
+      simulation.alpha(1).restart();
+    } else {
+      settleSimulation();
+    }
+  }
+
   function ticked() {
     link
       .attr("x1", (link) => link.source.x)
@@ -327,37 +527,82 @@
     nodeGroup.attr("transform", (node) => `translate(${node.x}, ${node.y})`);
   }
 
+  if (animationToggle) {
+    animationToggle.addEventListener("change", (event) => {
+      const enabled = event.target.checked;
+      setAnimationEnabled(enabled);
+      try {
+        window.localStorage.setItem(ANIMATION_STORAGE_KEY, enabled ? "1" : "0");
+        storedAnimationPreference = enabled ? "1" : "0";
+      } catch (storageError) {
+        console.warn("Unable to persist animation preference", storageError);
+      }
+    });
+  }
+
   const zoomBehaviour = d3
     .zoom()
     .scaleExtent([0.5, 3])
     .on("zoom", (event) => {
       zoomLayer.attr("transform", event.transform);
     });
+  const ZOOM_FIT_PADDING = 60;
+  const ZOOM_ANIMATION_MS = 450;
 
-  const initialScale = 0.8;
+  function fitViewToNodes(withAnimation = false) {
+    if (!nodes.length) {
+      return;
+    }
 
-  function computeDefaultTransform() {
-    return d3.zoomIdentity
-      .translate((width * (1 - initialScale)) / 2, (height * (1 - initialScale)) / 2)
-      .scale(initialScale);
-  }
+    const positionedNodes = nodes.filter((node) => Number.isFinite(node.x) && Number.isFinite(node.y));
+    if (positionedNodes.length === 0) {
+      return;
+    }
 
-  function applyDefaultTransform(withAnimation = false) {
-    const transform = computeDefaultTransform();
+    const minX = d3.min(positionedNodes, (node) => node.x);
+    const maxX = d3.max(positionedNodes, (node) => node.x);
+    const minY = d3.min(positionedNodes, (node) => node.y);
+    const maxY = d3.max(positionedNodes, (node) => node.y);
+
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+      return;
+    }
+
+    const contentWidth = Math.max(maxX - minX, 1);
+    const contentHeight = Math.max(maxY - minY, 1);
+    const paddedWidth = contentWidth + ZOOM_FIT_PADDING * 2;
+    const paddedHeight = contentHeight + ZOOM_FIT_PADDING * 2;
+
+    const [minScale, maxScale] = zoomBehaviour.scaleExtent();
+    const fitScale = Math.min(width / paddedWidth, height / paddedHeight);
+    const boundedScale = Math.max(minScale, Math.min(maxScale, fitScale));
+
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    const transform = d3.zoomIdentity
+      .translate(width / 2, height / 2)
+      .scale(boundedScale)
+      .translate(-centerX, -centerY);
+
     if (withAnimation) {
-      svg.transition().duration(450).call(zoomBehaviour.transform, transform);
+      svg.transition().duration(ZOOM_ANIMATION_MS).call(zoomBehaviour.transform, transform);
     } else {
       svg.call(zoomBehaviour.transform, transform);
     }
   }
 
   svg.call(zoomBehaviour);
-  applyDefaultTransform(false);
+  fitViewToNodes(false);
 
   svg.on("dblclick.zoom", null).on("dblclick", (event) => {
     event.preventDefault();
-    applyDefaultTransform(true);
+    fitViewToNodes(true);
   });
+
+  if (!animationEnabled) {
+    settleSimulation();
+  }
 
   const roleLegendEntries = [
     {
@@ -508,7 +753,12 @@
         svg.attr("viewBox", `0 0 ${width} ${height}`);
         svg.select("rect").attr("width", width);
         groupCenters = computeGroupCenters(width, height);
-        simulation.alpha(0.35).restart();
+        if (animationEnabled) {
+          simulation.alpha(0.35).restart();
+        } else {
+          settleSimulation();
+        }
+        fitViewToNodes(false);
       }
     }
   });

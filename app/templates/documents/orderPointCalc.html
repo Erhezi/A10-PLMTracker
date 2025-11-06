@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard Calculation Guide — PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Calculation Guide</li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 mb-3">Recommended Reorder Policy (BRCalcType: <span class="fw-semibold">simple</span>)</h1>
+  <p class="text-muted">The dashboard currently applies the <strong>simple</strong> copy &amp; sum method (<code>BRCalcType = "simple"</code>) to generate recommended setup values for replacement items.</p>
+  <ul class="mb-2">
+    <li><strong>Assumes replacement usage does not overlap with the source item.</strong></li>
+    <li><strong>Replacement items inherit the source item's reorder setup (reorder point, min/max) unless otherwise specified.</strong></li>
+  </ul>
+  <p class="text-muted">The rules below describe how reorder point, minimum order quantity, and maximum order quantity are derived for each relationship pattern between the source item(s) and the replacement item(s).</p>
+
+  <section class="mt-4">
+    <h2 class="h5">Quick Reference Examples</h2>
+    <p class="text-muted">Use the sample scenarios below to see the calculations applied end-to-end. All multipliers are whole numbers to mirror real-world UOM configurations.</p>
+    <style>
+      /* Make the quick reference table a bit taller so it doesn't trigger the page Y scrollbar on small windows */
+      .quick-ref-table-wrapper {
+        height: 400px !important; /* allow internal scroll only if table exceeds this height */
+        overflow: auto;
+      }
+      @media (min-width: 1200px) {
+        .quick-ref-table-wrapper { max-height: 720px; }
+      }
+    </style>
+    <div class="table-responsive quick-ref-table-wrapper">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <caption class="visually-hidden">Worked examples for simple burn-rate recommendations</caption>
+        <thead class="table-light">
+          <tr>
+            <th scope="col" style="width: 16%">Relationship</th>
+            <th scope="col" style="width: 26%">Source Item Snapshot</th>
+            <th scope="col" style="width: 26%">Replacement Snapshot</th>
+            <th scope="col" style="width: 32%">Recommended Setup</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">1 &rarr; 1<br><span class="text-muted small">Inventory Location</span></th>
+            <td>
+              <ul class="mb-0 small">
+                <li>Item <code>123</code>, Group <code>234</code>, Location <code>YYY</code></li>
+                <li>Reorder Pt: <strong>15</strong>, Min: 3, Max: 30</li>
+                <li>Stock UOM: EA (multiplier <strong>1</strong>)</li>
+                <li>Buy UOM: BX (multiplier 3)</li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Replacement <code>888</code></li>
+                <li>Stock UOM: EA (multiplier <strong>1</strong>)</li>
+                <li>Buy UOM: BX (multiplier <strong>8</strong>)</li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Reorder Pt: <strong>15</strong> (ceil(15 &times; 1 &div; 1))</li>
+                <li>Min Order: <strong>8</strong> (replacement buy multiplier)</li>
+                <li>Max Order: <strong>32</strong> (round-half-up(30 &div; 8) &times; 8)</li>
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">1 &rarr; 1<br><span class="text-muted small">Par Location</span></th>
+            <td>
+              <ul class="mb-0 small">
+                <li>Item <code>2201</code>, Group <code>445</code>, Location <code>PAR-01</code></li>
+                <li>Reorder Pt: <strong>15</strong>, Min: 0, Max: 0</li>
+                <li>Stock multiplier: <strong>4</strong></li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Replacement <code>2201R</code></li>
+                <li>Stock multiplier: <strong>3</strong></li>
+                <li>Transaction multiplier: <strong>6</strong></li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Reorder Pt: <strong>20</strong> (ceil(15 &times; 4 &div; 3))</li>
+                <li>Min Order: <strong>0</strong> (source min)</li>
+                <li>Max Order: <strong>0</strong> (round-half-up(0 &times; 4 &div; 6))</li>
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">Many &rarr; 1<br><span class="text-muted small">Inventory Location</span></th>
+            <td>
+              <ul class="mb-0 small">
+                <li>Sources: <code>SRC-1</code>, <code>SRC-2</code> (group <code>404</code>)</li>
+                <li>Reorder Pts: 10 &amp; 15 with stock multipliers <strong>8</strong></li>
+                <li>Max Orders: 5 &amp; 4 (same multipliers)</li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Replacement <code>REPL-404</code></li>
+                <li>Stock multiplier: <strong>5</strong></li>
+                <li>Buy multiplier: <strong>6</strong></li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Reorder Pt: <strong>40</strong> (ceil((10&times;8 + 15&times;8) &div; 5))</li>
+                <li>Min Order: <strong>6</strong> (replacement buy multiplier)</li>
+                <li>Max Order: <strong>72</strong> (round-half-up((5&times;8 + 4&times;8) &div; 6) &times; 6)</li>
+              </ul>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">1 &rarr; Many<br><span class="text-muted small">Inventory Location</span></th>
+            <td>
+              <ul class="mb-0 small">
+                <li>Item <code>606</code>, Location <code>LOC-1M</code></li>
+                <li>Reorder Pt: <strong>24</strong>, Min: 12, Max: 48</li>
+                <li>Stock multiplier: <strong>4</strong></li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li>Replacement <code>REPL-A</code>: stock mult <strong>3</strong>, buy mult <strong>6</strong></li>
+                <li>Replacement <code>REPL-B</code>: stock mult <strong>2</strong>, buy mult <strong>9</strong></li>
+              </ul>
+            </td>
+            <td>
+              <ul class="mb-0 small">
+                <li><code>REPL-A</code> reorder <strong>16</strong>, min <strong>6</strong>, max <strong>96</strong></li>
+                <li><code>REPL-B</code> reorder <strong>24</strong>, min <strong>9</strong>, max <strong>99</strong></li>
+                <li>Even split: fraction = 1 &div; 2</li>
+              </ul>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="mt-4">
+    <h2 class="h5">1. One Source &rarr; One Replacement</h2>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Inventory Locations</h3>
+          <ul class="mb-0">
+            <li><strong>Min Order Qty</strong> = replacement buy UOM multiplier.</li>
+            <li><strong>Reorder Point</strong> = ceil&lpar;source reorder point &times; source stock UOM multiplier &div; replacement stock UOM multiplier&rpar;.</li>
+            <li><strong>Max Order Qty</strong> = round-half-up&lpar;source max order qty &times; source stock UOM multiplier &div; replacement buy UOM multiplier&rpar; &times; replacement buy UOM multiplier.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Par Locations</h3>
+          <ul class="mb-0">
+            <li><strong>Min Order Qty</strong> = source min order qty.</li>
+            <li><strong>Reorder Point</strong> = ceil&lpar;source reorder point &times; source stock UOM multiplier &div; replacement stock UOM multiplier&rpar;.</li>
+            <li><strong>Max Order Qty</strong> = round-half-up&lpar;source max order qty &times; source stock UOM multiplier &div; replacement transaction UOM multiplier&rpar;.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">2. Many Sources &rarr; One Replacement</h2>
+    <p class="text-muted">When multiple source items roll into a single replacement, the source values are first translated into EA using the stock UOM multipliers, summed, and then re-scaled into the replacement units.</p>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Inventory Locations</h3>
+          <ul class="mb-0">
+            <li><strong>Min Order Qty</strong> = replacement buy UOM multiplier.</li>
+            <li><strong>Reorder Point</strong> = ceil&lpar;Σ[source reorder point &times; source stock UOM multiplier] &div; replacement stock UOM multiplier&rpar;.</li>
+            <li><strong>Max Order Qty</strong> = round-half-up&lpar;Σ[source max order qty &times; source stock UOM multiplier] &div; replacement buy UOM multiplier&rpar; &times; replacement buy UOM multiplier.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Par Locations</h3>
+          <ul class="mb-0">
+            <li><strong>Min Order Qty</strong> = max positive source min order qty.</li>
+            <li><strong>Reorder Point</strong> = ceil&lpar;Σ[source reorder point &times; source stock UOM multiplier] &div; replacement stock UOM multiplier&rpar;.</li>
+            <li><strong>Max Order Qty</strong> = round-half-up&lpar;Σ[source max order qty &times; source stock UOM multiplier] &div; replacement transaction UOM multiplier&rpar;.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">3. One Source &rarr; Many Replacements</h2>
+    <p class="text-muted">A distribution fraction of <code>1 / count(replacements)</code> is applied to the source volumes. Future updates may allow custom fractions, but the <strong>simple</strong> calculation assumes an even split.</p>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Inventory Locations</h3>
+          <ul class="mb-0">
+            <li><strong>Min Order Qty</strong> = replacement buy UOM multiplier.</li>
+            <li><strong>Reorder Point</strong> = round-half-up&lpar;source reorder point &times; source stock UOM multiplier &times; fraction &div; replacement stock UOM multiplier&rpar;.</li>
+            <li><strong>Max Order Qty</strong> = round-half-up&lpar;source max order qty &times; source stock UOM multiplier &times; fraction &div; replacement buy UOM multiplier&rpar; &times; replacement buy UOM multiplier.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Par Locations</h3>
+          <ul class="mb-0">
+            <li><strong>Min Order Qty</strong> = source min order qty.</li>
+            <li><strong>Reorder Point</strong> = ceil&lpar;source reorder point &times; source stock UOM multiplier &times; fraction &div; replacement stock UOM multiplier&rpar;.</li>
+            <li><strong>Max Order Qty</strong> = round-half-up&lpar;source max order qty &times; source stock UOM multiplier &times; fraction &div; replacement transaction UOM multiplier&rpar;.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">Fallbacks &amp; Notes</h2>
+    <ul>
+      <li>If a required multiplier is missing or non-positive, the calculator falls back to the best available source values without changing sign.</li>
+      <li>The output keeps whole numbers when possible; all rounding uses "round half up" unless otherwise noted.</li>
+      <li>The documentation will expand as new <code>BRCalcType</code> strategies are introduced.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

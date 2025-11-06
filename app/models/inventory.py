@@ -20,6 +20,7 @@ class Item(db.Model):
     manufacturer = db.Column("manufacturer", db.String(255))
     mfg_part_num = db.Column("mfg_part_num", db.String(100))
     item_description = db.Column("item_description", db.String(500))
+    company_3000 = db.Column("company_3000", db.String(5)) # take value 'Yes' or 'No' to indicate if item exists in 3000's locations (inscope or not)
     last_update_date = db.Column("last_update_date", db.DateTime)
 
     def __repr__(self):  # pragma: no cover - debug aid
@@ -47,6 +48,7 @@ class ContractItem(db.Model):
     item_description = db.Column("item_description", db.String(500))
     item_type = db.Column("item_type", db.String(100))
     item = db.Column("item", db.String(50))
+    is_mhs = db.Column("is_mhs", db.String(5))  # take value 'Yes' or 'No', indicate if item is on MHS Contracts (meaning it is not entity specific)
     last_update_date = db.Column("last_update_date", db.DateTime)
 
     def __repr__(self):  # pragma: no cover - debug aid
@@ -135,6 +137,29 @@ class PO90Day(db.Model):
         return (f"<PO90Day("
                 f"PO={self.PO}, Line={self.POLine}, "
                 f"Vendor={self.Vendor}, Item={self.Item})>")
+    
+
+
+class ItemUOM(db.Model):
+    """
+    Mapping to PLM.vw_ItemUOM (SQL Server VIEW).
+    Read-only
+    """
+
+    __tablename__ = "vw_ItemUOM"
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
+
+    Item              = db.Column(db.String(100), primary_key=True, nullable=False)
+    UOM               = db.Column(db.String(10),  primary_key=True, nullable=False)
+    UOMConversion     = db.Column(db.Numeric,     nullable=True)
+
+    ValidForInventoryTransaction = db.Column(db.String(20), nullable=True) # 'Valid' or 'Default' or 'Not Valid' or 'Inactive'
+    Active                       = db.Column("Item.Active", db.String(5),  nullable=True) # 'Yes' or 'No'
+    
+
+    def __repr__(self):
+        return (f"<ItemUOM Item={self.Item} "
+                f"UOM={self.UOM} x{self.UOMConversion} ")
 
 
 #-------------------------------------------------------
@@ -335,7 +360,7 @@ class PLMZDate(db.Model):
 
     # Columns based on provided DB schema
     Inventory_base_ID = db.Column(db.Integer, nullable=True, primary_key=True)  # part of PK
-    item_link_id = db.Column(db.BigInteger, nullable=False, primary_key=True)  # part of PK
+    item_link_id = db.Column("PKID", db.BigInteger, nullable=False, primary_key=True)  # part of PK
 
     Location = db.Column(db.String(255), nullable=True)
     item_group = db.Column("Item Group", db.Integer, nullable=False)
@@ -344,7 +369,7 @@ class PLMZDate(db.Model):
     Company = db.Column(db.String(10), nullable=True)
 
     br_calc_type = db.Column("BRCalcType",     db.String(12), nullable=False)
-    br_calc_status = db.Column("BRCalcStatus", db.String(12), nullable=False)
+    br_calc_status = db.Column("BRCalcStatus", db.String(12), nullable=False) # 'New - ADD' or 'Existing'
     
     days_overlap = db.Column(db.Integer, nullable=True)  # days of O side natural z-date - R side create date (overlap, expect to be negative value if overlapping)
     days_to_start = db.Column(db.Integer, nullable=True) # days of R side create date - (current date go back 365 days), measures when replacement started compared to 1 year
@@ -357,11 +382,43 @@ class PLMZDate(db.Model):
             f"company={self.Company} loc={self.Location} item={self.Item} "
             f"plm_zdate={self.PLM_Zdate} status={self.br_calc_status}>"
         )
+
+class PLMPendingItemsExport(db.Model):
+    """
+    Mapping to PLM.vw_PLMPendingItemsExport (SQL Server VIEW).
+    View holds the list of PLM ItemLink items that are pending to be added into PLM inventory system.
+    Combines pending items with their corresponding contract line details.
+    Read-only
+    """
+
+    __tablename__ = "vw_PLMPendingItemsExport"
+    __table_args__ = {"schema": "PLM", "extend_existing": True}
+
+    # Columns from PendingItems
+    contract_id = db.Column(db.String(50), primary_key=True)
+    mfg_part_num = db.Column(db.String(100), primary_key=True)
+    item_link_id = db.Column(db.BIGINT, nullable=False, primary_key=True)
+    
+    # Columns from CONTRACTLINE
+    WorkingContractID = db.Column(db.String(50), nullable=True)
+    ManufacturerNumber = db.Column(db.String(100), nullable=True)
+    VendorItem = db.Column(db.String(255), nullable=True)
+    ItemDescription = db.Column(db.String(500), nullable=True)
+    BaseCost = db.Column(db.Numeric(18, 2), nullable=True)
+    UOM = db.Column(db.String(50), nullable=True)
+    DerivedUOMConversion = db.Column(db.Numeric(18, 4), nullable=True)
+    EffectiveDate = db.Column(db.Date, nullable=True)
+    ExpirationDate = db.Column(db.Date, nullable=True)
+
+    def __repr__(self):
+        return (f"<PLMPendingItemsExport contract={self.contract_id} "
+                f"mfg_part={self.mfg_part_num} vendor={self.VendorItem}>")
+
     
 #-------------------------------------------------------
 # Table Mappings - PLM ItemLink specific (only contains ItemLink items)
 #-------------------------------------------------------
-class PLMItemGroupBRRoling(db.Model):
+class PLMItemGroupBRRolling(db.Model):
     """
     Mapping to PLM.PLMItemGroupBRRolling (SQL Server Table).
     View holds (Company, Location, ItemGroup) specific pre-calculated 

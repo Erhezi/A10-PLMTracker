@@ -9,8 +9,8 @@
     <div class="card shadow-sm border-0 h-100">
       <div class="card-body d-flex flex-column">
         <label class="form-label small text-uppercase">Items</label>
-        <input id="item-search" name="q" class="form-control mb-2" placeholder="Search item (by 6-digit Infor Item Number)..." autocomplete="off"
-               hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" />
+   <input id="item-search" name="q" class="form-control mb-2" placeholder="Search item (by 6-digit Infor Item Number)..." autocomplete="off"
+     hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" hx-vals='{"picker":"item"}' />
         <div class="small text-muted mb-2">Check boxes to select. Max {{ max_per_side }} per side.</div>
         <div id="item-selected" class="mb-2"></div>
         <div id="item-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
@@ -21,11 +21,15 @@
     <div class="card shadow-sm border-0 h-100">
       <div class="card-body d-flex flex-column">
         <label class="form-label small text-uppercase">Replacement Items</label>
-        <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement (by 6-digit Infor Item Number)..." autocomplete="off"
-               hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" />
-        <div class="d-flex gap-2 mb-2">
+   <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement (by 6-digit Infor Item Number)..." autocomplete="off"
+     hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" hx-vals='{"picker":"replace"}' />
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="NO REPLACEMENT">Add NO REPLACEMENT</button>
           <button type="button" class="btn btn-sm btn-outline-primary" id="toggle-repl-mode" data-mode="item" title="Toggle search between Item and Contract Item">Mode: Item</button>
+          <div id="contract-auto-select-wrapper" class="form-check form-switch small d-none">
+            <input class="form-check-input" type="checkbox" id="contract-auto-select" checked>
+            <label class="form-check-label mb-0" for="contract-auto-select" title="When on, selecting a row picks all matching contract rows automatically.">Auto-pick duplicates (by Item)</label>
+          </div>
         </div>
         <div id="repl-selected" class="mb-2"></div>
         <div id="repl-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
@@ -51,6 +55,32 @@
   </div>
   <button id="create-links" class="btn btn-primary btn-sm" disabled>Create Links</button>
   <div id="batch-feedback" class="small"></div>
+  <div id="burn-rate-feedback" class="small text-muted"></div>
+</div>
+
+<div class="mt-4">
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+        <h2 class="h6 fw-semibold mb-0">Batch Upload (Excel)</h2>
+        <div class="form-check form-switch small ms-auto">
+          <input class="form-check-input" type="checkbox" id="batch-upload-toggle" />
+          <label class="form-check-label small mb-0" for="batch-upload-toggle">Batch upload</label>
+        </div>
+      </div>
+  <div id="batch-upload-panel">
+        <p class="text-muted small mb-3">
+          Upload an Excel workbook with columns <code>Item</code> and <code>Replace Item</code>. Values must be six-digit item numbers without leading zeros. Use <code>NO REPLACEMENT</code> to mark discontinued rows.
+        </p>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <input type="file" id="batch-upload-input" class="form-control form-control-sm" accept=".xlsx,.xlsm,.xltx,.xltm" />
+          <button type="button" class="btn btn-sm btn-outline-primary" id="batch-upload-btn" disabled>Upload &amp; Ingest</button>
+        </div>
+        <div id="batch-upload-feedback" class="small mt-2"></div>
+        <div id="batch-upload-invalid" class="mt-2"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="mt-4" id="created-results-wrapper" style="display:none;">
@@ -108,6 +138,7 @@
   const stageSelect = document.getElementById('stage-override');
   const createBtn = document.getElementById('create-links');
   const feedback = document.getElementById('batch-feedback');
+  const burnRateFeedback = document.getElementById('burn-rate-feedback');
   const goLiveInput = document.getElementById('expected-go-live');
   const createdWrapper = document.getElementById('created-results-wrapper');
   const createdTableBody = document.querySelector('#created-links-table tbody');
@@ -116,6 +147,47 @@
   const itemSearch = document.getElementById('item-search');
   const replSearch = document.getElementById('repl-search');
   const replResults = document.getElementById('repl-results');
+  const uploadInput = document.getElementById('batch-upload-input');
+  const uploadBtn = document.getElementById('batch-upload-btn');
+  const uploadFeedback = document.getElementById('batch-upload-feedback');
+  const uploadInvalid = document.getElementById('batch-upload-invalid');
+  const batchPanel = document.getElementById('batch-upload-panel');
+  const batchToggle = document.getElementById('batch-upload-toggle');
+  const uploadBtnDefaultText = uploadBtn ? uploadBtn.textContent : '';
+  if(uploadInvalid){
+    uploadInvalid.style.display = 'none';
+  }
+  if(batchPanel && batchToggle){
+    // Ensure control has aria-controls for accessibility
+    batchToggle.setAttribute('aria-controls', 'batch-upload-panel');
+
+    // Support either a checkbox switch (preferred) or a fallback button
+    const isSwitch = batchToggle.tagName === 'INPUT' && batchToggle.type === 'checkbox';
+    const panelHiddenOnLoad = batchPanel.classList.contains('d-none');
+
+    if(isSwitch){
+      // For switch: checked === visible
+      batchToggle.checked = !panelHiddenOnLoad;
+      batchToggle.setAttribute('aria-expanded', batchToggle.checked ? 'true' : 'false');
+      batchToggle.addEventListener('change', () => {
+        const expanded = batchToggle.checked;
+        batchPanel.classList.toggle('d-none', !expanded);
+        batchToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      });
+    } else {
+      // Fallback for button-style toggles
+      batchToggle.setAttribute('aria-expanded', panelHiddenOnLoad ? 'false' : 'true');
+      batchToggle.classList.toggle('collapsed', panelHiddenOnLoad);
+      batchToggle.textContent = panelHiddenOnLoad ? 'Show' : 'Hide';
+      batchToggle.addEventListener('click', () => {
+        const hidden = batchPanel.classList.toggle('d-none');
+        const expanded = !hidden;
+        batchToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        batchToggle.classList.toggle('collapsed', !expanded);
+        batchToggle.textContent = hidden ? 'Show' : 'Hide';
+      });
+    }
+  }
   const ORIGINAL_REPL_ENDPOINT = '/api/items/search';
   const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
@@ -127,15 +199,302 @@
     return String(value).replace(/[&<>"']/g, (ch) => escapeMap[ch] || ch);
   };
 
+  let burnRatePollToken = null;
+
+  function setBurnRateStatus(message, variant = 'muted') {
+    if (!burnRateFeedback) return;
+    const classes = ['small'];
+    if (variant === 'success') classes.push('text-success');
+    else if (variant === 'danger') classes.push('text-danger');
+    else if (variant === 'info') classes.push('text-info');
+    else classes.push('text-muted');
+    burnRateFeedback.className = classes.join(' ');
+    burnRateFeedback.textContent = message || '';
+  }
+
+  setBurnRateStatus('', 'muted');
+
+  function startBurnRatePolling(jobIds) {
+    if (!burnRateFeedback) return;
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      if (burnRatePollToken && typeof burnRatePollToken === 'object') {
+        burnRatePollToken.cancelled = true;
+      }
+      setBurnRateStatus('', 'muted');
+      return;
+    }
+
+    if (burnRatePollToken && typeof burnRatePollToken === 'object') {
+      burnRatePollToken.cancelled = true;
+    }
+
+    const token = { cancelled: false };
+    burnRatePollToken = token;
+
+    const poll = async (attempt = 0) => {
+      if (token.cancelled) return;
+      try {
+        const res = await fetch(`/api/burn-rate-jobs?job_ids=${jobIds.join(',')}`);
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        if (token.cancelled) return;
+
+        const statuses = data.map((row) => (row.status || '').toUpperCase());
+        if (!statuses.length) {
+          setBurnRateStatus('Burn-rate refresh queued…', 'info');
+        } else if (statuses.every((s) => s === 'SUCCESS')) {
+          setBurnRateStatus('Burn rates refreshed.', 'success');
+          return;
+        } else if (statuses.some((s) => s === 'FAILED')) {
+          const failure = data.find((row) => (row.status || '').toUpperCase() === 'FAILED');
+          const message = failure && failure.message ? ` ${failure.message}` : '';
+          setBurnRateStatus(`Burn-rate refresh failed.${message}`, 'danger');
+          return;
+        } else {
+          setBurnRateStatus('Burn rates calculating…', 'info');
+        }
+      } catch (err) {
+        if (token.cancelled) return;
+        setBurnRateStatus('Burn-rate refresh queued…', 'info');
+      }
+
+      const delay = Math.min(15000, 2000 + attempt * 1000);
+      setTimeout(() => poll(attempt + 1), delay);
+    };
+
+    setBurnRateStatus('Burn rates calculating…', 'info');
+    poll();
+  }
+
   // Load batch limits from template data
   const batchLimitsData = document.getElementById('batch-limits-data');
   const batchLimits = batchLimitsData ? JSON.parse(batchLimitsData.textContent) : { max_combinations: 36, max_per_side: 6 };
   const MAX_PER_SIDE = batchLimits.max_per_side;
   const MAX_COMBINATIONS = batchLimits.max_combinations;
 
+  const contractAutoSelectWrapper = document.getElementById('contract-auto-select-wrapper');
+  const contractAutoSelectInput = document.getElementById('contract-auto-select');
+  let contractAutoSelectEnabled = contractAutoSelectInput ? contractAutoSelectInput.checked : true;
+  const replCounts = new Map();
+
   let items = [];
   let repls = [];
-  let pendingMeta = {}; // map PENDING***<part> -> { contract_id, mfg_part_num }
+  let pendingMeta = {}; // map PENDING***<part> -> { entries: [{ contract_id, mfg_part_num, ... }] }
+
+  function pendingEntriesFor(code){
+    const meta = pendingMeta[code];
+    if(!meta){
+      return [];
+    }
+    if(Array.isArray(meta.entries)){
+      return meta.entries.map((entry) => ({ ...entry }));
+    }
+    if(Array.isArray(meta)){
+      return meta.map((entry) => ({ ...entry }));
+    }
+    if(typeof meta === 'object'){
+      const copy = { ...meta };
+      if(Object.keys(copy).length === 0){
+        return [];
+      }
+      return [copy];
+    }
+    return [];
+  }
+
+  function setPendingEntries(code, entries){
+    if(!entries.length){
+      delete pendingMeta[code];
+      return;
+    }
+    pendingMeta[code] = { entries: entries.map((entry) => ({ ...entry })) };
+  }
+
+  function appendPendingEntry(code, contractId, mfgPart, extra){
+    if(!code || !/^PENDING\*\*\*/.test(code) || !contractId || !mfgPart){
+      return;
+    }
+    const entries = pendingEntriesFor(code);
+    const exists = entries.some((entry) => entry.contract_id === contractId && entry.mfg_part_num === mfgPart);
+    if(exists){
+      return;
+    }
+    const payload = { contract_id: contractId, mfg_part_num: mfgPart };
+    if(extra && typeof extra === 'object'){
+      Object.keys(extra).forEach((key) => {
+        if(extra[key] !== undefined){
+          payload[key] = extra[key];
+        }
+      });
+    }
+    entries.push(payload);
+    setPendingEntries(code, entries);
+  }
+
+  function removePendingEntry(code, contractId, mfgPart){
+    if(!code || !contractId || !mfgPart){
+      return;
+    }
+    const entries = pendingEntriesFor(code).filter((entry) => !(entry.contract_id === contractId && entry.mfg_part_num === mfgPart));
+    setPendingEntries(code, entries);
+  }
+
+  function addPendingEntryForCheckbox(cb){
+    if(!cb || !cb.hasAttribute('data-pending-placeholder')){
+      return;
+    }
+    appendPendingEntry(
+      cb.value,
+      cb.getAttribute('data-contract-id'),
+      cb.getAttribute('data-mfg-part'),
+      {
+        item_description: cb.getAttribute('data-item-description') || undefined,
+      }
+    );
+  }
+
+  function removePendingEntryForCheckbox(cb){
+    if(!cb || !cb.hasAttribute('data-pending-placeholder')){
+      return;
+    }
+    removePendingEntry(
+      cb.value,
+      cb.getAttribute('data-contract-id'),
+      cb.getAttribute('data-mfg-part')
+    );
+  }
+
+  function forEachReplCheckbox(callback){
+    document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(callback);
+  }
+
+  function prunePendingMeta(){
+    Object.keys(pendingMeta).forEach((key) => {
+      if(!replCounts.has(key)){
+        delete pendingMeta[key];
+      }
+    });
+  }
+
+  function syncReplsFromCounts(){
+    repls = Array.from(replCounts.keys());
+    prunePendingMeta();
+  }
+
+  function addReplacementCode(code){
+    if(SENTINELS.includes(code)){
+      replCounts.clear();
+      pendingMeta = {};
+      replCounts.set(code, 1);
+      syncReplsFromCounts();
+      return;
+    }
+    let removedSentinel = false;
+    SENTINELS.forEach((sentinel) => {
+      if(replCounts.has(sentinel)){
+        replCounts.delete(sentinel);
+        removedSentinel = true;
+      }
+    });
+    if(removedSentinel){
+      forEachReplCheckbox((cb) => {
+        if(SENTINELS.includes(cb.value)){
+          cb.checked = false;
+        }
+      });
+    }
+    const current = replCounts.get(code) || 0;
+    replCounts.set(code, current + 1);
+    syncReplsFromCounts();
+  }
+
+  function removeReplacementCode(code){
+    if(!replCounts.has(code)){
+      return;
+    }
+    if(SENTINELS.includes(code)){
+      replCounts.delete(code);
+      syncReplsFromCounts();
+      return;
+    }
+    const current = replCounts.get(code) || 0;
+    if(current <= 1){
+      replCounts.delete(code);
+    } else {
+      replCounts.set(code, current - 1);
+    }
+    syncReplsFromCounts();
+  }
+
+  function removeReplacementCompletely(code){
+    if(replCounts.has(code)){
+      replCounts.delete(code);
+      syncReplsFromCounts();
+    }
+    forEachReplCheckbox((cb) => {
+      if(cb.value === code){
+        cb.checked = false;
+      }
+    });
+    delete pendingMeta[code];
+  }
+
+  function clearAllReplacementSelections(){
+    replCounts.clear();
+    pendingMeta = {};
+    syncReplsFromCounts();
+  }
+
+  function alignContractAutoSelections(){
+    if(!contractAutoSelectEnabled){
+      return;
+    }
+    const updatedCounts = new Map();
+    forEachReplCheckbox((cb) => {
+      if(cb.disabled){
+        return;
+      }
+      if(replCounts.has(cb.value)){
+        cb.checked = true;
+      }
+      if(cb.checked){
+        if(cb.hasAttribute('data-pending-placeholder')){
+          addPendingEntryForCheckbox(cb);
+        }
+        updatedCounts.set(cb.value, (updatedCounts.get(cb.value) || 0) + 1);
+      }
+    });
+    updatedCounts.forEach((count, code) => {
+      replCounts.set(code, count);
+    });
+    syncReplsFromCounts();
+  }
+
+  function setContractMode(isContract){
+    if(contractAutoSelectWrapper){
+      contractAutoSelectWrapper.classList.toggle('d-none', !isContract);
+    }
+    if(contractAutoSelectInput){
+      contractAutoSelectInput.disabled = !isContract;
+      if(isContract){
+        contractAutoSelectEnabled = contractAutoSelectInput.checked;
+        if(contractAutoSelectEnabled){
+          alignContractAutoSelections();
+        }
+      }
+    }
+  }
+
+  setContractMode(false);
+
+  if(contractAutoSelectInput){
+    contractAutoSelectInput.addEventListener('change', () => {
+      contractAutoSelectEnabled = contractAutoSelectInput.checked;
+      if(contractAutoSelectEnabled){
+        alignContractAutoSelections();
+      }
+    });
+  }
 
   function renderSelections(){
   const pill = (c,kind)=>`<span class='badge bg-secondary me-1 mb-1' data-code='${c}' data-kind='${kind}'>${c} <span class='ms-1' data-remove='x' style='cursor:pointer' aria-label='Remove'>&times;</span></span>`;
@@ -158,8 +517,185 @@
   }
 
   function enforceLimits(){
-    if(items.length > MAX_PER_SIDE) items = items.slice(0, MAX_PER_SIDE);
-    if(repls.length > MAX_PER_SIDE) repls = repls.slice(0, MAX_PER_SIDE);
+    if(items.length > MAX_PER_SIDE){
+      items = items.slice(0, MAX_PER_SIDE);
+    }
+    if(replCounts.size > MAX_PER_SIDE){
+      const allowedKeys = Array.from(replCounts.keys()).slice(0, MAX_PER_SIDE);
+      const allowedSet = new Set(allowedKeys);
+      Array.from(replCounts.keys()).forEach((code) => {
+        if(!allowedSet.has(code)){
+          replCounts.delete(code);
+          forEachReplCheckbox((cb) => {
+            if(cb.value === code){
+              cb.checked = false;
+            }
+          });
+        }
+      });
+    }
+    syncReplsFromCounts();
+  }
+
+  function renderInvalidRows(rows, container){
+    if(!container) return;
+    container.innerHTML = '';
+    if(!Array.isArray(rows) || rows.length === 0){
+      container.style.display = 'none';
+      return;
+    }
+    const entries = rows.map((row) => {
+      const headerParts = [];
+      if(row && row.row_number !== null && row.row_number !== undefined){
+        headerParts.push(`Row ${row.row_number}`);
+      }
+      if(row && row.item){
+        headerParts.push(`Item ${row.item}`);
+      }
+      if(row && row.replace_item){
+        headerParts.push(`Replace ${row.replace_item}`);
+      }
+      const header = headerParts.join(' | ') || 'Row';
+      const messages = Array.isArray(row && row.messages) ? row.messages : (row && row.messages ? [row.messages] : []);
+      const messageHtml = messages.length
+        ? messages.map((msg) => `<li>${escapeHtml(String(msg))}</li>`).join('')
+        : '<li>No details provided.</li>';
+      return `<li><span class='fw-semibold'>${escapeHtml(header)}</span><ul class='mb-0 ps-3'>${messageHtml}</ul></li>`;
+    }).join('');
+    container.innerHTML = `<div class='alert alert-warning mb-0 small'><div class='fw-semibold mb-1'>Rows not ingested</div><ul class='mb-0 ps-3'>${entries}</ul></div>`;
+    container.style.display = '';
+  }
+
+  function handleBatchResponse(json, options = {}){
+    if(!json || typeof json !== 'object') return;
+
+    const target = options.feedbackEl || feedback;
+    const resetSelections = options.resetSelections !== false;
+
+    if(skippedTableBody){
+      skippedTableBody.innerHTML = '';
+    }
+    if(skippedWrapper){
+      skippedWrapper.style.display = 'none';
+    }
+
+  const createdCount = Number(json.created || 0);
+  const reactivatedCount = Number(json.reactivated || 0);
+    const skippedEntries = Array.isArray(json.skipped) ? json.skipped : [];
+    const skippedDetails = Array.isArray(json.skipped_details) ? json.skipped_details : [];
+    let skippedCount = skippedEntries.length;
+    if(!skippedCount && typeof json.skipped === 'number'){
+      skippedCount = json.skipped;
+    }
+    if(!skippedCount){
+      skippedCount = skippedDetails.length;
+    }
+
+    let groupDisplay = '—';
+    if(Array.isArray(json.group_ids) && json.group_ids.length){
+      groupDisplay = json.group_ids.join(', ');
+    } else if(json.group_id !== undefined && json.group_id !== null){
+      groupDisplay = json.group_id;
+    }
+
+    if(target){
+      const summaryParts = [`Created ${createdCount}`];
+      if(reactivatedCount > 0){
+        summaryParts.push(`Reactivated ${reactivatedCount}`);
+      }
+      summaryParts.push(`Skipped ${skippedCount}`);
+      summaryParts.push(`Groups ${groupDisplay}`);
+      const variantClass = (createdCount > 0 || reactivatedCount > 0) ? 'text-success' : 'text-warning';
+      target.innerHTML = `<span class='${variantClass}'>${summaryParts.join(', ')}</span>`;
+    }
+
+    if(Array.isArray(json.records) && json.records.length){
+      createdWrapper.style.display = '';
+      const rowsHtml = json.records.map((r) => {
+        const stageSlug = r.stage ? r.stage
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '') : '';
+        const stageBadgeHtml = r.stage ? `<span class='badge stage-badge stage-${stageSlug}'>${r.stage}</span>` : '';
+        const goLive = r.expected_go_live_date ? r.expected_go_live_date : `<span class='text-muted fst-italic'>unknown</span>`;
+        return `<tr>
+          <td class='text-center'>
+            <button type='button' class='btn btn-sm btn-outline-danger py-0 px-1' title='Remove link' data-remove-link data-item='${r.item}' data-replace-item='${r.replace_item}'>&times;</button>
+          </td>
+          <td class='text-center fw-semibold'>${r.item_group}</td>
+          <td class='font-monospace col-src'>${r.item}</td>
+          <td class='text-truncate col-src' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
+          <td class='text-truncate col-src' style='max-width:120px;'>${r.manufacturer||''}</td>
+          <td class='text-truncate col-src' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
+          <td class='font-monospace col-repl'>${r.replace_item||''}</td>
+          <td class='text-truncate col-repl' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
+          <td class='text-truncate col-repl' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
+          <td class='text-truncate col-repl' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
+          <td class='text-center'>${stageBadgeHtml}</td>
+          <td>${goLive}</td>
+          <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.create_dt ? r.create_dt.substring(0,10):''}</td>
+          <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.update_dt ? r.update_dt.replace('T',' ').substring(0,19):''}</td>
+        </tr>`;
+      }).join('');
+      createdTableBody.insertAdjacentHTML('beforeend', rowsHtml);
+    }
+
+    if(resetSelections){
+      items = [];
+      clearAllReplacementSelections();
+      document.querySelectorAll('input[data-pick-checkbox]').forEach((cb) => { cb.checked = false; });
+      renderSelections();
+    }
+
+    if(skippedDetails.length){
+      if(skippedWrapper){
+        skippedWrapper.style.display = '';
+      }
+      if(skippedTableBody){
+        const skippedRows = skippedDetails.map((detail) => {
+          const safeItem = detail.item ? `<span class='font-monospace'>${escapeHtml(detail.item)}</span>` : `<span class='text-muted'>—</span>`;
+          const replaceDisplay = detail.replace_item ? `<span class='font-monospace'>${escapeHtml(detail.replace_item)}</span>` : `<span class='text-muted'>—</span>`;
+          const typeLabel = escapeHtml(detail.error_type || 'Unknown');
+          const typeHtml = `<span class='badge bg-light border text-dark fw-normal text-uppercase small'>${typeLabel}</span>`;
+          const reasonHtml = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : `<span class='text-muted'>—</span>`;
+          const groupHtml = (detail.item_group !== null && detail.item_group !== undefined)
+            ? `<span class='fw-semibold'>${escapeHtml(String(detail.item_group))}</span>`
+            : `<span class='text-muted'>—</span>`;
+          return `<tr>
+                <td>${safeItem}</td>
+                <td>${replaceDisplay}</td>
+                <td class='text-center'>${typeHtml}</td>
+                <td>${reasonHtml}</td>
+                <td class='text-center'>${groupHtml}</td>
+              </tr>`;
+        }).join('');
+        skippedTableBody.insertAdjacentHTML('beforeend', skippedRows);
+      }
+      if(target){
+        const previewItems = skippedDetails.slice(0, 3).map((detail) => {
+          const itemLabel = escapeHtml(detail.item || '—');
+          const replLabel = escapeHtml(detail.replace_item || '—');
+          const reasonText = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '(no details)';
+          return `<li>${itemLabel} → ${replLabel}<br><span class='text-muted'>${reasonText}</span></li>`;
+        }).join('');
+        const moreCount = skippedDetails.length > 3 ? `<li class='text-muted'>...and ${skippedDetails.length - 3} more</li>` : '';
+        target.insertAdjacentHTML('beforeend', `<ul class='mt-2 mb-0 small text-muted'>${previewItems}${moreCount}</ul>`);
+      }
+    } else if(skippedWrapper && !(skippedTableBody && skippedTableBody.querySelector('tr'))){
+      skippedWrapper.style.display = 'none';
+    }
+
+    const jobIds = Array.isArray(json.burn_rate_jobs)
+      ? json.burn_rate_jobs
+          .map((job) => Number.parseInt(job && job.job_id, 10))
+          .filter((id) => Number.isInteger(id))
+      : [];
+    if(jobIds.length){
+      startBurnRatePolling(jobIds);
+    } else {
+      startBurnRatePolling([]);
+    }
   }
 
   function updateReplSearchEndpoint(){
@@ -167,6 +703,7 @@
     const was = replSearch.getAttribute('data-mode') || 'item';
     const toContract = mode === 'contract';
     const endpoint = toContract ? CONTRACT_ITEM_ENDPOINT : ORIGINAL_REPL_ENDPOINT;
+    setContractMode(toContract);
     
     replSearch.setAttribute('data-mode', mode);
     replSearch.setAttribute('hx-get', endpoint);
@@ -183,7 +720,7 @@
       if(window.htmx){
         const q = replSearch.value.trim();
         const url = q ? `${endpoint}?q=${encodeURIComponent(q)}` : endpoint;
-        window.htmx.ajax('GET', url, { target: '#repl-results' });
+  window.htmx.ajax('GET', url, { target: '#repl-results', values: { picker: 'replace' } });
       } else {
         replSearch.dispatchEvent(new Event('keyup'));
       }
@@ -194,9 +731,9 @@
     const sentinelBtn = e.target.closest('button[data-sentinel]');
     if(sentinelBtn){
       const code = sentinelBtn.getAttribute('data-sentinel');
-      if(code==='NO REPLACEMENT'){
-        repls = ['NO REPLACEMENT'];
-        document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
+      if(code && SENTINELS.includes(code)){
+        forEachReplCheckbox(cb => { cb.checked = false; });
+        addReplacementCode(code);
         renderSelections();
       }
       return;
@@ -208,9 +745,17 @@
       if(badge){
         const code = badge.getAttribute('data-code');
         const kind = badge.getAttribute('data-kind');
-        if(kind==='item') items = items.filter(i=>i!==code); else repls = repls.filter(r=>r!==code);
-        document.querySelectorAll(`input[data-pick-checkbox][value="${code}"]`).forEach(cb=> cb.checked=false);
-        // If a sentinel was removed (kind repl) nothing special needed; stage updates via renderSelections
+        if(kind==='item'){
+          items = items.filter(i=>i!==code);
+          document.querySelectorAll('#item-results input[data-pick-checkbox]').forEach(cb => {
+            if(cb.value === code){
+              cb.checked = false;
+            }
+          });
+        } else {
+          removeReplacementCompletely(code);
+        }
+        enforceLimits();
         renderSelections();
       }
     }
@@ -220,52 +765,75 @@
     const tgt = evt.target;
     if(tgt.id==='item-results' || tgt.id==='repl-results'){
       const isRepl = tgt.id==='repl-results';
+      const currentMode = replSearch.getAttribute('data-mode') || 'item';
+      const shouldAutoSelectAll = isRepl && currentMode === 'contract' && contractAutoSelectEnabled;
+      const replSelectionSnapshot = isRepl ? new Map() : null;
       tgt.querySelectorAll('input[data-pick-checkbox]').forEach(cb => {
         // Re-check if already selected (fresh content)
-        if((isRepl? repls: items).includes(cb.value)) cb.checked = true;
-        cb.addEventListener('change', () => {
-          const code = cb.value;
-          const contractId = cb.getAttribute('data-contract-id');
-          const mfgPart = cb.getAttribute('data-mfg-part');
-          const isPendingPlaceholder = cb.hasAttribute('data-pending-placeholder');
-          if(isPendingPlaceholder && /^PENDING\*\*\*/.test(code) && contractId && mfgPart){
-            pendingMeta[code] = { contract_id: contractId, mfg_part_num: mfgPart };
-          }
-          if(isRepl){
-            if(cb.checked){
-              // If selecting NO REPLACEMENT sentinel
-              if(SENTINELS.includes(code)){
-                // Uncheck all other checkboxes first to keep UI consistent
-                document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(other => { if(other!==cb) other.checked=false; });
-                repls = [code];
-              } else if(/^PENDING\*\*\*/.test(code)) {
-                // Dynamic pending placeholder; allow mixing with normal items? Requirement: mixing allowed.
-                if(!repls.includes(code)) repls.push(code);
-              } else {
-                // Block selecting if sentinel already chosen
-                if(repls.length===1 && SENTINELS.includes(repls[0])) { cb.checked=false; return; }
-                if(!repls.includes(code)) repls.push(code);
-              }
+        if(isRepl){
+          const allowed = replCounts.get(cb.value) || 0;
+          if(allowed > 0){
+            if(shouldAutoSelectAll){
+              cb.checked = true;
             } else {
-              repls = repls.filter(c=>c!==code);
-            }
-            // If in contract mode and code not empty, mirror state across all same-value checkboxes in current result pane
-            const currentMode = replSearch.getAttribute('data-mode') || 'item';
-            if(currentMode === 'contract' && code){
-              // Gather all checkboxes with same value
-              const peerCbs = tgt.querySelectorAll(`input[data-pick-checkbox][value="${code}"]`);
-              peerCbs.forEach(p => { if(p !== cb) p.checked = cb.checked; });
-              // Ensure repls contains (or removes) code exactly once
-              if(cb.checked){
-                if(SENTINELS.includes(code)) repls = [code];
-                else if(!repls.includes(code)) repls.push(code);
+              const used = replSelectionSnapshot.get(cb.value) || 0;
+              if(used < allowed){
+                cb.checked = true;
+                replSelectionSnapshot.set(cb.value, used + 1);
               } else {
-                repls = repls.filter(r=>r!==code);
+                cb.checked = false;
               }
             }
           } else {
-            if(cb.checked){ if(!items.includes(code)) items.push(code); }
-            else { items = items.filter(c=>c!==code); }
+            cb.checked = false;
+          }
+        } else if(items.includes(cb.value)){
+          cb.checked = true;
+        }
+        cb.addEventListener('change', () => {
+          const code = cb.value;
+          const currentMode = replSearch.getAttribute('data-mode') || 'item';
+          const autoSelect = currentMode === 'contract' && contractAutoSelectEnabled;
+          if(isRepl){
+            if(cb.checked){
+              addPendingEntryForCheckbox(cb);
+              if(SENTINELS.includes(code)){
+                forEachReplCheckbox(other => { if(other !== cb){ other.checked = false; } });
+                addReplacementCode(code);
+              } else {
+                addReplacementCode(code);
+                if(autoSelect){
+                  tgt.querySelectorAll('input[data-pick-checkbox]').forEach((peer) => {
+                    if(peer !== cb && peer.value === code && !peer.disabled){
+                      if(!peer.checked){
+                        peer.checked = true;
+                        addPendingEntryForCheckbox(peer);
+                        addReplacementCode(code);
+                      }
+                    }
+                  });
+                }
+              }
+            } else {
+              if(autoSelect){
+                tgt.querySelectorAll('input[data-pick-checkbox]').forEach((peer) => {
+                  if(peer !== cb && peer.value === code){
+                    removePendingEntryForCheckbox(peer);
+                    peer.checked = false;
+                  }
+                });
+              }
+              removePendingEntryForCheckbox(cb);
+              removeReplacementCode(code);
+            }
+            enforceLimits();
+            renderSelections();
+            return;
+          }
+          if(cb.checked){
+            if(!items.includes(code)) items.push(code);
+          } else {
+            items = items.filter(c=>c!==code);
           }
           enforceLimits();
           renderSelections();
@@ -311,6 +879,7 @@
     const goLive = goLiveInput.value.trim();
     if(goLive) payload.expected_go_live_date = goLive;
     feedback.textContent = 'Creating...';
+    startBurnRatePolling([]);
     try {
       const res = await fetch('/api/item-links/batch', {
         method:'POST',
@@ -319,90 +888,16 @@
       });
       const json = await res.json();
       if(!res.ok){
-        feedback.innerHTML = `<span class='text-danger'>Error: ${json.error||'Failed'}</span>`;
-      } else {
-        const groupDisplay = json.group_id !== null && json.group_id !== undefined ? json.group_id : '—';
-        feedback.innerHTML = `<span class='text-success'>Created ${json.created}, skipped ${json.skipped.length}, group ${groupDisplay}</span>`;
-        if(json.records && json.records.length){
-          createdWrapper.style.display = '';
-          // Append rows
-          const rowsHtml = json.records.map(r => {
-            const stageSlug = r.stage ? r.stage
-              .toLowerCase()
-              .replace(/\s+/g, '-')
-              .replace(/-+/g, '-')
-              .replace(/^-|-$/g, '') : '';
-            const stageBadge = r.stage ? `<span class='badge stage-badge stage-${stageSlug}'>${r.stage}</span>` : '';
-            const goLive = r.expected_go_live_date ? r.expected_go_live_date : `<span class='text-muted fst-italic'>unknown</span>`;
-            return `<tr>
-              <td class='text-center'>
-                <button type='button' class='btn btn-sm btn-outline-danger py-0 px-1' title='Remove link' data-remove-link data-item='${r.item}' data-replace-item='${r.replace_item}'>&times;</button>
-              </td>
-              <td class='text-center fw-semibold'>${r.item_group}</td>
-              <td class='font-monospace col-src'>${r.item}</td>
-              <td class='text-truncate col-src' style='max-width:140px;' title='${r.mfg_part_num||''}'>${r.mfg_part_num||''}</td>
-              <td class='text-truncate col-src' style='max-width:120px;'>${r.manufacturer||''}</td>
-              <td class='text-truncate col-src' style='max-width:220px;' title='${r.item_description||''}'>${r.item_description||''}</td>
-              <td class='font-monospace col-repl'>${r.replace_item||''}</td>
-              <td class='text-truncate col-repl' style='max-width:140px;' title='${r.repl_mfg_part_num||''}'>${r.repl_mfg_part_num||''}</td>
-              <td class='text-truncate col-repl' style='max-width:120px;'>${r.repl_manufacturer||''}</td>
-              <td class='text-truncate col-repl' style='max-width:220px;' title='${r.repl_item_description||''}'>${r.repl_item_description||''}</td>
-              <td class='text-center'>${stageBadge}</td>
-              <td>${goLive}</td>
-              <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.create_dt ? r.create_dt.substring(0,10):''}</td>
-              <td class='text-nowrap text-muted' style='font-size:.7rem;'>${r.update_dt ? r.update_dt.replace('T',' ').substring(0,19):''}</td>
-            </tr>`;
-          }).join('');
-          createdTableBody.insertAdjacentHTML('beforeend', rowsHtml);
-          // optional: clear selections after creation
-          items = []; repls = [];
-          document.querySelectorAll('input[data-pick-checkbox]').forEach(cb=> cb.checked=false);
-          renderSelections();
-        }
-        const skippedDetails = Array.isArray(json.skipped_details) ? json.skipped_details : [];
-        if(skippedDetails.length && skippedTableBody){
-          skippedTableBody.innerHTML = '';
-        }
-        if(skippedDetails.length){
-          if(skippedWrapper){
-            skippedWrapper.style.display = '';
-          }
-          if(skippedTableBody){
-            const skippedRows = skippedDetails.map(detail => {
-              const safeItem = detail.item ? `<span class='font-monospace'>${escapeHtml(detail.item)}</span>` : '<span class="text-muted">—</span>';
-              const replaceDisplay = detail.replace_item ? `<span class='font-monospace'>${escapeHtml(detail.replace_item)}</span>` : '<span class="text-muted">—</span>';
-              const typeLabel = escapeHtml(detail.error_type || 'Unknown');
-              const typeHtml = `<span class='badge bg-light border text-dark fw-normal text-uppercase small'>${typeLabel}</span>`;
-              const reasonHtml = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '<span class="text-muted">—</span>';
-              const groupHtml = (detail.item_group !== null && detail.item_group !== undefined)
-                ? `<span class='fw-semibold'>${escapeHtml(String(detail.item_group))}</span>`
-                : '<span class="text-muted">—</span>';
-              return `<tr>
-                <td>${safeItem}</td>
-                <td>${replaceDisplay}</td>
-                <td class='text-center'>${typeHtml}</td>
-                <td>${reasonHtml}</td>
-                <td class='text-center'>${groupHtml}</td>
-              </tr>`;
-            }).join('');
-            skippedTableBody.insertAdjacentHTML('beforeend', skippedRows);
-          }
-          const previewItems = skippedDetails.slice(0, 3).map(detail => {
-            const itemLabel = escapeHtml(detail.item || '—');
-            const replLabel = escapeHtml(detail.replace_item || '—');
-            const reasonText = detail.reason ? escapeHtml(detail.reason).replace(/\n/g, '<br />') : '(no details)';
-            return `<li>${itemLabel} → ${replLabel}<br><span class='text-muted'>${reasonText}</span></li>`;
-          }).join('');
-          const moreCount = skippedDetails.length > 3 ? `<li class='text-muted'>…and ${skippedDetails.length - 3} more</li>` : '';
-          feedback.insertAdjacentHTML('beforeend', `<ul class='mt-2 mb-0 small text-muted'>${previewItems}${moreCount}</ul>`);
-        } else if(skippedTableBody && !skippedTableBody.querySelector('tr')){
-          if(skippedWrapper){
-            skippedWrapper.style.display = 'none';
-          }
-        }
+        const message = json && (json.error || json.message) ? (json.error || json.message) : 'Failed';
+        feedback.innerHTML = `<span class='text-danger'>Error: ${escapeHtml(String(message))}</span>`;
+        startBurnRatePolling([]);
+        return;
       }
+      handleBatchResponse(json, { resetSelections: true, feedbackEl: feedback });
     } catch(err){
-      feedback.innerHTML = `<span class='text-danger'>Error: ${err}</span>`;
+      console.error(err);
+      feedback.innerHTML = `<span class='text-danger'>Unexpected error creating links.</span>`;
+      startBurnRatePolling([]);
     }
   });
 
@@ -447,8 +942,8 @@
       const newMode = currentMode === 'item' ? 'contract' : 'item';
       
       // 1) Clear current replacement selections
-      repls = [];
-      document.querySelectorAll('#repl-results input[data-pick-checkbox]').forEach(cb => cb.checked = false);
+  clearAllReplacementSelections();
+  forEachReplCheckbox(cb => { cb.checked = false; });
       
       // 2) Clear the search input
       replSearch.value = '';
@@ -466,10 +961,73 @@
       const endpoint = replSearch.getAttribute('hx-get');
       replResults.innerHTML = '<div class="small text-muted">Loading '+ (newMode==='contract' ? 'contract' : 'item') +' search...</div>';
       if(window.htmx){
-        window.htmx.ajax('GET', endpoint + '?q=', { target: '#repl-results' });
+  window.htmx.ajax('GET', endpoint + '?q=', { target: '#repl-results', values: { picker: 'replace' } });
       } else {
         // Fallback: trigger a synthetic event (will use hx-trigger if supported later)
         replSearch.dispatchEvent(new Event('keyup'));
+      }
+    });
+  }
+
+  if(uploadInput && uploadBtn){
+    uploadBtn.disabled = true;
+    uploadInput.addEventListener('change', () => {
+      if(uploadFeedback){
+        uploadFeedback.textContent = '';
+      }
+      renderInvalidRows([], uploadInvalid);
+      uploadBtn.disabled = !(uploadInput.files && uploadInput.files.length);
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      const files = uploadInput.files;
+      if(!files || !files.length){
+        return;
+      }
+      const file = files[0];
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Processing...';
+      if(uploadFeedback){
+        uploadFeedback.textContent = 'Uploading...';
+      }
+      renderInvalidRows([], uploadInvalid);
+      startBurnRatePolling([]);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/item-links/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        let json = null;
+        try {
+          json = await res.json();
+        } catch(parseErr){
+          json = null;
+        }
+        if(!res.ok || !json){
+          const message = json && (json.error || json.message) ? (json.error || json.message) : 'Upload failed.';
+          if(uploadFeedback){
+            uploadFeedback.innerHTML = `<span class='text-danger'>${escapeHtml(String(message))}</span>`;
+          }
+          renderInvalidRows(json && json.invalid_rows ? json.invalid_rows : [], uploadInvalid);
+          startBurnRatePolling([]);
+          return;
+        }
+        handleBatchResponse(json, { resetSelections: false, feedbackEl: uploadFeedback });
+        renderInvalidRows(json.invalid_rows || [], uploadInvalid);
+      } catch(err){
+        console.error(err);
+        if(uploadFeedback){
+          uploadFeedback.innerHTML = `<span class='text-danger'>Upload error: ${escapeHtml(String(err))}</span>`;
+        }
+        startBurnRatePolling([]);
+      } finally {
+        uploadBtn.textContent = uploadBtnDefaultText || 'Upload & Ingest';
+        uploadBtn.disabled = true;
+        uploadInput.value = '';
       }
     });
   }

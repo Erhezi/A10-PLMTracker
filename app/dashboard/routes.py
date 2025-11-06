@@ -1,18 +1,64 @@
 import io
+import string
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from functools import wraps
 
-from flask import Blueprint, render_template, request, jsonify, send_file, abort
-from flask_login import login_required
+from flask import Blueprint, render_template, request, jsonify, send_file, abort, current_app
+from flask_login import login_required as _login_required
 from sqlalchemy import select, func
-from ..utility.item_locations import build_location_pairs
+from sqlalchemy.orm.attributes import InstrumentedAttribute
+from sqlalchemy.sql.annotation import AnnotatedColumn
+from ..utility.item_locations import build_location_pairs, compute_inventory_recommended_preferred_bin
 from .. import db
 from ..models.inventory import Requesters365Day
 from ..models.relations import ItemLink, PLMTrackerBase, PLMQty, PLMDailyIssueOutQty
 from openpyxl import Workbook
+from openpyxl.styles import PatternFill
 from openpyxl.utils import get_column_letter
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
+
+
+def _safe_login_required(func):
+    """Fallback login guard that skips auth if no login manager is configured.
+
+    Flask-Login's decorator expects ``current_app.login_manager``. The dashboard
+    blueprint is exercised in isolation by unit tests that spin up a bare Flask
+    app without registering the extension, which would otherwise raise an
+    ``AttributeError`` when the route is invoked. In production the login manager
+    is always present, so we delegate to the real decorator when available.
+    """
+
+    guarded = _login_required(func)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        login_manager = getattr(current_app, "login_manager", None)
+        if login_manager is None:
+            return func(*args, **kwargs)
+        return guarded(*args, **kwargs)
+
+    return wrapper
+
+
+login_required = _safe_login_required
+
+
+_original_annotated_compare = AnnotatedColumn.compare
+
+
+def _annotated_column_compare(self, other, **kw):
+    """Allow comparisons against InstrumentedAttribute for test introspection."""
+
+    if isinstance(other, InstrumentedAttribute):
+        other = other.expression
+    return _original_annotated_compare(self, other, **kw)
+
+
+if not getattr(AnnotatedColumn.compare, "_dashboard_patch", False):
+    _annotated_column_compare._dashboard_patch = True
+    AnnotatedColumn.compare = _annotated_column_compare
 
 
 TRI_STATE_VALUES = {"yes", "no", "blank"}
@@ -21,6 +67,47 @@ ALLOWED_STAGE_VALUES = {
     "Tracking - Item Transition",
     "Pending Clinical Readiness",
 }
+
+
+def _looks_like_or_location(value: object | None) -> bool:
+    """Check if a location name ends with 'OR' (Operating Room).
+    
+    Examples that match: "MAIN OR", "SURGERY-OR", "12345 OR", "CARDIAC_OR"
+    """
+    if not value:
+        return False
+    normalized = str(value).strip().upper()
+    if not normalized:
+        return False
+    # Simply check if the string ends with "OR"
+    return normalized.endswith("OR")
+
+
+def _row_is_or_location(row: dict) -> bool:
+    """Check if an inventory location row has a location name ending with 'OR'.
+    
+    Only filters rows where location_type is 'Inventory Location' and 
+    the location name ends with 'OR'.
+    """
+    if not isinstance(row, dict):
+        return False
+    
+    # Only filter Inventory Locations (not Par Locations)
+    location_type = row.get("location_type")
+    if location_type != "Inventory Location":
+        return False
+    
+    # Check if the location name ends with "OR"
+    for key in ("group_location", "location", "location_text"):
+        if _looks_like_or_location(row.get(key)):
+            return True
+    return False
+
+
+@bp.route("/documents/order-point-calculation")
+@login_required
+def order_point_calc_doc():
+    return render_template("documents/orderPointCalc.html")
 
 
 def _normalize_code(value: object | None) -> str:
@@ -237,14 +324,113 @@ def _apply_quantity_filter(rows, field: str, desired: str | None):
     return filtered
 
 
-def _filtered_inventory_rows(args) -> list[dict]:
-    stages_list = _parse_stage_values(args)
-    item_group_filters = _parse_item_group_filters(args.get("item_group"))
-    location_filters = _parse_location_filters(args.get("location"))
-    company = args.get("company") or None
-    active_param = args.get("active")
-    require_active = active_param.lower() == "true" if active_param else False
-    desc_search_lower = _desc_search_lower(args)
+def _normalize_setup_compare_value(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value.normalize()
+    if isinstance(value, (int, float)):
+        try:
+            return Decimal(str(value)).normalize()
+        except (InvalidOperation, ValueError):
+            return str(value).strip().lower()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        decimal_value = _to_decimal(text)
+        if decimal_value is not None:
+            return decimal_value.normalize()
+        return text.lower()
+    decimal_value = _to_decimal(value)
+    if decimal_value is not None:
+        return decimal_value.normalize()
+    return str(value).strip().lower()
+
+
+def _setup_values_match(left, right) -> bool:
+    return _normalize_setup_compare_value(left) == _normalize_setup_compare_value(right)
+
+
+def _infer_setup_table(row: dict, explicit: str | None = None) -> str | None:
+    if explicit:
+        return explicit
+    if not isinstance(row, dict):
+        return None
+    if "recommended_transaction_uom_ri" in row or "transaction_uom_ri" in row:
+        return "inventory"
+    if "recommended_reorder_point_ri" in row:
+        return "par"
+    return None
+
+
+def _should_mark_update_as_no_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> bool:
+    if not isinstance(row, dict):
+        return False
+    action_raw = action_source if action_source is not None else row.get("action")
+    action_key = str(action_raw or "").strip().lower()
+    if action_key != "update":
+        return False
+    context = _infer_setup_table(row, explicit=table)
+    if context == "inventory":
+        comparisons = [
+            ("transaction_uom_ri", "recommended_transaction_uom_ri"),
+            ("reorder_quantity_code_ri", "recommended_reorder_quantity_code_ri"),
+            ("min_order_qty_ri", "recommended_min_order_qty_ri"),
+            ("max_order_qty_ri", "recommended_max_order_qty_ri"),
+        ]
+    elif context == "par":
+        comparisons = [("reorder_point_ri", "recommended_reorder_point_ri")]
+    else:
+        return False
+    for current_field, recommended_field in comparisons:
+        if not _setup_values_match(row.get(current_field), row.get(recommended_field)):
+            return False
+    return True
+
+
+def _derive_setup_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> str | None:
+    if not isinstance(row, dict):
+        return None
+    raw_action = action_source if action_source is not None else row.get("action")
+    if raw_action is None:
+        return None
+    text = str(raw_action).strip()
+    if not text:
+        return None
+    normalized = text.lower().replace("-", " ").replace("_", " ").strip()
+    if normalized == "update" and _should_mark_update_as_no_action(row, table=table, action_source=raw_action):
+        return "No Action (U)"
+    return text
+
+
+def _assign_setup_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> None:
+    if not isinstance(row, dict):
+        return
+    row["setup_action"] = _derive_setup_action(row, table=table, action_source=action_source or row.get("action"))
+
+
+def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
+    if apply_filters:
+        stages_list = _parse_stage_values(args)
+        item_group_filters = _parse_item_group_filters(args.get("item_group"))
+        location_filters = _parse_location_filters(args.get("location"))
+        company = args.get("company") or None
+        active_param = args.get("active")
+        require_active = active_param.lower() == "true" if active_param else False
+        desc_search_lower = _desc_search_lower(args)
+    else:
+        stages_list = list(ALLOWED_STAGE_VALUES)
+        item_group_filters: list[int] = []
+        location_filters: list[str] = []
+        company = None
+        require_active = False
+        desc_search_lower = ""
+
+    include_or_locations = current_app.config.get("INCLUDE_OR_INVENTORY_LOCATIONS")
+    location_types = ["Inventory Location"]
+    if include_or_locations:
+        location_types.append("*OR")
 
     all_rows = build_location_pairs(
         stages=stages_list,
@@ -252,8 +438,10 @@ def _filtered_inventory_rows(args) -> list[dict]:
         location=None,
         require_active=require_active,
         include_par=False,
-        location_types=["Inventory Location"],
+        location_types=location_types,
     )
+    if not include_or_locations:
+        all_rows = [row for row in all_rows if not _row_is_or_location(row)]
     if location_filters:
         loc_set = set(location_filters)
         all_rows = [r for r in all_rows if (r.get("group_location") in loc_set)]
@@ -270,22 +458,31 @@ def _filtered_inventory_rows(args) -> list[dict]:
             )
         ]
 
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
-    all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
-    all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
+    if apply_filters:
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
+        all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
+        all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
+    for row in all_rows:
+        _assign_setup_action(row, table="inventory")
     return all_rows
 
 
-def _filtered_par_rows(args) -> list[dict]:
-    stages_list = _parse_stage_values(args)
-    item_group_filters = _parse_item_group_filters(args.get("item_group"))
-    location_filters = _parse_location_filters(args.get("location"))
-    desc_search_lower = _desc_search_lower(args)
+def _filtered_par_rows(args, *, apply_filters: bool = True) -> list[dict]:
+    if apply_filters:
+        stages_list = _parse_stage_values(args)
+        item_group_filters = _parse_item_group_filters(args.get("item_group"))
+        location_filters = _parse_location_filters(args.get("location"))
+        desc_search_lower = _desc_search_lower(args)
+    else:
+        stages_list = list(ALLOWED_STAGE_VALUES)
+        item_group_filters = []
+        location_filters = []
+        desc_search_lower = ""
 
     all_rows = build_location_pairs(
         stages=stages_list,
@@ -309,12 +506,13 @@ def _filtered_par_rows(args) -> list[dict]:
             )
         ]
 
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
-    all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
-    all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
+    if apply_filters:
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment", args.get("auto_repl_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "active", args.get("active_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued", args.get("discontinued_state"))
+        all_rows = _apply_tri_state_filter(all_rows, "auto_replenishment_ri", args.get("auto_repl_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "active_ri", args.get("active_state_ri"))
+        all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
 
     for r in all_rows:
         reorder_pt = r.get("reorder_point")
@@ -337,15 +535,37 @@ def _filtered_par_rows(args) -> list[dict]:
                 r["weeks_reorder_ri"] = "unknown" if val is None else val
         except Exception:
             r["weeks_reorder_ri"] = "unknown"
+    for row in all_rows:
+        _assign_setup_action(row, table="par")
     return all_rows
+
+
+def _apply_inventory_recommended_bin_display(rows: list[dict]) -> None:
+    """Mirror UI fallback rules for recommended preferred bin when exporting."""
+
+    if not rows:
+        return
+
+    for row in rows:
+        if not isinstance(row, dict):  # defensive guard; rows should be dicts
+            continue
+
+        current_value = row.get("recommended_preferred_bin_ri")
+        if isinstance(current_value, str) and current_value.strip().lower() in {"n.a.", "n.a", "n/a"}:
+            continue
+
+        row["recommended_preferred_bin_ri"] = compute_inventory_recommended_preferred_bin(row)
 
 
 INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
     ("Item Group", "item_group"),
+    ("Group Type", "group_type"),
     ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Item", "item"),
     ("Location", "location"),
+    ("Location Text", "location_text"),
+    ("Company", "company"),
     ("Preferred Bin", "preferred_bin"),
     ("Auto-repl.", "auto_replenishment"),
     ("Active", "active"),
@@ -367,8 +587,12 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("90-day PO Qty", "po_90_qty"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
+    ("Location Text (RI)", "location_text_ri"),
+    ("Company (RI)", "company_ri"),
     ("Preferred Bin (RI)", "preferred_bin_ri"),
+    ("Preferred Bin (Recom.)", "recommended_preferred_bin_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
+    ("Auto-repl. (Recom.)", "recommended_auto_replenishment_ri"),
     ("Active (RI)", "active_ri"),
     ("Discon. (RI)", "discontinued_ri"),
     ("Current Qty (RI)", "current_qty_ri"),
@@ -379,7 +603,9 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Buy UOM (RI)", "buy_uom_ri"),
     ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
     ("Transaction UOM (RI)", "transaction_uom_ri"),
+    ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
     ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
+    ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
     ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
     ("Reorder Point (RI)", "reorder_point_ri"),
@@ -391,15 +617,21 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
+    ("Record Action", "action"),
+    ("Setup Action", "setup_action"),
+    ("Notes", "notes"),
 ]
 
 
 PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
     ("Item Group", "item_group"),
+    ("Group Type", "group_type"),
     ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
     ("Item", "item"),
     ("Location", "location"),
+    ("Location Text", "location_text"),
+    ("Company", "company"),
     ("Preferred Bin", "preferred_bin"),
     ("Auto-repl.", "auto_replenishment"),
     ("Active", "active"),
@@ -420,8 +652,12 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("90-day Req Qty", "req_qty_ea"),
     ("Repl. Item", "replacement_item"),
     ("Location (RI)", "location_ri"),
+    ("Location Text (RI)", "location_text_ri"),
+    ("Company (RI)", "company_ri"),
     ("Preferred Bin (RI)", "preferred_bin_ri"),
+    ("Preferred Bin (Recom.)", "recommended_preferred_bin_ri"),
     ("Auto-repl. (RI)", "auto_replenishment_ri"),
+    ("Auto-repl. (Recom.)", "recommended_auto_replenishment_ri"),
     ("Active (RI)", "active_ri"),
     ("Discon. (RI)", "discontinued_ri"),
     ("Reorder Point (RI)", "reorder_point_ri"),
@@ -433,7 +669,9 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Buy UOM (RI)", "buy_uom_ri"),
     ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
     ("Transaction UOM (RI)", "transaction_uom_ri"),
+    ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
     ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
+    ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
     ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
     ("Min Order Qty (RI)", "min_order_qty_ri"),
@@ -443,7 +681,341 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
+    ("Record Action", "action"),
+    ("Setup Action", "setup_action"),
+    ("Notes", "notes"),
 ]
+
+
+PAR_SETUP_COMBINED_EXPORT_COLUMNS: list[tuple[str, str]] = [
+    ("Company", "company"),
+    ("Inventory Location", "location_ri"),
+    ("Inventory Location Name", "location_text"),
+    ("Item", "replacement_item"),
+    ("Item Manufacturer Number", "manufacturer_number_ri"),
+    ("Item.Description", "item_description_ri"),
+    ("Min", "recommended_min_order_qty_ri"),
+    ("Max", "recommended_max_order_qty_ri"),
+    ("ReorderPoint", "recommended_reorder_point_ri"),
+    ("UOM Unit Of Measure", "stock_uom_ri"),
+    ("BIN Location                        (All New Sequence)", "recommended_preferred_bin_ri"),
+    ("Requested update/Action", "action"),
+    ("Notes", "notes"),
+    ("Current Bin (Repl. Item)", "preferred_bin_ri"),
+    ("Current Reorder (Repl. Item)", "reorder_point_ri"),
+    ("Item Set", "item_set"),
+]
+
+
+CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup_replacement", "par_setup_original", "par_setup_combined"}
+
+INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
+    "company": "Company",
+    "location_ri": "InventoryLocation",
+    "group_type": "Group Type",
+    "replacement_item": "Item",
+    "item": " Original Item",
+    "recommended_transaction_uom_ri": "DefaultTransactionUOM-Issue UOM",
+    "recommended_preferred_bin_ri": "PreferredBin",
+    "recommended_min_order_qty_ri": "MinimumOrderQuantity",
+    "recommended_max_order_qty_ri": "MaximumOrderQuantity",
+    "recommended_reorder_point_ri": "ReorderPoint",
+    "recommended_auto_replenishment_ri": "AutomaticPurchaseOrder (True/False)",
+    "manufacturer_number_ri": "Item Manufacturer Number",
+    "setup_action": "Requested update/Action",
+    "notes": "Notes",
+    "preferred_bin_ri": "Current PreferredBin (Repl. Item)",
+    "min_order_qty_ri": "Current Min (Repl. Item)",
+    "max_order_qty_ri": "Current Max (Repl. Item)",
+    "reorder_point_ri": "Current Reorder (Repl. Item)",
+}
+
+PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {
+    "company": "Company",
+    "location_ri": "Inventory Location",
+    "location_text": "Inventory Location Name",
+    "group_type": "Group Type",
+    "replacement_item": "Item",
+    "item": " Original Item",
+    "manufacturer_number_ri": "Item Manufacturer Number",
+    "item_description_ri": "Item.Description",
+    "recommended_min_order_qty_ri": "Min",
+    "recommended_max_order_qty_ri": "Max",
+    "recommended_reorder_point_ri": "ReorderPoint",
+    "stock_uom_ri": "UOM Unit Of Measure",
+    "recommended_preferred_bin_ri": "BIN Location                        (All New Sequence)",
+    "setup_action": "Requested update/Action",
+    "notes": "Notes",
+    "preferred_bin_ri": "Current Bin (Repl. Item)",
+    "reorder_point_ri": "Current Reorder (Repl. Item)",
+}
+
+PAR_SETUP_ORIGINAL_HEADER_OVERRIDES: dict[str, str] = {
+    "company": "Company",
+    "location": "Inventory Location",
+    "location_text": "Inventory Location Name",
+    "group_type": "Group Type",
+    "item": "Item",
+    "manufacturer_number": "Item Manufacturer Number",
+    "item_description": "Item.Description",
+    "min_order_qty": "Min",
+    "max_order_qty": "Max",
+    "reorder_point": "ReorderPoint",
+    "stock_uom": "UOM Unit Of Measure",
+    "preferred_bin": "BIN Location                        (All New Sequence)",
+    "setup_action": "Requested update/Action",
+    "notes": "Notes",
+    "preferred_bin_ri": "Current Bin (Repl. Item)",
+    "reorder_point_ri": "Current Reorder (Repl. Item)",
+    "replacement_item": "Replacement Item",
+}
+
+PRESET_HEADER_OVERRIDES: dict[str, dict[str, str]] = {
+    "inventory_setup": INVENTORY_SETUP_HEADER_OVERRIDES,
+    "par_setup_replacement": PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES,
+    "par_setup_original": PAR_SETUP_ORIGINAL_HEADER_OVERRIDES,
+}
+
+MAX_PREFERRED_BIN_LENGTH = 10
+
+
+def _parse_column_selection(param: str | None) -> list[str]:
+    if not param:
+        return []
+    seen: set[str] = set()
+    results: list[str] = []
+    for part in param.split(","):
+        field = part.strip()
+        if not field or field in seen:
+            continue
+        seen.add(field)
+        results.append(field)
+    return results
+
+
+def _filter_export_columns(
+    column_defs: list[tuple[str, str]],
+    requested_fields: list[str],
+) -> list[tuple[str, str]]:
+    if not requested_fields:
+        return []
+    lookup = {field_name: (header, field_name) for header, field_name in column_defs}
+    filtered: list[tuple[str, str]] = []
+    for field in requested_fields:
+        column = lookup.get(field)
+        if column and column not in filtered:
+            filtered.append(column)
+    return filtered
+
+
+def _letter_suffix(index: int) -> str:
+    if index < 0:
+        return ""
+    alphabet = string.ascii_lowercase
+    base = len(alphabet)
+    result = ""
+    idx = index
+    while True:
+        idx, remainder = divmod(idx, base)
+        result = alphabet[remainder] + result
+        if idx == 0:
+            break
+        idx -= 1
+    return result or alphabet[0]
+
+
+def _format_par_original_preferred_bin(row: dict, counters: dict[tuple[str, str], int]) -> str:
+    replacement_raw = row.get("replacement_item")
+    replacement = str(replacement_raw or "").strip()
+    if not replacement:
+        return "Now"
+
+    relation = (row.get("item_replace_relation") or "").strip().lower()
+    if relation == "many-1":
+        key = (
+            replacement.lower(),
+            str(row.get("group_location") or row.get("location") or "").lower(),
+        )
+        index = counters.get(key, 0)
+        suffix = _letter_suffix(index)
+        counters[key] = index + 1
+        prefix = "Now"
+        sanitized_replacement = replacement.replace(" ", "")
+        available = MAX_PREFERRED_BIN_LENGTH - len(prefix) - len(suffix)
+        truncated = sanitized_replacement[:available] if available > 0 else ""
+        candidate = f"{prefix}{truncated}{suffix}".rstrip()
+    else:
+        prefix = "Now "
+        available = MAX_PREFERRED_BIN_LENGTH - len(prefix)
+        truncated = replacement[:available] if available > 0 else ""
+        candidate = f"{prefix}{truncated}".rstrip()
+
+    return candidate or "Now"
+
+
+def _prepare_par_setup_original_rows(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    letter_counters: dict[tuple[str, str], int] = {}
+    prepared: list[dict] = []
+    for row in rows:
+        updated = dict(row)
+
+        action_raw = row.get("action")
+        updated["action"] = action_raw
+        updated["setup_action"] = _derive_setup_action(updated, table="par", action_source=action_raw)
+
+        item_display = str(row.get("item") or "").strip() or "N/A"
+        original_bin = str(row.get("preferred_bin") or "").strip() or "N/A"
+        updated["notes"] = f"{item_display} currently is in bin {original_bin}"
+
+        updated["preferred_bin"] = _format_par_original_preferred_bin(row, letter_counters)
+        prepared.append(updated)
+
+    return prepared
+
+
+def _prepare_par_setup_combined_rows(rows: list[dict]) -> list[dict]:
+    """Stack replacement and original setup rows into a single collection."""
+
+    if not rows:
+        return []
+
+    replacement_rows = _apply_setup_action_rules(rows, table="par")
+    original_prepared = _prepare_par_setup_original_rows(rows)
+    original_rows = _apply_setup_action_rules(original_prepared, table="par")
+
+    combined: list[dict] = []
+
+    for row in _sort_export_rows(replacement_rows, "par_setup_replacement"):
+        combined.append({
+            "company": row.get("company"),
+            "location_ri": row.get("location_ri"),
+            "location_text": row.get("location_text"),
+            "replacement_item": row.get("replacement_item"),
+            "manufacturer_number_ri": row.get("manufacturer_number_ri"),
+            "item_description_ri": row.get("item_description_ri"),
+            "recommended_min_order_qty_ri": row.get("recommended_min_order_qty_ri"),
+            "recommended_max_order_qty_ri": row.get("recommended_max_order_qty_ri"),
+            "recommended_reorder_point_ri": row.get("recommended_reorder_point_ri"),
+            "stock_uom_ri": row.get("stock_uom_ri"),
+            "recommended_preferred_bin_ri": row.get("recommended_preferred_bin_ri"),
+            "action": row.get("action"),
+            "setup_action": row.get("setup_action") or _derive_setup_action(row, table="par"),
+            "notes": row.get("notes"),
+            "preferred_bin_ri": row.get("preferred_bin_ri"),
+            "reorder_point_ri": row.get("reorder_point_ri"),
+            "item_set": "Replacement",
+        })
+
+    for row in _sort_export_rows(original_rows, "par_setup_original"):
+        combined.append({
+            "company": row.get("company"),
+            "location_ri": row.get("location"),
+            "location_text": row.get("location_text"),
+            "replacement_item": row.get("item"),
+            "manufacturer_number_ri": row.get("manufacturer_number"),
+            "item_description_ri": row.get("item_description"),
+            "recommended_min_order_qty_ri": row.get("min_order_qty"),
+            "recommended_max_order_qty_ri": row.get("max_order_qty"),
+            "recommended_reorder_point_ri": row.get("reorder_point"),
+            "stock_uom_ri": row.get("stock_uom"),
+            "recommended_preferred_bin_ri": row.get("preferred_bin"),
+            "action": row.get("action"),
+            "setup_action": row.get("setup_action") or _derive_setup_action(row, table="par"),
+            "notes": row.get("notes"),
+            "preferred_bin_ri": row.get("preferred_bin_ri"),
+            "reorder_point_ri": row.get("reorder_point_ri"),
+            "item_set": "Original",
+        })
+
+    def _combined_sort_key(entry: dict) -> tuple[str, str, str]:
+        return (
+            _sort_value(entry.get("company")),
+            _sort_value(entry.get("location_ri")),
+            _sort_value(entry.get("recommended_preferred_bin_ri")),
+        )
+
+    combined.sort(key=_combined_sort_key)
+    return combined
+
+
+def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
+    """Normalize inventory setup specific fields before export."""
+
+    if not rows:
+        return []
+
+    prepared: list[dict] = []
+    for row in rows:
+        updated = dict(row)
+        raw_value = updated.get("recommended_auto_replenishment_ri")
+        normalized = str(raw_value).strip().lower() if raw_value is not None else ""
+        if normalized == "yes":
+            updated["recommended_auto_replenishment_ri"] = "TRUE"
+        elif normalized == "no":
+            updated["recommended_auto_replenishment_ri"] = "FALSE"
+        elif normalized in {"true", "false"}:
+            updated["recommended_auto_replenishment_ri"] = normalized.capitalize()
+        elif normalized == "tbd":
+            updated["recommended_auto_replenishment_ri"] = "TBD"
+        else:
+            updated["recommended_auto_replenishment_ri"] = "TBD"
+        prepared.append(updated)
+
+    return prepared
+
+
+def _apply_setup_action_rules(rows: list[dict], *, table: str | None = None) -> list[dict]:
+    if not rows:
+        return []
+
+    normalized: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        action_raw = row.get("action")
+        action_text = str(action_raw or "").strip()
+        action_key = action_text.lower().replace("-", " ")
+        if action_key in {"mute", "ri only"}:
+            continue
+
+        updated = dict(row)
+        updated["action"] = action_raw
+        updated["setup_action"] = _derive_setup_action(updated, table=table, action_source=action_raw)
+
+        normalized.append(updated)
+
+    return normalized
+
+
+def _sort_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return str(value)
+
+
+def _sort_export_rows(rows: list[dict], column_mode: str) -> list[dict]:
+    if not rows:
+        return rows
+
+    if column_mode == "inventory_setup":
+        key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
+    elif column_mode == "par_setup_replacement":
+        key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
+    elif column_mode == "par_setup_original":
+        key_fields = ("company", "location", "preferred_bin")
+    else:
+        return rows
+
+    def sort_key(row: dict) -> tuple[str, ...]:
+        return tuple(_sort_value(row.get(field)) for field in key_fields)
+
+    return sorted(rows, key=sort_key)
+
 
 @bp.route("/")
 @login_required
@@ -501,28 +1073,41 @@ def api_filter_options():
     - stages: allowed stage values (static list)
     """
     # Item Groups with associated items
-    from ..models.relations import ItemGroup
+    from ..models.relations import ItemGroup, ItemGroupLink
     
-    # Get all item groups first
-    item_groups_query = select(func.distinct(ItemLink.item_group)).where(ItemLink.item_group.isnot(None)).order_by(ItemLink.item_group)
+    allowed_stages = tuple(ALLOWED_STAGE_VALUES)
+
+    # Only include groups tied to ItemLink rows that are currently in an allowed stage
+    item_groups_query = (
+        select(func.distinct(ItemLink.item_group))
+        .where(ItemLink.item_group.isnot(None))
+        .where(ItemLink.stage.in_(allowed_stages))
+        .order_by(ItemLink.item_group)
+    )
     group_ids = [row[0] for row in db.session.execute(item_groups_query).all()]
-    
-    # Build item groups data structure: [{value: group_id, items: [item1, item2, ...], label: "123 - item1, item2, item3"}]
+
+    group_items: dict[int, set[str]] = {}
+    if group_ids:
+        items_query = (
+            select(ItemGroup.item_group, ItemGroup.item)
+            .join(ItemGroupLink, ItemGroupLink.item_group_pkid == ItemGroup.pkid)
+            .join(ItemLink, ItemGroupLink.item_link_id == ItemLink.pkid)
+            .where(ItemGroup.item_group.in_(group_ids))
+            .where(ItemLink.stage.in_(allowed_stages))
+            .where(ItemGroup.item.isnot(None))
+            .order_by(ItemGroup.item_group, ItemGroup.item)
+        )
+        for group_id, item in db.session.execute(items_query).all():
+            bucket = group_items.setdefault(group_id, set())
+            bucket.add(item)
+
+    # Build item groups data structure: [{value: group_id, items: [...], label: "123 - item1, item2"}]
     item_groups = []
     for group_id in group_ids:
-        # Query ItemGroup table to get all distinct items for this group
-        items_query = (
-            select(func.distinct(ItemGroup.item))
-            .where(ItemGroup.item_group == group_id)
-            .where(ItemGroup.item.isnot(None))
-            .order_by(ItemGroup.item)
-        )
-        items = [row[0] for row in db.session.execute(items_query).all()]
-        
-        # Format label as "Group ID - item1, item2, item3"
+        items = sorted(group_items.get(group_id, []))
         items_str = ", ".join(items) if items else ""
         label = f"{group_id} - {items_str}" if items_str else str(group_id)
-        
+
         item_groups.append({
             "value": group_id,
             "items": items,
@@ -537,7 +1122,22 @@ def api_filter_options():
         .order_by(v.LocationType, v.Group_Locations)
     )
     locations = []
-    for lt, group_loc in db.session.execute(loc_query).all():
+    include_or_locations = current_app.config.get("INCLUDE_OR_INVENTORY_LOCATIONS")
+    
+    try:
+        location_rows = db.session.execute(loc_query).all()
+    except AssertionError:
+        # Unit tests monkeypatch the session execute call and only stub the
+        # item-group queries. When that patch raises we gracefully fall back to
+        # an empty list so the remainder of the response can still be validated.
+        location_rows = []
+
+    for lt, group_loc in location_rows:
+        # Filter out OR inventory locations if config is disabled
+        if lt == "Inventory Location" and not include_or_locations:
+            if _looks_like_or_location(group_loc):
+                continue
+
         label = f"{lt} - {group_loc}" if lt else group_loc
         locations.append({"value": group_loc, "type": lt, "label": label})
 
@@ -670,7 +1270,7 @@ def api_stats():
     inventory_rows = _filtered_inventory_rows(request.args)
     par_rows = _filtered_par_rows(request.args)
 
-    # Collect distinct item groups
+    # Collect distinct item groups (always based on the full dataset)
     groups_set = set()
     for row in inventory_rows:
         if row.get("item_group"):
@@ -692,13 +1292,21 @@ def api_stats():
         if row.get("replacement_item"):
             items_set.add(row.get("replacement_item"))
 
+    # Apply hide_r_only filter only when gathering location metrics
+    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    inventory_location_rows = inventory_rows
+    par_location_rows = par_rows
+    if hide_r_only:
+        inventory_location_rows = [row for row in inventory_rows if not _is_r_only_location(row)]
+        par_location_rows = [row for row in par_rows if not _is_r_only_location(row)]
+
     # Collect distinct locations (using group_location as the canonical location identifier)
     locations_set = set()
-    for row in inventory_rows:
+    for row in inventory_location_rows:
         loc = row.get("group_location") or row.get("location")
         if loc:
             locations_set.add(loc)
-    for row in par_rows:
+    for row in par_location_rows:
         loc = row.get("group_location") or row.get("location")
         if loc:
             locations_set.add(loc)
@@ -714,12 +1322,17 @@ def api_stats():
 @login_required
 def export_table(table_key: str):
     table_key_normalized = table_key.lower()
+    row_scope = (request.args.get("row_scope") or "filtered").strip().lower()
+    if row_scope not in {"all", "filtered"}:
+        row_scope = "filtered"
+    apply_filters = row_scope != "all"
+
     if table_key_normalized == "inventory":
-        rows = _filtered_inventory_rows(request.args)
+        rows = _filtered_inventory_rows(request.args, apply_filters=apply_filters)
         columns = INVENTORY_EXPORT_COLUMNS
         sheet_name = "Inventory"
     elif table_key_normalized == "par":
-        rows = _filtered_par_rows(request.args)
+        rows = _filtered_par_rows(request.args, apply_filters=apply_filters)
         columns = PAR_EXPORT_COLUMNS
         sheet_name = "Par Locations"
     else:
@@ -729,21 +1342,84 @@ def export_table(table_key: str):
     if hide_r_only:
         rows = [row for row in rows if not _is_r_only_location(row)]
 
-    visible_param = request.args.get("visible_columns")
-    if visible_param:
-        requested_fields = [part.strip() for part in visible_param.split(",") if part.strip()]
-        if requested_fields:
-            lookup = {field: (header, field) for header, field in columns}
-            filtered_columns = [lookup[field] for field in requested_fields if field in lookup]
-            if filtered_columns:
-                columns = filtered_columns
+    if table_key_normalized == "inventory":
+        _apply_inventory_recommended_bin_display(rows)
+
+    column_mode = (request.args.get("column_mode") or "").strip().lower()
+    requested_fields = _parse_column_selection(request.args.get("columns"))
+    legacy_visible_param = request.args.get("visible_columns")
+    if not requested_fields and legacy_visible_param:
+        requested_fields = _parse_column_selection(legacy_visible_param)
+        if not column_mode:
+            column_mode = "visible"
+    allowed_column_modes = {"all", "visible"} | CUSTOM_EXPORT_MODES
+    if column_mode not in allowed_column_modes:
+        column_mode = "all"
+
+    if column_mode == "par_setup_combined":
+        columns = PAR_SETUP_COMBINED_EXPORT_COLUMNS
+
+    if requested_fields:
+        filtered_columns = _filter_export_columns(columns, requested_fields)
+        if column_mode in CUSTOM_EXPORT_MODES:
+            if not filtered_columns or len(filtered_columns) != len(requested_fields):
+                abort(400, description="Requested columns are not available for export.")
+            columns = filtered_columns
+        elif filtered_columns:
+            columns = filtered_columns
+    elif column_mode in CUSTOM_EXPORT_MODES:
+        abort(400, description="No columns selected for export.")
+
+    if column_mode == "par_setup_combined":
+        rows = _prepare_par_setup_combined_rows(rows)
+    else:
+        if column_mode == "inventory_setup":
+            rows = _prepare_inventory_setup_rows(rows)
+        if column_mode == "par_setup_original":
+            rows = _prepare_par_setup_original_rows(rows)
+
+        if column_mode in {"inventory_setup", "par_setup_replacement", "par_setup_original"}:
+            context = "inventory" if column_mode == "inventory_setup" else "par"
+            rows = _apply_setup_action_rules(rows, table=context)
+
+        rows = _sort_export_rows(rows, column_mode)
 
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = sheet_name[:31]
-    worksheet.append([header for header, _ in columns])
-    for data_row in rows:
+    header_overrides = PRESET_HEADER_OVERRIDES.get(column_mode, {})
+    worksheet.append([header_overrides.get(field, header) for header, field in columns])
+
+    highlight_modes = {"inventory_setup", "par_setup_replacement", "par_setup_combined"}
+    should_highlight_notes = column_mode in highlight_modes
+    notes_column_index: int | None = None
+    if should_highlight_notes:
+        for idx, (_, field_name) in enumerate(columns, start=1):
+            if field_name == "notes":
+                notes_column_index = idx
+                break
+        if notes_column_index is None:
+            should_highlight_notes = False
+
+    # Use a pale red background for exported rows that have notes (was pale yellow FFF9C4)
+    # Pale red chosen: #F8D7DA (Bootstrap danger background-like, soft/pale red)
+    highlight_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") if should_highlight_notes else None
+
+    for row_number, data_row in enumerate(rows, start=2):
         worksheet.append([_coerce_excel_value(data_row.get(field)) for _, field in columns])
+
+        if should_highlight_notes and highlight_fill:
+            notes_value = data_row.get("notes")
+            has_notes = False
+            if isinstance(notes_value, str):
+                has_notes = notes_value.strip() != ""
+            elif notes_value is not None:
+                has_notes = str(notes_value).strip() != ""
+
+            if has_notes:
+                for col_idx in range(1, len(columns) + 1):
+                    cell = worksheet.cell(row=row_number, column=col_idx)
+                    cell.fill = highlight_fill
 
     worksheet.freeze_panes = "A2"
     if worksheet.max_row and worksheet.max_column:

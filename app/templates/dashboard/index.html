@@ -2,7 +2,20 @@
 {% block title %}Dashboard — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-4 d-flex align-items-center flex-wrap gap-3">
-  <span>Dashboard</span>
+  <span>
+    Dashboard
+    <a
+      href="{{ url_for('dashboard.order_point_calc_doc') }}"
+      class="text-decoration-none text-accent-pink d-inline-flex align-items-center"
+      style="font-size: 0.6em; vertical-align: super; margin-left: 0.25em;"
+      target="_blank"
+      rel="noopener"
+      title="Click to open dashboard documentation"
+    >
+      <i class="bi bi-info-circle" aria-hidden="true"></i>
+      <span class="visually-hidden">Open dashboard documentation</span>
+    </a>
+  </span>
   <span id="dashboard-refresh" class="small text-accent-pink text-nowrap">
     supporting data last refreshed as <span id="dashboard-refresh-value">—</span>
   </span>
@@ -41,9 +54,16 @@
       </div>
       <div class="col-6 col-md-2">
         <label class="form-label small text-uppercase text-muted mb-1">Stage</label>
-        <select class="form-select form-select-sm" name="stage">
-          <option value="">All</option>
-        </select>
+        <div class="dropdown w-100" id="stage-multiselect">
+          <button class="form-select form-select-sm text-start d-flex align-items-center gap-1" type="button" data-bs-toggle="dropdown" aria-expanded="false" id="stage-button">
+            <span class="flex-grow-1" data-default-label>All</span>
+            <span class="ms-auto small text-muted" id="stage-count" style="display:none;"></span>
+          </button>
+          <div class="dropdown-menu p-2 small" style="max-height:320px; overflow:auto;">
+            <div class="text-muted fst-italic px-2 py-1">Loading...</div>
+          </div>
+          <input type="hidden" name="stage" value="" />
+        </div>
       </div>
       <div class="col-12 col-md-4">
         <label class="form-label small text-uppercase text-muted mb-1">Desc Search</label>
@@ -111,7 +131,7 @@
             <div class="small text-muted" id="inventory-count">0 rows</div>
             <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
               <input class="form-check-input" type="checkbox" id="inventory-hide-r-toggle" checked>
-              <label class="form-check-label" for="inventory-hide-r-toggle">Hide R-Only Location</label>
+              <label class="form-check-label" for="inventory-hide-r-toggle">Hide RI-Only Location</label>
             </div>
             <div class="dropdown">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="inventory-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
@@ -131,6 +151,9 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="inv-col-stage" data-field="stage" class="col-stage">Stage</th> <!-- add stage -->
                 <th id="inv-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="inv-col-company" data-field="company" class="col-text col-company">Company</th>
+                <th id="inv-col-location-name" data-field="location_text" class="col-text col-location-name">Location Name</th>
+                <th id="inv-col-group-type" data-field="group_type" class="col-group-type">Group Type</th>
                 <th id="inv-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Burn (G. &amp; Loc.)</th>
                 <th id="inv-col-item" data-field="item" class="col-item">Item</th>
                 <th id="inv-col-location" data-field="location" class="col-location">Location</th>
@@ -156,7 +179,9 @@
                 <th id="inv-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="inv-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
                 <th id="inv-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
+                <th id="inv-col-preferred-bin-rec" data-field="recommended_preferred_bin_ri" class="col-text col-recom">Preferred Bin (Recom.)</th>
                 <th id="inv-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
+                <th id="inv-col-auto-rec" data-field="recommended_auto_replenishment_ri" class="col-auto col-recom">Auto-repl. (Recom.)</th>
                 <th id="inv-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="inv-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="inv-col-current-ri" data-field="current_qty_ri" class="col-num">Current Qty (RI)</th>
@@ -167,7 +192,9 @@
                 <th id="inv-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
                 <th id="inv-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
                 <th id="inv-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="inv-col-trans-uom-rec" data-field="recommended_transaction_uom_ri" class="col-text col-recom">Trans. UOM (Recom.)</th>
                 <th id="inv-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="inv-col-trans-uom-mult-rec" data-field="recommended_transaction_uom_multiplier_ri" class="col-num col-recom">Trans. UOM Mult. (Recom.)</th>
                 <th id="inv-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
                 <th id="inv-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
                 <th id="inv-col-reorder-pt-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
@@ -179,59 +206,73 @@
                 <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+                <th id="inv-col-action" data-field="action" class="col-text">Record Action</th>
+                <th id="inv-col-setup-action" data-field="setup_action" class="col-text">Setup Action</th>
+                <th id="inv-col-notes" data-field="notes" class="col-desc">Notes</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
-                <th class="col-stage column-filter-cell"></th>
-                <th class="col-group column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="inv-filter-auto" data-field="auto_replenishment"></th>
-                <th class="col-active column-filter-cell" id="inv-filter-active" data-field="active"></th>
-                <th class="col-disc column-filter-cell" id="inv-filter-disc" data-field="discontinued"></th>
-                <th class="col-num column-filter-cell" id="inv-filter-current" data-field="current_qty_state"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-repl-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-field="auto_replenishment_ri"></th>
-                <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-field="active_ri"></th>
-                <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-field="discontinued_ri"></th>
-                <th class="col-num column-filter-cell" id="inv-filter-current-ri" data-field="current_qty_ri_state"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-pt-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
+                <th class="col-stage column-filter-cell" id="inv-filter-stage" data-column-id="inv-col-stage"></th>
+                <th class="col-group column-filter-cell" id="inv-filter-group" data-column-id="inv-col-group"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-company" data-column-id="inv-col-company"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-location-name" data-column-id="inv-col-location-name"></th>
+                <th class="col-group-type column-filter-cell" id="inv-filter-group-type" data-column-id="inv-col-group-type"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weekly-group" data-column-id="inv-col-weekly-group"></th>
+                <th class="col-item column-filter-cell" id="inv-filter-item" data-column-id="inv-col-item"></th>
+                <th class="col-location column-filter-cell" id="inv-filter-location" data-column-id="inv-col-location"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-preferred-bin" data-column-id="inv-col-preferred-bin"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto" data-column-id="inv-col-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active" data-column-id="inv-col-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc" data-column-id="inv-col-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current" data-column-id="inv-col-current" data-field="current_qty_state"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weekly" data-column-id="inv-col-weekly"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weeks" data-column-id="inv-col-weeks"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-stock-uom" data-column-id="inv-col-stock-uom"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-uom-conversion" data-column-id="inv-col-uom-conversion"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-buy-uom" data-column-id="inv-col-buy-uom"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-buy-uom-mult" data-column-id="inv-col-buy-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-trans-uom" data-column-id="inv-col-trans-uom"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-trans-uom-mult" data-column-id="inv-col-trans-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-reorder-policy" data-column-id="inv-col-reorder-policy"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-reorder-pt" data-column-id="inv-col-reorder-pt"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-min-order" data-column-id="inv-col-min-order"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-max-order" data-column-id="inv-col-max-order"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-mfg-num" data-column-id="inv-col-mfg-num"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-po90" data-column-id="inv-col-po90"></th>
+                <th class="col-repl-item column-filter-cell" id="inv-filter-repl-item" data-column-id="inv-col-repl-item"></th>
+                <th class="col-location column-filter-cell" id="inv-filter-location-ri" data-column-id="inv-col-location-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-preferred-bin-ri" data-column-id="inv-col-preferred-bin-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="inv-filter-preferred-bin-rec" data-column-id="inv-col-preferred-bin-rec"></th>
+                <th class="col-auto column-filter-cell" id="inv-filter-auto-ri" data-column-id="inv-col-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-auto column-filter-cell col-recom" id="inv-filter-auto-rec" data-column-id="inv-col-auto-rec"></th>
+                <th class="col-active column-filter-cell" id="inv-filter-active-ri" data-column-id="inv-col-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="inv-filter-disc-ri" data-column-id="inv-col-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-current-ri" data-column-id="inv-col-current-ri" data-field="current_qty_ri_state"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weekly-ri" data-column-id="inv-col-weekly-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-weeks-ri" data-column-id="inv-col-weeks-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-stock-uom-ri" data-column-id="inv-col-stock-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-uom-conversion-ri" data-column-id="inv-col-uom-conversion-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-buy-uom-ri" data-column-id="inv-col-buy-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-buy-uom-mult-ri" data-column-id="inv-col-buy-uom-mult-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-trans-uom-ri" data-column-id="inv-col-trans-uom-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="inv-filter-trans-uom-rec" data-column-id="inv-col-trans-uom-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-trans-uom-mult-ri" data-column-id="inv-col-trans-uom-mult-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-trans-uom-mult-rec" data-column-id="inv-col-trans-uom-mult-rec"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-reorder-policy-ri" data-column-id="inv-col-reorder-policy-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="inv-filter-reorder-policy-rec" data-column-id="inv-col-reorder-policy-rec" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-reorder-pt-ri" data-column-id="inv-col-reorder-pt-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-reorder-pt-rec" data-column-id="inv-col-reorder-pt-rec" data-recom-col="reorder-pt-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-min-order-ri" data-column-id="inv-col-min-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-min-order-rec" data-column-id="inv-col-min-order-rec" data-recom-col="min-order-rec"></th>
+                <th class="col-num column-filter-cell" id="inv-filter-max-order-ri" data-column-id="inv-col-max-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="inv-filter-max-order-rec" data-column-id="inv-col-max-order-rec" data-recom-col="max-order-rec"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-mfg-num-ri" data-column-id="inv-col-mfg-num-ri"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-desc" data-column-id="inv-col-desc"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-desc-ri" data-column-id="inv-col-desc-ri"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-action" data-column-id="inv-col-action"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-setup-action" data-column-id="inv-col-setup-action"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-notes" data-column-id="inv-col-notes"></th>
               </tr>
+            </thead>
             <tbody>
               <!-- dynamic rows inserted by JS -->
             </tbody>
@@ -258,7 +299,7 @@
             <div class="small text-muted" id="par-count">0 rows</div>
             <div class="form-check form-switch form-switch-sm hide-r-toggle m-0">
               <input class="form-check-input" type="checkbox" id="par-hide-r-toggle" checked>
-              <label class="form-check-label" for="par-hide-r-toggle">Hide R-Only Location</label>
+              <label class="form-check-label" for="par-hide-r-toggle">Hide RI-Only Location</label>
             </div>
             <div class="dropdown">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="par-columns-btn" data-bs-toggle="dropdown" aria-expanded="false">
@@ -278,6 +319,9 @@
               <tr class="small text-nowrap column-header-labels">
                 <th id="par-col-stage" data-field="stage" class="col-stage">Stage</th>
                 <th id="par-col-group" data-field="item_group" class="col-group">Item Group</th>
+                <th id="par-col-company" data-field="company" class="col-text col-company">Company</th>
+                <th id="par-col-location-name" data-field="location_text" class="col-text col-location-name">Location Name</th>
+                <th id="par-col-group-type" data-field="group_type" class="col-group-type">Group Type</th>
                 <th id="par-col-weekly-group" data-field="weekly_burn_group_location" class="col-num">Weekly Reorder (G. &amp; Loc.)</th>
                 <th id="par-col-item" data-field="item" class="col-item">Item</th>
                 <th id="par-col-location" data-field="location" class="col-location">Location</th>
@@ -302,7 +346,9 @@
                 <th id="par-col-repl-item" data-field="replacement_item" class="col-repl-item">Repl. Item</th>
                 <th id="par-col-location-ri" data-field="location_ri" class="col-location">Location (RI)</th>
                 <th id="par-col-preferred-bin-ri" data-field="preferred_bin_ri" class="col-text">Preferred Bin (RI)</th>
+                <th id="par-col-preferred-bin-rec" data-field="recommended_preferred_bin_ri" class="col-text col-recom">Preferred Bin (Recom.)</th>
                 <th id="par-col-auto-ri" data-field="auto_replenishment_ri" class="col-auto">Auto-repl. (RI)</th>
+                <th id="par-col-auto-rec" data-field="recommended_auto_replenishment_ri" class="col-auto col-recom">Auto-repl. (Recom.)</th>
                 <th id="par-col-active-ri" data-field="active_ri" class="col-active">Active (RI)</th>
                 <th id="par-col-disc-ri" data-field="discontinued_ri" class="col-disc">Discon. (RI)</th>
                 <th id="par-col-reorder-ri" data-field="reorder_point_ri" class="col-num">Reorder Point (RI)</th>
@@ -313,7 +359,9 @@
                 <th id="par-col-buy-uom-ri" data-field="buy_uom_ri" class="col-text">Buy UOM (RI)</th>
                 <th id="par-col-buy-uom-mult-ri" data-field="buy_uom_multiplier_ri" class="col-num">Buy UOM Mult. (RI)</th>
                 <th id="par-col-trans-uom-ri" data-field="transaction_uom_ri" class="col-text">Trans. UOM (RI)</th>
+                <th id="par-col-trans-uom-rec" data-field="recommended_transaction_uom_ri" class="col-text col-recom">Trans. UOM (Recom.)</th>
                 <th id="par-col-trans-uom-mult-ri" data-field="transaction_uom_multiplier_ri" class="col-num">Trans. UOM Mult. (RI)</th>
+                <th id="par-col-trans-uom-mult-rec" data-field="recommended_transaction_uom_multiplier_ri" class="col-num col-recom">Trans. UOM Mult. (Recom.)</th>
                 <th id="par-col-reorder-policy-ri" data-field="reorder_quantity_code_ri" class="col-text">Reorder Policy (RI)</th>
                 <th id="par-col-reorder-policy-rec" data-field="recommended_reorder_quantity_code_ri" class="col-text col-recom">Reorder Policy (Recom.)</th>
                 <th id="par-col-reorder-rec" data-field="recommended_reorder_point_ri" class="col-num col-recom">Reorder Point (Recom.)</th>
@@ -324,56 +372,69 @@
                 <th id="par-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+                <th id="par-col-action" data-field="action" class="col-text">Record Action</th>
+                <th id="par-col-setup-action" data-field="setup_action" class="col-text">Setup Action</th>
+                <th id="par-col-notes" data-field="notes" class="col-desc">Notes</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
-                <th class="col-stage column-filter-cell"></th>
-                <th class="col-group column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="par-filter-auto" data-field="auto_replenishment"></th>
-                <th class="col-active column-filter-cell" id="par-filter-active" data-field="active"></th>
-                <th class="col-disc column-filter-cell" id="par-filter-disc" data-field="discontinued"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-repl-item column-filter-cell"></th>
-                <th class="col-location column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-field="auto_replenishment_ri"></th>
-                <th class="col-active column-filter-cell" id="par-filter-active-ri" data-field="active_ri"></th>
-                <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-field="discontinued_ri"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-text column-filter-cell col-recom" data-recom-col="reorder-policy-rec"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="reorder-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="min-order-rec"></th>
-                <th class="col-num column-filter-cell"></th>
-                <th class="col-num column-filter-cell col-recom" data-recom-col="max-order-rec"></th>
-                <th class="col-text column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
-                <th class="col-desc column-filter-cell"></th>
+                <th class="col-stage column-filter-cell" id="par-filter-stage" data-column-id="par-col-stage"></th>
+                <th class="col-group column-filter-cell" id="par-filter-group" data-column-id="par-col-group"></th>
+                <th class="col-text column-filter-cell" id="par-filter-company" data-column-id="par-col-company"></th>
+                <th class="col-text column-filter-cell" id="par-filter-location-name" data-column-id="par-col-location-name"></th>
+                <th class="col-group-type column-filter-cell" id="par-filter-group-type" data-column-id="par-col-group-type"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weekly-group" data-column-id="par-col-weekly-group"></th>
+                <th class="col-item column-filter-cell" id="par-filter-item" data-column-id="par-col-item"></th>
+                <th class="col-location column-filter-cell" id="par-filter-location" data-column-id="par-col-location"></th>
+                <th class="col-text column-filter-cell" id="par-filter-preferred-bin" data-column-id="par-col-preferred-bin"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto" data-column-id="par-col-auto" data-field="auto_replenishment"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active" data-column-id="par-col-active" data-field="active"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc" data-column-id="par-col-disc" data-field="discontinued"></th>
+                <th class="col-num column-filter-cell" id="par-filter-reorder" data-column-id="par-col-reorder"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weekly" data-column-id="par-col-weekly"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weeks" data-column-id="par-col-weeks"></th>
+                <th class="col-text column-filter-cell" id="par-filter-stock-uom" data-column-id="par-col-stock-uom"></th>
+                <th class="col-num column-filter-cell" id="par-filter-uom-conversion" data-column-id="par-col-uom-conversion"></th>
+                <th class="col-text column-filter-cell" id="par-filter-buy-uom" data-column-id="par-col-buy-uom"></th>
+                <th class="col-num column-filter-cell" id="par-filter-buy-uom-mult" data-column-id="par-col-buy-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="par-filter-trans-uom" data-column-id="par-col-trans-uom"></th>
+                <th class="col-num column-filter-cell" id="par-filter-trans-uom-mult" data-column-id="par-col-trans-uom-mult"></th>
+                <th class="col-text column-filter-cell" id="par-filter-reorder-policy" data-column-id="par-col-reorder-policy"></th>
+                <th class="col-num column-filter-cell" id="par-filter-min-order" data-column-id="par-col-min-order"></th>
+                <th class="col-num column-filter-cell" id="par-filter-max-order" data-column-id="par-col-max-order"></th>
+                <th class="col-text column-filter-cell" id="par-filter-mfg-num" data-column-id="par-col-mfg-num"></th>
+                <th class="col-num column-filter-cell" id="par-filter-req90" data-column-id="par-col-req90"></th>
+                <th class="col-repl-item column-filter-cell" id="par-filter-repl-item" data-column-id="par-col-repl-item"></th>
+                <th class="col-location column-filter-cell" id="par-filter-location-ri" data-column-id="par-col-location-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-preferred-bin-ri" data-column-id="par-col-preferred-bin-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="par-filter-preferred-bin-rec" data-column-id="par-col-preferred-bin-rec"></th>
+                <th class="col-auto column-filter-cell" id="par-filter-auto-ri" data-column-id="par-col-auto-ri" data-field="auto_replenishment_ri"></th>
+                <th class="col-auto column-filter-cell col-recom" id="par-filter-auto-rec" data-column-id="par-col-auto-rec"></th>
+                <th class="col-active column-filter-cell" id="par-filter-active-ri" data-column-id="par-col-active-ri" data-field="active_ri"></th>
+                <th class="col-disc column-filter-cell" id="par-filter-disc-ri" data-column-id="par-col-disc-ri" data-field="discontinued_ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-reorder-ri" data-column-id="par-col-reorder-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weekly-ri" data-column-id="par-col-weekly-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-weeks-ri" data-column-id="par-col-weeks-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-stock-uom-ri" data-column-id="par-col-stock-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-uom-conversion-ri" data-column-id="par-col-uom-conversion-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-buy-uom-ri" data-column-id="par-col-buy-uom-ri"></th>
+                <th class="col-num column-filter-cell" id="par-filter-buy-uom-mult-ri" data-column-id="par-col-buy-uom-mult-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-trans-uom-ri" data-column-id="par-col-trans-uom-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="par-filter-trans-uom-rec" data-column-id="par-col-trans-uom-rec"></th>
+                <th class="col-num column-filter-cell" id="par-filter-trans-uom-mult-ri" data-column-id="par-col-trans-uom-mult-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-trans-uom-mult-rec" data-column-id="par-col-trans-uom-mult-rec"></th>
+                <th class="col-text column-filter-cell" id="par-filter-reorder-policy-ri" data-column-id="par-col-reorder-policy-ri"></th>
+                <th class="col-text column-filter-cell col-recom" id="par-filter-reorder-policy-rec" data-column-id="par-col-reorder-policy-rec" data-recom-col="reorder-policy-rec"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-reorder-rec" data-column-id="par-col-reorder-rec" data-recom-col="reorder-rec"></th>
+                <th class="col-num column-filter-cell" id="par-filter-min-order-ri" data-column-id="par-col-min-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-min-order-rec" data-column-id="par-col-min-order-rec" data-recom-col="min-order-rec"></th>
+                <th class="col-num column-filter-cell" id="par-filter-max-order-ri" data-column-id="par-col-max-order-ri"></th>
+                <th class="col-num column-filter-cell col-recom" id="par-filter-max-order-rec" data-column-id="par-col-max-order-rec" data-recom-col="max-order-rec"></th>
+                <th class="col-text column-filter-cell" id="par-filter-mfg-num-ri" data-column-id="par-col-mfg-num-ri"></th>
+                <th class="col-desc column-filter-cell" id="par-filter-desc" data-column-id="par-col-desc"></th>
+                <th class="col-desc column-filter-cell" id="par-filter-desc-ri" data-column-id="par-col-desc-ri"></th>
+                <th class="col-text column-filter-cell" id="par-filter-action" data-column-id="par-col-action"></th>
+                <th class="col-text column-filter-cell" id="par-filter-setup-action" data-column-id="par-col-setup-action"></th>
+                <th class="col-desc column-filter-cell" id="par-filter-notes" data-column-id="par-col-notes"></th>
               </tr>
             </thead>
             <tbody>
@@ -407,7 +468,7 @@
           <div class="text-muted small mt-2" id="chart-hint">&nbsp;</div>
           <hr class="my-4">
           <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
-            <h6 class="mb-0 text-uppercase small text-muted" id="issue-chart-title" data-daily-label="Daily Issued-Out Qty" data-weekly-label="Weekly Issued-Out Qty">Daily Issued-Out Qty</h6>
+            <h6 class="mb-0 text-uppercase small text-muted" id="issue-chart-title" data-daily-label="Daily Issued-Out Qty" data-weekly-label="Weekly Issued-Out Qty" data-daily-requested-label="Daily Requested Qty" data-weekly-requested-label="Weekly Requested Qty">Daily Issued-Out Qty</h6>
             <div class="form-check form-switch form-switch-sm ms-auto text-muted">
               <input class="form-check-input" type="checkbox" role="switch" id="issue-weekly-toggle" aria-label="Toggle weekly issued-out totals">
               <label class="form-check-label small" for="issue-weekly-toggle">Weekly totals</label>
@@ -422,6 +483,89 @@
 </div>
 
 <!-- Requester contacts modal -->
+<div class="modal fade" id="exportConfigModal" tabindex="-1" aria-labelledby="exportConfigModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exportConfigModalLabel">Export Options — <span id="export-modal-table-label">Table</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-4">
+          <h6 class="text-uppercase small text-muted mb-2">Rows to Export</h6>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="radio" name="export-row-scope" id="export-row-filtered" value="filtered" checked>
+            <label class="form-check-label" for="export-row-filtered">
+              Filtered only <span class="text-muted">(respect current filters)</span>
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="export-row-scope" id="export-row-all" value="all">
+            <label class="form-check-label" for="export-row-all">
+              All records <span class="text-muted">(ignore dashboard filters)</span>
+            </label>
+          </div>
+        </div>
+        <div class="mb-4">
+          <h6 class="text-uppercase small text-muted mb-2">Columns</h6>
+          <div class="form-check mb-1 export-column-mode-option">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-all" value="all" checked>
+            <label class="form-check-label" for="export-column-all">All columns</label>
+          </div>
+          <div class="form-check mb-1 export-column-mode-option">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-visible" value="visible">
+            <label class="form-check-label" for="export-column-visible">Visible columns only</label>
+          </div>
+          <div class="form-check export-column-mode-option">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-custom" value="custom">
+            <label class="form-check-label" for="export-column-custom">Self-defined selection</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="inventory">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-setup" value="inventory_setup" data-table="inventory">
+            <label class="form-check-label" for="export-column-inventory-setup">Inventory set up</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="par">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-replacement" value="par_setup_replacement" data-table="par">
+            <label class="form-check-label" for="export-column-par-setup-replacement">Par set up (replacement)</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="par">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-original" value="par_setup_original" data-table="par">
+            <label class="form-check-label" for="export-column-par-setup-original">Par set up (original)</label>
+          </div>
+        </div>
+        <div id="export-column-picker" class="export-column-picker d-none">
+          <div class="row g-3 align-items-start">
+            <div class="col-lg-6">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Available Columns</h6>
+                <span class="badge bg-light text-dark" id="export-available-count">0</span>
+              </div>
+              <div class="export-column-list" data-role="available-list" aria-label="Available columns"></div>
+              <p class="text-muted small mb-0 mt-2">Sorted by field name. Drag to Selected to include.</p>
+            </div>
+            <div class="col-lg-6">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">Selected Columns</h6>
+                <span class="badge bg-primary text-white" id="export-selected-count">0</span>
+              </div>
+              <div class="export-column-list selected" data-role="selected-list" aria-label="Selected columns"></div>
+              <p class="text-muted small mb-0 mt-2">Drag to rearrange, or back to Available to remove.</p>
+            </div>
+          </div>
+        </div>
+        <div class="alert alert-warning small d-none mt-3" role="alert" id="export-custom-warning">Select at least one column to continue.</div>
+        <div class="alert alert-danger small d-none mt-3" role="alert" id="export-error-alert"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="export-download-btn">
+          <span class="spinner-border spinner-border-sm align-middle me-2 d-none" role="status" aria-hidden="true"></span>
+          Download Excel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
   
 {% endblock %}
 {% block scripts %}
@@ -464,7 +608,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const locButton = document.getElementById('location-button');
   const locDefaultLabel = locButton.querySelector('[data-default-label]');
   const locCount = document.getElementById('location-count');
-  const selStage = filterForm.querySelector('select[name="stage"]');
+  const selStage = filterForm.querySelector('input[name="stage"]');
+  const stageMulti = document.getElementById('stage-multiselect');
+  const stageMenu = stageMulti ? stageMulti.querySelector('.dropdown-menu') : null;
+  const stageButton = document.getElementById('stage-button');
+  const stageDefaultLabel = stageButton ? stageButton.querySelector('[data-default-label]') : null;
+  const stageCount = document.getElementById('stage-count');
   const inpDescSearch = filterForm.querySelector('input[name="desc_search"]');
   const inventoryTable = document.getElementById('table-inventory');
   const parTable = document.getElementById('table-par');
@@ -492,10 +641,94 @@ document.addEventListener('DOMContentLoaded', () => {
   if(notifyModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
     notifyModalInstance = bootstrap.Modal.getOrCreateInstance(notifyModalEl);
   }
+  // Stage multi-select handling
+  function updateStageSelection(triggerChange=true){
+    const checked = Array.from(stageMenu.querySelectorAll('.stage-checkbox:checked')).map(cb => cb.value);
+    selStage.value = checked.join(',');
+    if(!checked.length){
+      stageDefaultLabel.textContent = 'All';
+      stageCount.style.display='none';
+    } else {
+      if(checked.length <= 3){
+        stageDefaultLabel.textContent = checked.join(', ');
+        stageCount.style.display='none';
+      } else {
+        stageDefaultLabel.textContent = 'Stages';
+        stageCount.textContent = checked.length + ' selected';
+        stageCount.style.display='';
+      }
+    }
+    if(triggerChange) refreshAll();
+  }
+  function attachStageEvents(){
+    if(!stageMenu) return;
+    const selectAllBtn = stageMenu.querySelector('#stage-select-all');
+    const clearBtn = stageMenu.querySelector('#stage-clear');
+    const searchInput = stageMenu.querySelector('#stage-search');
+    if(selectAllBtn){
+      selectAllBtn.addEventListener('click', () => {
+        // Only select visible options
+        stageMenu.querySelectorAll('.stage-option:not([data-hidden="1"]) .stage-checkbox').forEach(cb => { cb.checked = true; });
+        updateStageSelection();
+      });
+    }
+    if(clearBtn){
+      clearBtn.addEventListener('click', () => {
+        stageMenu.querySelectorAll('.stage-checkbox').forEach(cb => { cb.checked = false; });
+        updateStageSelection();
+      });
+    }
+    stageMenu.querySelectorAll('.stage-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => updateStageSelection());
+    });
+    if(searchInput){
+      let lastFilter = '';
+      searchInput.addEventListener('input', () => {
+        const term = searchInput.value.trim();
+        if(term === lastFilter) return;
+        lastFilter = term;
+        if(!term){
+          // reset all
+          stageMenu.querySelectorAll('.stage-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
+          return;
+        }
+        const regex = buildWildcardRegex(term);
+        stageMenu.querySelectorAll('.stage-option').forEach(div => {
+          const label = (div.getAttribute('data-label') || '').toLowerCase();
+          const match = !regex || regex.test(label);
+          if(match){
+            div.style.display='';
+            div.removeAttribute('data-hidden');
+          } else {
+            div.style.display='none';
+            div.setAttribute('data-hidden','1');
+          }
+        });
+      });
+    }
+  }
   let notifyCopyTooltip = null;
   const notifyCopyDefaultTitle = notifyCopyBtn ? (notifyCopyBtn.getAttribute('title') || 'Copy Email Addresses') : '';
   if(notifyCopyBtn && typeof bootstrap !== 'undefined' && bootstrap.Tooltip){
     notifyCopyTooltip = bootstrap.Tooltip.getOrCreateInstance(notifyCopyBtn, { trigger: 'manual' });
+  }
+  const exportModalEl = document.getElementById('exportConfigModal');
+  const exportModalTitleEl = document.getElementById('export-modal-table-label');
+  const exportRowRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-row-scope"]')) : [];
+  const exportColumnRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-column-mode"]')) : [];
+  const tableSpecificColumnRadios = exportModalEl ? Array.from(exportModalEl.querySelectorAll('input[name="export-column-mode"][data-table]')) : [];
+  const exportColumnPicker = exportModalEl ? exportModalEl.querySelector('#export-column-picker') : null;
+  const exportAvailableList = exportModalEl ? exportModalEl.querySelector('[data-role="available-list"]') : null;
+  const exportSelectedList = exportModalEl ? exportModalEl.querySelector('[data-role="selected-list"]') : null;
+  const exportAvailableCount = exportModalEl ? exportModalEl.querySelector('#export-available-count') : null;
+  const exportSelectedCount = exportModalEl ? exportModalEl.querySelector('#export-selected-count') : null;
+  const exportCustomWarning = exportModalEl ? exportModalEl.querySelector('#export-custom-warning') : null;
+  const exportErrorAlert = exportModalEl ? exportModalEl.querySelector('#export-error-alert') : null;
+  const exportDownloadBtn = document.getElementById('export-download-btn');
+  const exportDownloadSpinner = exportDownloadBtn ? exportDownloadBtn.querySelector('.spinner-border') : null;
+  let exportModalInstance = null;
+  if(exportModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal){
+    exportModalInstance = bootstrap.Modal.getOrCreateInstance(exportModalEl);
   }
   const htmlEscapeMap = {
     '&': '&amp;',
@@ -507,10 +740,150 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"'`]/g, ch => htmlEscapeMap[ch] || ch);
   const escapeAttr = (value) => escapeHtml(value);
+  const escapeRegexLiteral = (value) => String(value ?? '').replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
+  function buildWildcardRegex(raw){
+    const term = String(raw ?? '').trim();
+    if(!term){
+      return null;
+    }
+    const hasWildcard = term.includes('*');
+    const patternCore = term.split('*').map(escapeRegexLiteral).join('.*');
+    const pattern = hasWildcard ? `^${patternCore}$` : `.*${patternCore}.*`;
+    try {
+      return new RegExp(pattern, 'i');
+    } catch {
+      return null;
+    }
+  }
+  function formatWithTbd(value, formatter){
+    const formatted = formatter ? formatter(value) : value;
+    if(formatted === null || formatted === undefined) return 'TBD';
+    const text = typeof formatted === 'string' ? formatted.trim() : String(formatted).trim();
+    if(text === '') return 'TBD';
+    return formatted;
+  }
+  function deriveSetupAction(raw){
+    if(raw === null || raw === undefined) return '';
+    const text = String(raw).trim();
+    return text;
+  }
   const columnState = {
     inventory: {},
     par: {},
   };
+  const tableColumnOrder = {
+    inventory: [],
+    par: [],
+  };
+  const exportTableLabels = {
+    inventory: 'Inventory Locations',
+    par: 'Par Locations',
+  };
+  const exportPresetFields = {
+    inventory: {
+      inventory_setup: [
+        'company',
+        'location_ri',
+        'replacement_item',
+        'recommended_transaction_uom_ri',
+        'recommended_preferred_bin_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'recommended_auto_replenishment_ri',
+        'manufacturer_number_ri',
+  'setup_action',
+        'notes',
+        'preferred_bin_ri',
+        'min_order_qty_ri',
+        'max_order_qty_ri',
+        'reorder_point_ri',
+      ],
+    },
+    par: {
+      par_setup_replacement: [
+        'company',
+        'location_ri',
+        'location_text',
+        'replacement_item',
+        'manufacturer_number_ri',
+        'item_description_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'stock_uom_ri',
+        'recommended_preferred_bin_ri',
+  'setup_action',
+        'notes',
+        'preferred_bin_ri',
+        'reorder_point_ri',
+      ],
+      par_setup_original: [
+        'company',
+        'location',
+        'location_text',
+        'item',
+        'manufacturer_number',
+        'item_description',
+        'min_order_qty',
+        'max_order_qty',
+        'reorder_point',
+        'stock_uom',
+        'preferred_bin',
+  'setup_action',
+        'notes',
+        'preferred_bin_ri',
+        'reorder_point_ri',
+      ],
+    },
+  };
+  const customExportModes = new Set(['custom', 'inventory_setup', 'par_setup_replacement', 'par_setup_original']);
+  const exportState = {
+    tableKey: null,
+    rowScope: 'filtered',
+    columnMode: 'visible',
+    allColumns: [],
+    selectedFields: [],
+    isBusy: false,
+  };
+  let exportDragData = null;
+
+  function initializeColumnMetadata(tableKey, table){
+    if(!table) return;
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return;
+    const order = Array.from(headerRow.children).map(th => th.id || '').map(id => id || '');
+    tableColumnOrder[tableKey] = order;
+    const annotateRow = (row) => {
+      if(!row) return;
+      Array.from(row.children).forEach((cell, index) => {
+        const columnId = order[index] || cell.dataset.columnId || cell.id || '';
+        if(columnId){
+          cell.dataset.columnId = columnId;
+        }
+      });
+    };
+    if(table.tHead){
+      Array.from(table.tHead.rows).forEach(annotateRow);
+    }
+    Array.from(table.tBodies || []).forEach(tbody => {
+      Array.from(tbody.rows).forEach(annotateRow);
+    });
+  }
+
+  function annotateBodyRow(tableKey, row){
+    if(!row) return;
+    const order = tableColumnOrder[tableKey];
+    if(!Array.isArray(order) || !order.length) return;
+    const cells = Array.from(row.children);
+    const limit = Math.min(order.length, cells.length);
+    for(let i = 0; i < limit; i++){
+      const columnId = order[i];
+      if(columnId){
+        cells[i].dataset.columnId = columnId;
+      }
+    }
+  }
 
   function renderRefreshTimestamp(isoString){
     if(!refreshValueEl) return;
@@ -663,6 +1036,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     suppressHideSync = false;
     if(!skipReload){
+      loadKpiStats();
       loadInventory(currentPage);
       loadPar(parCurrentPage);
     }
@@ -691,25 +1065,27 @@ document.addEventListener('DOMContentLoaded', () => {
   
   console.log('Dashboard JS loaded, tbody:', tbody, 'countEl:', countEl);
 
+  initializeColumnMetadata('inventory', inventoryTable);
+  initializeColumnMetadata('par', parTable);
+
   function toggleColumnVisibility(table, columnId, show){
     if(!table || !columnId) return;
-    const header = table.querySelector(`#${cssEscape(columnId)}`);
-    if(!header) return;
-    const headerRow = header.parentElement;
-    const colIndex = Array.from(headerRow.children).indexOf(header);
-    if(colIndex < 0) return;
     const display = show ? '' : 'none';
+    const selector = `[data-column-id="${columnId}"]`;
     if(table.tHead){
       Array.from(table.tHead.rows).forEach(row => {
-        const cell = row.children[colIndex];
+        let cell = row.querySelector(selector);
+        if(!cell){
+          cell = row.querySelector(`#${cssEscape(columnId)}`);
+        }
         if(cell) cell.style.display = display;
       });
-    } else {
-      header.style.display = display;
     }
-    table.querySelectorAll('tbody tr').forEach(tr => {
-      const cell = tr.children[colIndex];
-      if(cell) cell.style.display = display;
+    Array.from(table.tBodies || []).forEach(tbody => {
+      Array.from(tbody.rows).forEach(row => {
+        const cell = row.querySelector(selector);
+        if(cell) cell.style.display = display;
+      });
     });
   }
 
@@ -717,39 +1093,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!table || !columnId || !targetColumnId) return;
     const headerRow = table.querySelector('thead tr.column-header-labels');
     if(!headerRow) return;
-    const headerCells = Array.from(headerRow.children);
     const sourceHeader = headerRow.querySelector(`#${cssEscape(columnId)}`);
     const targetHeader = headerRow.querySelector(`#${cssEscape(targetColumnId)}`);
     if(!sourceHeader || !targetHeader) return;
-    const sourceIndex = headerCells.indexOf(sourceHeader);
-    let targetIndex = headerCells.indexOf(targetHeader);
-    if(sourceIndex < 0 || targetIndex < 0) return;
-    if(position === 'after'){
-      targetIndex += 1;
+    const placeAfter = position === 'after';
+    const headerReference = placeAfter ? targetHeader.nextSibling : targetHeader;
+    if(headerReference !== sourceHeader){
+      headerRow.insertBefore(sourceHeader, headerReference);
     }
-    if(targetIndex === sourceIndex || (position === 'after' && targetIndex === sourceIndex + 1)){
-      return;
-    }
-
-    const moveCell = (row) => {
+    const repositionCells = (row) => {
       if(!row) return;
-      const cells = Array.from(row.children);
-      if(sourceIndex >= cells.length) return;
-      const cell = cells[sourceIndex];
-      if(!cell) return;
-      const reference = targetIndex >= cells.length ? null : row.children[targetIndex];
-      if(reference){
-        row.insertBefore(cell, reference);
-      } else {
-        row.appendChild(cell);
+      let sourceCell = row.querySelector(`[data-column-id="${columnId}"]`);
+      let targetCell = row.querySelector(`[data-column-id="${targetColumnId}"]`);
+      if(!sourceCell || !targetCell || sourceCell === targetCell) return;
+      const reference = placeAfter ? targetCell.nextSibling : targetCell;
+      if(reference !== sourceCell){
+        row.insertBefore(sourceCell, reference);
       }
     };
-
     if(table.tHead){
-      Array.from(table.tHead.rows).forEach(moveCell);
+      Array.from(table.tHead.rows).forEach(row => {
+        if(row === headerRow) return;
+        repositionCells(row);
+      });
     }
     Array.from(table.tBodies || []).forEach(tbody => {
-      Array.from(tbody.rows).forEach(moveCell);
+      Array.from(tbody.rows).forEach(repositionCells);
     });
   }
 
@@ -867,27 +1236,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let lastFilter = '';
     searchInput.addEventListener('input', () => {
-      const raw = searchInput.value.trim();
-      if(raw === lastFilter) return;
-      lastFilter = raw;
-      if(!raw){
+      const term = searchInput.value.trim();
+      if(term === lastFilter) return;
+      lastFilter = term;
+      if(!term){
         optionsContainer.querySelectorAll('.column-option').forEach(option => {
           option.style.display = '';
           option.removeAttribute('data-hidden');
         });
         return;
       }
-      let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&');
-      patternEsc = patternEsc.replace(/\\\*/g, '.*');
-      if(!raw.includes('*')){
-        patternEsc = '.*' + patternEsc + '.*';
-      }
-      let regex = null;
-      try {
-        regex = new RegExp(patternEsc, 'i');
-      } catch {
-        regex = null;
-      }
+      const regex = buildWildcardRegex(term);
       optionsContainer.querySelectorAll('.column-option').forEach(option => {
         const label = option.getAttribute('data-label') || '';
         const match = !regex || regex.test(label);
@@ -907,6 +1266,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize new UOM/reorder columns as hidden
   const recommendedColumns = [
+    'recommended_preferred_bin_ri',
+    'recommended_auto_replenishment_ri',
+    'recommended_transaction_uom_ri',
+    'recommended_transaction_uom_multiplier_ri',
     'recommended_reorder_quantity_code_ri',
     'recommended_reorder_point_ri',
     'recommended_min_order_qty_ri',
@@ -915,11 +1278,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const setupColumns = [
     'stock_uom', 'uom_conversion', 'buy_uom', 'buy_uom_multiplier',
     'transaction_uom', 'transaction_uom_multiplier', 'reorder_quantity_code',
+    'company', 'location_text',
     'min_order_qty', 'max_order_qty', 'manufacturer_number',
     'stock_uom_ri', 'uom_conversion_ri', 'buy_uom_ri', 'buy_uom_multiplier_ri',
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
     'preferred_bin', 'preferred_bin_ri',
+    'action', 'setup_action', 'notes',
     ...recommendedColumns,
   ];
   ['inventory', 'par'].forEach(tableKey => {
@@ -1297,8 +1662,32 @@ document.addEventListener('DOMContentLoaded', () => {
           <div id="loc-options-container">${locItemsHtml}</div>`;
       }
       attachLocationEvents();
-      // Stages (restricted)
-      selStage.innerHTML = '<option value="">All</option>' + data.stages.map(s => `<option value="${s}">${s}</option>`).join('');
+      // Stages (restricted) -> build checkbox list to support multi-select
+      const stages = data.stages || [];
+      if(!stages.length){
+        stageMenu.innerHTML = '<div class="px-2 py-1 text-muted">No stages found</div>';
+        selStage.value = '';
+      } else {
+        const stageItemsHtml = stages.map(s => {
+          const val = s;
+          const label = s;
+          const safeId = String(val).replace(/[^a-zA-Z0-9_-]/g,'');
+          return `<div class="form-check stage-option" data-label="${escapeAttr(String(label).toLowerCase())}">
+  <input class="form-check-input stage-checkbox" type="checkbox" value="${val}" id="stage-${safeId}">
+  <label class="form-check-label" for="stage-${safeId}">${escapeHtml(label)}</label>
+</div>`;
+        }).join('');
+        stageMenu.innerHTML = `
+          <input type="text" class="form-control form-control-sm mb-2" id="stage-search" placeholder="Search (use * wildcard)" autocomplete="off" />
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="stage-select-all">Select All</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="stage-clear">Clear</button>
+          </div>
+          <div class="border-top mt-2 pt-2"></div>
+          ${stageItemsHtml}`;
+        selStage.value = '';
+      }
+      attachStageEvents();
     } catch (e) {
       console.error('Failed to load filter options', e);
     }
@@ -1310,6 +1699,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if(selLocation.value) params.set('location', selLocation.value);
     if(selStage.value) params.set('stage', selStage.value);
     if(inpDescSearch.value) params.set('desc_search', inpDescSearch.value.trim());
+    if(hideROnly){
+      params.set('hide_r_only', 'true');
+    }
     return params;
   }
 
@@ -1376,9 +1768,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (kpiGroups) kpiGroups.textContent = '...';
       if (kpiItems) kpiItems.textContent = '...';
       if (kpiReady) kpiReady.textContent = '...';
-
       const params = buildSharedQueryParams();
-      appendColumnFilterParams(params, 'inventory');
       const resp = await fetch(`/dashboard/api/stats?${params.toString()}`);
       
       if (!resp.ok) {
@@ -1449,6 +1839,15 @@ document.addEventListener('DOMContentLoaded', () => {
           if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
           return normalized;
         }
+        const actionNormalized = String(r.action || '').trim().toLowerCase();
+        const recommendedPreferredBinDisplay = (setupMode && actionNormalized === 'create')
+          ? 'NEW ITEM'
+          : formatWithTbd(r.recommended_preferred_bin_ri, fmt);
+        const recommendedAutoReplDisplay = formatWithTbd(r.recommended_auto_replenishment_ri, fmt);
+        const recommendedReorderPolicyDisplay = formatWithTbd(r.recommended_reorder_quantity_code_ri, reorderCode);
+        const recordAction = fmt(r.action);
+        const setupActionValue = r.setup_action !== undefined ? r.setup_action : deriveSetupAction(r.action);
+        const setupAction = fmt(setupActionValue);
     tr.dataset.itemGroup = r.item_group;
     tr.dataset.item = r.item;
     tr.dataset.location = r.location || '';
@@ -1457,6 +1856,9 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="col-text text-center">${fmt(r.company)}</td>
+          <td class="col-location-name text-start">${fmt(r.location_text)}</td>
+          <td class="text-center col-group-type">${fmt(r.group_type)}</td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-item-cell col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
@@ -1482,7 +1884,9 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="fw-semibold text-wrap col-repl-item-cell col-repl text-center">${fmt(r.replacement_item)}</td>
           <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
           <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
+          <td class="col-repl col-recom text-center">${recommendedPreferredBinDisplay}</td>
           <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+          <td class="col-repl col-recom text-center">${recommendedAutoReplDisplay}</td>
           <td class="col-repl text-center">${fmt(r.active_ri)}</td>
           <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
           <td class="col-repl text-center">${num(r.current_qty_ri,0)}</td>
@@ -1493,9 +1897,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
           <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
           <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+          <td class="col-repl col-recom text-center">${fmt(r.recommended_transaction_uom_ri)}</td>
           <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+          <td class="col-repl col-recom text-center">${num(r.recommended_transaction_uom_multiplier_ri, 0)}</td>
           <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
-          <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+          <td class="col-repl col-recom text-center">${recommendedReorderPolicyDisplay}</td>
           <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
           <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
           <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
@@ -1505,7 +1911,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="col-text text-center">${recordAction}</td>
+          <td class="col-text text-center">${setupAction}</td>
+          <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
         `;
+        annotateBodyRow('inventory', tr);
         tbody.appendChild(tr);
       }
       applyColumnState(inventoryTable, columnState.inventory);
@@ -1555,6 +1965,12 @@ document.addEventListener('DOMContentLoaded', () => {
           if(normalized === 'Fixed Reorder Quantity') return 'FRQ';
           return normalized;
         }
+        const recommendedPreferredBinDisplay = formatWithTbd(r.recommended_preferred_bin_ri, fmt);
+        const recommendedAutoReplDisplay = formatWithTbd(r.recommended_auto_replenishment_ri, fmt);
+        const recommendedReorderPolicyDisplay = formatWithTbd(r.recommended_reorder_quantity_code_ri, reorderCode);
+        const recordAction = fmt(r.action);
+        const setupActionValue = r.setup_action !== undefined ? r.setup_action : deriveSetupAction(r.action);
+        const setupAction = fmt(setupActionValue);
         const tr = document.createElement('tr');
   tr.dataset.itemGroup = r.item_group || '';
   tr.dataset.item = r.item || '';
@@ -1565,6 +1981,9 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.innerHTML = `
           <td class="stage-cell text-center" data-value="${fmt(r.stage)}">${r.stage ? `<span class='badge stage-badge stage-${(r.stage || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '')}'>${fmt(r.stage)}</span>` : ''}</td>
           <td class="text-center item-group-cell"><span class="item-group-label">${fmt(r.item_group)}</span></td>
+          <td class="col-text text-center">${fmt(r.company)}</td>
+          <td class="col-location-name text-start">${fmt(r.location_text)}</td>
+          <td class="text-center col-group-type">${fmt(r.group_type)}</td>
           <td class="col-num text-center col-weekly-group">${num(r.weekly_burn_group_location)}</td>
           <td class="fw-semibold text-wrap col-src text-center">${fmt(r.item)}</td>
           <td class="text-wrap col-src text-center">${fmt(r.location)}</td>
@@ -1589,7 +2008,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="fw-semibold text-wrap col-repl text-center">${fmt(r.replacement_item)}</td>
             <td class="text-wrap col-repl text-center">${fmt(r.location_ri)}</td>
             <td class="col-repl text-center">${fmt(r.preferred_bin_ri)}</td>
+            <td class="col-repl col-recom text-center">${recommendedPreferredBinDisplay}</td>
             <td class="col-repl text-center">${fmt(r.auto_replenishment_ri)}</td>
+            <td class="col-repl col-recom text-center">${recommendedAutoReplDisplay}</td>
             <td class="col-repl text-center">${fmt(r.active_ri)}</td>
             <td class="col-repl text-center">${fmt(r.discontinued_ri)}</td>
             <td class="col-repl text-center">${num(r.reorder_point_ri,0)}</td>
@@ -1600,9 +2021,11 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl text-center">${fmt(r.buy_uom_ri)}</td>
             <td class="col-repl text-center">${num(r.buy_uom_multiplier_ri, 0)}</td>
             <td class="col-repl text-center">${fmt(r.transaction_uom_ri)}</td>
+            <td class="col-repl col-recom text-center">${fmt(r.recommended_transaction_uom_ri)}</td>
             <td class="col-repl text-center">${num(r.transaction_uom_multiplier_ri, 0)}</td>
+            <td class="col-repl col-recom text-center">${num(r.recommended_transaction_uom_multiplier_ri, 0)}</td>
             <td class="col-repl text-center">${reorderCode(r.reorder_quantity_code_ri)}</td>
-            <td class="col-repl col-recom text-center">${reorderCode(r.recommended_reorder_quantity_code_ri)}</td>
+            <td class="col-repl col-recom text-center">${recommendedReorderPolicyDisplay}</td>
             <td class="col-repl col-recom text-center">${num(r.recommended_reorder_point_ri,0)}</td>
             <td class="col-repl text-center">${num(r.min_order_qty_ri,0)}</td>
             <td class="col-repl col-recom text-center">${num(r.recommended_min_order_qty_ri,0)}</td>
@@ -1610,8 +2033,12 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl col-recom text-center">${num(r.recommended_max_order_qty_ri,0)}</td>
             <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
             <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
-            <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+      <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+            <td class="col-text text-center">${recordAction}</td>
+            <td class="col-text text-center">${setupAction}</td>
+      <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
         `;
+        annotateBodyRow('par', tr);
         parTbody.appendChild(tr);
       }
       applyParColumnArrangement();
@@ -1853,54 +2280,438 @@ document.addEventListener('DOMContentLoaded', () => {
     return fields;
   }
 
-  async function exportTable(tableKey){
-    const button = tableKey === 'inventory' ? inventoryExportBtn : parExportBtn;
-    if(button){
-      button.disabled = true;
-      button.setAttribute('aria-busy', 'true');
+  function gatherAllColumnMetadata(tableKey){
+    const table = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
+    if(!table) return [];
+    const headerRow = table.querySelector('thead tr.column-header-labels');
+    if(!headerRow) return [];
+    const results = [];
+    Array.from(headerRow.children).forEach(th => {
+      const field = (th.dataset.field || '').trim();
+      if(!field) return;
+      const label = (th.textContent || '').trim() || field;
+      results.push({
+        field,
+        label,
+        columnId: th.id || '',
+      });
+    });
+    return results;
+  }
+
+  function syncTableSpecificColumnModes(tableKey){
+    if(!exportModalEl) return;
+    tableSpecificColumnRadios.forEach(radio => {
+      const target = radio.dataset.table;
+      const matches = target === tableKey;
+      const wrapper = radio.closest('.export-column-mode-option');
+      if(wrapper){
+        wrapper.classList.toggle('d-none', !matches);
+      }
+      radio.disabled = !matches;
+      if(!matches && radio.checked){
+        radio.checked = false;
+      }
+    });
+  }
+
+  function renderExportColumnItem(column, listType){
+    const item = document.createElement('div');
+    item.className = 'export-column-item';
+    item.setAttribute('role', 'option');
+    item.setAttribute('tabindex', '0');
+    item.dataset.field = column.field;
+    item.dataset.listType = listType;
+    item.innerHTML = `<div class="export-column-item-title">${escapeHtml(column.label)}</div><div class="export-column-item-sub text-muted">${escapeHtml(column.field)}</div>`;
+    item.draggable = true;
+    item.addEventListener('dragstart', handleExportDragStart);
+    item.addEventListener('dragend', handleExportDragEnd);
+    item.addEventListener('dblclick', () => {
+      if(listType === 'available'){
+        moveFieldToSelected(column.field);
+      } else {
+        moveFieldToAvailable(column.field);
+      }
+    });
+    item.addEventListener('keydown', (event) => {
+      if(event.key === 'Enter' || event.key === ' '){
+        event.preventDefault();
+        if(listType === 'available'){
+          moveFieldToSelected(column.field);
+        } else {
+          moveFieldToAvailable(column.field);
+        }
+      }
+    });
+    return item;
+  }
+
+  function refreshExportColumnLists(){
+    if(!exportModalEl) return;
+    const columnMap = new Map(exportState.allColumns.map(col => [col.field, col]));
+    exportState.selectedFields = exportState.selectedFields.filter(field => columnMap.has(field));
+    const availableFields = exportState.allColumns
+      .map(col => col.field)
+      .filter(field => !exportState.selectedFields.includes(field))
+      .sort((a, b) => a.localeCompare(b));
+    if(exportAvailableList){
+      exportAvailableList.innerHTML = '';
+      availableFields.forEach(field => {
+        const metadata = columnMap.get(field);
+        if(metadata){
+          exportAvailableList.appendChild(renderExportColumnItem(metadata, 'available'));
+        }
+      });
     }
-    try {
-      const params = buildSharedQueryParams();
+    if(exportSelectedList){
+      exportSelectedList.innerHTML = '';
+      exportState.selectedFields.forEach(field => {
+        const metadata = columnMap.get(field);
+        if(metadata){
+          exportSelectedList.appendChild(renderExportColumnItem(metadata, 'selected'));
+        }
+      });
+    }
+    if(exportAvailableCount){
+      exportAvailableCount.textContent = availableFields.length;
+    }
+    if(exportSelectedCount){
+      exportSelectedCount.textContent = exportState.selectedFields.length;
+    }
+    updateExportConfirmState();
+  }
+
+  function moveFieldToSelected(field, index){
+    if(!field) return;
+    const existingIndex = exportState.selectedFields.indexOf(field);
+    if(existingIndex !== -1){
+      exportState.selectedFields.splice(existingIndex, 1);
+    }
+    const insertionIndex = typeof index === 'number'
+      ? Math.max(0, Math.min(index, exportState.selectedFields.length))
+      : exportState.selectedFields.length;
+    exportState.selectedFields.splice(insertionIndex, 0, field);
+    refreshExportColumnLists();
+  }
+
+  function moveFieldToAvailable(field){
+    const idx = exportState.selectedFields.indexOf(field);
+    if(idx !== -1){
+      exportState.selectedFields.splice(idx, 1);
+      refreshExportColumnLists();
+    }
+  }
+
+  function clearExportErrors(){
+    if(exportErrorAlert){
+      exportErrorAlert.classList.add('d-none');
+      exportErrorAlert.textContent = '';
+    }
+  }
+
+  function showExportError(message){
+    if(exportErrorAlert){
+      exportErrorAlert.textContent = message;
+      exportErrorAlert.classList.remove('d-none');
+    }
+  }
+
+  function updateExportConfirmState(){
+    const requiresSelection = customExportModes.has(exportState.columnMode);
+    const hasSelection = exportState.selectedFields.length > 0;
+    if(exportCustomWarning){
+      exportCustomWarning.classList.toggle('d-none', !(requiresSelection && !hasSelection));
+    }
+    if(exportDownloadBtn){
+      const disabled = exportState.isBusy || (requiresSelection && !hasSelection);
+      exportDownloadBtn.disabled = disabled;
+      exportDownloadBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    }
+    if(exportDownloadSpinner){
+      exportDownloadSpinner.classList.toggle('d-none', !exportState.isBusy);
+    }
+  }
+
+  function setExportRowScope(scope){
+    exportState.rowScope = scope === 'all' ? 'all' : 'filtered';
+    exportRowRadios.forEach(radio => {
+      radio.checked = radio.value === exportState.rowScope;
+    });
+  }
+
+  function setExportColumnMode(mode){
+    const parModes = ['par_setup_replacement', 'par_setup_original'];
+    const allowedModes = ['all', 'visible', 'custom', 'inventory_setup', ...parModes];
+    let normalized = allowedModes.includes(mode) ? mode : 'all';
+    if(normalized === 'inventory_setup' && exportState.tableKey !== 'inventory'){
+      normalized = 'all';
+    } else if(parModes.includes(normalized) && exportState.tableKey !== 'par'){
+      normalized = 'all';
+    }
+    exportState.columnMode = normalized;
+    if(normalized === 'custom' && exportState.selectedFields.length === 0){
+      const fallback = exportState.tableKey ? collectVisibleColumnFields(exportState.tableKey) : [];
+      if(fallback.length){
+        exportState.selectedFields = fallback.slice();
+      } else if(exportState.allColumns.length){
+        exportState.selectedFields = exportState.allColumns.map(col => col.field);
+      }
+    } else if(normalized === 'inventory_setup' || parModes.includes(normalized)){
+      const presets = (exportPresetFields[exportState.tableKey] || {})[normalized] || [];
+      const availableFields = new Set(exportState.allColumns.map(col => col.field));
+      const filtered = presets.filter(field => availableFields.has(field));
+      if(filtered.length){
+        exportState.selectedFields = filtered.slice();
+      } else {
+        const fallback = exportState.tableKey ? collectVisibleColumnFields(exportState.tableKey) : [];
+        if(fallback.length){
+          exportState.selectedFields = fallback.slice();
+        } else if(exportState.allColumns.length){
+          exportState.selectedFields = exportState.allColumns.map(col => col.field);
+        } else {
+          exportState.selectedFields = [];
+        }
+      }
+    }
+    syncExportColumnModeUI();
+    updateExportConfirmState();
+  }
+
+  function syncExportColumnModeUI(){
+    exportColumnRadios.forEach(radio => {
+      radio.checked = radio.value === exportState.columnMode;
+    });
+    if(exportColumnPicker){
+      exportColumnPicker.classList.toggle('d-none', !customExportModes.has(exportState.columnMode));
+    }
+    refreshExportColumnLists();
+  }
+
+  function openExportModal(tableKey){
+    if(!exportModalEl || !exportModalInstance){
+      performExport(tableKey, { rowScope: 'filtered', columnMode: 'visible' }).catch(err => {
+        console.error('Failed exporting table', tableKey, err);
+      });
+      return;
+    }
+    exportState.tableKey = tableKey;
+    exportState.allColumns = gatherAllColumnMetadata(tableKey);
+    exportState.selectedFields = collectVisibleColumnFields(tableKey);
+    const hasVisibleColumns = exportState.selectedFields.length > 0;
+    exportState.rowScope = 'filtered';
+    exportState.isBusy = false;
+    exportDragData = null;
+    clearExportErrors();
+    if(exportModalTitleEl){
+      exportModalTitleEl.textContent = exportTableLabels[tableKey] || tableKey.toUpperCase();
+    }
+    if(!hasVisibleColumns && exportState.allColumns.length){
+      exportState.selectedFields = exportState.allColumns.map(col => col.field);
+    }
+    syncTableSpecificColumnModes(tableKey);
+    setExportRowScope(exportState.rowScope);
+    const defaultMode = hasVisibleColumns ? 'visible' : 'all';
+    setExportColumnMode(defaultMode);
+    exportModalInstance.show();
+  }
+
+  function handleExportDragStart(event){
+    const target = event.currentTarget;
+    const field = target && target.dataset ? target.dataset.field : null;
+    if(!field) return;
+    exportDragData = {
+      field,
+      from: target.dataset.listType || 'available',
+    };
+    target.classList.add('is-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', field);
+  }
+
+  function handleExportDragEnd(event){
+    const target = event.currentTarget;
+    if(target){
+      target.classList.remove('is-dragging');
+    }
+    handleAvailableDragLeave();
+    handleSelectedDragLeave();
+    exportDragData = null;
+  }
+
+  function handleAvailableDragOver(event){
+    if(!exportDragData) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if(exportAvailableList){
+      exportAvailableList.classList.add('drop-active');
+    }
+  }
+
+  function handleAvailableDragLeave(){
+    if(exportAvailableList){
+      exportAvailableList.classList.remove('drop-active');
+    }
+  }
+
+  function handleAvailableDrop(event){
+    if(!exportDragData) return;
+    event.preventDefault();
+    const field = exportDragData.field || event.dataTransfer.getData('text/plain');
+    handleAvailableDragLeave();
+    moveFieldToAvailable(field);
+  }
+
+  function getSelectedInsertIndex(container, cursorY){
+    const items = Array.from(container.querySelectorAll('.export-column-item:not(.is-dragging)'));
+    for(let index = 0; index < items.length; index++){
+      const rect = items[index].getBoundingClientRect();
+      if(cursorY < rect.top + rect.height / 2){
+        return index;
+      }
+    }
+    return items.length;
+  }
+
+  function handleSelectedDragOver(event){
+    if(!exportDragData || !exportSelectedList) return;
+    event.preventDefault();
+    const insertIndex = getSelectedInsertIndex(exportSelectedList, event.clientY);
+    exportSelectedList.dataset.dropIndex = String(insertIndex);
+    exportSelectedList.classList.add('drop-active');
+    event.dataTransfer.dropEffect = 'move';
+  }
+
+  function handleSelectedDragLeave(){
+    if(exportSelectedList){
+      exportSelectedList.classList.remove('drop-active');
+      delete exportSelectedList.dataset.dropIndex;
+    }
+  }
+
+  function handleSelectedDrop(event){
+    if(!exportDragData || !exportSelectedList) return;
+    event.preventDefault();
+    const field = exportDragData.field || event.dataTransfer.getData('text/plain');
+    const insertIndex = exportSelectedList.dataset.dropIndex ? Number(exportSelectedList.dataset.dropIndex) : exportState.selectedFields.length;
+    handleSelectedDragLeave();
+    moveFieldToSelected(field, insertIndex);
+  }
+
+  async function performExport(tableKey, options = {}){
+    const params = new URLSearchParams();
+    const effectiveRowScope = options.rowScope === 'all' ? 'all' : 'filtered';
+    if(effectiveRowScope === 'all'){
+      params.set('row_scope', 'all');
+    } else {
+      const baseParams = buildSharedQueryParams();
+      baseParams.forEach((value, key) => params.set(key, value));
       appendColumnFilterParams(params, tableKey);
+      params.set('row_scope', 'filtered');
       if(hideROnly){
         params.set('hide_r_only', 'true');
       }
+    }
+    const mode = customExportModes.has(options.columnMode) ? options.columnMode : (options.columnMode === 'visible' ? 'visible' : 'all');
+    if(mode === 'visible'){
       const visibleFields = collectVisibleColumnFields(tableKey);
       if(visibleFields.length){
-        params.set('visible_columns', visibleFields.join(','));
+        params.set('column_mode', 'visible');
+        params.set('columns', visibleFields.join(','));
+      } else {
+        params.set('column_mode', 'all');
       }
-      const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
-      if(!resp.ok){
-        throw new Error(`Export failed (${resp.status})`);
+    } else if(customExportModes.has(mode)){
+      const selected = Array.isArray(options.selectedFields) ? options.selectedFields.filter(Boolean) : [];
+      if(!selected.length){
+        throw new Error('Select at least one column before exporting.');
       }
-      const blob = await resp.blob();
-      let filename = `${tableKey}-export.xlsx`;
-      const disposition = resp.headers.get('Content-Disposition') || '';
-      const match = disposition.match(/filename\*?=(?:UTF-8''|\"?)([^";]+)/i);
-      if(match && match[1]){
-        const raw = match[1].replace(/^"|"$/g, '');
-        try {
-          filename = decodeURIComponent(raw);
-        } catch {
-          filename = raw;
-        }
+      params.set('column_mode', mode);
+      params.set('columns', selected.join(','));
+    } else {
+      params.set('column_mode', 'all');
+    }
+    const resp = await fetch(`/dashboard/export/${tableKey}?${params.toString()}`);
+    if(!resp.ok){
+      let detail = '';
+      try {
+        detail = await resp.text();
+      } catch {
+        detail = '';
       }
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      window.URL.revokeObjectURL(url);
-      link.remove();
-    } catch (err){
-      console.error('Failed exporting table', tableKey, err);
-    } finally {
-      if(button){
-        button.disabled = false;
-        button.removeAttribute('aria-busy');
+      throw new Error(detail || `Export failed (${resp.status})`);
+    }
+    const blob = await resp.blob();
+    let filename = `${tableKey}-export.xlsx`;
+    const disposition = resp.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+    if(match && match[1]){
+      const raw = match[1].replace(/^"|"$/g, '');
+      try {
+        filename = decodeURIComponent(raw);
+      } catch {
+        filename = raw;
       }
     }
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    window.URL.revokeObjectURL(url);
+    link.remove();
+  }
+
+  if(exportAvailableList){
+    exportAvailableList.addEventListener('dragover', handleAvailableDragOver);
+    exportAvailableList.addEventListener('dragleave', handleAvailableDragLeave);
+    exportAvailableList.addEventListener('drop', handleAvailableDrop);
+  }
+  if(exportSelectedList){
+    exportSelectedList.addEventListener('dragover', handleSelectedDragOver);
+    exportSelectedList.addEventListener('dragleave', handleSelectedDragLeave);
+    exportSelectedList.addEventListener('drop', handleSelectedDrop);
+  }
+  exportRowRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if(radio.checked){
+        setExportRowScope(radio.value);
+        updateExportConfirmState();
+      }
+    });
+  });
+  exportColumnRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if(radio.checked){
+        setExportColumnMode(radio.value);
+      }
+    });
+  });
+  if(exportDownloadBtn){
+    exportDownloadBtn.addEventListener('click', async () => {
+      if(!exportState.tableKey || exportState.isBusy) return;
+      exportState.isBusy = true;
+      clearExportErrors();
+      updateExportConfirmState();
+      try {
+        const selectedFields = customExportModes.has(exportState.columnMode) ? [...exportState.selectedFields] : [];
+        await performExport(exportState.tableKey, {
+          rowScope: exportState.rowScope,
+          columnMode: exportState.columnMode,
+          selectedFields,
+        });
+        if(exportModalInstance){
+          exportModalInstance.hide();
+        }
+      } catch (err) {
+        console.error('Failed exporting table', exportState.tableKey, err);
+        const message = err && err.message ? err.message : 'Export failed.';
+        showExportError(message);
+      } finally {
+        exportState.isBusy = false;
+        updateExportConfirmState();
+      }
+    });
   }
 
   btnFirst.addEventListener('click', () => { if(currentPage>1) loadInventory(1); });
@@ -1914,32 +2725,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-apply filters: on any select change, reload data (debounced)
   function debounce(fn, delay=150){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
-  const autoApply = debounce(()=>{ loadKpiStats(); loadInventory(1); loadPar(1); });
+  const refreshTables = debounce(()=>{ loadInventory(1); loadPar(1); });
+  const refreshAll = debounce(()=>{ loadKpiStats(); loadInventory(1); loadPar(1); });
   if(inventoryResetBtn){
     inventoryResetBtn.addEventListener('click', () => {
       resetColumnFiltersFor('inventory');
-      autoApply();
+      refreshTables();
     });
   }
   if(parResetBtn){
     parResetBtn.addEventListener('click', () => {
       resetColumnFiltersFor('par');
-      autoApply();
+      refreshTables();
     });
   }
   if(inventoryExportBtn){
     inventoryExportBtn.addEventListener('click', () => {
-      exportTable('inventory');
+      openExportModal('inventory');
     });
   }
   if(parExportBtn){
     parExportBtn.addEventListener('click', () => {
-      exportTable('par');
+      openExportModal('par');
     });
   }
   [selStage, inpDescSearch].forEach(ctrl => {
     if(ctrl){
-      ctrl.addEventListener('change', autoApply);
+      ctrl.addEventListener('change', refreshAll);
     }
   });
 
@@ -1960,7 +2772,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const dropdown = window.bootstrap.Dropdown.getOrCreateInstance(toggle);
       dropdown.hide();
     }
-    autoApply();
+    refreshTables();
   });
   // Multi-select handling
   function updateItemGroupSelection(triggerChange=true){
@@ -1979,7 +2791,7 @@ document.addEventListener('DOMContentLoaded', () => {
         itemGroupCount.style.display='';
       }
     }
-    if(triggerChange) autoApply();
+    if(triggerChange) refreshAll();
   }
   function attachItemGroupEvents(){
     const selectAllBtn = itemGroupMenu.querySelector('#ig-select-all');
@@ -2004,24 +2816,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if(searchInput){
       let lastFilter = '';
       searchInput.addEventListener('input', () => {
-        const raw = searchInput.value.trim();
-        if(raw === lastFilter) return;
-        lastFilter = raw;
-        if(!raw){
+        const term = searchInput.value.trim();
+        if(term === lastFilter) return;
+        lastFilter = term;
+        if(!term){
           // reset all
           itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
           return;
         }
-        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
-        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
-        // After escaping, literal '*' became \*; replace with '.*'
-        patternEsc = patternEsc.replace(/\\\*/g, '.*');
-        if(!raw.includes('*')){
-          // Implicit contains match
-          patternEsc = '.*' + patternEsc + '.*';
-        }
-        let regex = null;
-        try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        const regex = buildWildcardRegex(term);
         itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => {
           const label = (div.getAttribute('data-label') || '').toLowerCase();
           const match = !regex || regex.test(label);
@@ -2053,7 +2856,7 @@ document.addEventListener('DOMContentLoaded', () => {
         locCount.style.display='';
       }
     }
-    if(triggerChange) autoApply();
+    if(triggerChange) refreshAll();
   }
   function attachLocationEvents(){
     const selectAllBtn = locMenu.querySelector('#loc-select-all');
@@ -2078,24 +2881,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if(searchInput){
       let lastFilter = '';
       searchInput.addEventListener('input', () => {
-        const raw = searchInput.value.trim();
-        if(raw === lastFilter) return;
-        lastFilter = raw;
-        if(!raw){
+        const term = searchInput.value.trim();
+        if(term === lastFilter) return;
+        lastFilter = term;
+        if(!term){
           // reset all
           locMenu.querySelectorAll('.location-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
           return;
         }
-        // Build wildcard pattern: '*' => '.*' (multi char). If user provides no '*', perform substring match automatically.
-        let patternEsc = raw.replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&'); // escape regex meta
-        // After escaping, literal '*' became \*; replace with '.*'
-        patternEsc = patternEsc.replace(/\\\*/g, '.*');
-        if(!raw.includes('*')){
-          // Implicit contains match
-          patternEsc = '.*' + patternEsc + '.*';
-        }
-  let regex = null;
-  try { regex = new RegExp(patternEsc, 'i'); } catch { regex = null; }
+        const regex = buildWildcardRegex(term);
         locMenu.querySelectorAll('.location-option').forEach(div => {
           const label = (div.getAttribute('data-label') || '').toLowerCase();
           const match = !regex || regex.test(label);
@@ -2111,7 +2905,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   if(inpDescSearch){
-    inpDescSearch.addEventListener('keyup', autoApply);
+    inpDescSearch.addEventListener('keyup', refreshAll);
   }
 
   // Load refresh timestamp
@@ -2186,6 +2980,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chartDataCache = new Map();
   const issueDataCache = new Map();
   let issueAggregationMode = 'daily';
+  let issueChartLabelMode = 'issued';
   let lastIssueRenderContext = null;
   const PRIMARY_COLOR = '#fb923c';
   const REPLACEMENT_COLOR = '#60a5fa';
@@ -2207,12 +3002,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatMonthTick = d3.utcFormat('%Y-%m');
   const formatQuantity = d3.format(',.0f');
   const getIssueAggregationLabel = (mode) => mode === 'weekly' ? 'weekly aggregated' : 'daily';
+  function resolveIssueTitleAttr(isWeekly){
+    if(issueChartLabelMode === 'requested'){
+      return isWeekly ? 'data-weekly-requested-label' : 'data-daily-requested-label';
+    }
+    return isWeekly ? 'data-weekly-label' : 'data-daily-label';
+  }
+
+  function resolveIssueTitleFallback(isWeekly){
+    if(issueChartLabelMode === 'requested'){
+      return isWeekly ? 'Weekly Requested Qty' : 'Daily Requested Qty';
+    }
+    return isWeekly ? 'Weekly Issued-Out Qty' : 'Daily Issued-Out Qty';
+  }
+
   function updateIssueAggregationTitle(mode = issueAggregationMode){
     if(!issueChartTitle) return;
-    const attr = mode === 'weekly' ? 'data-weekly-label' : 'data-daily-label';
-    const fallback = mode === 'weekly' ? 'Weekly Issued-Out Qty' : 'Daily Issued-Out Qty';
+    const isWeekly = mode === 'weekly';
+    const attr = resolveIssueTitleAttr(isWeekly);
+    const fallback = resolveIssueTitleFallback(isWeekly);
     const label = issueChartTitle.getAttribute(attr) || fallback;
     issueChartTitle.textContent = label;
+    issueChartTitle.setAttribute('aria-label', label);
+  }
+
+  function setIssueChartLabelMode(mode){
+    const normalized = mode === 'requested' ? 'requested' : 'issued';
+    if(issueChartLabelMode === normalized) return;
+    issueChartLabelMode = normalized;
+    updateIssueAggregationTitle();
   }
   function showIssueChartPlaceholder(){
     if(issueChartContainer){
@@ -2489,6 +3307,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearParRowHighlight();
     selectedParSignature = null;
     lastParIssueSelection = null;
+    setIssueChartLabelMode('issued');
   }
 
   function restoreParRowHighlight(){
@@ -2498,6 +3317,7 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedParRow = nextRow;
       nextRow.classList.add('inventory-row-selected');
       nextRow.setAttribute('aria-selected', 'true');
+      setIssueChartLabelMode('requested');
     } else {
       clearParSelection();
     }
@@ -2513,7 +3333,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const loc = (tr.dataset.groupLocation || tr.dataset.location || '').trim();
         clearInventorySelection();
         showParSelectionChartState(ig, loc);
-  if(!ig) return;
+        if(!ig){
+          setIssueChartLabelMode('issued');
+          return;
+        }
+        setIssueChartLabelMode('requested');
         const primaryItem = tr.dataset.item || '';
         const replacementItem = tr.dataset.replacementItem || '';
         const related = collectRelatedParItems(ig, loc);
@@ -2549,10 +3373,13 @@ document.addEventListener('DOMContentLoaded', () => {
     restoreParRowHighlight();
   }
 
+  const chartSection = document.getElementById('section-chart');
+
   document.addEventListener('click', evt => {
     if(!selectedInventorySignature) return;
     if(inventoryTable && inventoryTable.contains(evt.target)) return;
     if(inventoryTableRegion && inventoryTableRegion.contains(evt.target)) return;
+    if(chartSection && chartSection.contains(evt.target)) return;
     clearInventorySelection({ resetChart: true });
   });
 
@@ -2560,6 +3387,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!selectedParSignature) return;
     if(parTable && parTable.contains(evt.target)) return;
     if(parTableRegion && parTableRegion.contains(evt.target)) return;
+    if(chartSection && chartSection.contains(evt.target)) return;
     clearParSelection();
   });
 

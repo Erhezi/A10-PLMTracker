@@ -32,6 +32,8 @@
       <option value="not-contains">Not Contains (any col)</option>
   <option value="item-group">By Item Group</option>
   <option value="stage">By Stage</option>
+      <option value="item">Item</option>
+      <option value="replace-item">Replace Item</option>
     </select>
   </div>
   <div class="flex-grow-1" style="max-width:720px;">
@@ -52,6 +54,11 @@
     <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');" class="m-0">
       <button id="clear-deleted-btn" type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
         Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
+      </button>
+    </form>
+    <form id="archive-completed-form" method="post" action="{{ url_for('collector.archive_completed') }}" onsubmit="return confirm('Archive all rows with stage=Tracking Completed? This removes them from the tracker.');" class="m-0">
+      <button id="archive-completed-btn" type="submit" class="btn btn-sm btn-outline-secondary" {% if count_completed == 0 %}disabled{% endif %}>
+        Archive Completed (<span id="archive-completed-count">{{ count_completed }}</span>)
       </button>
     </form>
   </div>
@@ -84,7 +91,7 @@
     <tbody class="small">
       {% if items %}
         {% for r in items %}
-        <tr data-item="{{ r.item }}" data-replace-item="{{ r.replace_item }}">
+          <tr data-item="{{ r.item }}" data-replace-item="{{ r.replace_item }}" data-item-group="{{ r.item_group }}" data-pkid="{{ r.pkid }}">
           <td class="text-center select-cell d-none">
             <input type="checkbox" class="form-check-input row-select" />
           </td>
@@ -95,7 +102,7 @@
               <button class="btn btn-secondary btn-sm cancel-btn" type="button" title="Cancel edits">Cancel</button>
             </div>
           </td>
-          <td class="text-center fw-semibold" style="min-width:50px;">{{ r.item_group }}</td>
+          <td class="text-center fw-semibold" data-column="item-group" style="min-width:50px;">{{ r.item_group }}</td>
           <td class="font-monospace col-src">{{ r.item }}</td>
           <td title="{{ r.mfg_part_num }}" class="text-truncate col-src" style="max-width:140px;">{{ r.mfg_part_num }}</td>
           <td class="text-truncate col-src" style="max-width:120px;">{{ r.manufacturer }}</td>
@@ -233,6 +240,7 @@
         <div class="alert alert-danger d-none" id="batch-wrike-error"></div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-success me-auto" id="batch-wrike-download-excel">Download Excel</button>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="batch-wrike-confirm">Apply Wrike ID</button>
       </div>
@@ -263,6 +271,9 @@
   </div>
 </div>
 
+<script type="application/json" id="stage-transition-map">
+  {{ {"map": stage_transitions, "stages": allowed_stages}|tojson }}
+</script>
 <script type="application/json" id="batch-endpoints-json">
   {{ {
     "stage": url_for("collector.batch_update_stage"),
@@ -296,8 +307,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const filterClearBtn = document.getElementById('filter-clear-btn');
   const filterMode = document.getElementById('filter-mode');
   const filterHint = document.getElementById('filter-hint');
-  const hintDefaultText = 'Use ";" to search multiple terms (max 10).';
-  const hintOverflowText = 'Use ";" to search multiple terms (max 10). Only the first 10 terms are applied.';
+  const MAX_TERMS_DEFAULT = 10;
+  const MAX_TERMS_COLUMN = 100;
+  const COLUMN_TOKEN_MODES = new Set(['item','replace-item']);
+  const TRACKING_COMPLETED_STAGE = 'Tracking Completed';
+  const TRACKING_COMPLETED_WARNING = 'Once set to Tracking Completed, this row cannot move to another stage. To revive it, archive the completed row and create a new entry. Continue?';
+  const buildHintMessage = (limit) => `Use ";" to search multiple terms (max ${limit}).`;
+  const buildOverflowMessage = (limit) => `Use ";" to search multiple terms (max ${limit}). Only the first ${limit} terms are applied.`;
+  const setFilterHint = (limit, truncated) => {
+    if(!filterHint) return;
+    if(truncated){
+      filterHint.classList.remove('text-muted');
+      filterHint.classList.add('text-danger');
+      filterHint.textContent = buildOverflowMessage(limit);
+    } else {
+      filterHint.classList.add('text-muted');
+      filterHint.classList.remove('text-danger');
+      filterHint.textContent = buildHintMessage(limit);
+    }
+  };
+  const getTokenLimit = (mode) => COLUMN_TOKEN_MODES.has(mode) ? MAX_TERMS_COLUMN : MAX_TERMS_DEFAULT;
   const visibleCountEl = document.getElementById('visible-count');
   const selectedCountContainer = document.getElementById('selected-count-container');
   const selectedCountEl = document.getElementById('selected-count');
@@ -305,6 +334,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const showSelectedBtn = document.getElementById('show-selected-btn');
   const showAllBtn = document.getElementById('show-all-btn');
   const batchButtons = Array.from(document.querySelectorAll('.batch-action-btn'));
+  const stageBatchButton = batchButtons.find(btn => btn.dataset.action === 'stage');
+  const MULTI_STAGE_SELECTION_ALERT = 'Change Project Stage is only available when all selected rows share the same current stage. Filter on Stage and try again.';
   const selectHeader = table ? table.querySelector('.select-header') : null;
   const editHeader = table ? table.querySelector('.edit-header') : null;
   const selectAll = document.getElementById('batch-select-all');
@@ -326,6 +357,84 @@ document.addEventListener('DOMContentLoaded', () => {
   const stageConfirm = document.getElementById('batch-stage-confirm');
   const wrikeConfirm = document.getElementById('batch-wrike-confirm');
   const goLiveConfirm = document.getElementById('batch-go-live-confirm');
+  const stageMeta = (() => {
+    const el = document.getElementById('stage-transition-map');
+    if(!el) return { map: {}, stages: [] };
+    try {
+      return JSON.parse(el.textContent);
+    } catch (err) {
+      console.error('Unable to parse stage transition map', err);
+      return { map: {}, stages: [] };
+    }
+  })();
+  const stageTransitionMap = stageMeta.map || {};
+  const allStages = stageMeta.stages || [];
+  const allowedTargetsForStage = (stage) => {
+    const key = (stage || '').trim();
+    const rawList = stageTransitionMap[key] || stageTransitionMap.__new__ || allStages;
+    const list = Array.isArray(rawList) ? rawList : allStages;
+    const set = new Set(list);
+    if(key) set.add(key);
+    return set;
+  };
+  const getRowStageValue = (row) => {
+    if(!row) return '';
+    const cell = row.querySelector('.stage-cell');
+    if(!cell) return '';
+    return (cell.dataset.value || '').trim();
+  };
+
+  function summarizeSelectionStages(rows){
+    const stageSet = new Set();
+    rows.forEach(row => stageSet.add(getRowStageValue(row)));
+    const stages = Array.from(stageSet);
+    const singleStage = stages.length === 1;
+    return {
+      singleStage,
+      stage: singleStage ? stages[0] : null,
+    };
+  }
+
+  function configureBatchStageSelect(currentStage){
+    if(!stageSelect) return;
+    const allowedTargets = allowedTargetsForStage(currentStage);
+    Array.from(stageSelect.options).forEach(opt => {
+      if(!opt.value){
+        opt.disabled = false;
+        return;
+      }
+      opt.disabled = !allowedTargets.has(opt.value);
+    });
+    stageSelect.value = '';
+    if(currentStage === TRACKING_COMPLETED_STAGE){
+      stageSelect.title = 'Tracking Completed is final; archive the row and add a new one to revive it.';
+    } else {
+      stageSelect.removeAttribute('title');
+    }
+  }
+
+  function updateStageBatchButtonState(){
+    if(!stageBatchButton){
+      return;
+    }
+    if(batchToggle && !batchToggle.checked){
+      stageBatchButton.disabled = true;
+      stageBatchButton.title = 'Enable Batch Change to update project stages.';
+      return;
+    }
+    const selectedRows = getSelectedRows();
+    const { singleStage } = summarizeSelectionStages(selectedRows);
+    const allow = selectedRows.length > 0 && singleStage;
+    stageBatchButton.disabled = !allow;
+    if(!allow){
+      stageBatchButton.title = selectedRows.length === 0
+        ? 'Select at least one row to change the project stage.'
+        : MULTI_STAGE_SELECTION_ALERT;
+    } else {
+      stageBatchButton.removeAttribute('title');
+    }
+  }
+
   const getSelectedCheckboxes = () => {
     if(!table) return [];
     return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => cb.checked);
@@ -333,14 +442,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let showSelectedActive = false;
 
   const updateSelectedCount = () => {
-    if(!selectedCountEl) return;
     const count = getSelectedCheckboxes().length;
-    selectedCountEl.textContent = count;
-    if(showSelectedBtn){
-      if(!showSelectedActive){
-        showSelectedBtn.disabled = count === 0;
-      }
+    if(selectedCountEl){
+      selectedCountEl.textContent = count;
     }
+    if(showSelectedBtn && !showSelectedActive){
+      showSelectedBtn.disabled = count === 0;
+    }
+    updateStageBatchButtonState();
   };
   const getVisibleCheckboxes = () => {
     if(!table) return [];
@@ -381,10 +490,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     return map;
   };
-  const buildPayload = (rows) => rows.map(row => ({
-    item: row.dataset.item,
-    replace_item: normalizeReplace(row.dataset.replaceItem),
-  }));
+  const buildPayload = (rows) => rows.map(row => {
+    const payload = {
+      item: row.dataset.item,
+      replace_item: normalizeReplace(row.dataset.replaceItem),
+    };
+    if(row.dataset.pkid){
+      payload.pkid = row.dataset.pkid;
+    }
+    return payload;
+  });
+  const normalizeTextValue = (value) => {
+    if(value === null || value === undefined) return '';
+    return String(value).trim().toLowerCase();
+  };
+  const getItemGroupValue = (row) => {
+    const dataValue = normalizeTextValue(row.dataset.itemGroup);
+    if(dataValue) return dataValue;
+    const cell = row.querySelector('td[data-column="item-group"]');
+    return normalizeTextValue(cell ? cell.innerText : '');
+  };
+  const getCellText = (row, selector) => {
+    const cell = row.querySelector(selector);
+    return normalizeTextValue(cell ? cell.innerText : '');
+  };
+  const getRowValueForMode = (row, mode) => {
+    if(mode === 'item'){
+      const dataVal = normalizeTextValue(row.dataset.item);
+      return dataVal || getCellText(row, 'td.col-src');
+    }
+    if(mode === 'replace-item'){
+      const dataVal = normalizeTextValue(row.dataset.replaceItem);
+      return dataVal || getCellText(row, 'td.col-repl');
+    }
+    return '';
+  };
   const updateDeletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
     const countEl = document.getElementById('clear-deleted-count');
     const btn = document.getElementById('clear-deleted-btn');
@@ -406,6 +546,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if(oldNorm === 'deleted' && newNorm !== 'deleted'){
       current = Math.max(0, current - 1);
     } else if(oldNorm !== 'deleted' && newNorm === 'deleted'){
+      current += 1;
+    }
+    countEl.textContent = current;
+    btn.disabled = current === 0;
+  };
+  const updateCompletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
+    const countEl = document.getElementById('archive-completed-count');
+    const btn = document.getElementById('archive-completed-btn');
+    if(!countEl || !btn) return;
+    if(providedCount !== undefined && providedCount !== null){
+      const num = Number(providedCount);
+      if(!Number.isNaN(num)){
+        const safe = Math.max(0, num);
+        countEl.textContent = safe;
+        btn.disabled = safe === 0;
+        return;
+      }
+    }
+    if(oldStage === undefined || newStage === undefined) return;
+    const oldNorm = (oldStage || '').trim().toLowerCase();
+    const newNorm = (newStage || '').trim().toLowerCase();
+    let current = parseInt(countEl.textContent || '0', 10);
+    if(Number.isNaN(current)) current = 0;
+    if(oldNorm === 'tracking completed' && newNorm !== 'tracking completed'){
+      current = Math.max(0, current - 1);
+    } else if(oldNorm !== 'tracking completed' && newNorm === 'tracking completed'){
       current += 1;
     }
     countEl.textContent = current;
@@ -467,11 +633,16 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const showBatchSummary = (summary, failureMessages) => {
     if(!summary) return;
-    const lines = [`Batch update complete: ${summary.success || 0} succeeded.`];
-    if(summary.failed){
-      lines.push(`${summary.failed} failed.`);
+    const failures = Number(summary.failed) || 0;
+    const hasFailureDetails = failureMessages && failureMessages.length;
+    if(failures === 0 && !hasFailureDetails){
+      return; // All rows succeeded; no alert necessary.
     }
-    if(failureMessages && failureMessages.length){
+    const lines = [`Batch update complete: ${summary.success || 0} succeeded.`];
+    if(failures){
+      lines.push(`${failures} failed.`);
+    }
+    if(hasFailureDetails){
       lines.push('');
       lines.push('Failed rows:');
       failureMessages.slice(0,5).forEach(msg => lines.push(msg));
@@ -508,7 +679,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if(Object.prototype.hasOwnProperty.call(summary, 'count_deleted')){
       updateDeletedCountUI({ providedCount: summary.count_deleted });
     }
+    if(Object.prototype.hasOwnProperty.call(summary, 'count_completed')){
+      updateCompletedCountUI({ providedCount: summary.count_completed });
+    }
     showBatchSummary(summary, failureMessages);
+    activateShowSelectedView({ auto: true });
     syncSelectAll();
   };
   const submitBatch = async (url, payload, errorBox) => {
@@ -610,6 +785,11 @@ document.addEventListener('DOMContentLoaded', () => {
         stageSelect.focus();
         return;
       }
+      if(targetStage === TRACKING_COMPLETED_STAGE){
+        if(!window.confirm(TRACKING_COMPLETED_WARNING)){
+          return;
+        }
+      }
       await withBusyState(stageConfirm, async () => {
         const payload = { stage: targetStage, rows: buildPayload(selectedRows) };
         const response = await submitBatch(batchEndpoints.stage, payload, stageError);
@@ -618,7 +798,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(stageSelect) stageSelect.value = '';
         if(stageModal){
           stageModal.hide();
-        } else {
+        } else if(!showSelectedActive){
           resetFilters();
         }
       });
@@ -664,12 +844,248 @@ document.addEventListener('DOMContentLoaded', () => {
         if(wrikeInput) wrikeInput.value = value || '';
         if(wrikeModal){
           wrikeModal.hide();
-        } else {
+        } else if(!showSelectedActive){
           resetFilters();
         }
       });
     });
   }
+  const wrikeDownloadBtn = document.getElementById('batch-wrike-download-excel');
+  // Keep export configuration aligned with dashboard presets so generated sheets match expectations
+  const wrikeExportTargets = {
+    wrike_id1: {
+      mode: 'pendingItems',
+      columns: [
+        'WorkingContractID',
+        'ManufacturerNumber',
+        'VendorItem',
+        'ItemDescription',
+        'BaseCost',
+        'UOM',
+        'DerivedUOMConversion',
+        'EffectiveDate',
+        'ExpirationDate',
+      ],
+    },
+    wrike_id2: {
+      mode: 'dashboard',
+      tableKey: 'inventory',
+      columnMode: 'inventory_setup',
+      columns: [
+        'company',
+        'location_ri',
+        'replacement_item',
+        'recommended_transaction_uom_ri',
+        'recommended_preferred_bin_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'recommended_auto_replenishment_ri',
+        'manufacturer_number_ri',
+        'action',
+        'notes',
+        'preferred_bin_ri',
+        'min_order_qty_ri',
+        'max_order_qty_ri',
+        'reorder_point_ri',
+      ],
+    },
+    wrike_id3: {
+      mode: 'dashboard',
+      tableKey: 'par',
+      columnMode: 'par_setup_combined',
+      columns: [
+        'company',
+        'location_ri',
+        'location_text',
+        'replacement_item',
+        'manufacturer_number_ri',
+        'item_description_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'stock_uom_ri',
+        'recommended_preferred_bin_ri',
+        'action',
+        'notes',
+        'preferred_bin_ri',
+        'reorder_point_ri',
+        'item_set',
+      ],
+    },
+  };
+  const showWrikeDownloadError = (message) => {
+    if(wrikeError){
+      wrikeError.textContent = message;
+      wrikeError.classList.remove('d-none');
+    } else {
+      alert(message);
+    }
+  };
+  // Reuse dashboard export endpoint to build XLSX files for batch workflows
+  const downloadDashboardExport = async (tableKey, params) => {
+    const url = `/dashboard/export/${tableKey}?${params.toString()}`;
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json',
+        },
+      });
+      if(!resp.ok){
+        let detail = '';
+        try {
+          detail = await resp.text();
+        } catch {
+          detail = '';
+        }
+        throw new Error(detail || `Export failed (${resp.status})`);
+      }
+      const blob = await resp.blob();
+      let filename = `${tableKey}-export.xlsx`;
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+      if(match && match[1]){
+        const rawName = match[1].replace(/^"|"$/g, '');
+        try {
+          filename = decodeURIComponent(rawName);
+        } catch {
+          filename = rawName;
+        }
+      }
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      link.remove();
+      return true;
+    } catch (err) {
+      console.error('Wrike download failed', err);
+      showWrikeDownloadError(err && err.message ? err.message : 'Download failed.');
+      return false;
+    }
+  };
+  const downloadPendingItemsExport = async (itemLinkIds, columns) => {
+    const payload = {
+      item_link_ids: itemLinkIds,
+      columns,
+    };
+    try {
+      const resp = await fetch('/groups/batch/wrike/export/item-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const contentType = resp.headers.get('Content-Type') || '';
+      if(!resp.ok){
+        if(contentType.includes('application/json')){
+          try {
+            const data = await resp.json();
+            throw new Error(data && data.message ? data.message : 'Download failed.');
+          } catch (err) {
+            throw new Error(err && err.message ? err.message : 'Download failed.');
+          }
+        }
+        throw new Error(`Download failed (${resp.status})`);
+      }
+      if(!contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')){
+        if(contentType.includes('application/json')){
+          const data = await resp.json();
+          throw new Error(data && data.message ? data.message : 'Unexpected response.');
+        }
+        throw new Error('Unexpected response type.');
+      }
+      const blob = await resp.blob();
+      const disposition = resp.headers.get('Content-Disposition') || '';
+      let filename = 'wrike-get-item-numbers.xlsx';
+      const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+      if(match && match[1]){
+        const rawName = match[1].replace(/^"|"$/g, '');
+        try {
+          filename = decodeURIComponent(rawName);
+        } catch {
+          filename = rawName;
+        }
+      }
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      link.remove();
+      return true;
+    } catch (err) {
+      console.error('Pending items download failed', err);
+      showWrikeDownloadError(err && err.message ? err.message : 'Download failed.');
+      return false;
+    }
+  };
+  if(wrikeDownloadBtn){
+    wrikeDownloadBtn.addEventListener('click', async () => {
+      if(wrikeDownloadBtn.dataset.busy === '1') return;
+      const selectedRows = ensureSelection();
+      if(!selectedRows) return;
+      if(wrikeError){
+        wrikeError.classList.add('d-none');
+        wrikeError.textContent = '';
+      }
+      const field = wrikeModalEl ? wrikeModalEl.dataset.field : null;
+      const config = field ? wrikeExportTargets[field] : null;
+      if(!config){
+        showWrikeDownloadError('Excel export is unavailable for this task.');
+        return;
+      }
+      if(config.mode === 'pendingItems'){
+        const payloadRows = buildPayload(selectedRows);
+        const itemLinkIds = payloadRows
+          .map(row => row.pkid)
+          .filter(value => value !== undefined && value !== null && String(value).trim() !== '');
+        if(!itemLinkIds.length){
+          showWrikeDownloadError('Selected rows are missing ItemLink identifiers.');
+          return;
+        }
+        await withBusyState(wrikeDownloadBtn, async () => {
+          await downloadPendingItemsExport(itemLinkIds, config.columns);
+        });
+        return;
+      }
+      if(config.mode === 'dashboard'){
+        const itemGroups = [];
+        selectedRows.forEach(tr => {
+          const raw = tr.dataset.itemGroup;
+          if(!raw) return;
+          const value = raw.trim();
+          if(!value) return;
+          if(!/^\d+$/.test(value)) return;
+          if(!itemGroups.includes(value)){
+            itemGroups.push(value);
+          }
+        });
+        if(!itemGroups.length){
+          showWrikeDownloadError('Selected rows are missing item group values.');
+          return;
+        }
+        const params = new URLSearchParams();
+        params.set('row_scope', 'filtered');
+        params.set('item_group', itemGroups.join(','));
+        params.set('column_mode', config.columnMode);
+        params.set('columns', config.columns.join(','));
+        await withBusyState(wrikeDownloadBtn, async () => {
+          await downloadDashboardExport(config.tableKey, params);
+        });
+        return;
+      }
+      showWrikeDownloadError('Excel export configuration is invalid for this task.');
+    });
+  }
+
   if(goLiveConfirm){
     goLiveConfirm.addEventListener('click', async () => {
       if(goLiveConfirm.dataset.busy === '1') return;
@@ -703,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(goLiveInput) goLiveInput.value = dateValue || '';
         if(goLiveModal){
           goLiveModal.hide();
-        } else {
+        } else if(!showSelectedActive){
           resetFilters();
         }
       });
@@ -746,20 +1162,11 @@ document.addEventListener('DOMContentLoaded', () => {
       .split(';')
       .map(part => part.trim().toLowerCase())
       .filter(Boolean);
-    const tokens = rawTokens.slice(0, 10);
-    const truncated = rawTokens.length > tokens.length;
-    if(filterHint){
-      if(truncated){
-        filterHint.classList.remove('text-muted');
-        filterHint.classList.add('text-danger');
-        filterHint.textContent = hintOverflowText;
-      } else {
-        filterHint.classList.add('text-muted');
-        filterHint.classList.remove('text-danger');
-        filterHint.textContent = hintDefaultText;
-      }
-    }
     const mode = filterMode.value;
+    const tokenLimit = getTokenLimit(mode);
+    const tokens = rawTokens.slice(0, tokenLimit);
+    const truncated = rawTokens.length > tokens.length;
+    setFilterHint(tokenLimit, truncated);
     const rows = table.tBodies[0].rows;
     let visible = 0;
 
@@ -777,13 +1184,15 @@ document.addEventListener('DOMContentLoaded', () => {
           const rowText = tr.innerText.toLowerCase();
           match = tokens.every(token => !rowText.includes(token));
         } else if(mode === 'item-group'){
-          const cell = tr.children[1]; // Item Group column
-          const cellText = (cell ? cell.innerText : '').trim().toLowerCase();
-          match = tokens.some(token => cellText === token);
+          const groupValue = getItemGroupValue(tr);
+          match = tokens.some(token => groupValue === token);
         } else if(mode === 'stage'){
           const stageCell = tr.querySelector('.stage-cell .stage-badge');
           const stageText = stageCell ? stageCell.innerText.trim().toLowerCase() : '';
           match = tokens.some(token => stageText.includes(token));
+        } else if(mode === 'item' || mode === 'replace-item'){
+          const value = getRowValueForMode(tr, mode);
+          match = tokens.some(token => value.includes(token));
         }
       }
 
@@ -829,24 +1238,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const current = stageCell.dataset.value || '';
       const sel = stageCell.querySelector('select[name="stage"]');
       if(sel){
-        // First reset all options to enabled
+        const allowedTargets = allowedTargetsForStage(current);
         Array.from(sel.options).forEach(opt => {
-          opt.disabled = false;
-        });
-        
-        // Then apply rules
-        Array.from(sel.options).forEach(opt => {
-          if(!opt.value) return; // skip blank
-          let allow = true;
-          if(current === 'Tracking - Discontinued'){
-            // Only allow Deleted or Tracking Completed or remain Tracking - Discontinued
-            if(!['Tracking - Discontinued','Deleted','Tracking Completed'].includes(opt.value)) allow = false;
-          } else {
-            // Disallow selecting Tracking - Discontinued
-            if(opt.value === 'Tracking - Discontinued') allow = false;
+          if(!opt.value){
+            opt.disabled = false;
+            return;
           }
-          opt.disabled = !allow;
+          opt.disabled = !allowedTargets.has(opt.value);
         });
+
+        if(current === TRACKING_COMPLETED_STAGE){
+          sel.title = 'Tracking Completed is final. Archive to revive the row.';
+        } else {
+          sel.removeAttribute('title');
+        }
         
         // Ensure the current value is selected
         sel.value = current;
@@ -882,8 +1287,16 @@ document.addEventListener('DOMContentLoaded', () => {
   async function saveRow(row){
     const item = row.dataset.item;
     const replaceItem = row.dataset['replaceItem'];
-    const stage = row.querySelector('select[name="stage"]').value;
+    const stageSelect = row.querySelector('select[name="stage"]');
+    const stage = stageSelect ? stageSelect.value.trim() : '';
     const dateVal = row.querySelector('input[name="expected_go_live_date"]').value;
+    const currentStage = (row.querySelector('.stage-cell')?.dataset.value || '').trim();
+
+    if(stage === TRACKING_COMPLETED_STAGE && currentStage !== TRACKING_COMPLETED_STAGE){
+      if(!window.confirm(TRACKING_COMPLETED_WARNING)){
+        return;
+      }
+    }
     
     try {
       const formData = new FormData();
@@ -914,29 +1327,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Update UI with returned record
       const rec = data.record;
+      const newStage = (rec.stage || '').trim();
       // Maintain deleted count and toggle Clear Deleted button if stage changed
       try {
-        const oldStage = (row.querySelector('.stage-cell')?.dataset.value || '').trim();
-        const newStage = (rec.stage || '').trim();
-        const countEl = document.getElementById('clear-deleted-count');
-        const btn = document.getElementById('clear-deleted-btn');
-        // Prefer server authoritative count if provided
-        if(typeof data.count_deleted !== 'undefined' && countEl && btn){
-          const cur = parseInt(data.count_deleted || '0', 10) || 0;
-          countEl.textContent = cur;
-          btn.disabled = cur === 0;
-        } else if(oldStage !== newStage && countEl && btn){
-          // fallback local adjustment
-          let cur = parseInt(countEl.textContent || '0', 10) || 0;
-          if(oldStage.toLowerCase() === 'deleted' && newStage.toLowerCase() !== 'deleted'){
-            cur = Math.max(0, cur - 1);
-          } else if(oldStage.toLowerCase() !== 'deleted' && newStage.toLowerCase() === 'deleted'){
-            cur = cur + 1;
-          }
-          countEl.textContent = cur;
-          btn.disabled = cur === 0;
-        }
-      } catch(e){ console.warn('Could not update deleted count', e); }
+        updateDeletedCountUI({ providedCount: data.count_deleted, oldStage: currentStage, newStage });
+        updateCompletedCountUI({ providedCount: data.count_completed, oldStage: currentStage, newStage });
+  } catch(e){ console.warn('Could not update stage counters', e); }
       // Stage update
       const stageCell = row.querySelector('.stage-cell');
       if(stageCell){
@@ -1110,6 +1506,48 @@ document.addEventListener('DOMContentLoaded', () => {
     return selected;
   }
 
+  function activateShowSelectedView({ auto = false } = {}){
+    const selectedRows = getSelectedRows();
+    if(!selectedRows.length){
+      return [];
+    }
+    if(filterInput){
+      filterInput.value = '';
+    }
+    if(filterMode){
+      filterMode.value = 'contains';
+    }
+    const visibleSelection = filterToSelectedRows();
+    if(!visibleSelection.length){
+      return visibleSelection;
+    }
+    showSelectedActive = true;
+    if(table) table.dataset.showSelectedView = '1';
+    if(showSelectedBtn){
+      showSelectedBtn.classList.remove('d-none');
+      showSelectedBtn.classList.add('active');
+      showSelectedBtn.disabled = true;
+    }
+    if(showAllBtn){
+      showAllBtn.classList.remove('d-none');
+      showAllBtn.disabled = false;
+    }
+    if(selectedCountContainer){
+      selectedCountContainer.classList.remove('d-none');
+    }
+    const firstRow = visibleSelection[0];
+    if(firstRow && typeof firstRow.scrollIntoView === 'function'){
+      firstRow.scrollIntoView({ behavior: auto ? 'auto' : 'smooth', block: 'center' });
+    }
+    if(!auto){
+      visibleSelection.forEach(row => row.classList.add('show-selected-highlight'));
+      window.setTimeout(() => {
+        visibleSelection.forEach(row => row.classList.remove('show-selected-highlight'));
+      }, 1600);
+    }
+    return visibleSelection;
+  }
+
   function resetFilters(){
     Array.from(table.querySelectorAll('tbody tr')).forEach(tr => {
       tr.classList.remove('batch-filtered-out');
@@ -1140,7 +1578,9 @@ document.addEventListener('DOMContentLoaded', () => {
   [stageModalEl, wrikeModalEl, goLiveModalEl].forEach(modalEl => {
     if(!modalEl) return;
     modalEl.addEventListener('hidden.bs.modal', () => {
-      resetFilters();
+      if(!showSelectedActive){
+        resetFilters();
+      }
       clearErrors();
     });
   });
@@ -1157,32 +1597,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if(showSelectedBtn){
     showSelectedBtn.addEventListener('click', () => {
       if(showSelectedActive) return;
-      const selectedRows = ensureSelection();
-      if(!selectedRows) return;
-      if(filterInput){
-        filterInput.value = '';
-      }
-      if(filterMode){
-        filterMode.value = 'contains';
-      }
-      const visibleSelection = filterToSelectedRows();
-      if(!visibleSelection.length) return;
-      showSelectedActive = true;
-      if(table) table.dataset.showSelectedView = '1';
-      showSelectedBtn.classList.add('active');
-      showSelectedBtn.disabled = true;
-      if(showAllBtn){
-        showAllBtn.classList.remove('d-none');
-        showAllBtn.disabled = false;
-      }
-      const firstRow = visibleSelection[0];
-      if(firstRow && typeof firstRow.scrollIntoView === 'function'){
-        firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      visibleSelection.forEach(row => row.classList.add('show-selected-highlight'));
-      window.setTimeout(() => {
-        visibleSelection.forEach(row => row.classList.remove('show-selected-highlight'));
-      }, 1600);
+      if(!ensureSelection()) return;
+      activateShowSelectedView({ auto: false });
     });
   }
 
@@ -1197,14 +1613,24 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       const selected = ensureSelection();
       if(!selected) return;
+      const action = btn.dataset.action;
+      let stageSummary = null;
+      if(action === 'stage'){
+        stageSummary = summarizeSelectionStages(selected);
+        if(!stageSummary.singleStage){
+          alert(MULTI_STAGE_SELECTION_ALERT);
+          return;
+        }
+      }
       const visibleSelection = filterToSelectedRows();
       if(!visibleSelection.length){
         return;
       }
       clearErrors();
-      const action = btn.dataset.action;
       if(action === 'stage'){
-        if(stageSelect) stageSelect.value = '';
+        if(stageSelect){
+          configureBatchStageSelect(stageSummary ? stageSummary.stage : '');
+        }
         if(stageModal){
           stageModal.show();
         } else {
@@ -1222,6 +1648,17 @@ document.addEventListener('DOMContentLoaded', () => {
           if(action === 'wrike_id1') wrikeModalTitle.textContent = 'Create Wrike Task - Get Item #';
           if(action === 'wrike_id2') wrikeModalTitle.textContent = 'Create Wrike Task - Set-up Inv.';
           if(action === 'wrike_id3') wrikeModalTitle.textContent = 'Create Wrike Task - Set-up Par';
+        }
+        if(wrikeDownloadBtn){
+          // Only enable Excel export for Wrike flows that have a dashboard preset backing it
+          const config = wrikeExportTargets[action];
+          if(config){
+            wrikeDownloadBtn.disabled = false;
+            wrikeDownloadBtn.title = '';
+          } else {
+            wrikeDownloadBtn.disabled = true;
+            wrikeDownloadBtn.title = 'Excel export unavailable for this task.';
+          }
         }
         if(wrikeModalEl) wrikeModalEl.dataset.field = action;
         if(wrikeModal){

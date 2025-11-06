@@ -11,7 +11,7 @@ from sqlalchemy.orm import aliased
 from .. import db
 from ..models.relations import ItemLink  # new consolidated view
 from ..models.inventory import Item
-from .node_check import RelationGraph
+from .node_check import RelationGraph, is_active_link
 
 
 class BatchValidationError(Exception):
@@ -48,7 +48,7 @@ class BatchGroupPlanner:
         self._pending_merges: Dict[int, Set[int]] = defaultdict(set)
 
         for link in existing_links:
-            if link.item_group is None:
+            if link.item_group is None or not is_active_link(link):
                 continue
             self._ingest_existing_link(link)
 
@@ -126,6 +126,8 @@ class BatchGroupPlanner:
         self._item_to_groups[code].add(group_id)
 
     def _ingest_existing_link(self, link: ItemLink) -> None:
+        if not is_active_link(link):
+            return
         group = link.item_group
         self._group_links[group].append(link)
         self._register_code(group, link.item)

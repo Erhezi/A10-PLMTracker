@@ -4,7 +4,7 @@ from typing import Iterable, Sequence
 from .. import db
 from . import now_ny_naive
 from sqlalchemy.orm import relationship, backref, object_session
-from sqlalchemy import Index, UniqueConstraint, text
+from sqlalchemy import Index, UniqueConstraint, text, event
 
 
 PENDING_PLACEHOLDER_PREFIX = "PENDING***"
@@ -84,9 +84,106 @@ class ItemLink(db.Model):
         lazy="joined",
     )
 
+    group_links = relationship(
+        "ItemGroupLink",
+        back_populates="item_link",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
 
+class ItemLinkArchived(db.Model):
+	"""Mapping to PLM.ItemLinkArchived table capturing historical versions of ItemLink rows.
+	   it looks like the copy of ItemLink and will only take records that are marked as
+	   'Tracking - Completed', with added field 'archived_dt' to indicate the time of archiving, 
+	   and item_link_id to reference the original ItemLink PKID row(s). note that here the item_link_id
+	   should not be a foreign key contraint, it is just for reference purpose only."""
+
+	__tablename__ = "ItemLinkArchived"
+	__table_args__ = (
+		Index("IX_ItemLinkArchived_Item", "Item"),
+		Index("IX_ItemLinkArchived_ItemGroup", "Item Group"),
+		Index("IX_ItemLinkArchived_ReplaceItem", "Replace Item"),
+		Index("IX_ItemLinkArchived_Stage", "Stage"),
+		{"schema": "PLM"},
+	)
+
+	# Surrogate primary key (already IDENTITY in SQL Server)
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+
+	# Natural key fields (not PKs anymore)
+	item_group      = db.Column("Item Group", db.Integer,    nullable=False)  
+	item            = db.Column("Item",       db.String(10),  nullable=False)
+	replace_item    = db.Column("Replace Item", db.String(250), nullable=True)  
+
+	# Metadata columns
+	mfg_part_num        = db.Column("Manufacturer Part Num",           db.String(100))
+	manufacturer        = db.Column("Manufacturer",                    db.String(100))
+	item_description    = db.Column("Item Description",                db.String(500))
+
+	repl_mfg_part_num   = db.Column("Replace Item Manufacturer Part Num", db.String(100))
+	repl_manufacturer   = db.Column("Replace Item Manufacturer",          db.String(100))
+	repl_item_description = db.Column("Replace Item Item Description",    db.String(500))
+
+	stage                 = db.Column("Stage", db.String(100))
+	expected_go_live_date = db.Column("Expected Go Live Date", db.Date)
+
+	create_dt           = db.Column("CreateDT", db.DateTime(timezone=False))
+	update_dt           = db.Column("UpdateDT", db.DateTime(timezone=False))
+
+	item_link_id       = db.Column("item_link_id", db.BigInteger, nullable=False)
+	archived_dt         = db.Column("ArchivedDT", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+
+	def __repr__(self):
+		return f"<ItemLinkArchived id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
+
+class ItemLinkDeleted(db.Model):
+	"""Mapping to PLM.ItemLinkDeleted table capturing ItemLink rows that have been deleted.
+	   it looks like the copy of ItemLink and will only take records that are marked as
+	   'Deleted', with added field 'deleted_dt' to indicate the time of deletion, 
+	   and item_link_id to reference the original ItemLink PKID row(s). note that here the item_link_id
+	   should not be a foreign key contraint, it is just for reference purpose only."""
+
+	__tablename__ = "ItemLinkDeleted"
+	__table_args__ = (
+		Index("IX_ItemLinkDeleted_Item", "Item"),
+		Index("IX_ItemLinkDeleted_ItemGroup", "Item Group"),
+		Index("IX_ItemLinkDeleted_ReplaceItem", "Replace Item"),
+		Index("IX_ItemLinkDeleted_Stage", "Stage"),
+		{"schema": "PLM"},
+	)
+
+	# Surrogate primary key (already IDENTITY in SQL Server)
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+
+	# Natural key fields (not PKs anymore)
+	item_group      = db.Column("Item Group", db.Integer,    nullable=False)  
+	item            = db.Column("Item",       db.String(10),  nullable=False)
+	replace_item    = db.Column("Replace Item", db.String(250), nullable=True)  
+
+	# Metadata columns
+	mfg_part_num        = db.Column("Manufacturer Part Num",           db.String(100))
+	manufacturer        = db.Column("Manufacturer",                    db.String(100))
+	item_description    = db.Column("Item Description",                db.String(500))
+
+	repl_mfg_part_num   = db.Column("Replace Item Manufacturer Part Num", db.String(100))
+	repl_manufacturer   = db.Column("Replace Item Manufacturer",          db.String(100))
+	repl_item_description = db.Column("Replace Item Item Description",    db.String(500))
+
+	stage                 = db.Column("Stage", db.String(100))
+	expected_go_live_date = db.Column("Expected Go Live Date", db.Date)
+
+	create_dt           = db.Column("CreateDT", db.DateTime(timezone=False))
+	update_dt           = db.Column("UpdateDT", db.DateTime(timezone=False))
+
+	item_link_id       = db.Column("item_link_id", db.BigInteger, nullable=False)
+	deleted_dt         = db.Column("DeletedDT", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+
+	def __repr__(self):
+		return f"<ItemLinkDeleted id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
 
 class ItemLinkWrike(db.Model):
 	"""Mapping to PLM.ItemLinkWrike table capturing Wrike task IDs for ItemLink rows.
@@ -195,6 +292,37 @@ class ItemLinkWrike(db.Model):
 			self.item_link_id = item_link.pkid
 
 
+# --- automatic timestamping for wrike id fields ---------------------------------
+def _wrike_set_handler_factory(idx: int):
+	id_attr = f"wrike_id{idx}"
+	create_attr = f"create_dt{idx}"
+	update_attr = f"update_dt{idx}"
+
+	def _handler(target, value, oldvalue, initiator):
+		# When a Wrike ID is first set (oldvalue is None and new value not None)
+		# set both CreateDT and UpdateDT. When it changes, set UpdateDT.
+		try:
+			if oldvalue is None and value is not None:
+				setattr(target, create_attr, now_ny_naive())
+				setattr(target, update_attr, now_ny_naive())
+			elif value != oldvalue:
+				# covers change from some value -> different value and also
+				# value -> None (clearing) if desired to record update
+				setattr(target, update_attr, now_ny_naive())
+		except Exception:
+			# defensive: avoid letting timestamping break the attribute set
+			pass
+		return value
+
+	return _handler
+
+
+# Attach listeners for wrike_id1..wrike_id5
+for _i in range(1, 6):
+	event.listen(getattr(ItemLinkWrike, f"wrike_id{_i}"), 'set', _wrike_set_handler_factory(_i), retval=False)
+
+
+
 
 class ConflictError(db.Model):
 	"""Mapping to PLM.ConflictError table capturing invalid relation attempts."""
@@ -280,14 +408,7 @@ class ConflictError(db.Model):
 
 
 class ItemGroup(db.Model):
-	""" Mapping to PLM.ItemGroup table.
-	Store the pair of (Item, Item Group, Side) information
-	When the item link pair(s) are validated and created, the 
-	information will be write to this table for easy reference
-	and easy check. 
-	The side is either 'O' for original item or 'R' for replacement item.
-	table will have unique constraint on (Item, Item Group, Side)
-	"""
+	"""Mapping to PLM.ItemGroup table describing group membership by side."""
 
 	__tablename__ = "ItemGroup"
 	__table_args__ = (
@@ -297,21 +418,19 @@ class ItemGroup(db.Model):
 		{"schema": "PLM"},
 	)
 
-	# Surrogate primary key (already IDENTITY in SQL Server)
 	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
-	# foreign key reference back to ItemLink
-	item_link_id = db.Column("item_link_id", db.BigInteger, db.ForeignKey("PLM.ItemLink.PKID", ondelete='CASCADE'), nullable=False)
-
 	item = db.Column("Item", db.String(10), nullable=False)
 	item_group = db.Column("Item Group", db.Integer, nullable=False)
-	side = db.Column("Side", db.String(1), nullable=False)  # 'O' or 'R' or 'D' (discontinued)
+	side = db.Column("Side", db.String(1), nullable=False)  # 'O', 'R', or 'D'
 	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
 	update_dt = db.Column("update_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive, onupdate=now_ny_naive)
 
-	item_link = relationship(
-		"ItemLink",
-		backref=backref("item_groups", cascade="all, delete-orphan", passive_deletes=True),
-		foreign_keys=[item_link_id],
+	links = relationship(
+		"ItemGroupLink",
+		back_populates="membership",
+		cascade="all, delete-orphan",
+		passive_deletes=True,
+		lazy="selectin",
 	)
 
 	def __repr__(self):
@@ -328,40 +447,72 @@ class ItemGroup(db.Model):
 		return db.session
 
 	@classmethod
-	def ensure_allowed_side(cls, item_group: int, item_code: str | None, side: str, *, session=None, item_link_id: int | None = None):
+	def ensure_allowed_side(
+		cls,
+		item_group: int,
+		item_code: str | None,
+		side: str,
+		*,
+		session=None,
+		item_link_id: int | None = None,
+	) -> None:
 		"""Validate that an item within a group can take the requested side."""
 		if not item_code or _is_pending_placeholder(item_code):
 			return
 		session = cls._resolve_session(session)
-		existing = (
+		existing: ItemGroup | None = (
 			session.query(cls)
 			.filter(cls.item_group == item_group, cls.item == item_code)
 			.first()
 		)
-		if existing and existing.side != side and existing.item_link_id != item_link_id:
+		if not existing or existing.side == side:
+			return
+		if item_link_id is None:
+			raise ItemGroupConflictError(item_group, item_code, existing.side, side)
+		conflict_exists = (
+			session.query(ItemGroupLink.pkid)
+			.filter(ItemGroupLink.item_group_pkid == existing.pkid)
+			.filter(ItemGroupLink.item_link_id != item_link_id)
+			.first()
+		)
+		if conflict_exists:
 			raise ItemGroupConflictError(item_group, item_code, existing.side, side)
 
 	@classmethod
-	def sync_from_item_link(cls, item_link: ItemLink, *, session=None):
-		"""Ensure ItemGroup rows reflect the provided ItemLink."""
+	def sync_from_item_link(cls, item_link: ItemLink, *, session=None) -> None:
+		"""Ensure ItemGroup rows and pivot links reflect the provided ItemLink."""
 		if item_link.pkid is None:
 			raise ValueError("ItemLink must be flushed before syncing ItemGroup entries")
 		session = cls._resolve_session(session, item_link)
 		desired_pairs = cls._desired_pairs_for_link(item_link)
-		desired_keys = {(code, side) for code, side in desired_pairs if code}
-
-		# Remove stale rows tied to this link that are no longer represented
-		existing_rows = (
-			session.query(cls)
-			.filter(cls.item_link_id == item_link.pkid)
-			.all()
-		)
-		for row in existing_rows:
-			if (row.item, row.side) not in desired_keys:
-				session.delete(row)
+		desired_memberships: list[ItemGroup] = []
 
 		for code, side in desired_pairs:
-			cls._upsert(session, item_link, code, side)
+			membership = cls._upsert(session, item_link, code, side)
+			if membership is not None:
+				desired_memberships.append(membership)
+
+		if desired_memberships:
+			session.flush(desired_memberships)
+
+		existing_links = (
+			session.query(ItemGroupLink)
+			.filter(ItemGroupLink.item_link_id == item_link.pkid)
+			.all()
+		)
+		desired_ids = {membership.pkid for membership in desired_memberships}
+
+		for membership in desired_memberships:
+			ItemGroupLink.ensure(session, membership, item_link)
+
+		removed_membership_ids: set[int] = set()
+		for link in existing_links:
+			if link.item_group_pkid not in desired_ids:
+				removed_membership_ids.add(link.item_group_pkid)
+				session.delete(link)
+
+		if removed_membership_ids:
+			cls._prune_orphans(session, removed_membership_ids)
 
 	@staticmethod
 	def _desired_pairs_for_link(item_link: ItemLink) -> list[tuple[str | None, str]]:
@@ -376,23 +527,28 @@ class ItemGroup(db.Model):
 		return [(item_link.item, "D")]
 
 	@classmethod
-	def _upsert(cls, session, item_link: ItemLink, item_code: str | None, side: str):
+	def _upsert(cls, session, item_link: ItemLink, item_code: str | None, side: str) -> ItemGroup | None:
 		if not item_code:
-			return
-		existing = (
+			return None
+		existing: ItemGroup | None = (
 			session.query(cls)
 			.filter(cls.item_group == item_link.item_group, cls.item == item_code)
 			.first()
 		)
 		if existing:
-			if existing.side != side and existing.item_link_id != item_link.pkid:
-				raise ItemGroupConflictError(item_link.item_group, item_code, existing.side, side)
-			existing.side = side
-			existing.item_link_id = item_link.pkid
+			if existing.side != side:
+				conflict_exists = (
+					session.query(ItemGroupLink.pkid)
+					.filter(ItemGroupLink.item_group_pkid == existing.pkid)
+					.filter(ItemGroupLink.item_link_id != item_link.pkid)
+					.first()
+				)
+				if conflict_exists:
+					raise ItemGroupConflictError(item_link.item_group, item_code, existing.side, side)
+				existing.side = side
 			existing.update_dt = now_ny_naive()
 			return existing
 		new_entry = cls(
-			item_link_id=item_link.pkid,
 			item=item_code,
 			item_group=item_link.item_group,
 			side=side,
@@ -402,14 +558,82 @@ class ItemGroup(db.Model):
 		session.add(new_entry)
 		return new_entry
 
+	@classmethod
+	def _prune_orphans(cls, session, membership_ids: set[int]) -> None:
+		if not membership_ids:
+			return
+		for membership_id in membership_ids:
+			still_linked = (
+				session.query(ItemGroupLink.pkid)
+				.filter(ItemGroupLink.item_group_pkid == membership_id)
+				.first()
+			)
+			if still_linked:
+				continue
+			membership = session.get(cls, membership_id)
+			if membership is not None:
+				session.delete(membership)
+
+
+class ItemGroupLink(db.Model):
+	"""Pivot table linking ItemGroup memberships back to PLM.ItemLink rows."""
+
+	__tablename__ = "ItemGroupLink"
+	__table_args__ = (
+		UniqueConstraint("item_group_pkid", "item_link_id", name="UX_ItemGroupLink_Group_Link"),
+		Index("IX_ItemGroupLink_Group", "item_group_pkid"),
+		Index("IX_ItemGroupLink_ItemLink", "item_link_id"),
+		{"schema": "PLM"},
+	)
+
+	pkid = db.Column("PKID", db.BigInteger, primary_key=True, autoincrement=True)
+	item_group_pkid = db.Column(
+		"item_group_pkid",
+		db.BigInteger,
+		db.ForeignKey("PLM.ItemGroup.PKID", ondelete="CASCADE"),
+		nullable=False,
+	)
+	item_link_id = db.Column(
+		"item_link_id",
+		db.BigInteger,
+		db.ForeignKey("PLM.ItemLink.PKID", ondelete="CASCADE"),
+		nullable=False,
+	)
+	create_dt = db.Column("create_dt", db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+
+	membership = relationship("ItemGroup", back_populates="links")
+	item_link = relationship("ItemLink", back_populates="group_links")
+
+	def __repr__(self):
+		return f"<ItemGroupLink id={self.pkid} membership={self.item_group_pkid} item_link={self.item_link_id}>"
+
+	@classmethod
+	def ensure(cls, session, membership: ItemGroup, item_link: ItemLink) -> "ItemGroupLink":
+		if membership.pkid is None:
+			session.flush([membership])
+		existing = (
+			session.query(cls)
+			.filter(cls.item_group_pkid == membership.pkid, cls.item_link_id == item_link.pkid)
+			.first()
+		)
+		if existing:
+			return existing
+		record = cls(item_group_pkid=membership.pkid, item_link_id=item_link.pkid)
+		session.add(record)
+		return record
+
 
 class PendingItems(db.Model):
 	__tablename__ = "PendingItems"
 	__table_args__ = (
-		# unique constraint on (item_link_id, replace_item_pending)
-		# to prevent duplicate pending entries for same link and part num
-		UniqueConstraint("item_link_id", "replace_item_pending", 
-				         name="UX_PendingItems_Link_ReplacePending"),
+		# unique constraint on (item_link_id, contract_id, replace_item_pending)
+		# to prevent duplicate pending entries for same link, contract, and part num
+		UniqueConstraint(
+			"item_link_id",
+			"contract_id",
+			"replace_item_pending",
+			name="UX_PendingItems_Link_ContractReplace",
+		),
 		# index for filtering
 		Index("IX_PendingItems_Status", "status"),
 		Index("IX_PendingItems_ReplaceItemPending", "replace_item_pending"),
@@ -484,6 +708,7 @@ class PLMItemGroupLocation(db.Model):
 	Company = db.Column("Company", db.String(10), nullable=False, primary_key=True)
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False, primary_key=True)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
+	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 
 	__mapper_args__ = {
 		"primary_key": [Item_Group, Company, Group_Locations]
@@ -535,6 +760,7 @@ class PLMTranckerHead(db.Model):
 	Stage = db.Column("Stage", db.String(100), nullable=False)
 
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=True, primary_key=True)
+	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
 	Company = db.Column("Company", db.String(10), nullable=True)
 	create_dt = db.Column("CreateDT", db.DateTime(timezone=False), nullable=True)
@@ -565,6 +791,8 @@ class PLMTrackerBase(db.Model):
 	Stage = db.Column("Stage", db.String(100), nullable=False)
 	Item_Group = db.Column("Item Group", db.Integer, nullable=True)
 	Group_Locations = db.Column("Group Locations", db.String(20), nullable=False)
+	LocationText = db.Column("LocationText", db.String(255), nullable=True) # directly on group locations so we don't get those missing value from outer join (in view query)
+	Company = db.Column("Company", db.String(10), nullable=True) #directly on group locations
 	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False)
 	LocationType = db.Column("LocationType", db.String(40), nullable=True)
 
@@ -578,7 +806,6 @@ class PLMTrackerBase(db.Model):
 	Item = db.Column("Item", db.String(10), nullable=False)
 
 	Location = db.Column("Location", db.String(20), nullable=True)
-	LocationText = db.Column("LocationText", db.String(255), nullable=True)
 	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=True)
 	PreferredBin = db.Column("PreferredBin", db.String(40), nullable=True)
 	ItemDescription = db.Column("ItemDescription", db.String(255), nullable=True)
@@ -608,24 +835,34 @@ class PLMTrackerBase(db.Model):
 	OrderQty90_EA = db.Column("OrderQty90_EA", db.Numeric, nullable=True)
 	ReqQty90_EA = db.Column("ReqQty90_EA", db.Numeric, nullable=True)
 
+	# action for replace item set up
+	action = db.Column("action", db.String(20), nullable=True)
+	# based on stage, existence of replace item in corresponding group location, and existence of rouce item in corresponding group location
+	# value can be one of the following:
+	# Mute - Discontinued item, we don't set up anything for replacement
+	# RI Only - replacement item already exists in this location, but source item does not exist, no action needed
+	# Update - source item exists, replacement item exists, if we export and decide to send file to MDM, it is an update
+	# Create - source item exists, replacement item does not exist, we need to create the replacement item in this location
+
 	# Replace Item side (ri) fields
 	Replace_Item = db.Column("Replace Item", db.String(250), nullable=False)
 
 	Location_ri = db.Column("Location_ri", db.String(20), nullable=True)
-	LocationText_ri = db.Column("LocationText_ri", db.String(255), nullable=True)
 	Inventory_base_ID_ri = db.Column("Inventory_base_ID_ri", db.BIGINT, nullable=True)
 	PreferredBin_ri = db.Column("PreferredBin_ri", db.String(40), nullable=True)
-	ItemDescription_ri = db.Column("ItemDescription_ri", db.String(255), nullable=True)
-	ManufacturerNumber_ri = db.Column("ManufacturerNumber_ri", db.String(100), nullable=True)
+	ItemDescription_ri = db.Column("ItemDescription_ri", db.String(255), nullable=True) #item level
+	ManufacturerNumber_ri = db.Column("ManufacturerNumber_ri", db.String(100), nullable=True) #item level
 	Active_ri = db.Column("Active_ri", db.String(5), nullable=True)
 	Discontinued_ri = db.Column("Discontinued_ri", db.String(5), nullable=True)
 	AutomaticPO_ri = db.Column("AutomaticPO_ri", db.String(5), nullable=True)
-	StockUOM_ri = db.Column("StockUOM_ri", db.String(10), nullable=True)
-	UOMConversion_ri = db.Column("UOMConversion_ri", db.Numeric, nullable=True)
-	DefaultBuyUOM_ri = db.Column("DefaultBuyUOM_ri", db.String(10), nullable=True)
-	BuyUOMMultiplier_ri = db.Column("BuyUOMMultiplier_ri", db.Numeric, nullable=True)
-	DefaultTransactionUOM_ri = db.Column("DefaultTransactionUOM_ri", db.String(10), nullable=True)
-	TransactionUOMMultiplier_ri = db.Column("TransactionUOMMultiplier_ri", db.Numeric, nullable=True)
+	StockUOM_ri = db.Column("StockUOM_ri", db.String(10), nullable=True) #item level
+	UOMConversion_ri = db.Column("UOMConversion_ri", db.Numeric, nullable=True) #item level
+	DefaultBuyUOM_ri = db.Column("DefaultBuyUOM_ri", db.String(10), nullable=True) #item level
+	BuyUOMMultiplier_ri = db.Column("BuyUOMMultiplier_ri", db.Numeric, nullable=True) #item level
+	DefaultTransactionUOM_ri = db.Column("DefaultTransactionUOM_ri", db.String(10), nullable=True) #item loc level
+	TransactionUOMMultiplier_ri = db.Column("TransactionUOMMultiplier_ri", db.Numeric, nullable=True) #item loc level
+	MatchedTransactionUOM_ri = db.Column("MatchedTransactionUOM_ri", db.String(10), nullable=True) #item loc level (match to original item's trans UOM)
+	MatchedTransactionUOMMultiplier_ri = db.Column("MatchedTransactionUOMMultiplier_ri", db.Numeric, nullable=True) #item loc level (match to original item's
 	ReorderQuantityCode_ri = db.Column("ReorderQuantityCode_ri", db.String(40), nullable=True)
 	ReorderPoint_ri = db.Column("ReorderPoint_ri", db.Integer, nullable=True)
 	MaxOrderQty_ri = db.Column("MaxOrderQty_ri", db.Integer, nullable=True)

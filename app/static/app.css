@@ -350,6 +350,21 @@ footer { font-size: .75rem; }
 #table-par tbody td[data-column-id="par-col-notes"] {
   background: transparent;
 }
+#table-inventory th#inv-col-action,
+#table-inventory th#inv-col-setup-action,
+#table-par th#par-col-action,
+#table-par th#par-col-setup-action,
+#table-inventory thead tr.column-filter-row th[data-column-id="inv-col-action"],
+#table-inventory thead tr.column-filter-row th[data-column-id="inv-col-setup-action"],
+#table-par thead tr.column-filter-row th[data-column-id="par-col-action"],
+#table-par thead tr.column-filter-row th[data-column-id="par-col-setup-action"],
+#table-inventory tbody td[data-column-id="inv-col-action"],
+#table-inventory tbody td[data-column-id="inv-col-setup-action"],
+#table-par tbody td[data-column-id="par-col-action"],
+#table-par tbody td[data-column-id="par-col-setup-action"] {
+  min-width: 80px;
+  width: 120px;
+}
 #table-inventory thead tr.column-header-labels th.col-recom,
 #table-par thead tr.column-header-labels th.col-recom {
   background: var(--plm-accent-purple-mid);

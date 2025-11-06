@@ -270,3 +270,112 @@ def test_one_to_zero_marks_not_applicable():
     assert row["recommended_auto_replenishment_ri"] == "N.A."
     assert row["recommended_reorder_quantity_code_ri"] == "N.A."
     assert row["recommended_transaction_uom_ri"] == "N.A."
+
+
+def test_relation_rules_preferred_bin_uses_source_bin():
+    rows = [
+        {
+            "item_group": 909,
+            "group_location": "LOC-A",
+            "item": "SRC-ITEM",
+            "replacement_item": "REPL-ITEM",
+            "preferred_bin": " SRC-BIN ",
+            "location_type": "Inventory Location",
+        }
+    ]
+
+    _annotate_replacement_setups(rows, br_calc_type="simple")
+
+    assert rows[0]["item_replace_relation"] == "1-1"
+    assert rows[0]["recommended_preferred_bin_ri"] == "SRC-BIN"
+
+
+def test_relation_rules_many_to_one_marks_tbd():
+    rows = [
+        {
+            "item_group": 910,
+            "group_location": "LOC-B",
+            "item": "SRC-1",
+            "replacement_item": "REPL",
+            "preferred_bin": "BIN-1",
+            "location_type": "Inventory Location",
+        },
+        {
+            "item_group": 910,
+            "group_location": "LOC-B",
+            "item": "SRC-2",
+            "replacement_item": "REPL",
+            "preferred_bin": "BIN-2",
+            "location_type": "Inventory Location",
+        },
+    ]
+
+    _annotate_replacement_setups(rows, br_calc_type="simple")
+
+    for row in rows:
+        assert row["item_replace_relation"] == "many-1"
+        assert row["recommended_preferred_bin_ri"] == "TBD"
+
+
+def test_action_update_overrides_with_current_preferred_bin_ri():
+    rows = [
+        {
+            "item_group": 911,
+            "group_location": "LOC-C",
+            "item": "SRC",
+            "replacement_item": "REPL",
+            "preferred_bin": "SRC-BIN",
+            "preferred_bin_ri": "RI-BIN",
+            "action": "Update",
+            "location_type": "Inventory Location",
+        }
+    ]
+
+    _annotate_replacement_setups(rows, br_calc_type="simple")
+
+    assert rows[0]["recommended_preferred_bin_ri"] == "RI-BIN"
+
+
+def test_action_create_behaviour_differs_by_location_type():
+    rows = [
+        {
+            "item_group": 912,
+            "group_location": "LOC-D",
+            "item": "SRC-INV",
+            "replacement_item": "REPL-INV",
+            "preferred_bin": "INV-BIN",
+            "action": "Create",
+            "location_type": "Inventory Location",
+        },
+        {
+            "item_group": 913,
+            "group_location": "LOC-E",
+            "item": "SRC-PAR",
+            "replacement_item": "REPL-PAR",
+            "preferred_bin": "PAR-BIN",
+            "action": "Create",
+            "location_type": "Par Location",
+        },
+    ]
+
+    _annotate_replacement_setups(rows, br_calc_type="simple")
+
+    assert rows[0]["recommended_preferred_bin_ri"] == "NEW ITEM"
+    assert rows[1]["recommended_preferred_bin_ri"] == "PAR-BIN"
+
+
+def test_blank_preferred_bin_defaults_to_tbd_after_rules():
+    rows = [
+        {
+            "item_group": 914,
+            "group_location": "LOC-F",
+            "item": "SRC",
+            "replacement_item": "REPL",
+            "preferred_bin": "   ",
+            "location_type": "Inventory Location",
+        }
+    ]
+
+    _annotate_replacement_setups(rows, br_calc_type="simple")
+
+    assert rows[0]["recommended_preferred_bin_ri"] == "TBD"

@@ -206,7 +206,8 @@
                 <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
-                <th id="inv-col-action" data-field="action" class="col-text">Setup Action</th>
+                <th id="inv-col-action" data-field="action" class="col-text">Record Action</th>
+                <th id="inv-col-setup-action" data-field="setup_action" class="col-text">Setup Action</th>
                 <th id="inv-col-notes" data-field="notes" class="col-desc">Notes</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
@@ -268,6 +269,7 @@
                 <th class="col-desc column-filter-cell" id="inv-filter-desc" data-column-id="inv-col-desc"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-desc-ri" data-column-id="inv-col-desc-ri"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-action" data-column-id="inv-col-action"></th>
+                <th class="col-text column-filter-cell" id="inv-filter-setup-action" data-column-id="inv-col-setup-action"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-notes" data-column-id="inv-col-notes"></th>
               </tr>
             </thead>
@@ -370,7 +372,8 @@
                 <th id="par-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="par-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="par-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
-                <th id="par-col-action" data-field="action" class="col-text">Setup Action</th>
+                <th id="par-col-action" data-field="action" class="col-text">Record Action</th>
+                <th id="par-col-setup-action" data-field="setup_action" class="col-text">Setup Action</th>
                 <th id="par-col-notes" data-field="notes" class="col-desc">Notes</th>
               </tr>
               <tr class="column-filter-row text-nowrap">
@@ -430,6 +433,7 @@
                 <th class="col-desc column-filter-cell" id="par-filter-desc" data-column-id="par-col-desc"></th>
                 <th class="col-desc column-filter-cell" id="par-filter-desc-ri" data-column-id="par-col-desc-ri"></th>
                 <th class="col-text column-filter-cell" id="par-filter-action" data-column-id="par-col-action"></th>
+                <th class="col-text column-filter-cell" id="par-filter-setup-action" data-column-id="par-col-setup-action"></th>
                 <th class="col-desc column-filter-cell" id="par-filter-notes" data-column-id="par-col-notes"></th>
               </tr>
             </thead>
@@ -464,7 +468,7 @@
           <div class="text-muted small mt-2" id="chart-hint">&nbsp;</div>
           <hr class="my-4">
           <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
-            <h6 class="mb-0 text-uppercase small text-muted" id="issue-chart-title" data-daily-label="Daily Issued-Out Qty" data-weekly-label="Weekly Issued-Out Qty">Daily Issued-Out Qty</h6>
+            <h6 class="mb-0 text-uppercase small text-muted" id="issue-chart-title" data-daily-label="Daily Issued-Out Qty" data-weekly-label="Weekly Issued-Out Qty" data-daily-requested-label="Daily Requested Qty" data-weekly-requested-label="Weekly Requested Qty">Daily Issued-Out Qty</h6>
             <div class="form-check form-switch form-switch-sm ms-auto text-muted">
               <input class="form-check-input" type="checkbox" role="switch" id="issue-weekly-toggle" aria-label="Toggle weekly issued-out totals">
               <label class="form-check-label small" for="issue-weekly-toggle">Weekly totals</label>
@@ -758,6 +762,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if(text === '') return 'TBD';
     return formatted;
   }
+  function deriveSetupAction(raw){
+    if(raw === null || raw === undefined) return '';
+    const text = String(raw).trim();
+    return text;
+  }
   const columnState = {
     inventory: {},
     par: {},
@@ -783,7 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_reorder_point_ri',
         'recommended_auto_replenishment_ri',
         'manufacturer_number_ri',
-        'action',
+  'setup_action',
         'notes',
         'preferred_bin_ri',
         'min_order_qty_ri',
@@ -804,7 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_reorder_point_ri',
         'stock_uom_ri',
         'recommended_preferred_bin_ri',
-        'action',
+  'setup_action',
         'notes',
         'preferred_bin_ri',
         'reorder_point_ri',
@@ -821,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'reorder_point',
         'stock_uom',
         'preferred_bin',
-        'action',
+  'setup_action',
         'notes',
         'preferred_bin_ri',
         'reorder_point_ri',
@@ -1275,7 +1284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'transaction_uom_ri', 'transaction_uom_multiplier_ri', 'reorder_quantity_code_ri',
     'min_order_qty_ri', 'max_order_qty_ri', 'manufacturer_number_ri',
     'preferred_bin', 'preferred_bin_ri',
-    'action', 'notes',
+    'action', 'setup_action', 'notes',
     ...recommendedColumns,
   ];
   ['inventory', 'par'].forEach(tableKey => {
@@ -1836,6 +1845,9 @@ document.addEventListener('DOMContentLoaded', () => {
           : formatWithTbd(r.recommended_preferred_bin_ri, fmt);
         const recommendedAutoReplDisplay = formatWithTbd(r.recommended_auto_replenishment_ri, fmt);
         const recommendedReorderPolicyDisplay = formatWithTbd(r.recommended_reorder_quantity_code_ri, reorderCode);
+        const recordAction = fmt(r.action);
+        const setupActionValue = r.setup_action !== undefined ? r.setup_action : deriveSetupAction(r.action);
+        const setupAction = fmt(setupActionValue);
     tr.dataset.itemGroup = r.item_group;
     tr.dataset.item = r.item;
     tr.dataset.location = r.location || '';
@@ -1899,7 +1911,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
-          <td class="col-text text-center">${fmt(r.action)}</td>
+          <td class="col-text text-center">${recordAction}</td>
+          <td class="col-text text-center">${setupAction}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
         `;
         annotateBodyRow('inventory', tr);
@@ -1955,6 +1968,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const recommendedPreferredBinDisplay = formatWithTbd(r.recommended_preferred_bin_ri, fmt);
         const recommendedAutoReplDisplay = formatWithTbd(r.recommended_auto_replenishment_ri, fmt);
         const recommendedReorderPolicyDisplay = formatWithTbd(r.recommended_reorder_quantity_code_ri, reorderCode);
+        const recordAction = fmt(r.action);
+        const setupActionValue = r.setup_action !== undefined ? r.setup_action : deriveSetupAction(r.action);
+        const setupAction = fmt(setupActionValue);
         const tr = document.createElement('tr');
   tr.dataset.itemGroup = r.item_group || '';
   tr.dataset.item = r.item || '';
@@ -2018,7 +2034,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
             <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
       <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
-      <td class="col-text text-center">${fmt(r.action)}</td>
+            <td class="col-text text-center">${recordAction}</td>
+            <td class="col-text text-center">${setupAction}</td>
       <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
         `;
         annotateBodyRow('par', tr);
@@ -2963,6 +2980,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const chartDataCache = new Map();
   const issueDataCache = new Map();
   let issueAggregationMode = 'daily';
+  let issueChartLabelMode = 'issued';
   let lastIssueRenderContext = null;
   const PRIMARY_COLOR = '#fb923c';
   const REPLACEMENT_COLOR = '#60a5fa';
@@ -2984,12 +3002,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatMonthTick = d3.utcFormat('%Y-%m');
   const formatQuantity = d3.format(',.0f');
   const getIssueAggregationLabel = (mode) => mode === 'weekly' ? 'weekly aggregated' : 'daily';
+  function resolveIssueTitleAttr(isWeekly){
+    if(issueChartLabelMode === 'requested'){
+      return isWeekly ? 'data-weekly-requested-label' : 'data-daily-requested-label';
+    }
+    return isWeekly ? 'data-weekly-label' : 'data-daily-label';
+  }
+
+  function resolveIssueTitleFallback(isWeekly){
+    if(issueChartLabelMode === 'requested'){
+      return isWeekly ? 'Weekly Requested Qty' : 'Daily Requested Qty';
+    }
+    return isWeekly ? 'Weekly Issued-Out Qty' : 'Daily Issued-Out Qty';
+  }
+
   function updateIssueAggregationTitle(mode = issueAggregationMode){
     if(!issueChartTitle) return;
-    const attr = mode === 'weekly' ? 'data-weekly-label' : 'data-daily-label';
-    const fallback = mode === 'weekly' ? 'Weekly Issued-Out Qty' : 'Daily Issued-Out Qty';
+    const isWeekly = mode === 'weekly';
+    const attr = resolveIssueTitleAttr(isWeekly);
+    const fallback = resolveIssueTitleFallback(isWeekly);
     const label = issueChartTitle.getAttribute(attr) || fallback;
     issueChartTitle.textContent = label;
+    issueChartTitle.setAttribute('aria-label', label);
+  }
+
+  function setIssueChartLabelMode(mode){
+    const normalized = mode === 'requested' ? 'requested' : 'issued';
+    if(issueChartLabelMode === normalized) return;
+    issueChartLabelMode = normalized;
+    updateIssueAggregationTitle();
   }
   function showIssueChartPlaceholder(){
     if(issueChartContainer){
@@ -3266,6 +3307,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearParRowHighlight();
     selectedParSignature = null;
     lastParIssueSelection = null;
+    setIssueChartLabelMode('issued');
   }
 
   function restoreParRowHighlight(){
@@ -3275,6 +3317,7 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedParRow = nextRow;
       nextRow.classList.add('inventory-row-selected');
       nextRow.setAttribute('aria-selected', 'true');
+      setIssueChartLabelMode('requested');
     } else {
       clearParSelection();
     }
@@ -3290,7 +3333,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const loc = (tr.dataset.groupLocation || tr.dataset.location || '').trim();
         clearInventorySelection();
         showParSelectionChartState(ig, loc);
-  if(!ig) return;
+        if(!ig){
+          setIssueChartLabelMode('issued');
+          return;
+        }
+        setIssueChartLabelMode('requested');
         const primaryItem = tr.dataset.item || '';
         const replacementItem = tr.dataset.replacementItem || '';
         const related = collectRelatedParItems(ig, loc);

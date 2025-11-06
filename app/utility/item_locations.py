@@ -327,18 +327,8 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         for row in group_rows:
             row["recommended_auto_replenishment_ri"] = auto_recommendation
 
-        if relation == "1-1":
+        if relation in {"1-0", "many-0"}:
             for row in group_rows:
-                preferred = row.get("preferred_bin")
-                if isinstance(preferred, str):
-                    preferred = preferred.strip()
-                row["recommended_preferred_bin_ri"] = preferred or None
-        elif relation in {"1-many", "many-1", "many-many"}:
-            for row in group_rows:
-                row["recommended_preferred_bin_ri"] = "TBD"
-        elif relation in {"1-0", "many-0"}:
-            for row in group_rows:
-                row["recommended_preferred_bin_ri"] = "N.A."
                 row["recommended_auto_replenishment_ri"] = "N.A."
                 row["recommended_reorder_quantity_code_ri"] = "N.A."
                 row["recommended_transaction_uom_ri"] = "N.A."
@@ -363,10 +353,25 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         for row in group_rows:
             action_value = (row.get("action") or "").strip().lower()
             if action_value in {"ri only", "mute"}:
-                row["recommended_preferred_bin_ri"] = "N.A."
                 row["recommended_auto_replenishment_ri"] = "N.A."
                 row["recommended_reorder_quantity_code_ri"] = "N.A."
                 row["recommended_transaction_uom_ri"] = "N.A."
+            elif action_value == "update":
+                auto_normalized, auto_display = _auto_value_profile(row.get("auto_replenishment_ri"))
+                if not auto_normalized or auto_normalized == "tbd":
+                    row["recommended_auto_replenishment_ri"] = "TBD"
+                else:
+                    row["recommended_auto_replenishment_ri"] = auto_display
+
+                reorder_value = row.get("reorder_quantity_code_ri")
+                if reorder_value is None:
+                    row["recommended_reorder_quantity_code_ri"] = "TBD"
+                else:
+                    reorder_text = str(reorder_value).strip()
+                    row["recommended_reorder_quantity_code_ri"] = reorder_text or "TBD"
+
+        for row in group_rows:
+            row["recommended_preferred_bin_ri"] = compute_inventory_recommended_preferred_bin(row)
 
 
 def _is_tbd(value: object | None) -> bool:
@@ -383,6 +388,45 @@ def _is_new_item(value: object | None) -> bool:
     if isinstance(value, str) and value.strip().lower() == "new item":
         return True
     return False
+
+
+def _clean_preferred_bin_value(value: object | None) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
+
+
+def compute_inventory_recommended_preferred_bin(row: Dict) -> str:
+    """Derive the recommended preferred bin with relation/action fallbacks."""
+
+    relation = str(row.get("item_replace_relation") or "").strip().lower()
+    is_par_location = _is_par_location(row)
+
+    if relation in {"1-1", "1-many"}:
+        candidate = _clean_preferred_bin_value(row.get("preferred_bin"))
+    elif relation == "many-1":
+        candidate = "TBD"
+    elif relation in {"1-0", "many-0"}:
+        candidate = "N.A."
+    else:
+        candidate = "TBD"
+
+    action_value = str(row.get("action") or "").strip().lower()
+    if action_value in {"ri only", "mute"}:
+        candidate = "N.A."
+    elif action_value == "update":
+        candidate = _clean_preferred_bin_value(row.get("preferred_bin_ri")) or "TBD"
+    elif action_value == "create" and not is_par_location:
+        candidate = "NEW ITEM"
+
+    if isinstance(candidate, str):
+        candidate = candidate.strip()
+
+    if not candidate:
+        candidate = "TBD"
+
+    return candidate
 
 
 def _build_transaction_uom_lookup(items: set[str]) -> Dict[str, str]:

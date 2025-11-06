@@ -46,16 +46,33 @@ def test_apply_tri_state_filter_matches_expected_values():
 
 def test_apply_inventory_recommended_bin_display_matches_ui_rules():
     rows = [
-        {"action": "Create", "recommended_preferred_bin_ri": ""},
-        {"action": "Update", "recommended_preferred_bin_ri": "   "},
-        {"action": "Mute", "recommended_preferred_bin_ri": "N.A."},
-        {"action": "", "recommended_preferred_bin_ri": None},
+        {
+            "action": "Create",
+            "preferred_bin_ri": "RI-100",
+            "preferred_bin": "SRC-100",
+            "recommended_preferred_bin_ri": "",
+        },
+        {
+            "action": "Update",
+            "preferred_bin_ri": "RI-200",
+            "recommended_preferred_bin_ri": "   ",
+        },
+        {
+            "action": "Mute",
+            "preferred_bin_ri": "RI-300",
+            "recommended_preferred_bin_ri": "N.A.",
+        },
+        {
+            "action": "",
+            "preferred_bin_ri": "",
+            "recommended_preferred_bin_ri": None,
+        },
     ]
 
     routes._apply_inventory_recommended_bin_display(rows)
 
     assert rows[0]["recommended_preferred_bin_ri"] == "NEW ITEM"
-    assert rows[1]["recommended_preferred_bin_ri"] == "TBD"
+    assert rows[1]["recommended_preferred_bin_ri"] == "RI-200"
     assert rows[2]["recommended_preferred_bin_ri"] == "N.A."
     assert rows[3]["recommended_preferred_bin_ri"] == "TBD"
 

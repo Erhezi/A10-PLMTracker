@@ -9,7 +9,7 @@ from flask_login import login_required as _login_required
 from sqlalchemy import select, func
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.annotation import AnnotatedColumn
-from ..utility.item_locations import build_location_pairs
+from ..utility.item_locations import build_location_pairs, compute_inventory_recommended_preferred_bin
 from .. import db
 from ..models.inventory import Requesters365Day
 from ..models.relations import ItemLink, PLMTrackerBase, PLMQty, PLMDailyIssueOutQty
@@ -324,6 +324,92 @@ def _apply_quantity_filter(rows, field: str, desired: str | None):
     return filtered
 
 
+def _normalize_setup_compare_value(value):
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value.normalize()
+    if isinstance(value, (int, float)):
+        try:
+            return Decimal(str(value)).normalize()
+        except (InvalidOperation, ValueError):
+            return str(value).strip().lower()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        decimal_value = _to_decimal(text)
+        if decimal_value is not None:
+            return decimal_value.normalize()
+        return text.lower()
+    decimal_value = _to_decimal(value)
+    if decimal_value is not None:
+        return decimal_value.normalize()
+    return str(value).strip().lower()
+
+
+def _setup_values_match(left, right) -> bool:
+    return _normalize_setup_compare_value(left) == _normalize_setup_compare_value(right)
+
+
+def _infer_setup_table(row: dict, explicit: str | None = None) -> str | None:
+    if explicit:
+        return explicit
+    if not isinstance(row, dict):
+        return None
+    if "recommended_transaction_uom_ri" in row or "transaction_uom_ri" in row:
+        return "inventory"
+    if "recommended_reorder_point_ri" in row:
+        return "par"
+    return None
+
+
+def _should_mark_update_as_no_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> bool:
+    if not isinstance(row, dict):
+        return False
+    action_raw = action_source if action_source is not None else row.get("action")
+    action_key = str(action_raw or "").strip().lower()
+    if action_key != "update":
+        return False
+    context = _infer_setup_table(row, explicit=table)
+    if context == "inventory":
+        comparisons = [
+            ("transaction_uom_ri", "recommended_transaction_uom_ri"),
+            ("reorder_quantity_code_ri", "recommended_reorder_quantity_code_ri"),
+            ("min_order_qty_ri", "recommended_min_order_qty_ri"),
+            ("max_order_qty_ri", "recommended_max_order_qty_ri"),
+        ]
+    elif context == "par":
+        comparisons = [("reorder_point_ri", "recommended_reorder_point_ri")]
+    else:
+        return False
+    for current_field, recommended_field in comparisons:
+        if not _setup_values_match(row.get(current_field), row.get(recommended_field)):
+            return False
+    return True
+
+
+def _derive_setup_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> str | None:
+    if not isinstance(row, dict):
+        return None
+    raw_action = action_source if action_source is not None else row.get("action")
+    if raw_action is None:
+        return None
+    text = str(raw_action).strip()
+    if not text:
+        return None
+    normalized = text.lower().replace("-", " ").replace("_", " ").strip()
+    if normalized == "update" and _should_mark_update_as_no_action(row, table=table, action_source=raw_action):
+        return "No Action (U)"
+    return text
+
+
+def _assign_setup_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> None:
+    if not isinstance(row, dict):
+        return
+    row["setup_action"] = _derive_setup_action(row, table=table, action_source=action_source or row.get("action"))
+
+
 def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
     if apply_filters:
         stages_list = _parse_stage_values(args)
@@ -381,6 +467,8 @@ def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
         all_rows = _apply_tri_state_filter(all_rows, "discontinued_ri", args.get("discontinued_state_ri"))
         all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
         all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
+    for row in all_rows:
+        _assign_setup_action(row, table="inventory")
     return all_rows
 
 
@@ -447,6 +535,8 @@ def _filtered_par_rows(args, *, apply_filters: bool = True) -> list[dict]:
                 r["weeks_reorder_ri"] = "unknown" if val is None else val
         except Exception:
             r["weeks_reorder_ri"] = "unknown"
+    for row in all_rows:
+        _assign_setup_action(row, table="par")
     return all_rows
 
 
@@ -460,20 +550,11 @@ def _apply_inventory_recommended_bin_display(rows: list[dict]) -> None:
         if not isinstance(row, dict):  # defensive guard; rows should be dicts
             continue
 
-        action_value = str(row.get("action") or "").strip().lower()
-        if action_value == "create":
-            row["recommended_preferred_bin_ri"] = "NEW ITEM"
+        current_value = row.get("recommended_preferred_bin_ri")
+        if isinstance(current_value, str) and current_value.strip().lower() in {"n.a.", "n.a", "n/a"}:
             continue
 
-        current_value = row.get("recommended_preferred_bin_ri")
-        if isinstance(current_value, str):
-            trimmed = current_value.strip()
-            row["recommended_preferred_bin_ri"] = trimmed or "TBD"
-        elif current_value is None:
-            row["recommended_preferred_bin_ri"] = "TBD"
-        else:
-            text_value = str(current_value).strip()
-            row["recommended_preferred_bin_ri"] = text_value or "TBD"
+        row["recommended_preferred_bin_ri"] = compute_inventory_recommended_preferred_bin(row)
 
 
 INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
@@ -536,7 +617,8 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
-    ("Setup Action", "action"),
+    ("Record Action", "action"),
+    ("Setup Action", "setup_action"),
     ("Notes", "notes"),
 ]
 
@@ -599,7 +681,8 @@ PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
-    ("Setup Action", "action"),
+    ("Record Action", "action"),
+    ("Setup Action", "setup_action"),
     ("Notes", "notes"),
 ]
 
@@ -639,7 +722,7 @@ INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "recommended_reorder_point_ri": "ReorderPoint",
     "recommended_auto_replenishment_ri": "AutomaticPurchaseOrder (True/False)",
     "manufacturer_number_ri": "Item Manufacturer Number",
-    "action": "Requested update/Action",
+    "setup_action": "Requested update/Action",
     "notes": "Notes",
     "preferred_bin_ri": "Current PreferredBin (Repl. Item)",
     "min_order_qty_ri": "Current Min (Repl. Item)",
@@ -661,7 +744,7 @@ PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {
     "recommended_reorder_point_ri": "ReorderPoint",
     "stock_uom_ri": "UOM Unit Of Measure",
     "recommended_preferred_bin_ri": "BIN Location                        (All New Sequence)",
-    "action": "Requested update/Action",
+    "setup_action": "Requested update/Action",
     "notes": "Notes",
     "preferred_bin_ri": "Current Bin (Repl. Item)",
     "reorder_point_ri": "Current Reorder (Repl. Item)",
@@ -680,7 +763,7 @@ PAR_SETUP_ORIGINAL_HEADER_OVERRIDES: dict[str, str] = {
     "reorder_point": "ReorderPoint",
     "stock_uom": "UOM Unit Of Measure",
     "preferred_bin": "BIN Location                        (All New Sequence)",
-    "action": "Requested update/Action",
+    "setup_action": "Requested update/Action",
     "notes": "Notes",
     "preferred_bin_ri": "Current Bin (Repl. Item)",
     "reorder_point_ri": "Current Reorder (Repl. Item)",
@@ -779,11 +862,9 @@ def _prepare_par_setup_original_rows(rows: list[dict]) -> list[dict]:
     for row in rows:
         updated = dict(row)
 
-        action_raw = str(row.get("action") or "").strip()
-        if action_raw.lower() in {"create", "update"}:
-            updated["action"] = "Replace"
-        else:
-            updated["action"] = action_raw or None
+        action_raw = row.get("action")
+        updated["action"] = action_raw
+        updated["setup_action"] = _derive_setup_action(updated, table="par", action_source=action_raw)
 
         item_display = str(row.get("item") or "").strip() or "N/A"
         original_bin = str(row.get("preferred_bin") or "").strip() or "N/A"
@@ -801,9 +882,9 @@ def _prepare_par_setup_combined_rows(rows: list[dict]) -> list[dict]:
     if not rows:
         return []
 
-    replacement_rows = _apply_setup_action_rules(rows)
+    replacement_rows = _apply_setup_action_rules(rows, table="par")
     original_prepared = _prepare_par_setup_original_rows(rows)
-    original_rows = _apply_setup_action_rules(original_prepared)
+    original_rows = _apply_setup_action_rules(original_prepared, table="par")
 
     combined: list[dict] = []
 
@@ -821,6 +902,7 @@ def _prepare_par_setup_combined_rows(rows: list[dict]) -> list[dict]:
             "stock_uom_ri": row.get("stock_uom_ri"),
             "recommended_preferred_bin_ri": row.get("recommended_preferred_bin_ri"),
             "action": row.get("action"),
+            "setup_action": row.get("setup_action") or _derive_setup_action(row, table="par"),
             "notes": row.get("notes"),
             "preferred_bin_ri": row.get("preferred_bin_ri"),
             "reorder_point_ri": row.get("reorder_point_ri"),
@@ -841,6 +923,7 @@ def _prepare_par_setup_combined_rows(rows: list[dict]) -> list[dict]:
             "stock_uom_ri": row.get("stock_uom"),
             "recommended_preferred_bin_ri": row.get("preferred_bin"),
             "action": row.get("action"),
+            "setup_action": row.get("setup_action") or _derive_setup_action(row, table="par"),
             "notes": row.get("notes"),
             "preferred_bin_ri": row.get("preferred_bin_ri"),
             "reorder_point_ri": row.get("reorder_point_ri"),
@@ -884,7 +967,7 @@ def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
     return prepared
 
 
-def _apply_setup_action_rules(rows: list[dict]) -> list[dict]:
+def _apply_setup_action_rules(rows: list[dict], *, table: str | None = None) -> list[dict]:
     if not rows:
         return []
 
@@ -899,12 +982,8 @@ def _apply_setup_action_rules(rows: list[dict]) -> list[dict]:
             continue
 
         updated = dict(row)
-        if action_key == "create":
-            updated["action"] = "Add"
-        elif action_key == "update":
-            updated["action"] = "Replace"
-        else:
-            updated["action"] = action_raw
+        updated["action"] = action_raw
+        updated["setup_action"] = _derive_setup_action(updated, table=table, action_source=action_raw)
 
         normalized.append(updated)
 
@@ -1300,7 +1379,8 @@ def export_table(table_key: str):
             rows = _prepare_par_setup_original_rows(rows)
 
         if column_mode in {"inventory_setup", "par_setup_replacement", "par_setup_original"}:
-            rows = _apply_setup_action_rules(rows)
+            context = "inventory" if column_mode == "inventory_setup" else "par"
+            rows = _apply_setup_action_rules(rows, table=context)
 
         rows = _sort_export_rows(rows, column_mode)
 
@@ -1336,20 +1416,10 @@ def export_table(table_key: str):
             elif notes_value is not None:
                 has_notes = str(notes_value).strip() != ""
 
-                if has_notes:
-                    # For the combined PAR setup export we include both Replacement and
-                    # Original item rows. Per request, do NOT apply the highlight to
-                    # rows that are marked as the Original item set.
-                    skip_highlight = False
-                    if column_mode == "par_setup_combined":
-                        item_set_val = data_row.get("item_set")
-                        if isinstance(item_set_val, str) and item_set_val.strip().lower() == "original":
-                            skip_highlight = True
-
-                    if not skip_highlight:
-                        for col_idx in range(1, len(columns) + 1):
-                            cell = worksheet.cell(row=row_number, column=col_idx)
-                            cell.fill = highlight_fill
+            if has_notes:
+                for col_idx in range(1, len(columns) + 1):
+                    cell = worksheet.cell(row=row_number, column=col_idx)
+                    cell.fill = highlight_fill
 
     worksheet.freeze_panes = "A2"
     if worksheet.max_row and worksheet.max_column:

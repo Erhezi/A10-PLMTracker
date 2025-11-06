@@ -334,6 +334,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const showSelectedBtn = document.getElementById('show-selected-btn');
   const showAllBtn = document.getElementById('show-all-btn');
   const batchButtons = Array.from(document.querySelectorAll('.batch-action-btn'));
+  const stageBatchButton = batchButtons.find(btn => btn.dataset.action === 'stage');
+  const MULTI_STAGE_SELECTION_ALERT = 'Change Project Stage is only available when all selected rows share the same current stage. Filter on Stage and try again.';
   const selectHeader = table ? table.querySelector('.select-header') : null;
   const editHeader = table ? table.querySelector('.edit-header') : null;
   const selectAll = document.getElementById('batch-select-all');
@@ -375,6 +377,64 @@ document.addEventListener('DOMContentLoaded', () => {
     if(key) set.add(key);
     return set;
   };
+  const getRowStageValue = (row) => {
+    if(!row) return '';
+    const cell = row.querySelector('.stage-cell');
+    if(!cell) return '';
+    return (cell.dataset.value || '').trim();
+  };
+
+  function summarizeSelectionStages(rows){
+    const stageSet = new Set();
+    rows.forEach(row => stageSet.add(getRowStageValue(row)));
+    const stages = Array.from(stageSet);
+    const singleStage = stages.length === 1;
+    return {
+      singleStage,
+      stage: singleStage ? stages[0] : null,
+    };
+  }
+
+  function configureBatchStageSelect(currentStage){
+    if(!stageSelect) return;
+    const allowedTargets = allowedTargetsForStage(currentStage);
+    Array.from(stageSelect.options).forEach(opt => {
+      if(!opt.value){
+        opt.disabled = false;
+        return;
+      }
+      opt.disabled = !allowedTargets.has(opt.value);
+    });
+    stageSelect.value = '';
+    if(currentStage === TRACKING_COMPLETED_STAGE){
+      stageSelect.title = 'Tracking Completed is final; archive the row and add a new one to revive it.';
+    } else {
+      stageSelect.removeAttribute('title');
+    }
+  }
+
+  function updateStageBatchButtonState(){
+    if(!stageBatchButton){
+      return;
+    }
+    if(batchToggle && !batchToggle.checked){
+      stageBatchButton.disabled = true;
+      stageBatchButton.title = 'Enable Batch Change to update project stages.';
+      return;
+    }
+    const selectedRows = getSelectedRows();
+    const { singleStage } = summarizeSelectionStages(selectedRows);
+    const allow = selectedRows.length > 0 && singleStage;
+    stageBatchButton.disabled = !allow;
+    if(!allow){
+      stageBatchButton.title = selectedRows.length === 0
+        ? 'Select at least one row to change the project stage.'
+        : MULTI_STAGE_SELECTION_ALERT;
+    } else {
+      stageBatchButton.removeAttribute('title');
+    }
+  }
+
   const getSelectedCheckboxes = () => {
     if(!table) return [];
     return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => cb.checked);
@@ -382,14 +442,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let showSelectedActive = false;
 
   const updateSelectedCount = () => {
-    if(!selectedCountEl) return;
     const count = getSelectedCheckboxes().length;
-    selectedCountEl.textContent = count;
-    if(showSelectedBtn){
-      if(!showSelectedActive){
-        showSelectedBtn.disabled = count === 0;
-      }
+    if(selectedCountEl){
+      selectedCountEl.textContent = count;
     }
+    if(showSelectedBtn && !showSelectedActive){
+      showSelectedBtn.disabled = count === 0;
+    }
+    updateStageBatchButtonState();
   };
   const getVisibleCheckboxes = () => {
     if(!table) return [];
@@ -1553,14 +1613,24 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       const selected = ensureSelection();
       if(!selected) return;
+      const action = btn.dataset.action;
+      let stageSummary = null;
+      if(action === 'stage'){
+        stageSummary = summarizeSelectionStages(selected);
+        if(!stageSummary.singleStage){
+          alert(MULTI_STAGE_SELECTION_ALERT);
+          return;
+        }
+      }
       const visibleSelection = filterToSelectedRows();
       if(!visibleSelection.length){
         return;
       }
       clearErrors();
-      const action = btn.dataset.action;
       if(action === 'stage'){
-        if(stageSelect) stageSelect.value = '';
+        if(stageSelect){
+          configureBatchStageSelect(stageSummary ? stageSummary.stage : '');
+        }
         if(stageModal){
           stageModal.show();
         } else {

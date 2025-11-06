@@ -401,6 +401,13 @@ def _derive_setup_action(row: dict, *, table: str | None = None, action_source: 
     normalized = text.lower().replace("-", " ").replace("_", " ").strip()
     if normalized == "update" and _should_mark_update_as_no_action(row, table=table, action_source=raw_action):
         return "No Action (U)"
+    friendly_labels = {
+        "update": "Replace",
+        "create": "Add",
+    }
+    friendly = friendly_labels.get(normalized)
+    if friendly:
+        return friendly
     return text
 
 

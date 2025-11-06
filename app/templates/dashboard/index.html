@@ -765,6 +765,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function deriveSetupAction(raw){
     if(raw === null || raw === undefined) return '';
     const text = String(raw).trim();
+    if(text === '') return '';
+    const normalized = text.toLowerCase().replace(/[-_]/g, ' ').trim();
+    if(normalized === 'update') return 'Replace';
+    if(normalized === 'create') return 'Add';
     return text;
   }
   const columnState = {

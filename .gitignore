@@ -17,6 +17,7 @@ ENV/
 .env.*
 !.env.example
 *.env.local
+web.config
 
 # PyInstaller
 *.manifest

@@ -16,6 +16,23 @@ CONFLICT_MANY_TO_MANY = "many-to-many"
 CONFLICT_UNKNOWN = "Unknown"
 
 
+INACTIVE_RELATION_STAGES = {"tracking completed", "deleted"}
+
+
+def is_active_stage(stage: Optional[str]) -> bool:
+	"""Return True when the provided stage should participate in conflict detection."""
+
+	if stage is None:
+		return True
+	return stage.strip().lower() not in INACTIVE_RELATION_STAGES
+
+
+def is_active_link(link: ItemLink) -> bool:
+	"""Return True when the ItemLink row should be considered for node conflicts."""
+
+	return is_active_stage(getattr(link, "stage", None))
+
+
 @dataclass(frozen=True)
 class ConflictResult:
 	"""Represents a graph violation detected for a proposed ItemLink."""
@@ -66,7 +83,7 @@ class RelationGraph:
 		return graph
 
 	def _ingest(self, link: ItemLink) -> None:
-		if not link.replace_item:
+		if not link.replace_item or not is_active_link(link):
 			return
 		self._outgoing.setdefault(link.item, {})[link.replace_item] = link
 		self._incoming.setdefault(link.replace_item, {})[link.item] = link
@@ -310,7 +327,11 @@ def detect_many_to_many_conflict(
 		.limit(limit)
 		.all()
 	)
-	outgoing_links = [link for link in outgoing_links if link.replace_item and link.replace_item != replace_item]
+	outgoing_links = [
+		link
+		for link in outgoing_links
+		if link.replace_item and link.replace_item != replace_item and is_active_link(link)
+	]
 
 	incoming_links = (
 		_order_recent(
@@ -323,7 +344,11 @@ def detect_many_to_many_conflict(
 		.limit(limit)
 		.all()
 	)
-	incoming_links = [link for link in incoming_links if link.item != (skip_item or item)]
+	incoming_links = [
+		link
+		for link in incoming_links
+		if link.item != (skip_item or item) and is_active_link(link)
+	]
 
 	if not outgoing_links or not incoming_links:
 		return None

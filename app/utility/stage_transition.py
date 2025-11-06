@@ -64,11 +64,14 @@ class StageTransitionHelper:
 			"Tracking - Item Transition",
 		},
 		"Tracking - Item Transition": {
-			"Tracking - Item Transition",
+			"Pending Clinical Readiness",
 			"Deleted",
 			"Tracking Completed",
 		},
 		"Deleted": set(CANONICAL_STAGES),
+		"Tracking Completed": {
+			"Tracking Completed",
+		},
 	}
 
 	@classmethod
@@ -117,11 +120,14 @@ class StageTransitionHelper:
 
 		allowed_targets = cls.allowed_targets(current_stage, replace_item)
 		if desired not in allowed_targets:
+			reason = "Requested transition is not permitted"
+			if current == "Tracking Completed" and desired != current:
+				reason = "Tracking Completed is final; archive the row and add a new one to revive it"
 			return TransitionDecision(
 				allowed=False,
 				requested_stage=desired,
 				final_stage=current_stage or "",
-				reason="Requested transition is not permitted",
+				reason=reason,
 			)
 
 		final_stage = desired

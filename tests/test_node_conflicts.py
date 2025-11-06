@@ -12,9 +12,11 @@ from app.utility.node_check import (
 )
 
 
-def _link(item: str, replace_item: str, pkid: int) -> ItemLink:
+def _link(item: str, replace_item: str, pkid: int, *, stage: str | None = None) -> ItemLink:
     link = ItemLink(item=item, replace_item=replace_item, item_group=1)
     link.pkid = pkid
+    if stage is not None:
+        link.stage = stage
     return link
 
 
@@ -159,6 +161,28 @@ def test_detect_many_to_many_conflict_respects_skip_item():
 
 def test_detect_many_to_many_conflict_requires_both_sides():
     session = _StubSession([[], [_link("C", "B", 402)]])
+
+    conflict = detect_many_to_many_conflict(session, item="A", replace_item="B")
+
+    assert conflict is None
+
+
+def test_relation_graph_ignores_inactive_stage_links():
+    graph = RelationGraph()
+    completed = _link("A", "X", 501, stage="Tracking Completed")
+    incoming = _link("Y", "Z", 502)
+    register_link_in_graph(graph, completed)
+    register_link_in_graph(graph, incoming)
+
+    conflicts = graph.conflicts_for("A", "Z")
+
+    assert CONFLICT_MANY_TO_MANY not in {c.error_type for c in conflicts}
+
+
+def test_detect_many_to_many_conflict_ignores_inactive_rows():
+    outgoing = [_link("A", "X", 601, stage="Deleted")]
+    incoming = [_link("C", "B", 602)]
+    session = _StubSession([outgoing, incoming])
 
     conflict = detect_many_to_many_conflict(session, item="A", replace_item="B")
 

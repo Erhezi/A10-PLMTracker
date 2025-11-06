@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PLM Business Requirements v1.2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; line-height: 1.6; color: #2c3e50; }
+    h1, h2, h3 { color: #1a5276; }
+    h1 { border-bottom: 3px solid #1a5276; padding-bottom: 0.3em; }
+    h2 { margin-top: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
+    h3 { margin-top: 1em; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    table, th, td { border: 1px solid #aaa; }
+    th, td { padding: 8px 12px; text-align: left; }
+    th { background: #f4f6f6; }
+    .note { font-style: italic; color: #555; margin-top: 0.5em; }
+    .highlight { font-weight: bold; color: #c0392b; }
+    .appendix-links a { margin-right: 16px; }
+    .toc-top { background:#f9fbfc; border:1px solid #e5e7eb; padding:10px 12px; border-radius:8px; }
+    .wrike { margin:10px 0 20px; }
+    .diagram-wrap { margin: 16px 0; }
+    .mermaid { border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });</script>
+</head>
+<body>
+
+  <h1>PLM Business Requirements v1.2</h1>
+
+<div class="wrike">
+  <strong>Wrike Task:</strong>
+  <a href="https://www.wrike.com/workspace.htm?acc=2635024#/inbox/work_item/1727098445" target="_blank" rel="noopener">Open in Wrike</a>
+</div>
+
+<div class="toc-top appendix-links">
+  <strong>Quick Links:</strong>
+  <a href="#overview">Overview</a>
+  <a href="#modules">Modules</a>
+  <a href="#stage-governance">Stage Governance</a>
+  <a href="#diagram">Stage Transition Diagram</a>
+  <a href="#examples">Supplemental Examples</a>
+</div>
+
+<section id="brd">
+  <h2>Business Requirements (Simplified)</h2>
+  <p><strong>Project:</strong> Product Lifecycle Management (PLM)<br/>
+     <strong>Date:</strong> 2025-10-23<br/>
+     <strong>Prepared by:</strong> Dan Li (dli2@montefiore.org)<br/>
+     <strong>Version:</strong> v1.2</p>
+
+  <div class="section" id="overview">
+    <h2>1. Overview</h2>
+    <p>The PLM Tracker centralizes lifecycle transitions for inventory items, replacement pairs, and downstream execution tasks.
+       Version 1.2 reflects the features currently live in the Flask application and the supporting SQL Server schema.</p>
+    <ul>
+      <li>Authentication, role-aware navigation, and an admin console manage secure access without relying on SSO.</li>
+      <li>The collector workspace captures item linkages, enforces stage governance, and records conflict scenarios for remediation.</li>
+      <li>Operational dashboards surface inventory analytics, requestor outreach lists, and exportable datasets for planning.</li>
+      <li>Background helpers integrate with Microsoft Graph and SQL stored procedures to deliver password resets and burn-rate refreshes.</li>
+    </ul>
+  </div>
+
+  <div class="section" id="modules">
+    <h2>2. Modules and Functional Requirements</h2>
+
+    <h3>2.1 Authentication &amp; User Administration</h3>
+    <ul>
+      <li>Email/password registration stores bcrypt hashes in <code>PLM.users</code>; logins update <code>last_login_at</code> via Flask-Login.</li>
+      <li>Role options today: <strong>admin</strong>, <strong>user</strong>, <strong>view-only</strong> (default <code>user</code>). Admin-only routes are enforced; view-only behaves like user until read-only UI gates are finalized.</li>
+      <li>Password reset flow issues a six-digit code (valid for 2 minutes) and delivers it through Microsoft Graph using the configured service account.</li>
+      <li>Logout is POST-only to reduce CSRF exposure; CSRF tokens will be layered in once Flask-WTF is wired.</li>
+      <li>The admin console (<code>/admin/user-control</code>) lists all users, allows role changes, and permits admin-led deletions (self-delete is blocked).</li>
+    </ul>
+
+    <h3>2.2 Collector Workspace</h3>
+    <p>The collector provides the end-to-end workflow for building and maintaining item replacement groups.</p>
+
+    <h4>2.2.1 Item Link Creation &amp; Batch Ingestion</h4>
+    <ul>
+      <li><code>POST /api/item-links/batch</code> accepts lists of source items and replacement items. Inputs are deduplicated, upper bounded by <code>MAX_BATCH_PER_SIDE</code> (default 6), and placeholders are only permitted on the replacement side.</li>
+      <li>The sentinel value <code>NO REPLACEMENT</code> auto-creates a discontinued link and locks the batch stage at <strong>Tracking - Discontinued</strong>.</li>
+      <li>Dynamic placeholders with the form <code>PENDING***&lt;mfg_part&gt;</code> default to <strong>Pending Item Number</strong>; the service looks up matching <code>ContractItem</code> rows and creates <code>PendingItems</code> entries so the placeholder can be tracked through item master creation.</li>
+      <li>Expected go-live dates are optional, validated to the format YYYY-MM-DD, and must fall within -3 months to +6 months from today.</li>
+      <li>A batch planner merges overlapping item groups, reuses existing active links, and records any conflicts (self-directed, reciprocal, chaining, many-to-many) into <code>PLM.ConflictError</code>.</li>
+      <li>For every accepted link an <code>ItemLinkWrike</code> row is ensured so Wrike task identifiers and sync timestamps stay aligned with the main record.</li>
+    </ul>
+
+    <h4>2.2.2 Stage Governance &amp; Batch Updates</h4>
+    <ul>
+      <li>Canonical stages: Tracking - Discontinued, Pending Item Number, Pending Clinical Readiness, Tracking - Item Transition, Deleted, Tracking Completed.</li>
+      <li>Stage changes are evaluated through <code>StageTransitionHelper</code>. Out-of-band transitions are blocked with descriptive reasons surfaced to the UI.</li>
+      <li>Reactivating a row from <strong>Deleted</strong> auto-adjusts to <strong>Tracking - Discontinued</strong> when no replacement is present, or <strong>Pending Item Number</strong> when the replacement is still a placeholder.</li>
+      <li>Batch endpoints power the group page:
+        <ul>
+          <li><code>POST /groups/batch/stage</code> applies staged transitions within the allowed graph.</li>
+          <li><code>POST /groups/batch/go-live</code> sets or clears expected go-live dates.</li>
+          <li><code>POST /groups/batch/wrike/&lt;field&gt;</code> stores 10-digit Wrike IDs across the three supported slots.</li>
+        </ul>
+      </li>
+      <li>Every change touches <code>UpdateDT</code>, synchronizes the Wrike shadow table, and reports the updated record payload back to the client for optimistic UI refresh.</li>
+    </ul>
+
+    <h4>2.2.3 Conflict Management &amp; Data Hygiene</h4>
+    <ul>
+      <li>Real-time validation rejects many-to-many meshes, cycles, chained replacements, and self-directed links before persistence.</li>
+      <li>Failures are logged to <code>PLM.ConflictError</code>; the conflicts dashboard (<code>/conflicts</code>) supports filtering by type, single deletions, and bulk purges for records older than one year.</li>
+      <li>The group view renders all active links (with Wrike metadata) and includes a one-click "Clear Deleted" action that removes rows staged as Deleted from the database.</li>
+      <li>Item and contract item search endpoints (<code>/api/items/search</code>, <code>/api/contract-items/search</code>) back the collector UI, support HTMX partials, and enforce active-item filters when requested.</li>
+    </ul>
+
+    <h4>2.2.4 Wrike Integration &amp; Burn-Rate Refresh</h4>
+    <ul>
+      <li>Wrike IDs must be numeric and ten digits; invalid input is rejected server-side before storing.</li>
+      <li>Accepted links trigger burn-rate refresh scheduling when <code>ENABLE_BURN_RATE_REFRESH</code> is on and the app is connected to SQL Server.</li>
+      <li>A dedicated thread pool worker executes stored procedures (<code>sp_PLM_PersistItemBRRolling</code>, <code>sp_PLM_PersistGroupBR</code>) and tracks status in <code>PLM.burn_rate_refresh_job</code>.</li>
+      <li><code>/api/burn-rate-jobs</code> exposes the latest 100 jobs for UI polling, including timestamps and messages for failure scenarios.</li>
+    </ul>
+
+    <h3>2.3 Dashboard &amp; Analytics</h3>
+    <ul>
+      <li>The dashboard landing page auto-loads with filter controls (item group, location, stage, description) and live KPI tiles fed by <code>/api/stats</code>.</li>
+      <li>Inventory and PAR tables draw from <code>PLM.vw_PLMTrackerBase</code>, offer client-side column presets for location setup, and page through data provided by <code>/api/inventory</code> and <code>/api/par</code>.</li>
+      <li>The "Notify Requesters" workflow calls <code>/api/requesters</code> to aggregate 365-day requisition contacts and surfaces deduplicated email lists for outreach.</li>
+      <li>Historical charts use <code>/api/qty/&lt;item_group&gt;</code> and <code>/api/issue/&lt;item_group&gt;</code> to plot inventory and issue-out trends for the selected group.</li>
+      <li>Excel exports (<code>/dashboard/export/&lt;table&gt;</code>) support all-vs-filtered row scopes, explicit column selections, and preset header overrides for location setup handoffs.</li>
+      <li>The page banner displays the latest successful refresh timestamp from <code>PLM.process_log</code>; a contextual doc link opens the order point calculation guide.</li>
+    </ul>
+
+    <h3>2.4 Data Access, Configuration, and Integrations</h3>
+    <ul>
+      <li>SQLAlchemy models cover core tables (<code>ItemLink</code>, <code>ItemLinkWrike</code>, <code>ItemGroup</code>, <code>PendingItems</code>, <code>burn_rate_refresh_job</code>, <code>process_log</code>) plus read-only views (<code>vw_PLMTrackerBase</code>, <code>vw_PLMQty</code>, <code>vw_PLMDailyIssueOutQty</code>).</li>
+      <li>The application factory auto-creates the <code>PLM</code> schema in non-prod environments and supports an opt-in SQLite database (<code>USE_SQLITE=1</code>) for local prototyping.</li>
+      <li>Environment variables configure SQL Server connectivity and Microsoft Graph (tenant, client, secret, sender). <code>Config.validate</code> enforces Graph credentials whenever email is used.</li>
+      <li>Operational limits (<code>MAX_BATCH_PER_SIDE</code>, <code>ENABLE_BURN_RATE_REFRESH</code>) are environment-driven and surfaced in the collector UI.</li>
+      <li>Waitress serves production traffic; long-running burn-rate tasks are handled via a two-worker thread pool to keep the web process responsive.</li>
+    </ul>
+  </div>
+
+  <div class="section" id="stage-governance">
+    <h2>3. Stage Governance</h2>
+    <p>Stages are applied at the item link level and determine where a group sits within the conversion pipeline. The helper enforces the rules below for both single-row edits and batch updates.</p>
+    <table>
+      <tr><th>Stage</th><th>Primary Entry Condition</th><th>Operational Notes</th></tr>
+      <tr>
+        <td>Tracking - Discontinued</td>
+        <td>Created automatically when <code>NO REPLACEMENT</code> is submitted or when a deleted row without a replacement is restored.</td>
+        <td>Counts as terminal for discontinued items; remains eligible for deletion clean-up.</td>
+      </tr>
+      <tr>
+        <td>Pending Item Number</td>
+        <td>Assigned when a replacement is still a <code>PENDING***</code> placeholder or when reactivating a deleted placeholder link.</td>
+        <td>Stage overrides are blocked until the placeholder is resolved to a real item.</td>
+      </tr>
+      <tr>
+        <td>Pending Clinical Readiness</td>
+        <td>Default for standard replacements created through the collector.</td>
+        <td>Stage can move forward to Tracking - Item Transition or back to Deleted if the work is abandoned.</td>
+      </tr>
+      <tr>
+        <td>Tracking - Item Transition</td>
+        <td>Promoted once location setup is underway or completed.</td>
+        <td>Permits regress to Pending Clinical Readiness if blockers arise; otherwise flows to Tracking Completed.</td>
+      </tr>
+      <tr>
+        <td>Deleted</td>
+        <td>Soft-delete flag accessible from any stage.</td>
+        <td>Can transition to Tracking Completed or re-open stages per the guard rules above.</td>
+      </tr>
+      <tr>
+        <td>Tracking Completed</td>
+        <td>Final stage once conversion is fully executed.</td>
+        <td>Rows remain visible for 90 days before archival.</td>
+      </tr>
+    </table>
+    <p class="note">All stage changes are timestamped. Attempts outside the allowed graph are returned to the UI with the helper's reason string for transparency.</p>
+  </div>
+</section>
+
+<section id="diagram">
+  <h2>Stage Transition Diagram</h2>
+  <div class="diagram-wrap">
+    <div class="mermaid">
+      flowchart LR
+        DISC[Tracking - Discontinued]
+        PNUM[Pending Item Number]
+        PCR[Pending Clinical Readiness]
+        TRANS[Tracking - Item Transition]
+        DEL[Deleted]
+        DONE[Tracking Completed]
+
+        DISC --> DEL
+        DISC --> DONE
+        PNUM --> PCR
+        PNUM --> DEL
+        PCR --> TRANS
+        PCR --> DEL
+        TRANS --> PCR
+        TRANS --> DONE
+        TRANS --> DEL
+        DEL --> DISC
+        DEL --> PNUM
+        DEL --> DONE
+        DISC --> DISC
+        PNUM --> PNUM
+        PCR --> PCR
+        TRANS --> TRANS
+        DEL --> DEL
+        DONE --> DONE
+    </div>
+  </div>
+  <p class="note">Loops denote that staying in the same stage is valid. When restoring from Deleted, the helper auto-adjusts to Tracking - Discontinued (no replacement) or Pending Item Number (placeholder) before any further promotions.</p>
+</section>
+
+<section id="examples">
+  <h2>Supplemental: Case Handling Rules with Examples</h2>
+  <p><strong>Definition:</strong> A <em>location setting</em> is the stock configuration of an item at each location. For PAR locations it represents the replenishment quantity; for non-PAR inventory it equals the minimum/maximum stock quantities.</p>
+
+  <h3>Case 0: Discontinue (No Replacement)</h3>
+  <p><strong>Conversion:</strong> Item <strong>A</strong> has no future replacement.</p>
+  <p><strong>System Behavior:</strong> Batch ingestion accepts <code>NO REPLACEMENT</code>, sets the stage to <strong>Tracking - Discontinued</strong>, locks the stage for the batch, and skips burn-rate refresh.</p>
+
+  <h3>Case 1: One-to-One (1:1) Mapping</h3>
+  <p><strong>Conversion:</strong> Item <strong>A</strong> is replaced by item <strong>B</strong>.</p>
+  <p><strong>Rule:</strong> Replacement inherits all original locations; overlapping locations sum quantities.</p>
+  <table>
+    <tr><th>Item</th><th>Locations (Before)</th></tr>
+    <tr><td>A</td><td>(X, 100), (Y, 200), (Z, 500)</td></tr>
+    <tr><td>B</td><td>(U, 20), (X, 100)</td></tr>
+  </table>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 20), (X, 200), (Y, 200), (Z, 500)</td></tr>
+  </table>
+
+  <h3>Case 2: Many-to-One (N:1) Mapping</h3>
+  <p><strong>Conversion:</strong> Items <strong>A</strong> and <strong>C</strong> are replaced by item <strong>B</strong>.</p>
+  <p><strong>Rule:</strong> Replacement takes the union of all locations; overlapping quantities are summed.</p>
+  <table>
+    <tr><th>Item</th><th>Locations (Before)</th></tr>
+    <tr><td>A</td><td>(X, 100), (Y, 200)</td></tr>
+    <tr><td>C</td><td>(Y, 300), (Z, 400)</td></tr>
+    <tr><td>B</td><td>(U, 50), (X, 100)</td></tr>
+  </table>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 50), (X, 200), (Y, 500), (Z, 400)</td></tr>
+  </table>
+
+  <h3>Case 3: One-to-Many (1:N) Mapping</h3>
+  <p><strong>Conversion:</strong> Item <strong>A</strong> is replaced by items <strong>B</strong> and <strong>C</strong>.</p>
+  <p><strong>Rule:</strong> Original locations copy to each replacement. Each replacement receives a projected volume (default even split) that blends with any pre-existing stock.</p>
+
+  <h4>Example A: Even Split (0.5 : 0.5)</h4>
+  <table>
+    <tr><th>Item</th><th>Locations (Before)</th></tr>
+    <tr><td>A</td><td>(X, 100), (Y, 200)</td></tr>
+    <tr><td>B</td><td>(U, 50), (X, 100)</td></tr>
+    <tr><td>C</td><td>(V, 30)</td></tr>
+  </table>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 50), (X, 150), (Y, 100)</td></tr>
+    <tr><td>C</td><td>(V, 30), (X, 50), (Y, 100)</td></tr>
+  </table>
+  <p class="note">For B at X: 100 from A x 0.5 + existing 100 = 150. For Y: 200 x 0.5 = 100. C inherits the remaining volume.</p>
+
+  <h4>Example B: Adjusted Split (0.7 : 0.3)</h4>
+  <p><strong>After:</strong></p>
+  <table>
+    <tr><th>Item</th><th>Locations (After)</th></tr>
+    <tr><td>B</td><td>(U, 50), (X, 170), (Y, 140)</td></tr>
+    <tr><td>C</td><td>(V, 30), (X, 30), (Y, 60)</td></tr>
+  </table>
+  <p class="note">For B at X: 100 x 0.7 + existing 100 = 170. For Y: 200 x 0.7 = 140. C receives the remaining 30%.</p>
+
+  <h3>Case 4: Unsupported (Flagged &amp; Blocked)</h3>
+  <p>The following mappings are <span class="highlight">blocked</span>. The service records a conflict and does not create or promote the link until resolved.</p>
+
+  <h4>4.1 Many-to-Many (N:M)</h4>
+  <p><strong>Example:</strong> A-&gt;B, A-&gt;D, C-&gt;B, C-&gt;D</p>
+  <p><strong>System Behavior:</strong> Error banner: <em>Many-to-many mapping detected. Only 1:N or N:1 allowed.</em></p>
+  <p><strong>Recommended Action:</strong> Consolidate to a single direction (N:1 merge or 1:N split) and retry.</p>
+
+  <h4>4.2 Cyclic (Two-way)</h4>
+  <p><strong>Example:</strong> A-&gt;B and B-&gt;A</p>
+  <p><strong>System Behavior:</strong> Error banner: <em>Reciprocal replacement detected (B-&gt;A).</em></p>
+  <p><strong>Recommended Action:</strong> Close the obsolete group so only the current direction remains.</p>
+
+  <h4>4.3 Chain (Multi-hop)</h4>
+  <p><strong>Example:</strong> A-&gt;B, B-&gt;C</p>
+  <p><strong>System Behavior:</strong> Error banner: <em>Chained replacements detected (A-&gt;B-&gt;C). Use a single-hop mapping.</em></p>
+  <p><strong>Recommended Action:</strong> Link A directly to C or stage the transition as two separate groups.</p>
+
+  <h4>4.4 Self-Directed</h4>
+  <p><strong>Example:</strong> A-&gt;A</p>
+  <p><strong>System Behavior:</strong> Error banner: <em>Item cannot reference itself as a replacement.</em></p>
+  <p><strong>Recommended Action:</strong> Remove the self-reference and map to the correct replacement item.</p>
+</section>
+
+<section id="appendix">
+  <h2>Appendix</h2>
+  <p class="appendix-links">
+    <a href="#diagram">Jump to Stage Transition Diagram</a>
+    <a href="#examples">Jump to Supplemental Examples</a>
+  </p>
+</section>
+
+</body>
+</html>

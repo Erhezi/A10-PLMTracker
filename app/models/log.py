@@ -4,6 +4,49 @@ from . import now_ny_naive
 from sqlalchemy.orm import relationship, foreign, backref
 from sqlalchemy import Index, UniqueConstraint, text
 
+
+class BurnRateRefreshJob(db.Model):
+	__tablename__ = "burn_rate_refresh_job"
+	__table_args__ = (
+		Index("IX_BurnRateRefreshJob_ItemLink", "item_link_id"),
+		{"schema": "PLM"},
+	)
+
+	id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+	item_link_id = db.Column(
+		db.BigInteger,
+		db.ForeignKey("PLM.ItemLink.PKID", ondelete="CASCADE"),
+		nullable=False,
+	)
+	status = db.Column(db.String(20), nullable=False, default="PENDING")
+	message = db.Column(db.String(500), nullable=True)
+	created_at = db.Column(db.DateTime(timezone=False), nullable=False, default=now_ny_naive)
+	started_at = db.Column(db.DateTime(timezone=False), nullable=True)
+	finished_at = db.Column(db.DateTime(timezone=False), nullable=True)
+
+	item_link = relationship(
+		"ItemLink",
+		backref=backref("burn_rate_jobs", cascade="all, delete-orphan"),
+	)
+
+	def mark_running(self) -> None:
+		timestamp = now_ny_naive()
+		self.status = "RUNNING"
+		self.started_at = timestamp
+		# keep existing finished_at until job completes
+
+	def mark_success(self, *, message: str | None = None) -> None:
+		self.status = "SUCCESS"
+		self.finished_at = now_ny_naive()
+		if message:
+			self.message = message
+
+	def mark_failure(self, message: str) -> None:
+		self.status = "FAILED"
+		self.finished_at = now_ny_naive()
+		self.message = (message or "")[:500]
+
+
 class ProcessLog(db.Model):
 	"""Mapping to PLM.process_log table.
 

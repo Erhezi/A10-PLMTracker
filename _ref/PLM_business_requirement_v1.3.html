@@ -1,0 +1,400 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PLM Business Requirements v1.3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; line-height: 1.6; color: #2c3e50; }
+    h1, h2, h3 { color: #1a5276; }
+    h1 { border-bottom: 3px solid #1a5276; padding-bottom: 0.3em; }
+    h2 { margin-top: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
+    h3 { margin-top: 1em; }
+    table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+    table, th, td { border: 1px solid #aaa; }
+    th, td { padding: 8px 12px; text-align: left; vertical-align: top; }
+    th { background: #f4f6f6; }
+    .note { font-style: italic; color: #555; margin-top: 0.5em; }
+    .highlight { font-weight: bold; color: #c0392b; }
+    .appendix-links a { margin-right: 16px; }
+    .toc-top { background:#f9fbfc; border:1px solid #e5e7eb; padding:10px 12px; border-radius:8px; }
+    .wrike { margin:10px 0 20px; }
+    .diagram-wrap { margin: 16px 0; }
+    .mermaid { border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fff; }
+    .status-chip { display:inline-block; padding:2px 8px; border-radius:12px; background:#e8f4fc; font-size:0.85em; margin-right:6px; }
+    .tag { display:inline-block; padding:2px 6px; border-radius:4px; background:#fbeed7; color:#8c5a0b; font-size:0.75em; text-transform:uppercase; letter-spacing:0.5px; }
+    code { background:#f8f9fa; padding:0 4px; border-radius:3px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });</script>
+</head>
+<body>
+
+  <h1>PLM Business Requirements v1.3</h1>
+
+  <div class="wrike">
+    <strong>Wrike Task:</strong>
+    <a href="https://www.wrike.com/workspace.htm?acc=2635024#/inbox/work_item/1727098445" target="_blank" rel="noopener">Open in Wrike</a>
+  </div>
+
+  <div class="toc-top appendix-links">
+    <strong>Quick Links:</strong>
+    <a href="#overview">Overview</a>
+    <a href="#modules">Modules</a>
+    <a href="#stage-governance">Stage Governance</a>
+    <a href="#diagram">Stage Diagram</a>
+    <a href="#examples">Examples</a>
+    <a href="#release-notes">Release Notes</a>
+    <a href="#dependencies">Dependencies</a>
+  </div>
+
+  <section id="brd">
+    <h2>Business Requirements (Simplified)</h2>
+    <p><strong>Project:</strong> Product Lifecycle Management (PLM)<br/>
+       <strong>Date:</strong> 2025-11-07<br/>
+       <strong>Prepared by:</strong> Dan Li (dli2@montefiore.org)<br/>
+       <strong>Version:</strong> v1.3</p>
+
+    <div class="section" id="overview">
+      <h2>1. Overview</h2>
+      <p>The PLM Tracker coordinates item lifecycle transitions, replacement validation, downstream setup, and communications across Supply Chain, MDM, PDE, and Clinical teams. Version 1.3 reflects the current Flask + SQL Server implementation spanning authentication, collector tooling, dashboards, exports, and monitoring.</p>
+      <ul>
+        <li>The <strong>Collector workspace</strong> ties source items, replacements, Wrike tasks, and burn-rate refresh jobs to canonical stages while preventing graph conflicts and preserving history.</li>
+        <li><strong>Dashboards, exports, and workbook generators</strong> sit on curated PLM views to expose inventory vs replacement readiness, requester outreach, and order-point calculations with tri-state filters and OR-location controls.</li>
+        <li><strong>Playground graphing, conflict logging, and archive tables</strong> give analysts actionable context when untangling many-to-many issues or reviving discontinued links.</li>
+        <li><strong>Background helpers</strong> (Microsoft Graph for password resets, SQL stored procedures for burn-rate, ProcessLog freshness stamps) keep operational alerts inside the product instead of in ad-hoc spreadsheets.</li>
+      </ul>
+      <p><strong>Operational guardrails:</strong></p>
+      <ul>
+        <li>StageTransitionHelper defines the only stage values and transitions used everywhere (collector UI, batch actions, dashboard filters).</li>
+        <li>Batch processing is capped by <code>MAX_BATCH_PER_SIDE</code> (default 6) to limit Cartesian combinations to 36 records per submission.</li>
+        <li>Sentinel values (<span class="status-chip">NO REPLACEMENT</span> and <code>PENDING***</code> placeholders) automatically lock rows to the correct stage until downstream tasks finish.</li>
+        <li>All write operations require login; admin routes re-check the user role on every request to avoid privilege drift.</li>
+      </ul>
+    </div>
+
+    <div class="section" id="modules">
+      <h2>2. Modules and Functional Requirements</h2>
+
+      <h3>2.1 Authentication &amp; User Administration</h3>
+      <ul>
+        <li>User accounts live in <code>PLM.users</code> (model <code>app/models/auth.py</code>) with salted Werkzeug hashes; <code>user_role</code> supports <em>admin</em>, <em>user</em>, and <em>view-only</em> (default).</li>
+        <li>Flask-Login secures all blueprints; <code>/auth/logout</code> is POST-only to reduce CSRF risk (Flask-WTF tokens remain a follow-up).</li>
+        <li>Registration stays on for internal pilots: duplicate emails are rejected and successful registrations auto-login the user.</li>
+        <li>Password resets issue a six-digit code (valid for two minutes) and email it via Microsoft Graph using the procurement data team service account; verification and update endpoints complete the flow.</li>
+        <li>The admin console (<code>/admin/user-control</code>) lists every account, lets admins update roles, blocks self-deletion, and kicks non-admins back to login.</li>
+        <li>The view-only role currently mirrors user permissions in the UI; true read-only enforcement is tracked as an enhancement.</li>
+      </ul>
+
+      <h3>2.2 Collector Workspace</h3>
+
+      <h4>2.2.1 Manual Link Creation</h4>
+      <ul>
+        <li>Dual HTMX search panes let analysts pick source items and replacement candidates simultaneously; item search enforces six-digit matches and optional company 3000 limits while replacement search can toggle into contract mode (matching normalized <code>ContractItem.search_shadow</code> values).</li>
+        <li>Buttons add sentinel <span class="status-chip">NO REPLACEMENT</span> rows or auto-create <code>PENDING***&lt;mfg part&gt;</code> placeholders whenever a contract row marked <em>Special</em> is selected, locking the stage to <em>Pending Item Number</em>.</li>
+        <li>A derived stage chip shows the system-selected stage, and an override dropdown (Pending Clinical Readiness / Tracking - Item Transition) is enabled only when the rule engine allows it.</li>
+        <li>Expected go-live date input is bounded to today -3 months through +6 months to keep rollout windows realistic.</li>
+        <li>The <em>Create Links</em> action activates only when at least one source and one replacement are selected and the total combinations stay below <code>max_combinations = (MAX_BATCH_PER_SIDE)^2</code>.</li>
+      </ul>
+
+      <h4>2.2.2 Batch Intake &amp; Validation</h4>
+      <ul>
+        <li>Excel uploads accept <code>.xlsx/.xlsm/.xltx/.xltm</code> files with <em>Item</em> and <em>Replace Item</em> headers; floats are coerced to strings, six-digit validation errors are surfaced per row, and sentinel values are supported.</li>
+        <li><code>AddItemPairs</code> deduplicates submissions, enforces <code>MAX_BATCH_PER_SIDE</code>, validates inventory existence, derives stages/go-live windows, and uses <code>BatchGroupPlanner</code> to reuse or merge Item Group ids inside the transaction.</li>
+        <li><code>RelationGraph</code> plus <code>detect_many_to_many_conflict</code> block self-directed, reciprocal, chaining, and many-to-many relations before commit; violations log to <code>PLM.ConflictError</code> with triggering PKIDs.</li>
+        <li><code>PendingItems</code> rows capture placeholder contracts (status PENDING/IMMAST/ERROR) so open Wrike tasks can be reconciled with the item master once assigned.</li>
+        <li>API responses include created/reactivated/skipped counts, <code>invalid_rows</code> payloads, conflict metadata, burn-rate job ids, and the Item Group ids touched so the front-end can highlight outcomes.</li>
+      </ul>
+
+      <h4>2.2.3 Stage, Wrike &amp; Go-Live Management</h4>
+      <ul>
+        <li>The groups table lists every ItemLink with inline selectors for stage, expected go-live, and three Wrike IDs (10-digit). Updates sync through <code>ItemLinkWrike.ensure_for_link</code> to keep the shadow table aligned.</li>
+        <li>Batch endpoints (<code>/groups/batch/stage</code>, <code>/groups/batch/wrike/&lt;field&gt;</code>, <code>/groups/batch/go-live</code>) accept arrays of row keys, honor StageTransitionHelper rules, and return per-row status plus refreshed counts of Deleted and Tracking Completed rows.</li>
+        <li><span class="tag">Clear Deleted</span> moves rows staged as Deleted into <code>ItemLinkDeleted</code> before removal, while <span class="tag">Archive Completed</span> copies Tracking Completed rows into <code>ItemLinkArchived</code> (with original PKID + timestamp) before trimming the live table.</li>
+        <li>A Wrike export endpoint builds an Excel workbook from <code>PLMPendingItemsExport</code> so analysts can push manufacturer / contract columns to Wrike subtasks without ad-hoc SQL.</li>
+      </ul>
+
+      <h4>2.2.4 Conflict Monitoring &amp; Cleanup</h4>
+      <ul>
+        <li><code>/collector/conflicts</code> lists <code>ConflictError</code> rows with filters for conflict type, stage, and cutoff date; totals show how many rows each rule is currently blocking.</li>
+        <li>Analysts can delete resolved conflicts or purge whole categories by date range to keep the backlog actionable while retaining unresolved evidence.</li>
+        <li>Batch ingestion responses echo detected conflicts (including triggering PKIDs) so users know exactly which row must be remediated.</li>
+      </ul>
+
+      <h4>2.2.5 Burn-Rate Refresh &amp; Pending Item Tracking</h4>
+      <ul>
+        <li><code>schedule_burn_rate_refresh</code> deduplicates item link ids, honors the <code>ENABLE_BURN_RATE_REFRESH</code> flag, and spawns a thread-pool worker (max 2) that hydrates inventory/location pairs from <code>PLMZDate</code> or fallback <code>ItemLocations</code>.</li>
+        <li>Workers update <code>BurnRateRefreshJob</code> rows (PENDING → RUNNING → SUCCESS/FAILED) and execute SQL Server stored procedures (e.g., <code>sp_PLM_PersistItemBRRolling</code>). Clients can poll <code>/api/burn-rate-jobs</code> by job id or item link id.</li>
+        <li>Collector UI surfaces burn-rate job ids returned from ingestion so analysts can watch progress; duplicate job ids are filtered to avoid redundant work.</li>
+        <li><code>PendingItems</code> maintains placeholder → immast tracking with contract id, manufacturer number, and timestamps, ensuring each <code>PENDING***</code> row stays visible until the real item is issued.</li>
+      </ul>
+
+      <h4>2.2.6 Historical Lineage &amp; Data Hygiene</h4>
+      <ul>
+        <li><code>ItemGroup.ensure_allowed_side</code> prevents assigning the same item to both origin and replacement within a group (pending placeholders are skipped) and raises a descriptive <code>ItemGroupConflictError</code> when the rule is violated.</li>
+        <li><code>BatchGroupPlanner</code> records necessary group merges after successful inserts so future batches reuse the canonical group id without manual remapping.</li>
+        <li><code>ItemLinkDeleted</code> and <code>ItemLinkArchived</code> tables preserve the lineage needed for auditing, while <code>ItemLinkWrike</code> mirrors the Wrike task state for each row.</li>
+      </ul>
+
+      <h3>2.3 Dashboards &amp; Analytics</h3>
+
+      <h4>2.3.1 Filter &amp; KPI Panel</h4>
+      <ul>
+        <li>Dashboard filters auto-apply (no submit button) and include multi-selects for Item Group, Location, and Stage plus a free-text description search.</li>
+        <li><code>/dashboard/api/filter-options</code> restricts selectable Item Groups to the allowed stage set (<em>Tracking - Discontinued</em>, <em>Pending Item Number</em>, <em>Pending Clinical Readiness</em>).</li>
+        <li>Tri-state toggles rely on <code>_normalize_tri_state</code> so values such as "Yes", "TRUE", "1", or blank map consistently to yes/no/blank categories.</li>
+        <li><code>hide_r_only=true</code> drops "R-Only Location" rows from KPIs and tables, keeping narratives focused on actionable inventory.</li>
+        <li>The "supporting data last refreshed" chip queries <code>ProcessLog</code> for the latest SUCCESS run so executives know how fresh the data is.</li>
+      </ul>
+
+      <h4>2.3.2 Inventory &amp; PAR Tables</h4>
+      <ul>
+        <li><code>build_location_pairs</code> pulls from <code>PLM.vw_PLMTrackerBase</code>, applying optional filters (stage, company, location, OR-only) and computing burn-rate metrics for both source and replacement sides.</li>
+        <li>Each row exposes relation types (1-1, many-1, 1-0), reorder points, PO/Req 90-day volumes, UOM conversions, preferred bins, auto-replenishment, weeks on hand, and manufacturer metadata.</li>
+        <li><code>apply_inventory_recommended_bin_display</code> enforces UI rules (NEW ITEM, TBD, NA) validated by regression tests, while PAR exports can focus on replacement-only or original-only sets.</li>
+        <li>Default configuration hides OR-only inventory unless <code>INCLUDE_OR_INVENTORY_LOCATIONS</code> is enabled.</li>
+      </ul>
+
+      <h4>2.3.3 Requester Outreach &amp; Supporting Docs</h4>
+      <ul>
+        <li>The requester modal aggregates 365-day requisitioner data by requester id, summarizing names, emails, locations, items, requisition ids, and total request counts sorted by volume.</li>
+        <li><code>_collect_item_pool</code> ensures the outreach list only includes requesters tied to the items currently filtered in the dashboard.</li>
+        <li>An inline help icon links to the Order Point Calculation document served from <code>/dashboard/documents/order-point-calculation</code>.</li>
+      </ul>
+
+      <h4>2.3.4 Time-Series APIs &amp; Downloads</h4>
+      <ul>
+        <li><code>/dashboard/api/qty/&lt;item_group&gt;</code> and <code>/dashboard/api/issue/&lt;item_group&gt;</code> expose inventory and issue time series sourced from <code>PLMQty</code> and <code>PLMDailyIssueOutQty</code>, grouped by item + location.</li>
+        <li><code>/dashboard/api/stats</code> returns distinct counts for items, locations, and groups for the current filter context (respecting <code>hide_r_only</code>).</li>
+        <li>The workbook download endpoint accepts <code>mode</code> or explicit <code>columns</code> query parameters and streams an XLSX rendered by <code>render_workbook</code>.</li>
+      </ul>
+
+      <h3>2.4 Export Workbench</h3>
+      <ul>
+        <li>Pre-defined column modes include <em>inventory_setup</em>, <em>par_setup_replacement</em>, and <em>par_setup_original</em>; each mode declares header overrides, pipeline steps, and row-highlighting rules.</li>
+        <li><code>apply_setup_action_rules</code> compares current vs recommended values (transaction UOM, reorder point, min/max order qty, etc.) to classify each record as Create, Update, RI Only, Mute, or No Action.</li>
+        <li>Custom exports can supply comma-separated field lists; <code>filter_export_columns</code> preserves order and drops unknown keys gracefully.</li>
+        <li><code>render_workbook</code> freezes headers, enables auto-filtering, auto-fits columns (capped at 60 characters), and highlights rows with actionable notes (or replacement-only sets for PAR).</li>
+        <li><code>compute_inventory_recommended_preferred_bin</code> plus <code>_populate_notes</code> fill in NEW ITEM / TBD / N.A. placeholders and attach notes when additional UOM data is needed.</li>
+      </ul>
+
+      <h3>2.5 Playground Graph</h3>
+      <ul>
+        <li>The Playground blueprint renders graph data with node roles (origin, replacement, discontinued), stage chips, Item Group membership, and up to five descriptions/manufacturers per node.</li>
+        <li>Filters include row limit (50-1500), free-text search across item/manufacturer/description, stage multi-select (defaulting to PCR/TIT/Tracking-Discontinued), and an expanded scope toggle that adds Deleted + Tracking Completed rows.</li>
+        <li>Optional <code>apply_quantity</code> overlays available quantity from the selected inventory location so planners can contrast usage against stock on hand.</li>
+        <li>Summary stats report rendered nodes, links, discontinued nodes, stage counts, and whether expanded scope or quantity overlays are active.</li>
+      </ul>
+
+      <h3>2.6 Integrations &amp; Background Services</h3>
+      <ul>
+        <li>Microsoft Graph client credentials (<code>TENANT_ID</code>, <code>CLIENT_ID</code>, <code>CLIENT_SECRET</code>) are required for password reset emails; <code>Config.validate()</code> enforces presence at startup.</li>
+        <li>Wrike coordination stores up to five IDs per ItemLink; the UI currently edits the first three (item number acquisition, inventory setup, par setup) while ids 4-5 remain reserved.</li>
+        <li>Burn-rate refresh threads are capped at two workers and automatically disabled when running on SQLite or when <code>ENABLE_BURN_RATE_REFRESH=0</code>.</li>
+        <li>ProcessLog drives the dashboard freshness indicator and can be extended for additional job telemetry.</li>
+        <li>Pytest coverage spans conflict detection, burn-rate scheduling, workbook highlighting, tri-state normalization, requester aggregation, and inventory recommendation rules, lowering regression risk as features expand.</li>
+      </ul>
+    </div>
+
+    <div class="section" id="stage-governance">
+      <h2>3. Stage Governance</h2>
+      <p>Stages are centrally defined in <code>StageTransitionHelper</code>, which canonicalizes values, validates transitions, and adjusts reactivated rows automatically. The table below summarizes responsibilities.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Definition</th>
+            <th>Entry Conditions</th>
+            <th>Primary Owner / Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Tracking - Discontinued</td>
+            <td>Source item is retiring without an immediate replacement; serves as the holding pattern for discontinued work.</td>
+            <td>Selected sentinel <span class="status-chip">NO REPLACEMENT</span>; deleted row revived with no replacement; burn-rate refresh may still run to zero out stock.</td>
+            <td>MM + PDE validate contract closure, ensure downstream teams stop replenishing.</td>
+          </tr>
+          <tr>
+            <td>Pending Item Number</td>
+            <td>Replacement placeholder awaiting an immast ID.</td>
+            <td>Contract rows flagged <em>Special</em> create <code>PENDING***</code> placeholders; deleted rows revived with placeholder replacements also land here.</td>
+            <td>MDM manages Wrike ID1 tasks to obtain the official item number; <code>PendingItems</code> table tracks progress.</td>
+          </tr>
+          <tr>
+            <td>Pending Clinical Readiness</td>
+            <td>Replacement item exists but clinical validation and setup tasks remain.</td>
+            <td>Manual override from the collector or batch action once item numbers are known; StageTransitionHelper only allows transitions from Pending Item Number or Tracking - Item Transition.</td>
+            <td>Clinical + PDE coordinate sign-off, align with Requester communications.</td>
+          </tr>
+          <tr>
+            <td>Tracking - Item Transition</td>
+            <td>Implementation and location setup in progress; Wrike ID2/ID3 tasks active.</td>
+            <td>Advances from Pending Clinical Readiness once inventory + par setups begin; can fall back to PCR if blockers surface.</td>
+            <td>MM/MDM drive setup completion, set expected go-live dates, and monitor burn-rate jobs.</td>
+          </tr>
+          <tr>
+            <td>Deleted</td>
+            <td>Soft-delete state used to retire erroneous links while retaining history.</td>
+            <td>Manual deletion via groups view or batch action; StageTransitionHelper recalculates target stage if reactivated (e.g., missing replacement → Tracking - Discontinued).</td>
+            <td>Admins purge via <em>Clear Deleted</em> which copies rows to <code>ItemLinkDeleted</code> first.</td>
+          </tr>
+          <tr>
+            <td>Tracking Completed</td>
+            <td>Lifecycle fully executed; row is ready for archival.</td>
+            <td>Manual stage change from Tracking - Item Transition or Tracking - Discontinued; StageTransitionHelper prevents any further transitions except self.</td>
+            <td>After sign-off, analysts run <em>Archive Completed</em> to move the row into <code>ItemLinkArchived</code> for long-term history.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>3.1 Automation Rules</h3>
+      <ul>
+        <li><code>evaluate_transition</code> validates requested stages, enforces adjacency rules, and provides user-facing reasons when a transition is blocked (e.g., Tracking Completed is final).</li>
+        <li>Reactivating a Deleted row triggers automatic stage adjustments: rows without replacements revert to Tracking - Discontinued; rows with placeholders revert to Pending Item Number.</li>
+        <li>Stage changes always stamp <code>update_dt</code>, synchronize Wrike mirrors, and are reflected in batch results so analytics stay aligned.</li>
+        <li>Sentry values drive defaults: <span class="status-chip">NO REPLACEMENT</span> forces Tracking - Discontinued, and <code>PENDING***</code> codes force Pending Item Number until the immast is populated.</li>
+      </ul>
+    </div>
+
+    <div class="section" id="diagram">
+      <h2>4. Stage Transition Diagram</h2>
+      <div class="diagram-wrap">
+        <div class="mermaid">
+flowchart LR
+    TD[Tracking - Discontinued]
+    PIN[Pending Item Number]
+    PCR[Pending Clinical Readiness]
+    TIT[Tracking - Item Transition]
+    DEL[Deleted]
+    TC[Tracking Completed]
+
+    TD --> DEL
+    TD --> TC
+    PIN --> PCR
+    PIN --> DEL
+    PCR --> TIT
+    PCR --> DEL
+    TIT --> PCR
+    TIT --> TC
+    TIT --> DEL
+    DEL --> TD
+    DEL --> PIN
+    DEL --> PCR
+    DEL --> TIT
+    DEL --> TC
+        </div>
+      </div>
+      <p class="note">Self-transitions (e.g., staying in the same stage while updating Wrike IDs) are allowed but omitted for clarity.</p>
+    </div>
+
+    <div class="section" id="examples">
+      <h2>5. Example Flows</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Trigger Input</th>
+            <th>Expected System Behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Placeholder contract intake</td>
+            <td>Collector contract search selects an item type <em>Special</em> row.</td>
+            <td>System creates <code>PENDING***</code> replacement, locks stage to Pending Item Number, inserts a <code>PendingItems</code> record with contract id / manufacturer number, and exposes Wrike ID1 for MDM follow-up.</td>
+          </tr>
+          <tr>
+            <td>No replacement discontinuation</td>
+            <td>Excel batch row uses <span class="status-chip">NO REPLACEMENT</span> with blank go-live date.</td>
+            <td>Row is staged to Tracking - Discontinued, relation is marked as 1-0 (discontinued), burn-rate refresh schedules only for the source item, and the Item Group table shows a discontinued count increase.</td>
+          </tr>
+          <tr>
+            <td>Cross-group conflict</td>
+            <td>Analyst attempts to link an item from group 1 to a replacement already used in group 2.</td>
+            <td><code>RelationGraph</code> detects a many-to-many violation, blocks the insert, logs a <code>ConflictError</code> with both PKIDs, and the batch response lists the conflict message for remediation.</td>
+          </tr>
+          <tr>
+            <td>Batch stage update to completion</td>
+            <td>UI selects multiple rows and submits <code>{"stage": "Tracking Completed"}</code> via <code>/groups/batch/stage</code>.</td>
+            <td>StageTransitionHelper confirms each transition, updates <code>update_dt</code> and Wrike mirrors, returns per-row success plus refreshed counts, and the team can subsequently run <em>Archive Completed</em>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section" id="release-notes">
+      <h2>6. v1.3 Highlights vs v1.2</h2>
+      <ul>
+        <li>New conflict workspace with filtering, per-row delete, and date-based purge flows keeps graph hygiene transparent.</li>
+        <li>Wrike + pending-item export, archive/deleted pipelines, and ItemLink history tables preserve compliance-grade lineage.</li>
+        <li>Batch endpoints for stage, Wrike ID, and go-live updates share a consistent JSON contract (success/failure + counts), simplifying bulk maintenance.</li>
+        <li>Dashboard improvements include auto-applied filters, tri-state normalization, OR-location toggles, requester aggregation, and inline documentation links.</li>
+        <li>Export workbench now supports curated column modes, custom column sets, highlight logic, and deterministic sorting for both inventory and par outputs.</li>
+        <li>Playground graph gained stage counts, expanded-scope toggle, and optional inventory quantity overlays for location-specific investigations.</li>
+        <li>Burn-rate worker dedupes link/job ids, exposes <code>/api/burn-rate-jobs</code>, and logs job transitions to <code>BurnRateRefreshJob</code>.</li>
+      </ul>
+      <h3>Known Gaps / Follow-ups</h3>
+      <ul>
+        <li>View-only role still behaves like a full user; UI gating and API enforcement are outstanding tasks.</li>
+        <li>CSRF tokens are not yet wired into POST forms (logout is POST-only but lacks tokens); add Flask-WTF protection.</li>
+        <li><code>msgraph.py</code> currently prints client credentials for debugging; remove before broad rollout.</li>
+        <li>SSO / corporate identity integration remains out of scope for v1.3 and is tracked separately.</li>
+      </ul>
+    </div>
+
+    <div class="section" id="dependencies">
+      <h2>7. Dependencies, Configuration &amp; Non-Functional Notes</h2>
+
+      <h3>7.1 Data &amp; External Systems</h3>
+      <ul>
+        <li>Primary datastore: SQL Server (schema <code>PLM</code>) accessed via SQLAlchemy + pyodbc (ODBC Driver 17). View-mapped models include <code>vw_Item</code>, <code>vw_ContractItem</code>, <code>vw_PLMTrackerBase</code>, <code>PLMQty</code>, <code>PLMDailyIssueOutQty</code>, <code>vw_365Day_Requesters</code>, and <code>PLMPendingItemsExport</code>.</li>
+        <li>Burn-rate refresh executes stored procedures such as <code>sp_PLM_PersistItemBRRolling</code>; ensure service accounts have permission.</li>
+        <li>Microsoft Graph (client credentials) sends password reset emails from <code>procurementdatateam@montefiore.org</code>; outbound internet access must be allowed.</li>
+        <li>Wrike task ids (up to five per ItemLink) are stored so staging, inventory, and par subtasks remain traceable.</li>
+      </ul>
+
+      <h3>7.2 Configuration Defaults</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Setting</th>
+            <th>Purpose / Default</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>MAX_BATCH_PER_SIDE</code></td>
+            <td>Caps manual + Excel selections per side (default 6 → 36 combinations).</td>
+          </tr>
+          <tr>
+            <td><code>ENABLE_BURN_RATE_REFRESH</code></td>
+            <td>Toggles background burn-rate jobs (default on; automatically false for SQLite dev/tests).</td>
+          </tr>
+          <tr>
+            <td><code>INCLUDE_OR_INVENTORY_LOCATIONS</code></td>
+            <td>Controls whether dashboard queries include OR-only locations (default off).</td>
+          </tr>
+          <tr>
+            <td><code>DATABASE_URL</code> / SQL Server config</td>
+            <td>Defaults to integrated security against <code>MISCPrdAdhocDB/PRIME</code>; <code>USE_SQLITE=1</code> flips development to SQLite.</td>
+          </tr>
+          <tr>
+            <td><code>TENANT_ID</code>, <code>CLIENT_ID</code>, <code>CLIENT_SECRET</code></td>
+            <td>Required for Microsoft Graph password resets; app fails startup if missing.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.3 Non-Functional Considerations</h3>
+      <ul>
+        <li>ThreadPoolExecutor (max 2) runs SQL-heavy burn-rate jobs; monitor for contention when large batches fire repeatedly.</li>
+        <li>ProcessLog freshness timestamps and <code>BurnRateRefreshJob</code> statuses provide lightweight observability; future work can add structured logging or metrics.</li>
+        <li>Unit tests rely on SQLite and stubbed sessions; integration tests against SQL Server should verify stored procedure permissions before production deployments.</li>
+        <li>Secrets should be provided via <code>.env</code> or environment variables; avoid committing credentials (debug prints to be removed).</li>
+        <li>All blueprints require login, but API rate limiting and audit logging remain future enhancements.</li>
+      </ul>
+    </div>
+  </section>
+</body>
+</html>

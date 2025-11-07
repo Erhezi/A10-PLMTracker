@@ -882,7 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_reorder_point_ri',
         'recommended_auto_replenishment_ri',
         'manufacturer_number_ri',
-        'action',
+        'setup_action',
         'notes',
         'preferred_bin_ri',
         'min_order_qty_ri',
@@ -906,13 +906,65 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_reorder_point_ri',
         'stock_uom_ri',
         'recommended_preferred_bin_ri',
-        'action',
+        'setup_action',
         'notes',
         'preferred_bin_ri',
         'reorder_point_ri',
         'item_set',
       ],
     },
+  };
+  const sanitizeDownloadSegment = (value) => {
+    const cleaned = (value || '')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, '_');
+    return cleaned || 'NOT ENTERED';
+  };
+  const sanitizeDownloadFilename = (value) => {
+    const cleaned = sanitizeDownloadSegment(value);
+    return cleaned.endsWith('.xlsx') ? cleaned : `${cleaned}.xlsx`;
+  };
+  const getLocalDateStamp = () => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  };
+  const resolveWrikeIdForSelection = (rows, field) => {
+    if(wrikeInput){
+      const typed = wrikeInput.value.trim();
+      if(typed){
+        return { value: typed };
+      }
+    }
+    const values = new Set();
+    if(Array.isArray(rows)){
+      rows.forEach(tr => {
+        const cell = tr.querySelector(`.wrike-cell[data-field="${field}"]`);
+        const cellValue = cell ? (cell.dataset.value || '').trim() : '';
+        if(cellValue){
+          values.add(cellValue);
+        }
+      });
+    }
+    if(values.size > 1){
+      return { error: 'Selected rows contain multiple Wrike IDs. Enter a single Wrike ID before downloading.' };
+    }
+    if(values.size === 1){
+      return { value: Array.from(values)[0] };
+    }
+    return { value: '' };
+  };
+  const buildWrikeDownloadFilename = (field, wrikeId) => {
+    const baseMap = {
+      wrike_id1: 'assign_item_number_Wrike',
+      wrike_id2: 'set_up_inventory_Wrike',
+      wrike_id3: 'set_up_par_Wrike',
+    };
+    const base = baseMap[field] || 'wrike_export';
+    const cleanId = sanitizeDownloadSegment(wrikeId || 'NOT ENTERED');
+    const dateStamp = getLocalDateStamp();
+    return sanitizeDownloadFilename(`${base}[${cleanId}]_${dateStamp}.xlsx`);
   };
   const showWrikeDownloadError = (message) => {
     if(wrikeError){
@@ -923,7 +975,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   // Reuse dashboard export endpoint to build XLSX files for batch workflows
-  const downloadDashboardExport = async (tableKey, params) => {
+  const downloadDashboardExport = async (tableKey, params, preferredFilename) => {
     const url = `/dashboard/export/${tableKey}?${params.toString()}`;
     try {
       const resp = await fetch(url, {
@@ -941,17 +993,20 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(detail || `Export failed (${resp.status})`);
       }
       const blob = await resp.blob();
-      let filename = `${tableKey}-export.xlsx`;
-      const disposition = resp.headers.get('Content-Disposition') || '';
-      const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
-      if(match && match[1]){
-        const rawName = match[1].replace(/^"|"$/g, '');
-        try {
-          filename = decodeURIComponent(rawName);
-        } catch {
-          filename = rawName;
+      let filename = preferredFilename || `${tableKey}-export.xlsx`;
+      if(!preferredFilename){
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+        if(match && match[1]){
+          const rawName = match[1].replace(/^"|"$/g, '');
+          try {
+            filename = decodeURIComponent(rawName);
+          } catch {
+            filename = rawName;
+          }
         }
       }
+      filename = sanitizeDownloadFilename(filename);
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -967,7 +1022,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return false;
     }
   };
-  const downloadPendingItemsExport = async (itemLinkIds, columns) => {
+  const downloadPendingItemsExport = async (itemLinkIds, columns, preferredFilename) => {
     const payload = {
       item_link_ids: itemLinkIds,
       columns,
@@ -1001,17 +1056,20 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error('Unexpected response type.');
       }
       const blob = await resp.blob();
-      const disposition = resp.headers.get('Content-Disposition') || '';
-      let filename = 'wrike-get-item-numbers.xlsx';
-      const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
-      if(match && match[1]){
-        const rawName = match[1].replace(/^"|"$/g, '');
-        try {
-          filename = decodeURIComponent(rawName);
-        } catch {
-          filename = rawName;
+      let filename = preferredFilename || 'wrike-get-item-numbers.xlsx';
+      if(!preferredFilename){
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+        if(match && match[1]){
+          const rawName = match[1].replace(/^"|"$/g, '');
+          try {
+            filename = decodeURIComponent(rawName);
+          } catch {
+            filename = rawName;
+          }
         }
       }
+      filename = sanitizeDownloadFilename(filename);
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -1042,6 +1100,13 @@ document.addEventListener('DOMContentLoaded', () => {
         showWrikeDownloadError('Excel export is unavailable for this task.');
         return;
       }
+      const wrikeIdResult = resolveWrikeIdForSelection(selectedRows, field);
+      if(wrikeIdResult.error){
+        showWrikeDownloadError(wrikeIdResult.error);
+        return;
+      }
+      const wrikeIdValue = wrikeIdResult.value || 'pending';
+      const preferredFilename = buildWrikeDownloadFilename(field, wrikeIdValue);
       if(config.mode === 'pendingItems'){
         const payloadRows = buildPayload(selectedRows);
         const itemLinkIds = payloadRows
@@ -1052,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         await withBusyState(wrikeDownloadBtn, async () => {
-          await downloadPendingItemsExport(itemLinkIds, config.columns);
+          await downloadPendingItemsExport(itemLinkIds, config.columns, preferredFilename);
         });
         return;
       }
@@ -1078,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
         params.set('column_mode', config.columnMode);
         params.set('columns', config.columns.join(','));
         await withBusyState(wrikeDownloadBtn, async () => {
-          await downloadDashboardExport(config.tableKey, params);
+          await downloadDashboardExport(config.tableKey, params, preferredFilename);
         });
         return;
       }

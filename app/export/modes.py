@@ -172,7 +172,7 @@ PAR_SETUP_COMBINED_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("ReorderPoint", "recommended_reorder_point_ri"),
     ("UOM Unit Of Measure", "stock_uom_ri"),
     ("BIN Location                        (All New Sequence)", "recommended_preferred_bin_ri"),
-    ("Requested update/Action", "action"),
+    ("Requested update/Action", "setup_action"),
     ("Notes", "notes"),
     ("Current Bin (Repl. Item)", "preferred_bin_ri"),
     ("Current Reorder (Repl. Item)", "reorder_point_ri"),

@@ -524,7 +524,7 @@ def _populate_notes(rows: List[Dict]) -> None:
                         src_mult = "unknown"
 
                     notes.append(
-                        f"source item {src_item} is using {src_uom}**{src_mult}, replacement item {repl_item} currently is available in these UOMs {summary} for transaction"
+                        f"source item {src_item} is using {src_uom}**{src_mult} as its Transaction UOMs, replacement item {repl_item} currently is available in these UOMs {summary} for transaction"
                     )
 
         row["notes"] = "\n".join(notes) if notes else None

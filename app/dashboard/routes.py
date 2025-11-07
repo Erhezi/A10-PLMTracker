@@ -1,5 +1,4 @@
 import io
-import string
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from functools import wraps
@@ -9,13 +8,20 @@ from flask_login import login_required as _login_required
 from sqlalchemy import select, func
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.annotation import AnnotatedColumn
-from ..utility.item_locations import build_location_pairs, compute_inventory_recommended_preferred_bin
+from ..export import (
+    CUSTOM_EXPORT_MODES,
+    COLUMN_MODE_REGISTRY,
+    TABLE_CONFIGS,
+    apply_pipeline,
+    assign_setup_action,
+    filter_export_columns,
+    parse_column_selection,
+    render_workbook,
+)
+from ..utility.item_locations import build_location_pairs
 from .. import db
 from ..models.inventory import Requesters365Day
 from ..models.relations import ItemLink, PLMTrackerBase, PLMQty, PLMDailyIssueOutQty
-from openpyxl import Workbook
-from openpyxl.styles import PatternFill
-from openpyxl.utils import get_column_letter
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
@@ -324,98 +330,6 @@ def _apply_quantity_filter(rows, field: str, desired: str | None):
     return filtered
 
 
-def _normalize_setup_compare_value(value):
-    if value is None:
-        return None
-    if isinstance(value, Decimal):
-        return value.normalize()
-    if isinstance(value, (int, float)):
-        try:
-            return Decimal(str(value)).normalize()
-        except (InvalidOperation, ValueError):
-            return str(value).strip().lower()
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return ""
-        decimal_value = _to_decimal(text)
-        if decimal_value is not None:
-            return decimal_value.normalize()
-        return text.lower()
-    decimal_value = _to_decimal(value)
-    if decimal_value is not None:
-        return decimal_value.normalize()
-    return str(value).strip().lower()
-
-
-def _setup_values_match(left, right) -> bool:
-    return _normalize_setup_compare_value(left) == _normalize_setup_compare_value(right)
-
-
-def _infer_setup_table(row: dict, explicit: str | None = None) -> str | None:
-    if explicit:
-        return explicit
-    if not isinstance(row, dict):
-        return None
-    if "recommended_transaction_uom_ri" in row or "transaction_uom_ri" in row:
-        return "inventory"
-    if "recommended_reorder_point_ri" in row:
-        return "par"
-    return None
-
-
-def _should_mark_update_as_no_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> bool:
-    if not isinstance(row, dict):
-        return False
-    action_raw = action_source if action_source is not None else row.get("action")
-    action_key = str(action_raw or "").strip().lower()
-    if action_key != "update":
-        return False
-    context = _infer_setup_table(row, explicit=table)
-    if context == "inventory":
-        comparisons = [
-            ("transaction_uom_ri", "recommended_transaction_uom_ri"),
-            ("reorder_quantity_code_ri", "recommended_reorder_quantity_code_ri"),
-            ("min_order_qty_ri", "recommended_min_order_qty_ri"),
-            ("max_order_qty_ri", "recommended_max_order_qty_ri"),
-        ]
-    elif context == "par":
-        comparisons = [("reorder_point_ri", "recommended_reorder_point_ri")]
-    else:
-        return False
-    for current_field, recommended_field in comparisons:
-        if not _setup_values_match(row.get(current_field), row.get(recommended_field)):
-            return False
-    return True
-
-
-def _derive_setup_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> str | None:
-    if not isinstance(row, dict):
-        return None
-    raw_action = action_source if action_source is not None else row.get("action")
-    if raw_action is None:
-        return None
-    text = str(raw_action).strip()
-    if not text:
-        return None
-    normalized = text.lower().replace("-", " ").replace("_", " ").strip()
-    if normalized == "update" and _should_mark_update_as_no_action(row, table=table, action_source=raw_action):
-        return "No Action (U)"
-    friendly_labels = {
-        "update": "Replace",
-        "create": "Add",
-    }
-    friendly = friendly_labels.get(normalized)
-    if friendly:
-        return friendly
-    return text
-
-
-def _assign_setup_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> None:
-    if not isinstance(row, dict):
-        return
-    row["setup_action"] = _derive_setup_action(row, table=table, action_source=action_source or row.get("action"))
-
 
 def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
     if apply_filters:
@@ -475,7 +389,7 @@ def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
         all_rows = _apply_quantity_filter(all_rows, "current_qty", args.get("current_qty_filter"))
         all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
     for row in all_rows:
-        _assign_setup_action(row, table="inventory")
+        assign_setup_action(row, table="inventory")
     return all_rows
 
 
@@ -543,485 +457,8 @@ def _filtered_par_rows(args, *, apply_filters: bool = True) -> list[dict]:
         except Exception:
             r["weeks_reorder_ri"] = "unknown"
     for row in all_rows:
-        _assign_setup_action(row, table="par")
+        assign_setup_action(row, table="par")
     return all_rows
-
-
-def _apply_inventory_recommended_bin_display(rows: list[dict]) -> None:
-    """Mirror UI fallback rules for recommended preferred bin when exporting."""
-
-    if not rows:
-        return
-
-    for row in rows:
-        if not isinstance(row, dict):  # defensive guard; rows should be dicts
-            continue
-
-        current_value = row.get("recommended_preferred_bin_ri")
-        if isinstance(current_value, str) and current_value.strip().lower() in {"n.a.", "n.a", "n/a"}:
-            continue
-
-        row["recommended_preferred_bin_ri"] = compute_inventory_recommended_preferred_bin(row)
-
-
-INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
-    ("Stage", "stage"),
-    ("Item Group", "item_group"),
-    ("Group Type", "group_type"),
-    ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
-    ("Item", "item"),
-    ("Location", "location"),
-    ("Location Text", "location_text"),
-    ("Company", "company"),
-    ("Preferred Bin", "preferred_bin"),
-    ("Auto-repl.", "auto_replenishment"),
-    ("Active", "active"),
-    ("Discon.", "discontinued"),
-    ("Current Qty", "current_qty"),
-    ("Weekly Burn", "weekly_burn"),
-    ("Weeks on Hand", "weeks_on_hand"),
-    ("Stock UOM", "stock_uom"),
-    ("UOM Conversion", "uom_conversion"),
-    ("Buy UOM", "buy_uom"),
-    ("Buy UOM Multiplier", "buy_uom_multiplier"),
-    ("Transaction UOM", "transaction_uom"),
-    ("Transaction UOM Multiplier", "transaction_uom_multiplier"),
-    ("Reorder Policy", "reorder_quantity_code"),
-    ("Reorder Point", "reorder_point"),
-    ("Min Order Qty", "min_order_qty"),
-    ("Max Order Qty", "max_order_qty"),
-    ("Manufacturer Number", "manufacturer_number"),
-    ("90-day PO Qty", "po_90_qty"),
-    ("Repl. Item", "replacement_item"),
-    ("Location (RI)", "location_ri"),
-    ("Location Text (RI)", "location_text_ri"),
-    ("Company (RI)", "company_ri"),
-    ("Preferred Bin (RI)", "preferred_bin_ri"),
-    ("Preferred Bin (Recom.)", "recommended_preferred_bin_ri"),
-    ("Auto-repl. (RI)", "auto_replenishment_ri"),
-    ("Auto-repl. (Recom.)", "recommended_auto_replenishment_ri"),
-    ("Active (RI)", "active_ri"),
-    ("Discon. (RI)", "discontinued_ri"),
-    ("Current Qty (RI)", "current_qty_ri"),
-    ("Weekly Burn (RI)", "weekly_burn_ri"),
-    ("Weeks on Hand (RI)", "weeks_on_hand_ri"),
-    ("Stock UOM (RI)", "stock_uom_ri"),
-    ("UOM Conversion (RI)", "uom_conversion_ri"),
-    ("Buy UOM (RI)", "buy_uom_ri"),
-    ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
-    ("Transaction UOM (RI)", "transaction_uom_ri"),
-    ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
-    ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
-    ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
-    ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
-    ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
-    ("Reorder Point (RI)", "reorder_point_ri"),
-    ("Reorder Point (Recom.)", "recommended_reorder_point_ri"),
-    ("Min Order Qty (RI)", "min_order_qty_ri"),
-    ("Min Order Qty (Recom.)", "recommended_min_order_qty_ri"),
-    ("Max Order Qty (RI)", "max_order_qty_ri"),
-    ("Max Order Qty (Recom.)", "recommended_max_order_qty_ri"),
-    ("Manufacturer Number (RI)", "manufacturer_number_ri"),
-    ("Item Description", "item_description"),
-    ("Item Description (RI)", "item_description_ri"),
-    ("Record Action", "action"),
-    ("Setup Action", "setup_action"),
-    ("Notes", "notes"),
-]
-
-
-PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
-    ("Stage", "stage"),
-    ("Item Group", "item_group"),
-    ("Group Type", "group_type"),
-    ("Weekly Burn (G. & Loc.)", "weekly_burn_group_location"),
-    ("Item", "item"),
-    ("Location", "location"),
-    ("Location Text", "location_text"),
-    ("Company", "company"),
-    ("Preferred Bin", "preferred_bin"),
-    ("Auto-repl.", "auto_replenishment"),
-    ("Active", "active"),
-    ("Discon.", "discontinued"),
-    ("Reorder Point", "reorder_point"),
-    ("Weekly Demand", "weekly_burn"),
-    ("Weeks Reorder", "weeks_reorder"),
-    ("Stock UOM", "stock_uom"),
-    ("UOM Conversion", "uom_conversion"),
-    ("Buy UOM", "buy_uom"),
-    ("Buy UOM Multiplier", "buy_uom_multiplier"),
-    ("Transaction UOM", "transaction_uom"),
-    ("Transaction UOM Multiplier", "transaction_uom_multiplier"),
-    ("Reorder Policy", "reorder_quantity_code"),
-    ("Min Order Qty", "min_order_qty"),
-    ("Max Order Qty", "max_order_qty"),
-    ("Manufacturer Number", "manufacturer_number"),
-    ("90-day Req Qty", "req_qty_ea"),
-    ("Repl. Item", "replacement_item"),
-    ("Location (RI)", "location_ri"),
-    ("Location Text (RI)", "location_text_ri"),
-    ("Company (RI)", "company_ri"),
-    ("Preferred Bin (RI)", "preferred_bin_ri"),
-    ("Preferred Bin (Recom.)", "recommended_preferred_bin_ri"),
-    ("Auto-repl. (RI)", "auto_replenishment_ri"),
-    ("Auto-repl. (Recom.)", "recommended_auto_replenishment_ri"),
-    ("Active (RI)", "active_ri"),
-    ("Discon. (RI)", "discontinued_ri"),
-    ("Reorder Point (RI)", "reorder_point_ri"),
-    ("Reorder Point (Recom.)", "recommended_reorder_point_ri"),
-    ("Weekly Demand (RI)", "weekly_burn_ri"),
-    ("Weeks Reorder (RI)", "weeks_reorder_ri"),
-    ("Stock UOM (RI)", "stock_uom_ri"),
-    ("UOM Conversion (RI)", "uom_conversion_ri"),
-    ("Buy UOM (RI)", "buy_uom_ri"),
-    ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
-    ("Transaction UOM (RI)", "transaction_uom_ri"),
-    ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
-    ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
-    ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
-    ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
-    ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
-    ("Min Order Qty (RI)", "min_order_qty_ri"),
-    ("Min Order Qty (Recom.)", "recommended_min_order_qty_ri"),
-    ("Max Order Qty (RI)", "max_order_qty_ri"),
-    ("Max Order Qty (Recom.)", "recommended_max_order_qty_ri"),
-    ("Manufacturer Number (RI)", "manufacturer_number_ri"),
-    ("Item Description", "item_description"),
-    ("Item Description (RI)", "item_description_ri"),
-    ("Record Action", "action"),
-    ("Setup Action", "setup_action"),
-    ("Notes", "notes"),
-]
-
-
-PAR_SETUP_COMBINED_EXPORT_COLUMNS: list[tuple[str, str]] = [
-    ("Company", "company"),
-    ("Inventory Location", "location_ri"),
-    ("Inventory Location Name", "location_text"),
-    ("Item", "replacement_item"),
-    ("Item Manufacturer Number", "manufacturer_number_ri"),
-    ("Item.Description", "item_description_ri"),
-    ("Min", "recommended_min_order_qty_ri"),
-    ("Max", "recommended_max_order_qty_ri"),
-    ("ReorderPoint", "recommended_reorder_point_ri"),
-    ("UOM Unit Of Measure", "stock_uom_ri"),
-    ("BIN Location                        (All New Sequence)", "recommended_preferred_bin_ri"),
-    ("Requested update/Action", "action"),
-    ("Notes", "notes"),
-    ("Current Bin (Repl. Item)", "preferred_bin_ri"),
-    ("Current Reorder (Repl. Item)", "reorder_point_ri"),
-    ("Item Set", "item_set"),
-]
-
-
-CUSTOM_EXPORT_MODES: set[str] = {"custom", "inventory_setup", "par_setup_replacement", "par_setup_original", "par_setup_combined"}
-
-INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
-    "company": "Company",
-    "location_ri": "InventoryLocation",
-    "group_type": "Group Type",
-    "replacement_item": "Item",
-    "item": " Original Item",
-    "recommended_transaction_uom_ri": "DefaultTransactionUOM-Issue UOM",
-    "recommended_preferred_bin_ri": "PreferredBin",
-    "recommended_min_order_qty_ri": "MinimumOrderQuantity",
-    "recommended_max_order_qty_ri": "MaximumOrderQuantity",
-    "recommended_reorder_point_ri": "ReorderPoint",
-    "recommended_auto_replenishment_ri": "AutomaticPurchaseOrder (True/False)",
-    "manufacturer_number_ri": "Item Manufacturer Number",
-    "setup_action": "Requested update/Action",
-    "notes": "Notes",
-    "preferred_bin_ri": "Current PreferredBin (Repl. Item)",
-    "min_order_qty_ri": "Current Min (Repl. Item)",
-    "max_order_qty_ri": "Current Max (Repl. Item)",
-    "reorder_point_ri": "Current Reorder (Repl. Item)",
-}
-
-PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {
-    "company": "Company",
-    "location_ri": "Inventory Location",
-    "location_text": "Inventory Location Name",
-    "group_type": "Group Type",
-    "replacement_item": "Item",
-    "item": " Original Item",
-    "manufacturer_number_ri": "Item Manufacturer Number",
-    "item_description_ri": "Item.Description",
-    "recommended_min_order_qty_ri": "Min",
-    "recommended_max_order_qty_ri": "Max",
-    "recommended_reorder_point_ri": "ReorderPoint",
-    "stock_uom_ri": "UOM Unit Of Measure",
-    "recommended_preferred_bin_ri": "BIN Location                        (All New Sequence)",
-    "setup_action": "Requested update/Action",
-    "notes": "Notes",
-    "preferred_bin_ri": "Current Bin (Repl. Item)",
-    "reorder_point_ri": "Current Reorder (Repl. Item)",
-}
-
-PAR_SETUP_ORIGINAL_HEADER_OVERRIDES: dict[str, str] = {
-    "company": "Company",
-    "location": "Inventory Location",
-    "location_text": "Inventory Location Name",
-    "group_type": "Group Type",
-    "item": "Item",
-    "manufacturer_number": "Item Manufacturer Number",
-    "item_description": "Item.Description",
-    "min_order_qty": "Min",
-    "max_order_qty": "Max",
-    "reorder_point": "ReorderPoint",
-    "stock_uom": "UOM Unit Of Measure",
-    "preferred_bin": "BIN Location                        (All New Sequence)",
-    "setup_action": "Requested update/Action",
-    "notes": "Notes",
-    "preferred_bin_ri": "Current Bin (Repl. Item)",
-    "reorder_point_ri": "Current Reorder (Repl. Item)",
-    "replacement_item": "Replacement Item",
-}
-
-PRESET_HEADER_OVERRIDES: dict[str, dict[str, str]] = {
-    "inventory_setup": INVENTORY_SETUP_HEADER_OVERRIDES,
-    "par_setup_replacement": PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES,
-    "par_setup_original": PAR_SETUP_ORIGINAL_HEADER_OVERRIDES,
-}
-
-MAX_PREFERRED_BIN_LENGTH = 10
-
-
-def _parse_column_selection(param: str | None) -> list[str]:
-    if not param:
-        return []
-    seen: set[str] = set()
-    results: list[str] = []
-    for part in param.split(","):
-        field = part.strip()
-        if not field or field in seen:
-            continue
-        seen.add(field)
-        results.append(field)
-    return results
-
-
-def _filter_export_columns(
-    column_defs: list[tuple[str, str]],
-    requested_fields: list[str],
-) -> list[tuple[str, str]]:
-    if not requested_fields:
-        return []
-    lookup = {field_name: (header, field_name) for header, field_name in column_defs}
-    filtered: list[tuple[str, str]] = []
-    for field in requested_fields:
-        column = lookup.get(field)
-        if column and column not in filtered:
-            filtered.append(column)
-    return filtered
-
-
-def _letter_suffix(index: int) -> str:
-    if index < 0:
-        return ""
-    alphabet = string.ascii_lowercase
-    base = len(alphabet)
-    result = ""
-    idx = index
-    while True:
-        idx, remainder = divmod(idx, base)
-        result = alphabet[remainder] + result
-        if idx == 0:
-            break
-        idx -= 1
-    return result or alphabet[0]
-
-
-def _format_par_original_preferred_bin(row: dict, counters: dict[tuple[str, str], int]) -> str:
-    replacement_raw = row.get("replacement_item")
-    replacement = str(replacement_raw or "").strip()
-    if not replacement:
-        return "Now"
-
-    relation = (row.get("item_replace_relation") or "").strip().lower()
-    if relation == "many-1":
-        key = (
-            replacement.lower(),
-            str(row.get("group_location") or row.get("location") or "").lower(),
-        )
-        index = counters.get(key, 0)
-        suffix = _letter_suffix(index)
-        counters[key] = index + 1
-        prefix = "Now"
-        sanitized_replacement = replacement.replace(" ", "")
-        available = MAX_PREFERRED_BIN_LENGTH - len(prefix) - len(suffix)
-        truncated = sanitized_replacement[:available] if available > 0 else ""
-        candidate = f"{prefix}{truncated}{suffix}".rstrip()
-    else:
-        prefix = "Now "
-        available = MAX_PREFERRED_BIN_LENGTH - len(prefix)
-        truncated = replacement[:available] if available > 0 else ""
-        candidate = f"{prefix}{truncated}".rstrip()
-
-    return candidate or "Now"
-
-
-def _prepare_par_setup_original_rows(rows: list[dict]) -> list[dict]:
-    if not rows:
-        return []
-
-    letter_counters: dict[tuple[str, str], int] = {}
-    prepared: list[dict] = []
-    for row in rows:
-        updated = dict(row)
-
-        action_raw = row.get("action")
-        updated["action"] = action_raw
-        updated["setup_action"] = _derive_setup_action(updated, table="par", action_source=action_raw)
-
-        item_display = str(row.get("item") or "").strip() or "N/A"
-        original_bin = str(row.get("preferred_bin") or "").strip() or "N/A"
-        updated["notes"] = f"{item_display} currently is in bin {original_bin}"
-
-        updated["preferred_bin"] = _format_par_original_preferred_bin(row, letter_counters)
-        prepared.append(updated)
-
-    return prepared
-
-
-def _prepare_par_setup_combined_rows(rows: list[dict]) -> list[dict]:
-    """Stack replacement and original setup rows into a single collection."""
-
-    if not rows:
-        return []
-
-    replacement_rows = _apply_setup_action_rules(rows, table="par")
-    original_prepared = _prepare_par_setup_original_rows(rows)
-    original_rows = _apply_setup_action_rules(original_prepared, table="par")
-
-    combined: list[dict] = []
-
-    for row in _sort_export_rows(replacement_rows, "par_setup_replacement"):
-        combined.append({
-            "company": row.get("company"),
-            "location_ri": row.get("location_ri"),
-            "location_text": row.get("location_text"),
-            "replacement_item": row.get("replacement_item"),
-            "manufacturer_number_ri": row.get("manufacturer_number_ri"),
-            "item_description_ri": row.get("item_description_ri"),
-            "recommended_min_order_qty_ri": row.get("recommended_min_order_qty_ri"),
-            "recommended_max_order_qty_ri": row.get("recommended_max_order_qty_ri"),
-            "recommended_reorder_point_ri": row.get("recommended_reorder_point_ri"),
-            "stock_uom_ri": row.get("stock_uom_ri"),
-            "recommended_preferred_bin_ri": row.get("recommended_preferred_bin_ri"),
-            "action": row.get("action"),
-            "setup_action": row.get("setup_action") or _derive_setup_action(row, table="par"),
-            "notes": row.get("notes"),
-            "preferred_bin_ri": row.get("preferred_bin_ri"),
-            "reorder_point_ri": row.get("reorder_point_ri"),
-            "item_set": "Replacement",
-        })
-
-    for row in _sort_export_rows(original_rows, "par_setup_original"):
-        combined.append({
-            "company": row.get("company"),
-            "location_ri": row.get("location"),
-            "location_text": row.get("location_text"),
-            "replacement_item": row.get("item"),
-            "manufacturer_number_ri": row.get("manufacturer_number"),
-            "item_description_ri": row.get("item_description"),
-            "recommended_min_order_qty_ri": row.get("min_order_qty"),
-            "recommended_max_order_qty_ri": row.get("max_order_qty"),
-            "recommended_reorder_point_ri": row.get("reorder_point"),
-            "stock_uom_ri": row.get("stock_uom"),
-            "recommended_preferred_bin_ri": row.get("preferred_bin"),
-            "action": row.get("action"),
-            "setup_action": row.get("setup_action") or _derive_setup_action(row, table="par"),
-            "notes": row.get("notes"),
-            "preferred_bin_ri": row.get("preferred_bin_ri"),
-            "reorder_point_ri": row.get("reorder_point_ri"),
-            "item_set": "Original",
-        })
-
-    def _combined_sort_key(entry: dict) -> tuple[str, str, str]:
-        return (
-            _sort_value(entry.get("company")),
-            _sort_value(entry.get("location_ri")),
-            _sort_value(entry.get("recommended_preferred_bin_ri")),
-        )
-
-    combined.sort(key=_combined_sort_key)
-    return combined
-
-
-def _prepare_inventory_setup_rows(rows: list[dict]) -> list[dict]:
-    """Normalize inventory setup specific fields before export."""
-
-    if not rows:
-        return []
-
-    prepared: list[dict] = []
-    for row in rows:
-        updated = dict(row)
-        raw_value = updated.get("recommended_auto_replenishment_ri")
-        normalized = str(raw_value).strip().lower() if raw_value is not None else ""
-        if normalized == "yes":
-            updated["recommended_auto_replenishment_ri"] = "TRUE"
-        elif normalized == "no":
-            updated["recommended_auto_replenishment_ri"] = "FALSE"
-        elif normalized in {"true", "false"}:
-            updated["recommended_auto_replenishment_ri"] = normalized.capitalize()
-        elif normalized == "tbd":
-            updated["recommended_auto_replenishment_ri"] = "TBD"
-        else:
-            updated["recommended_auto_replenishment_ri"] = "TBD"
-        prepared.append(updated)
-
-    return prepared
-
-
-def _apply_setup_action_rules(rows: list[dict], *, table: str | None = None) -> list[dict]:
-    if not rows:
-        return []
-
-    normalized: list[dict] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        action_raw = row.get("action")
-        action_text = str(action_raw or "").strip()
-        action_key = action_text.lower().replace("-", " ")
-        if action_key in {"mute", "ri only"}:
-            continue
-
-        updated = dict(row)
-        updated["action"] = action_raw
-        updated["setup_action"] = _derive_setup_action(updated, table=table, action_source=action_raw)
-
-        normalized.append(updated)
-
-    return normalized
-
-
-def _sort_value(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value.strip().lower()
-    return str(value)
-
-
-def _sort_export_rows(rows: list[dict], column_mode: str) -> list[dict]:
-    if not rows:
-        return rows
-
-    if column_mode == "inventory_setup":
-        key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
-    elif column_mode == "par_setup_replacement":
-        key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
-    elif column_mode == "par_setup_original":
-        key_fields = ("company", "location", "preferred_bin")
-    else:
-        return rows
-
-    def sort_key(row: dict) -> tuple[str, ...]:
-        return tuple(_sort_value(row.get(field)) for field in key_fields)
-
-    return sorted(rows, key=sort_key)
 
 
 @bp.route("/")
@@ -1334,14 +771,14 @@ def export_table(table_key: str):
         row_scope = "filtered"
     apply_filters = row_scope != "all"
 
+    table_config = TABLE_CONFIGS.get(table_key_normalized)
+    if table_config is None:
+        abort(404)
+
     if table_key_normalized == "inventory":
         rows = _filtered_inventory_rows(request.args, apply_filters=apply_filters)
-        columns = INVENTORY_EXPORT_COLUMNS
-        sheet_name = "Inventory"
     elif table_key_normalized == "par":
         rows = _filtered_par_rows(request.args, apply_filters=apply_filters)
-        columns = PAR_EXPORT_COLUMNS
-        sheet_name = "Par Locations"
     else:
         abort(404)
 
@@ -1349,25 +786,28 @@ def export_table(table_key: str):
     if hide_r_only:
         rows = [row for row in rows if not _is_r_only_location(row)]
 
-    if table_key_normalized == "inventory":
-        _apply_inventory_recommended_bin_display(rows)
+    if table_config.base_pipeline:
+        rows = apply_pipeline(rows, table_config.base_pipeline)
 
     column_mode = (request.args.get("column_mode") or "").strip().lower()
-    requested_fields = _parse_column_selection(request.args.get("columns"))
+    requested_fields = parse_column_selection(request.args.get("columns"))
     legacy_visible_param = request.args.get("visible_columns")
     if not requested_fields and legacy_visible_param:
-        requested_fields = _parse_column_selection(legacy_visible_param)
+        requested_fields = parse_column_selection(legacy_visible_param)
         if not column_mode:
             column_mode = "visible"
     allowed_column_modes = {"all", "visible"} | CUSTOM_EXPORT_MODES
     if column_mode not in allowed_column_modes:
         column_mode = "all"
 
-    if column_mode == "par_setup_combined":
-        columns = PAR_SETUP_COMBINED_EXPORT_COLUMNS
+    column_mode_config = COLUMN_MODE_REGISTRY.get(column_mode)
+    if column_mode_config and column_mode_config.columns:
+        columns = list(column_mode_config.columns)
+    else:
+        columns = list(table_config.columns)
 
     if requested_fields:
-        filtered_columns = _filter_export_columns(columns, requested_fields)
+        filtered_columns = filter_export_columns(columns, requested_fields)
         if column_mode in CUSTOM_EXPORT_MODES:
             if not filtered_columns or len(filtered_columns) != len(requested_fields):
                 abort(400, description="Requested columns are not available for export.")
@@ -1377,78 +817,32 @@ def export_table(table_key: str):
     elif column_mode in CUSTOM_EXPORT_MODES:
         abort(400, description="No columns selected for export.")
 
-    if column_mode == "par_setup_combined":
-        rows = _prepare_par_setup_combined_rows(rows)
-    else:
-        if column_mode == "inventory_setup":
-            rows = _prepare_inventory_setup_rows(rows)
-        if column_mode == "par_setup_original":
-            rows = _prepare_par_setup_original_rows(rows)
+    if column_mode_config and column_mode_config.pipeline:
+        rows = apply_pipeline(rows, column_mode_config.pipeline)
 
-        if column_mode in {"inventory_setup", "par_setup_replacement", "par_setup_original"}:
-            context = "inventory" if column_mode == "inventory_setup" else "par"
-            rows = _apply_setup_action_rules(rows, table=context)
+    header_overrides = dict(column_mode_config.header_overrides) if column_mode_config else {}
+    highlight_notes = table_config.highlight_notes or (column_mode_config.highlight_notes if column_mode_config else False)
+    highlight_row_predicate = None
+    if column_mode_config and column_mode_config.highlight_row_predicate is not None:
+        highlight_row_predicate = column_mode_config.highlight_row_predicate
+    elif table_config.highlight_row_predicate is not None:
+        highlight_row_predicate = table_config.highlight_row_predicate
 
-        rows = _sort_export_rows(rows, column_mode)
-
-    workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = sheet_name[:31]
-    header_overrides = PRESET_HEADER_OVERRIDES.get(column_mode, {})
-    worksheet.append([header_overrides.get(field, header) for header, field in columns])
-
-    highlight_modes = {"inventory_setup", "par_setup_replacement", "par_setup_combined"}
-    should_highlight_notes = column_mode in highlight_modes
-    notes_column_index: int | None = None
-    if should_highlight_notes:
-        for idx, (_, field_name) in enumerate(columns, start=1):
-            if field_name == "notes":
-                notes_column_index = idx
-                break
-        if notes_column_index is None:
-            should_highlight_notes = False
-
-    # Use a pale red background for exported rows that have notes (was pale yellow FFF9C4)
-    # Pale red chosen: #F8D7DA (Bootstrap danger background-like, soft/pale red)
-    highlight_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") if should_highlight_notes else None
-
-    for row_number, data_row in enumerate(rows, start=2):
-        worksheet.append([_coerce_excel_value(data_row.get(field)) for _, field in columns])
-
-        if should_highlight_notes and highlight_fill:
-            notes_value = data_row.get("notes")
-            has_notes = False
-            if isinstance(notes_value, str):
-                has_notes = notes_value.strip() != ""
-            elif notes_value is not None:
-                has_notes = str(notes_value).strip() != ""
-
-            if has_notes:
-                for col_idx in range(1, len(columns) + 1):
-                    cell = worksheet.cell(row=row_number, column=col_idx)
-                    cell.fill = highlight_fill
-
-    worksheet.freeze_panes = "A2"
-    if worksheet.max_row and worksheet.max_column:
-        worksheet.auto_filter.ref = worksheet.dimensions
-
-    max_row_for_width = min(worksheet.max_row, 200)
-    for idx, column_cells in enumerate(worksheet.iter_cols(1, len(columns), 1, max_row_for_width), start=1):
-        max_length = 0
-        for cell in column_cells:
-            value = cell.value
-            length = len(str(value)) if value is not None else 0
-            if length > max_length:
-                max_length = length
-        adjusted_width = min(max_length + 2, 60)
-        worksheet.column_dimensions[get_column_letter(idx)].width = adjusted_width
+    workbook = render_workbook(
+        sheet_name=table_config.sheet_name,
+        rows=rows,
+        columns=columns,
+        header_overrides=header_overrides,
+        highlight_notes=highlight_notes,
+        highlight_row_predicate=highlight_row_predicate,
+    )
 
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename_prefix = sheet_name.lower().replace(" ", "_")
+    filename_prefix = table_config.sheet_name.lower().replace(" ", "_")
     filename = f"{filename_prefix}_{timestamp}.xlsx"
 
     return send_file(

@@ -4,6 +4,7 @@ from flask import Flask
 
 from app.dashboard import routes
 from app.dashboard.routes import _normalize_tri_state, _apply_tri_state_filter
+from app.export.prep import apply_inventory_recommended_bin_display
 
 
 def test_normalize_tri_state_variants():
@@ -69,7 +70,7 @@ def test_apply_inventory_recommended_bin_display_matches_ui_rules():
         },
     ]
 
-    routes._apply_inventory_recommended_bin_display(rows)
+    apply_inventory_recommended_bin_display(rows)
 
     assert rows[0]["recommended_preferred_bin_ri"] == "NEW ITEM"
     assert rows[1]["recommended_preferred_bin_ri"] == "RI-200"

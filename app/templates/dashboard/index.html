@@ -796,7 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_reorder_point_ri',
         'recommended_auto_replenishment_ri',
         'manufacturer_number_ri',
-  'setup_action',
+    'setup_action',
         'notes',
         'preferred_bin_ri',
         'min_order_qty_ri',
@@ -817,10 +817,11 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_reorder_point_ri',
         'stock_uom_ri',
         'recommended_preferred_bin_ri',
-  'setup_action',
+    'setup_action',
         'notes',
         'preferred_bin_ri',
         'reorder_point_ri',
+        'item_set',
       ],
       par_setup_original: [
         'company',
@@ -834,12 +835,18 @@ document.addEventListener('DOMContentLoaded', () => {
         'reorder_point',
         'stock_uom',
         'preferred_bin',
-  'setup_action',
+    'setup_action',
         'notes',
         'preferred_bin_ri',
         'reorder_point_ri',
+        'item_set',
       ],
     },
+  };
+  const exportExtraColumns = {
+    par: [
+      { field: 'item_set', label: 'Item Set' },
+    ],
   };
   const customExportModes = new Set(['custom', 'inventory_setup', 'par_setup_replacement', 'par_setup_original']);
   const exportState = {
@@ -2286,19 +2293,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function gatherAllColumnMetadata(tableKey){
     const table = tableKey === 'inventory' ? inventoryTable : (tableKey === 'par' ? parTable : null);
-    if(!table) return [];
-    const headerRow = table.querySelector('thead tr.column-header-labels');
-    if(!headerRow) return [];
     const results = [];
-    Array.from(headerRow.children).forEach(th => {
-      const field = (th.dataset.field || '').trim();
-      if(!field) return;
-      const label = (th.textContent || '').trim() || field;
-      results.push({
-        field,
-        label,
-        columnId: th.id || '',
-      });
+    if(table){
+      const headerRow = table.querySelector('thead tr.column-header-labels');
+      if(headerRow){
+        Array.from(headerRow.children).forEach(th => {
+          const field = (th.dataset.field || '').trim();
+          if(!field) return;
+          const label = (th.textContent || '').trim() || field;
+          results.push({
+            field,
+            label,
+            columnId: th.id || '',
+          });
+        });
+      }
+    }
+    const extras = exportExtraColumns[tableKey] || [];
+    extras.forEach(extra => {
+      if(!results.some(column => column.field === extra.field)){
+        results.push({ field: extra.field, label: extra.label, columnId: '' });
+      }
     });
     return results;
   }

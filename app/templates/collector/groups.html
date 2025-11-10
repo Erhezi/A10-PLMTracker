@@ -80,9 +80,9 @@
         <th class="sortable col-repl" data-type="text">Repl Mfg <span class="sort-indicator"></span></th>
         <th class="sortable col-repl" data-type="text" style="min-width:240px;">Repl Description <span class="sort-indicator"></span></th>
         <th class="text-center sortable" data-type="stage">Stage <span class="sort-indicator"></span></th>
-  <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID1</small> Get Item # <span class="sort-indicator"></span></th>
-  <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID2</small> Set-up Inv. <span class="sort-indicator"></span></th>
-  <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID3</small> Set-up Par <span class="sort-indicator"></span></th>
+        <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID1</small> Get Item # <span class="sort-indicator"></span></th>
+        <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID2</small> Set-up Inv. <span class="sort-indicator"></span></th>
+        <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID3</small> Set-up Par <span class="sort-indicator"></span></th>
         <th class="sortable text-center go-live-col" data-type="date" style="min-width:90px; width:90px;">Go Live <span class="sort-indicator"></span></th>
         <th class="sortable text-center" data-type="date">CreateDT <span class="sort-indicator"></span></th>
         <th class="sortable text-center" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
@@ -189,7 +189,7 @@
         </tr>
         {% endfor %}
       {% else %}
-  <tr><td colspan="17" class="text-muted fst-italic">No ItemLink records.</td></tr>
+      <tr><td colspan="17" class="text-muted fst-italic">No ItemLink records.</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -312,6 +312,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const COLUMN_TOKEN_MODES = new Set(['item','replace-item']);
   const TRACKING_COMPLETED_STAGE = 'Tracking Completed';
   const TRACKING_COMPLETED_WARNING = 'Once set to Tracking Completed, this row cannot move to another stage. To revive it, archive the completed row and create a new entry. Continue?';
+  const BATCH_LOCKED_STAGES = new Set([TRACKING_COMPLETED_STAGE.toLowerCase()]);
+  const BATCH_LOCKED_TOOLTIP = 'Tracking Completed rows cannot be included in batch actions.';
   const buildHintMessage = (limit) => `Use ";" to search multiple terms (max ${limit}).`;
   const buildOverflowMessage = (limit) => `Use ";" to search multiple terms (max ${limit}). Only the first ${limit} terms are applied.`;
   const setFilterHint = (limit, truncated) => {
@@ -357,6 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const stageConfirm = document.getElementById('batch-stage-confirm');
   const wrikeConfirm = document.getElementById('batch-wrike-confirm');
   const goLiveConfirm = document.getElementById('batch-go-live-confirm');
+  const TEXT_NODE = typeof Node !== 'undefined' ? Node.TEXT_NODE : 3;
   const stageMeta = (() => {
     const el = document.getElementById('stage-transition-map');
     if(!el) return { map: {}, stages: [] };
@@ -451,24 +454,70 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateStageBatchButtonState();
   };
+  const isCheckboxVisible = (cb) => {
+    if(!cb) return false;
+    const row = cb.closest('tr');
+    if(!row) return false;
+    return !row.classList.contains('d-none');
+  };
+  const getAllRowCheckboxes = () => {
+    if(!table) return [];
+    return Array.from(table.querySelectorAll('tbody .row-select'));
+  };
   const getVisibleCheckboxes = () => {
     if(!table) return [];
-    return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => !cb.closest('tr')?.classList.contains('d-none'));
+    return getAllRowCheckboxes().filter(cb => !cb.disabled && isCheckboxVisible(cb));
   };
   const syncSelectAll = () => {
     if(selectAll){
-      const checkboxes = getVisibleCheckboxes();
-      if(!checkboxes.length){
+      const visibleCheckboxes = getVisibleCheckboxes();
+      const allCheckboxes = getAllRowCheckboxes().filter(cb => !cb.disabled);
+      const totalVisible = visibleCheckboxes.length;
+      const totalSelectable = allCheckboxes.length;
+      const visibleChecked = visibleCheckboxes.filter(cb => cb.checked).length;
+      const totalChecked = allCheckboxes.filter(cb => cb.checked).length;
+      const hasHiddenChecked = totalChecked > visibleChecked;
+
+      if(totalVisible === 0){
+        selectAll.checked = false;
+        selectAll.indeterminate = totalChecked > 0;
+      } else {
+        const allVisibleChecked = totalVisible > 0 && visibleChecked === totalVisible;
+        const anyVisibleChecked = visibleChecked > 0;
+        selectAll.checked = allVisibleChecked && !hasHiddenChecked;
+        selectAll.indeterminate = hasHiddenChecked || (anyVisibleChecked && !allVisibleChecked);
+      }
+      if(totalSelectable === 0){
         selectAll.checked = false;
         selectAll.indeterminate = false;
-      } else {
-        const allChecked = checkboxes.every(cb => cb.checked);
-        const anyChecked = checkboxes.some(cb => cb.checked);
-        selectAll.checked = allChecked;
-        selectAll.indeterminate = anyChecked && !allChecked;
       }
     }
     updateSelectedCount();
+  };
+  const isStageBatchLocked = (stage) => BATCH_LOCKED_STAGES.has((stage || '').trim().toLowerCase());
+  const updateRowSelectionState = (row) => {
+    if(!row) return;
+    const checkbox = row.querySelector('.row-select');
+    if(!checkbox) return;
+    const locked = isStageBatchLocked(getRowStageValue(row));
+    if(locked){
+      if(checkbox.checked){
+        checkbox.checked = false;
+      }
+      checkbox.disabled = true;
+      checkbox.title = BATCH_LOCKED_TOOLTIP;
+      row.classList.add('batch-row-locked');
+    } else {
+      checkbox.disabled = false;
+      checkbox.removeAttribute('title');
+      row.classList.remove('batch-row-locked');
+    }
+  };
+  const refreshAllRowSelectionStates = () => {
+    if(!table) return;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).filter(tr => tr.dataset.item !== undefined);
+    rows.forEach(updateRowSelectionState);
+    syncSelectAll();
   };
   const normalizeReplace = (value) => {
     if(value === null || value === undefined) return null;
@@ -630,6 +679,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     }
+    updateRowSelectionState(row);
   };
   const showBatchSummary = (summary, failureMessages) => {
     if(!summary) return;
@@ -684,7 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     showBatchSummary(summary, failureMessages);
     activateShowSelectedView({ auto: true });
-    syncSelectAll();
+    refreshAllRowSelectionStates();
   };
   const submitBatch = async (url, payload, errorBox) => {
     if(errorBox){
@@ -1220,6 +1270,86 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const pushFragment = (fragments, value) => {
+    if(value === null || value === undefined) return;
+    const text = String(value).trim();
+    if(text) fragments.push(text);
+  };
+
+  const getRowSearchText = (row) => {
+    if(!row) return '';
+    const fragments = [];
+    const cells = row.cells ? Array.from(row.cells) : Array.from(row.querySelectorAll('td'));
+    cells.forEach(cell => {
+      if(cell.classList && cell.classList.contains('select-cell')){
+        return;
+      }
+
+      if(cell.classList && cell.classList.contains('stage-cell')){
+        const readSpan = cell.querySelector('.read-value');
+        if(readSpan && !readSpan.classList.contains('d-none')){
+          const badge = readSpan.querySelector('.stage-badge');
+          pushFragment(fragments, badge ? badge.innerText : readSpan.innerText);
+        } else {
+          const stageSelectEl = cell.querySelector('select');
+          if(stageSelectEl && !stageSelectEl.classList.contains('d-none')){
+            const selectedOption = (stageSelectEl.selectedOptions && stageSelectEl.selectedOptions.length)
+              ? stageSelectEl.selectedOptions[0].text
+              : stageSelectEl.value;
+            pushFragment(fragments, selectedOption);
+          } else {
+            pushFragment(fragments, cell.dataset ? cell.dataset.value : '');
+          }
+        }
+        return;
+      }
+
+      const readValueEl = cell.querySelector('.read-value');
+      if(readValueEl && !readValueEl.classList.contains('d-none')){
+        pushFragment(fragments, readValueEl.innerText);
+        return;
+      }
+
+      if(cell.classList && cell.classList.contains('wrike-cell')){
+        const activeInput = cell.querySelector('input:not(.d-none)');
+        if(activeInput){
+          pushFragment(fragments, activeInput.value);
+        } else {
+          pushFragment(fragments, cell.dataset ? cell.dataset.value : '');
+        }
+        return;
+      }
+
+      if(cell.classList && cell.classList.contains('date-cell')){
+        const activeInput = cell.querySelector('input:not(.d-none)');
+        if(activeInput){
+          pushFragment(fragments, activeInput.value);
+        } else {
+          pushFragment(fragments, cell.dataset ? cell.dataset.value : '');
+        }
+        return;
+      }
+
+      const ellipsisEl = cell.querySelector('.ellipsis-text');
+      if(ellipsisEl){
+        pushFragment(fragments, ellipsisEl.innerText);
+        return;
+      }
+
+      const directText = Array.from(cell.childNodes || [])
+        .filter(node => node.nodeType === TEXT_NODE)
+        .map(node => node.textContent || '')
+        .join(' ');
+      if(directText && directText.trim()){
+        pushFragment(fragments, directText);
+      } else {
+        pushFragment(fragments, cell.innerText || '');
+      }
+    });
+
+    return fragments.join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  };
+
   // Filter logic (client side)
   function applyFilter(){
     const qRaw = filterInput.value.trim();
@@ -1240,14 +1370,19 @@ document.addEventListener('DOMContentLoaded', () => {
         continue;
       }
       let match = true;
+      let rowSearchText = null;
 
       if(tokens.length){
         if(mode === 'contains'){
-          const rowText = tr.innerText.toLowerCase();
-          match = tokens.some(token => rowText.includes(token));
+          if(rowSearchText === null){
+            rowSearchText = getRowSearchText(tr);
+          }
+          match = tokens.some(token => rowSearchText.includes(token));
         } else if(mode === 'not-contains'){
-          const rowText = tr.innerText.toLowerCase();
-          match = tokens.every(token => !rowText.includes(token));
+          if(rowSearchText === null){
+            rowSearchText = getRowSearchText(tr);
+          }
+          match = tokens.every(token => !rowSearchText.includes(token));
         } else if(mode === 'item-group'){
           const groupValue = getItemGroupValue(tr);
           match = tokens.some(token => groupValue === token);
@@ -1446,6 +1581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
       exitEdit(row);
+      refreshAllRowSelectionStates();
     } catch (err) {
       console.error('Error saving row:', err);
       alert('An error occurred while saving');
@@ -1474,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showAllBtn.disabled = true;
       }
       showSelectedActive = false;
-      syncSelectAll();
+      refreshAllRowSelectionStates();
     } else {
       if(selectHeader) selectHeader.classList.add('d-none');
       table.querySelectorAll('.select-cell').forEach(cell => {
@@ -1518,9 +1654,14 @@ document.addEventListener('DOMContentLoaded', () => {
     selectAll.addEventListener('change', (event) => {
       const checked = event.target.checked;
       selectAll.indeterminate = false;
-      getVisibleCheckboxes().forEach(cb => {
-        if(!cb.disabled){
-          cb.checked = checked;
+      const scopedCheckboxes = checked ? getVisibleCheckboxes() : getAllRowCheckboxes();
+      scopedCheckboxes.forEach(cb => {
+        if(checked){
+          if(!cb.disabled){
+            cb.checked = true;
+          }
+        } else {
+          cb.checked = false;
         }
       });
       syncSelectAll();
@@ -1869,6 +2010,7 @@ document.addEventListener('DOMContentLoaded', () => {
   #itemlink-table .table-warning { --bs-table-bg:#fff3cd !important; }
   #itemlink-table .select-cell, #itemlink-table .select-header { width:46px; min-width:46px; }
   #itemlink-table .select-cell input { cursor:pointer; }
+  #itemlink-table tbody tr.batch-row-locked .form-check-input { cursor:not-allowed; opacity:0.45; }
   /* fixed small column classes */
   .col-70 { width:70px; min-width:70px; max-width:70px; }
   .ellipsis { overflow:hidden; }

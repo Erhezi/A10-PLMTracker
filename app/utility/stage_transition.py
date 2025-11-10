@@ -68,7 +68,13 @@ class StageTransitionHelper:
 			"Deleted",
 			"Tracking Completed",
 		},
-		"Deleted": set(CANONICAL_STAGES),
+		"Deleted": {
+			"Deleted",
+			"Tracking - Discontinued",
+			"Pending Item Number",
+			"Pending Clinical Readiness",
+			"Tracking - Item Transition",
+		},
 		"Tracking Completed": {
 			"Tracking Completed",
 		},
@@ -123,6 +129,8 @@ class StageTransitionHelper:
 			reason = "Requested transition is not permitted"
 			if current == "Tracking Completed" and desired != current:
 				reason = "Tracking Completed is final; archive the row and add a new one to revive it"
+			elif current == "Deleted" and desired == "Tracking Completed":
+				reason = "Deleted rows must move to an active stage before completion"
 			return TransitionDecision(
 				allowed=False,
 				requested_stage=desired,
@@ -144,7 +152,7 @@ class StageTransitionHelper:
 
 	@classmethod
 	def _resolve_deleted_transition(cls, desired: str, replace_item: str | None) -> str:
-		if desired == "Tracking Completed":
+		if desired == "Deleted":
 			return desired
 		if replace_item is None or str(replace_item).strip() == "":
 			return "Tracking - Discontinued"

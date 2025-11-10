@@ -20,14 +20,22 @@
       <div class="collapse navbar-collapse" id="navbarsMain">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           {% if current_user.is_authenticated %}
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.collect') }}">Collect</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.groups') }}">Groups</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.conflicts') }}">Conflicts</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('playground.index') }}">Playground</a></li>
-          {% if current_user.is_authenticated and current_user.user_role == 'admin' %}
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.user_control') }}">User Control</a></li>
-          {% endif %}
+            {# view-only users see only Groups, Dashboard and Playground #}
+            {% if current_user.user_role == 'view-only' %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.groups') }}">Groups</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('playground.index') }}">Playground</a></li>
+            {% else %}
+              {# regular 'user' and 'admin' see the normal full set of tabs (admin gets User Control too) #}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.collect') }}">Collect</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.groups') }}">Groups</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('collector.conflicts') }}">Conflicts</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('playground.index') }}">Playground</a></li>
+              {% if current_user.user_role == 'admin' %}
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.user_control') }}">User Control</a></li>
+              {% endif %}
+            {% endif %}
           {% endif %}
         </ul>
         <ul class="navbar-nav ms-auto">
@@ -52,12 +60,12 @@
     {% if messages %}
       <div id="flash-wrapper" class="w-100 flash-bg py-2" style="z-index:1100;">
         <div class="container d-flex justify-content-end">
-          <div id="toast-container" class="d-flex flex-column gap-2">
+          <div id="toast-container" class="d-flex flex-column gap-2" style="min-width: 400px;">
             {% for category, message in messages %}
-              <div class="toast flash-toast {{ 'danger' if category=='error' else category }} border-0 show" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="d-flex">
-                  <div class="toast-body small">{{ message }}</div>
-                  <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+              <div class="toast flash-toast {{ 'danger' if category=='error' else category }} border-0 show w-100" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex align-items-center">
+                  <div class="toast-body small flex-grow-1">{{ message }}</div>
+                  <button type="button" class="btn-close btn-close-white me-3" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
               </div>
             {% endfor %}

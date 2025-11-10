@@ -145,3 +145,5 @@ _ref/**
 !_ref/**/*.html
 !_ref/
 !_ref/**/
+# Un-ignore the design doc so it can be tracked
+!_ref/overall_design.md

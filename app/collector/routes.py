@@ -12,6 +12,7 @@ from ..models.relations import (
     PendingItems,
     ItemGroupConflictError,
     ConflictError,
+    WrikeTask,
 )
 from ..models.inventory import Item, ContractItem
 from ..utility.item_group import BatchValidationError
@@ -23,6 +24,9 @@ from .batch_service import (
     apply_go_live,
     summarize_results,
 )
+import requests
+import io
+import csv
 
 """Stage name definitions (canonical only)."""
 
@@ -448,6 +452,7 @@ def api_batch_item_links():
 
     from flask import current_app
 
+
     max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
 
     try:
@@ -504,3 +509,169 @@ def api_delete_item_link(item: str, replace_item: str):
     db.session.delete(record)
     db.session.commit()
     return jsonify({"status": "deleted", "item": item, "replace_item": replace_item})
+
+# -------------------- API: Create Wrike task --------------------
+@bp.route('/api/create_wrike_task', methods=['POST'])
+@login_required
+def apply_wrike_id():
+    data = request.get_json()
+    if not data or 'items' not in data:
+        return jsonify({'message': 'Invalid request data'}), 400
+    action = data['action']
+    if not action or 'wrike_id' not in action:
+        return jsonify({'message': 'Invalid request action'}), 400
+    items = data.get('items')
+    if not items:
+        raise ValueError("No items provided in the request data")
+    results = []
+    # results.append({'wrike_id': '1000000000', 'status': 'success'})
+    try:
+        # Step 2: Create Wrike Task
+        original_wrike_id, wrike_tendigit_id = create_wrike_task(items, action)
+        # Step 3: Upload Attachment
+        # upload_attachment_to_wrike(wrike_task_id, csv_buffer)
+
+        # Step 4: Update Database
+        # update_itemlink_wrike(items, wrike_task_id,action)
+        # Step 5: Log History
+        log_wrike_task_history(original_wrike_id)
+
+        results.append({'wrike_id': {wrike_tendigit_id}, 'status': 'success'})
+    except Exception as e:
+        results.append({'wrike_id': str(e), 'status': 'failed', 'reason': str(e)})
+
+    return jsonify({'results': results}), 200
+
+# Helper functions for Wrike API and database updates
+def create_wrike_task(items,action):
+    """
+    Create a Wrike task using the Wrike API.
+    Returns the Wrike task ID and creation date.
+    """
+
+    # Fetch item details from ItemLink table
+    rows = []
+    for item in items:
+
+        item_number = item['item']
+        replacement_item_number = item['replaceItem']
+        record = ItemLink.get_items_and_descriptions(item_number, replacement_item_number)
+        if record:
+            rows.append({
+                'item': record.get('item'),
+                'item_description': record.get('item_description'),
+                'replace_item': record.get('replace_item'),
+                'replace_item_desc': record.get('replace_item_desc')
+            })
+
+    # Generate HTML table
+    task_desc = "<table border='1'><tr><th>Item</th><th>Item Description</th><th>Replacement Item</th><th>Replacement Item Description</th></tr>"
+    for row in rows:
+        task_desc += f"<tr><td>{row['item']}</td><td>{row['item_description']}</td><td>{row['replace_item']}</td><td>{row['replace_item_desc']}</td></tr>"
+    task_desc += "</table>"
+    wrike_api_url = "https://www.wrike.com/api/v4/tasks"
+    headers = {
+        'Authorization': 'bearer eyJ0dCI6InAiLCJhbGciOiJIUzI1NiIsInR2IjoiMiJ9.eyJkIjoie1wiYVwiOjI2MzUwMjQsXCJpXCI6OTU0OTI5MCxcImNcIjo0NzAwNDA3LFwidVwiOjExNDk5MTk4LFwiclwiOlwiVVNcIixcInNcIjpbXCJXXCIsXCJGXCIsXCJJXCIsXCJVXCIsXCJLXCIsXCJDXCIsXCJEXCIsXCJNXCIsXCJBXCIsXCJMXCIsXCJQXCJdLFwielwiOltdLFwidFwiOjB9IiwiaWF0IjoxNzYxODUzMTU0fQ.-9dh15EMIGr_btU15MTuzlsan4uJ2echlsaXcuQ_PSg',
+        'Content-Type': 'application/json'
+    }
+    if action == 'wrike_id1':
+        title = "Infor Item Creation"
+        description = task_desc
+    elif action == 'wrike_id2':
+        title = "Infor Item Inventory Set Up"
+        description = task_desc
+    elif action == 'wrike_id3':
+        title = "Item Par Location Set Up"
+        description = task_desc
+    else:
+        raise ValueError("No valid action provided for Wrike task creation")
+
+    payload = {
+        'title': title,
+        'description': description,
+        'status': 'Active'
+    }
+
+    response = requests.post(wrike_api_url, headers=headers, json=payload)
+    if response.status_code != 200:
+        raise Exception(f"Wrike API error: {response.text}")
+
+    original_wrike_id = response.json()['data'][0]['id']
+    wrike_tendigit_id = response.json()['data'][0]['permalink'].split('id=')[-1]
+    print(original_wrike_id, wrike_tendigit_id)
+    return original_wrike_id, wrike_tendigit_id
+
+# def upload_attachment_to_wrike(wrike_task_id, csv_buffer):
+#     """
+#     Upload an attachment to the Wrike task.
+#     """
+#     wrike_api_url = f"https://www.wrike.com/api/v4/tasks/{wrike_task_id}/attachments"
+#     headers = {
+#         'Authorization': 'eyJ0dCI6InAiLCJhbGciOiJIUzI1NiIsInR2IjoiMiJ9.eyJkIjoie1wiYVwiOjI2MzUwMjQsXCJpXCI6OTU0OTI5MCxcImNcIjo0NzAwNDA3LFwidVwiOjExNDk5MTk4LFwiclwiOlwiVVNcIixcInNcIjpbXCJXXCIsXCJGXCIsXCJJXCIsXCJVXCIsXCJLXCIsXCJDXCIsXCJEXCIsXCJNXCIsXCJBXCIsXCJMXCIsXCJQXCJdLFwielwiOltdLFwidFwiOjB9IiwiaWF0IjoxNzYxODUzMTU0fQ.-9dh15EMIGr_btU15MTuzlsan4uJ2echlsaXcuQ_PSg',
+#         'Content-Type': 'application/json'
+#     }
+#     file_name = f"INFOR_ITEM_CREATION_{datetime.now().strftime('%Y%m%d')}.csv"
+#     files = {
+#         'attachment': (file_name, csv_buffer, 'text/csv')
+#     }
+
+#     response = requests.post(wrike_api_url, headers=headers, files=files)
+#     if response.status_code != 200:
+#         raise Exception(f"Wrike attachment upload error: {response.text}")
+
+def update_itemlink_wrike(items, wrike_task_id, action):
+    for item in items:
+        item_number = item.get('item_number')
+        replacement_item_number = item.get('replacement_item_number')
+        item_link_Wrike = ItemLinkWrike.query.filter_by(item=item_number, replace_item=replacement_item_number).first()
+        if item_link_Wrike:
+            if action == 'wrike_id1':
+                item_link_Wrike.WrikeID1 = wrike_task_id
+            elif action == 'wrike_id2':
+                item_link_Wrike.WrikeID2 = wrike_task_id
+            elif action == 'wrike_id3':
+                item_link_Wrike.WrikeID3 = wrike_task_id
+            else:
+                raise ValueError("No valid action provided for updating ItemLinkWrike")
+    db.session.commit()
+
+def log_wrike_task_history(original_wrike_id):
+    """
+    Log the Wrike task history in the database by fetching details from the Wrike API.
+    """
+    wrike_api_url = f"https://www.wrike.com/api/v4/tasks/{original_wrike_id}"
+    headers = {
+        'Authorization': 'bearer eyJ0dCI6InAiLCJhbGciOiJIUzI1NiIsInR2IjoiMiJ9.eyJkIjoie1wiYVwiOjI2MzUwMjQsXCJpXCI6OTU0OTI5MCxcImNcIjo0NzAwNDA3LFwidVwiOjExNDk5MTk4LFwiclwiOlwiVVNcIixcInNcIjpbXCJXXCIsXCJGXCIsXCJJXCIsXCJVXCIsXCJLXCIsXCJDXCIsXCJEXCIsXCJNXCIsXCJBXCIsXCJMXCIsXCJQXCJdLFwielwiOltdLFwidFwiOjB9IiwiaWF0IjoxNzYxODUzMTU0fQ.-9dh15EMIGr_btU15MTuzlsan4uJ2echlsaXcuQ_PSg',
+        'Content-Type': 'application/json'
+    }
+
+    response = requests.get(wrike_api_url, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"Wrike API error while fetching task details: {response.text}")
+
+    task_data = response.json()['data'][0]
+    permalink = task_data.get('permalink')
+    wrike_tendigit_id = permalink.split('id=')[-1]
+    title = task_data.get('title')
+    has_attachment = 'Y' if task_data.get('hasAttachments') == 'True' else 'N'
+    assignee_id = task_data.get('responsibles', [])
+    create_date = task_data.get('createdDate')
+    complete_date = task_data.get('completedDate')
+    update_date = task_data.get('updatedDate')
+    misc = task_data  # Store the entire response as a string for reference
+    uploaddata = {
+            "id": original_wrike_id,
+            "wrike_tendigit_id": wrike_tendigit_id,
+            "title": title,
+            "hasAttachments": has_attachment,
+            "responsibleIds": assignee_id,
+            "createdDate": create_date,
+            "completedDate": complete_date,
+            "updatedDate": update_date,
+            "misc": misc
+        }
+    # print(uploaddata)
+    WrikeTask.add_from_wrike_data(
+        uploaddata,
+        session=db.session
+    )

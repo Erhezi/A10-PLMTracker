@@ -5,6 +5,7 @@ from .. import db
 from . import now_ny_naive
 from sqlalchemy.orm import relationship, backref, object_session
 from sqlalchemy import Index, UniqueConstraint, text
+from datetime import datetime
 
 
 PENDING_PLACEHOLDER_PREFIX = "PENDING***"
@@ -86,6 +87,38 @@ class ItemLink(db.Model):
 
     def __repr__(self):
         return f"<ItemLink id={self.pkid} {self.item} -> {self.replace_item} (group={self.item_group}, stage={self.stage})>"
+
+    @classmethod
+    def get_items_and_descriptions(cls, item: str, replace_item: str, session=None):
+        """
+        Query to fetch item, item_description, replace_item, and replace_item_description
+        for a specific item and replacement item.
+
+        :param item: The item to query.
+        :param replace_item: The replacement item to query.
+        :param session: SQLAlchemy session object (optional).
+        :return: A tuple containing (item, item_description, replace_item, replace_item_description) or None if not found.
+        """
+        session = session or db.session
+        result = (
+            session.query(
+                cls.item,
+                cls.item_description,
+                cls.replace_item,
+                cls.repl_item_description
+            )
+            .filter(cls.item == item, cls.replace_item == replace_item)
+            .first()
+        )
+        if result:
+            return {
+                "item": result.item,
+                "item_description": result.item_description,
+                "replace_item": result.replace_item,
+                "replace_item_description": result.repl_item_description
+            }
+        return None
+        
 
 
 class ItemLinkWrike(db.Model):
@@ -705,3 +738,85 @@ class PLMDailyIssueOutQty(db.Model):
 	__mapper_args__ = {
 		"primary_key": [Inventory_base_ID, PKID_ItemLink, trx_date]
 	}
+
+
+class WrikeTask(db.Model):
+	__tablename__ = "WrikeTask"
+	__table_args__ = {"schema": "PLM"}
+
+	# Composite Primary Key
+	original_wrike_id = db.Column("Original_Wrike_ID", db.String(50), primary_key=True)
+	wrike_tendigit_id = db.Column("Wrike_TenDigit_ID", db.String(10), primary_key=True)
+
+	# Columns
+	title = db.Column("Title", db.String(255), nullable=False)  # Free text
+	has_attachment = db.Column("Has_Attachment", db.String(1), nullable=False)  # 'Y' or 'N'
+	assignee = db.Column("Assignee", db.String(255), nullable=True)  # Free text
+	create_date = db.Column("Create_Date", db.DateTime, nullable=False, default=now_ny_naive)
+	complete_date = db.Column("Complete_Date", db.DateTime, nullable=True)
+	update_date = db.Column("Update_Date", db.DateTime, nullable=False, default=now_ny_naive)
+	misc = db.Column("Misc", db.Text, nullable=True)  # Free text unlimited
+	row_update_time = db.Column("Row_Update_Time", db.DateTime, nullable=False, default=now_ny_naive, onupdate=now_ny_naive)
+
+	def __repr__(self):
+		return f"<WrikeTask original_id={self.original_wrike_id} wrike_id={self.wrike_tendigit_id} title={self.title} assignee={self.assignee}>"
+	
+	@classmethod
+	def add_from_wrike_data(cls, data, session=None):
+		"""
+		Parse Wrike API data, locate columns, and add a record to the database.
+
+		:param data: Dictionary containing Wrike task data.
+		:param session: SQLAlchemy session object (optional).
+		"""
+		session = session or db.session
+
+		# Parse data
+		wrike_id = data.get('id')
+		tendigit_id = data.get('wrike_tendigit_id')  # Extract last 10 digits as Wrike ID
+		title = data.get('title')
+		has_attachment = data.get('hasAttachments')
+		assignee = data.get('responsibleIds')  # Get first assignee or None
+		create_date = data.get('createdDate')
+		complete_date = data.get('completedDate')
+		update_date = data.get('updatedDate')
+		misc = data.get('misc')  # Store the entire data as a string for reference
+		# # Add record
+		# Validate required fields
+		if not wrike_id or not tendigit_id or not title:
+			raise ValueError("Missing required fields: 'id', 'wrike_tendigit_id', or 'title'.")
+
+		# Check if the record already exists
+		existing_record = session.query(cls).filter_by(
+			original_wrike_id=wrike_id,
+			wrike_tendigit_id=tendigit_id
+		).first()
+
+		if existing_record:
+			raise ValueError(f"Record with Wrike ID {wrike_id} and TenDigit ID {tendigit_id} already exists.")
+		# Create a new WrikeTask record
+		record = cls(
+			original_wrike_id=wrike_id or "DUMMY_WRIKE_ID",
+			wrike_tendigit_id=tendigit_id or "1234567890",
+			title=title or "Dummy Title",
+			has_attachment=has_attachment or "N",
+			assignee = assignee,
+			create_date=datetime.strptime(create_date, "%Y-%m-%dT%H:%M:%SZ"),
+			complete_date=datetime.strptime(complete_date, "%Y-%m-%dT%H:%M:%SZ") if complete_date else None,
+			update_date=datetime.strptime(update_date, "%Y-%m-%dT%H:%M:%SZ"),
+			misc=str(misc),
+			row_update_time=now_ny_naive()
+		)
+		# print(create_date)
+		# print(record)
+
+		# Add the dummy record to the session
+		session.add(record)
+
+		# Commit the session to persist the record in the database
+		try:
+			session.commit()
+		except Exception as e:
+			session.rollback()
+			raise RuntimeError(f"Failed to add dummy record to the database: {e}")
+

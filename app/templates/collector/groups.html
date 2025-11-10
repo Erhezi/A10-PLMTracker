@@ -1212,7 +1212,20 @@ document.addEventListener('DOMContentLoaded', () => {
           resetFilters();
         }
       } else if(action?.startsWith('wrike')){
-        if(wrikeInput) wrikeInput.value = '';
+        const selectedData = selected.map(row => row.dataset);
+        createWrikeTask(selectedData, action)
+          .then(response => {
+            console.log(response.results[0].wrike_id)
+            // alert(`Wrike task created successfully with ID: ${response.results[0].wrike_id}`);
+            if (wrikeInput) {
+              wrikeInput.value = response.results[0].wrike_id || '';
+            }
+          })
+          .catch(error => {
+            console.error('Failed to create Wrike task:', error);
+            alert('An error occurred while creating the Wrike task. Please try again.');
+          });
+        // if(wrikeInput) wrikeInput.value = '';
         if(wrikeInputLabel){
           if(action === 'wrike_id1') wrikeInputLabel.textContent = 'Wrike ID (Get Item #)';
           if(action === 'wrike_id2') wrikeInputLabel.textContent = 'Wrike ID (Set-up Inv.)';
@@ -1244,6 +1257,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+async function createWrikeTask(items, action) {
+  try {
+    const response = await fetch('/api/create_wrike_task', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ items, action }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to create Wrike task');
+    }
+
+    const data = await response.json();
+    return data; // Return wrike_task_id from the response
+  } catch (error) {
+    console.error('Error creating Wrike task:', error);
+    throw error;
+  }
+}
+
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {

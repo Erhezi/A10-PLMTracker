@@ -337,7 +337,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const showAllBtn = document.getElementById('show-all-btn');
   const batchButtons = Array.from(document.querySelectorAll('.batch-action-btn'));
   const stageBatchButton = batchButtons.find(btn => btn.dataset.action === 'stage');
+  const wrikeGetItemButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id1');
+  const wrikeSetupInvButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id2');
+  const wrikeSetupParButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id3');
   const MULTI_STAGE_SELECTION_ALERT = 'Change Project Stage is only available when all selected rows share the same current stage. Filter on Stage and try again.';
+  const STAGE_PENDING_ITEM_NUMBER = 'Pending Item Number';
+  const WRIKE_ID1_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Get Item # is only available when all selected rows are in Pending Item Number stage.';
+  const STAGE_PENDING_CLINICAL_READINESS = 'Pending Clinical Readiness';
+  const WRIKE_PENDING_CLINICAL_SELECTION_HINT = 'Select Pending Clinical Readiness rows to create Wrike IDs.';
+  const WRIKE_ID2_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Set-up Inv. is only available when all selected rows are in Pending Clinical Readiness stage.';
+  const WRIKE_ID3_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Set-up Par is only available when all selected rows are in Pending Clinical Readiness stage.';
   const selectHeader = table ? table.querySelector('.select-header') : null;
   const editHeader = table ? table.querySelector('.edit-header') : null;
   const selectAll = document.getElementById('batch-select-all');
@@ -386,6 +395,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if(!cell) return '';
     return (cell.dataset.value || '').trim();
   };
+  const normalizeStageName = (stage) => (stage || '').trim().toLowerCase();
+  const stageMatches = (stageValue, targetStage) => normalizeStageName(stageValue) === normalizeStageName(targetStage);
 
   function summarizeSelectionStages(rows){
     const stageSet = new Set();
@@ -438,6 +449,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function updateWrikeGetItemButtonState(){
+    if(!wrikeGetItemButton){
+      return;
+    }
+    if(batchToggle && !batchToggle.checked){
+      wrikeGetItemButton.disabled = true;
+      wrikeGetItemButton.title = 'Enable Batch Change to update Wrike tasks.';
+      return;
+    }
+    const selectedRows = getSelectedRows();
+    if(!selectedRows.length){
+      wrikeGetItemButton.disabled = true;
+      wrikeGetItemButton.title = 'Select Pending Item Number rows to create Wrike IDs.';
+      return;
+    }
+    const allPendingItemNumber = selectedRows.every(row => stageMatches(getRowStageValue(row), STAGE_PENDING_ITEM_NUMBER));
+    wrikeGetItemButton.disabled = !allPendingItemNumber;
+    if(!allPendingItemNumber){
+      wrikeGetItemButton.title = WRIKE_ID1_STAGE_REQUIREMENT_MESSAGE;
+    } else {
+      wrikeGetItemButton.removeAttribute('title');
+    }
+  }
+
+  function updateWrikeSetupButtonState(button, emptySelectionMessage, requirementMessage){
+    if(!button){
+      return;
+    }
+    if(batchToggle && !batchToggle.checked){
+      button.disabled = true;
+      button.title = 'Enable Batch Change to update Wrike tasks.';
+      return;
+    }
+    const selectedRows = getSelectedRows();
+    if(!selectedRows.length){
+      button.disabled = true;
+      button.title = emptySelectionMessage;
+      return;
+    }
+    const allPendingClinical = selectedRows.every(row => stageMatches(getRowStageValue(row), STAGE_PENDING_CLINICAL_READINESS));
+    button.disabled = !allPendingClinical;
+    if(!allPendingClinical){
+      button.title = requirementMessage;
+    } else {
+      button.removeAttribute('title');
+    }
+  }
+
+  function updateWrikeSetupButtonsState(){
+    updateWrikeSetupButtonState(wrikeSetupInvButton, WRIKE_PENDING_CLINICAL_SELECTION_HINT, WRIKE_ID2_STAGE_REQUIREMENT_MESSAGE);
+    updateWrikeSetupButtonState(wrikeSetupParButton, WRIKE_PENDING_CLINICAL_SELECTION_HINT, WRIKE_ID3_STAGE_REQUIREMENT_MESSAGE);
+  }
+
   const getSelectedCheckboxes = () => {
     if(!table) return [];
     return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => cb.checked);
@@ -453,6 +517,8 @@ document.addEventListener('DOMContentLoaded', () => {
       showSelectedBtn.disabled = count === 0;
     }
     updateStageBatchButtonState();
+    updateWrikeGetItemButtonState();
+    updateWrikeSetupButtonsState();
   };
   const isCheckboxVisible = (cb) => {
     if(!cb) return false;
@@ -494,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateSelectedCount();
   };
-  const isStageBatchLocked = (stage) => BATCH_LOCKED_STAGES.has((stage || '').trim().toLowerCase());
+  const isStageBatchLocked = (stage) => BATCH_LOCKED_STAGES.has(normalizeStageName(stage));
   const updateRowSelectionState = (row) => {
     if(!row) return;
     const checkbox = row.querySelector('.row-select');
@@ -1825,6 +1891,20 @@ document.addEventListener('DOMContentLoaded', () => {
         stageSummary = summarizeSelectionStages(selected);
         if(!stageSummary.singleStage){
           alert(MULTI_STAGE_SELECTION_ALERT);
+          return;
+        }
+      }
+      if(action === 'wrike_id1'){
+        const allPending = selected.every(row => stageMatches(getRowStageValue(row), STAGE_PENDING_ITEM_NUMBER));
+        if(!allPending){
+          alert(WRIKE_ID1_STAGE_REQUIREMENT_MESSAGE);
+          return;
+        }
+      }
+      if(action === 'wrike_id2' || action === 'wrike_id3'){
+        const allPendingClinical = selected.every(row => stageMatches(getRowStageValue(row), STAGE_PENDING_CLINICAL_READINESS));
+        if(!allPendingClinical){
+          alert(action === 'wrike_id2' ? WRIKE_ID2_STAGE_REQUIREMENT_MESSAGE : WRIKE_ID3_STAGE_REQUIREMENT_MESSAGE);
           return;
         }
       }

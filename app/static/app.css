@@ -1,5 +1,6 @@
 body { font-feature-settings: "tnum"; }
 .navbar-brand { letter-spacing: .5px; }
+.navbar-brand .brand-logo { display: block; height: 30px; width: auto; }
 .stat-tile .fs-4 { font-variant-numeric: tabular-nums; }
 .toast-container { width: 320px; }
 .card { border-radius: .75rem; }
@@ -16,6 +17,68 @@ body { font-feature-settings: "tnum"; }
   --plm-success: #198754;
   --plm-accent-purple-soft: #f3e8ff;
   --plm-accent-purple-mid: #e5d4ff;
+  --plm-accent-hover: #002a50;
+  --plm-accent-active: #001d3b;
+  --plm-accent-rgb: 0, 55, 105;
+}
+
+/* Align Bootstrap primary theme tokens with Montefiore blue */
+:root {
+  --bs-primary: var(--plm-accent);
+  --bs-primary-rgb: var(--plm-accent-rgb);
+  --bs-link-color: var(--plm-accent);
+  --bs-link-hover-color: var(--plm-accent-hover);
+}
+
+.btn-primary {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--plm-accent);
+  --bs-btn-border-color: var(--plm-accent);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--plm-accent-hover);
+  --bs-btn-hover-border-color: var(--plm-accent-hover);
+  --bs-btn-focus-shadow-rgb: var(--plm-accent-rgb);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--plm-accent-active);
+  --bs-btn-active-border-color: var(--plm-accent-active);
+  --bs-btn-disabled-bg: var(--plm-accent);
+  --bs-btn-disabled-border-color: var(--plm-accent);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--plm-accent);
+  --bs-btn-border-color: var(--plm-accent);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--plm-accent);
+  --bs-btn-hover-border-color: var(--plm-accent);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--plm-accent-active);
+  --bs-btn-active-border-color: var(--plm-accent-active);
+  --bs-btn-focus-shadow-rgb: var(--plm-accent-rgb);
+}
+
+.btn-link {
+  color: var(--plm-accent);
+}
+
+.btn-link:hover,
+.btn-link:focus {
+  color: var(--plm-accent-hover);
+}
+
+.bg-primary,
+.navbar.bg-primary,
+.navbar-dark.bg-primary,
+.navbar-light.bg-primary {
+  background-color: var(--plm-accent) !important;
+}
+
+.border-primary {
+  border-color: var(--plm-accent) !important;
+}
+
+.text-primary {
+  color: var(--plm-accent) !important;
 }
 
 .bg-soft-accent { background: var(--plm-accent-soft); }

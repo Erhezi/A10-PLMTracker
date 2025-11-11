@@ -188,8 +188,8 @@
       });
     }
   }
-  const ORIGINAL_REPL_ENDPOINT = '/api/items/search';
-  const CONTRACT_ITEM_ENDPOINT = '/api/contract-items/search';
+  const ORIGINAL_REPL_ENDPOINT = window.withAppPath('/api/items/search');
+  const CONTRACT_ITEM_ENDPOINT = window.withAppPath('/api/contract-items/search');
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
   const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
   const escapeHtml = (value) => {
@@ -234,7 +234,7 @@
     const poll = async (attempt = 0) => {
       if (token.cancelled) return;
       try {
-        const res = await fetch(`/api/burn-rate-jobs?job_ids=${jobIds.join(',')}`);
+  const res = await appFetch(`/api/burn-rate-jobs?job_ids=${jobIds.join(',')}`);
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = await res.json();
         if (token.cancelled) return;
@@ -881,7 +881,7 @@
     feedback.textContent = 'Creating...';
     startBurnRatePolling([]);
     try {
-      const res = await fetch('/api/item-links/batch', {
+  const res = await appFetch('/api/item-links/batch', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
@@ -912,7 +912,7 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>';
     try {
-      const res = await fetch(`/api/item-links/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}`, { method: 'DELETE' });
+  const res = await appFetch(`/api/item-links/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}`, { method: 'DELETE' });
       if(!res.ok){
         const j = await res.json().catch(()=>({}));
         feedback.innerHTML = `<span class='text-danger'>Delete failed: ${j.error||res.status}</span>`;
@@ -997,7 +997,7 @@
       formData.append('file', file);
 
       try {
-        const res = await fetch('/api/item-links/upload', {
+  const res = await appFetch('/api/item-links/upload', {
           method: 'POST',
           body: formData,
         });

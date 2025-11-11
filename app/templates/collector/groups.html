@@ -808,7 +808,7 @@ document.addEventListener('DOMContentLoaded', () => {
       errorBox.textContent = '';
     }
     try {
-      const resp = await fetch(url, {
+  const resp = await appFetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1094,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadDashboardExport = async (tableKey, params, preferredFilename) => {
     const url = `/dashboard/export/${tableKey}?${params.toString()}`;
     try {
-      const resp = await fetch(url, {
+  const resp = await appFetch(url, {
         headers: {
           'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json',
         },
@@ -1144,7 +1144,7 @@ document.addEventListener('DOMContentLoaded', () => {
       columns,
     };
     try {
-      const resp = await fetch('/groups/batch/wrike/export/item-numbers', {
+  const resp = await appFetch('/groups/batch/wrike/export/item-numbers', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1574,7 +1574,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append(field, input.value.trim());
       });
       
-      const resp = await fetch(`/groups/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}/update`, {
+  const resp = await appFetch(`/groups/${encodeURIComponent(item)}/${encodeURIComponent(replaceItem)}/update`, {
         method: 'POST',
         body: formData,
         headers: { 'Accept': 'application/json', 'X-Requested-With': 'fetch' }

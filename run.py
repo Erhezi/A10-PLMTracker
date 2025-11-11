@@ -9,13 +9,7 @@ ENV = os.getenv('FLASK_ENV', 'development')
 URL_PREFIX = os.getenv('URL_PREFIX', '/plm' if ENV == 'production' else '')
 
 # Create the application using our factory function
-app = create_app(ENV)
-
-if URL_PREFIX:
-    app.config.update(
-        APPLICATION_ROOT=URL_PREFIX,
-        SESSION_COOKIE_PATH=URL_PREFIX
-    )
+app = create_app(ENV, URL_PREFIX)
 
 if __name__ == '__main__':
     if ENV == 'production':

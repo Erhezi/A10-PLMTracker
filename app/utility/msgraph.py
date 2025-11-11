@@ -5,7 +5,6 @@ from app.config import Config
 def get_access_token():
     Config.validate()
     print(Config.AAD_ENDPOINT, Config.TENANT_ID, Config.CLIENT_ID)
-    print(Config.CLIENT_SECRET)  # For debugging only; remove in production
     url = f"{Config.AAD_ENDPOINT}/{Config.TENANT_ID}/oauth2/v2.0/token"
     data = {
         "client_id": Config.CLIENT_ID,

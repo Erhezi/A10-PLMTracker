@@ -94,6 +94,21 @@ body { font-feature-settings: "tnum"; }
   transform: translateY(0.28rem); /* slightly larger downward nudge to resemble subscript */
 }
 
+.dashboard-action-btn {
+  border-width: 2px;
+  padding: 0.75rem 1rem;
+  min-height: 0;
+}
+
+.dashboard-action-btn .badge {
+  margin-top: 0.25rem !important;
+}
+
+.dashboard-action-btn.btn-primary .text-muted,
+.dashboard-action-btn.btn-success .text-muted {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
 footer { font-size: .75rem; }
 
 .toast-container { width: 480px; }
@@ -193,13 +208,13 @@ footer { font-size: .75rem; }
   font-size: 0.75em;
 }
 
-.stage-pending-item-number { background: #0d6efd !important; color: #fff !important; }
-.stage-pending-clinical-readiness { background: #6610f2 !important; color: #fff !important; }
+.stage-pending-item-number { background: #ca006c !important; color: #fff !important; }
+.stage-pending-clinical-readiness { background: #94c5e3 !important; color: #fff !important; }
 .stage-deleted { background: #dc3545 !important; color: #fff !important; }
 /* Tracking composite stages (normalized slug collapses repeated hyphens) */
 .stage-tracking-completed { background: #198754 !important; color: #fff !important; }
-.stage-tracking-discontinued { background: #6c757d !important; color: #fff !important; }
-.stage-tracking-item-transition { background: #20c997 !important; color: #fff !important; }
+.stage-tracking-discontinued { background: #414042 !important; color: #fff !important; }
+.stage-tracking-item-transition { background: #003769 !important; color: #fff !important; }
 
 /* Inventory table specific tweaks */
 #table-inventory { font-size: .8rem; }
@@ -878,8 +893,8 @@ footer { font-size: .75rem; }
 #itemlink-table .stage-badge { font-weight: 500; }
 
 /* Stage-specific colors for groups table (normalized slugs with triple hyphens) */
-.stage-tracking---discontinued { background: #6c757d; color: #fff; }
-.stage-tracking---item-transition { background: #20c997; color: #062b22; }
+.stage-tracking---discontinued { background: #414042; color: #fff; }
+.stage-tracking---item-transition { background: #003769; color: #fff; }
 
 #itemlink-table td,
 #itemlink-table th { vertical-align: middle; }

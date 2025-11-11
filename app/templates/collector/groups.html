@@ -2070,46 +2070,4 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
-<style>
-  #itemlink-table tbody tr:hover { background:#f7f9fc; }
-  #itemlink-table .stage-badge { font-weight:500; }
-  /* Stage specific colors */
-  .stage-tracking---discontinued { background:#6c757d; color:#fff; }
-  .stage-pending-item-number { background:#0d6efd; color:#fff; }
-  .stage-pending-clinical-readiness { background:#6610f2; color:#fff; }
-  .stage-tracking---item-transition { background:#20c997; color:#062b22; }
-  .stage-deleted { background:#dc3545; color:#fff; }
-  .stage-tracking-completed { background:#198754; color:#fff; }
-  #itemlink-table td, #itemlink-table th { vertical-align:middle; }
-  #itemlink-table td { line-height:1.1rem; }
-  #itemlink-table td .form-control, #itemlink-table td .form-select { min-width:110px; }
-  #itemlink-table thead th { position:sticky; top:0; backdrop-filter:blur(4px); cursor:pointer; user-select:none; }
-  #itemlink-table th.sortable .sort-indicator { opacity:0.4; font-size:0.65rem; margin-left:4px; }
-  #itemlink-table th.sortable.active { background:#eef3f9; }
-  #itemlink-table th.sortable.active .sort-indicator { opacity:1; }
-  #itemlink-table .table-warning { --bs-table-bg:#fff3cd !important; }
-  #itemlink-table .select-cell, #itemlink-table .select-header { width:46px; min-width:46px; }
-  #itemlink-table .select-cell input { cursor:pointer; }
-  #itemlink-table tbody tr.batch-row-locked .form-check-input { cursor:not-allowed; opacity:0.45; }
-  /* fixed small column classes */
-  .col-70 { width:70px; min-width:70px; max-width:70px; }
-  .ellipsis { overflow:hidden; }
-  .ellipsis-text { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  /* Source (Item/Mfg/Mfg Part/Description) - pale yellow (tbody only) */
-  tbody td.col-src { background: #fff9e6; }
-  /* Replacement columns - pale blue (tbody only) */
-  tbody td.col-repl { background: #e9f7ff; }
-  #itemlink-table th.col-desc,
-  #itemlink-table td.col-desc { padding-right:15px; }
-  #itemlink-table th.go-live-col,
-  #itemlink-table td.date-cell { text-align:center; }
-  #itemlink-table td.date-cell .form-control { min-width:0; max-width:100%; text-align:center; }
-  #itemlink-table th.wrike-col,
-  #itemlink-table td.wrike-cell { text-align:center; min-width:70px; width:75px; }
-  #itemlink-table td.wrike-cell .form-control { min-width:0; max-width:100px; text-align:center; margin:0 auto; }
-  /* Wrike header small labels */
-  #itemlink-table th.wrike-col .wrike-sub { font-size:0.7rem; display:block; }
-  #itemlink-table th.wrike-col .wrike-id { font-size:0.75rem; margin-left:4px; }
-  #filter-hint { white-space:nowrap; }
-</style>
 {% endblock %}

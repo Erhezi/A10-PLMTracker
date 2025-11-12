@@ -21,6 +21,12 @@ def register():
             return render_template("auth/register.html")
         existing = User.query.filter_by(email=email).first()
         if existing:
+            if not existing.is_active:
+                flash(
+                    "Your registration is pending administrator approval. Thank you for your patience.",
+                    "info",
+                )
+                return redirect(url_for("auth.register_pending", email=email))
             flash("Email already registered", "error")
             return render_template("auth/register.html")
         user = User(email=email, name=name, is_active=False)
@@ -43,10 +49,10 @@ def login():
             return render_template("auth/login.html")
         if not user.is_active:
             flash(
-                "Your account is pending administrator approval. Please contact Korgun Maral (kmaral@montefiore) if you need assistance.",
+                "Your account is pending administrator approval.",
                 "warning",
             )
-            return render_template("auth/login.html")
+            return redirect(url_for("auth.register_pending", email=email))
         login_user(user)
         user.last_login_at = db.func.now()
         db.session.commit()

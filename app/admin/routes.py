@@ -106,7 +106,8 @@ def approve_user_access(user_email):
             subject='PLM Tracker Access Approved',
             body=(
                 'Hello,\n\n'
-                'Your PLM Tracker account has been approved. You can now log in to access the application.\n\n'
+                'Your PLM Tracker account has been approved. You can now log in to access the application using the following link:\n'
+                'http://ynbbstvwp03:5080/plm\n\n'
                 'If you have any questions or need assistance, please contact Korgun Maral at kmaral@montefiore.\n\n'
                 'Thank you.'
             )

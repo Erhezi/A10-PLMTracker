@@ -119,31 +119,33 @@ def clear_deleted():
 
     deleted_rows: list[ItemLinkDeleted] = []
     deleted_time = now_ny_naive()
-    for record in records:
-        deleted_rows.append(
-            ItemLinkDeleted(
-                item_group=record.item_group,
-                item=record.item,
-                replace_item=record.replace_item,
-                mfg_part_num=record.mfg_part_num,
-                manufacturer=record.manufacturer,
-                item_description=record.item_description,
-                repl_mfg_part_num=record.repl_mfg_part_num,
-                repl_manufacturer=record.repl_manufacturer,
-                repl_item_description=record.repl_item_description,
-                stage=record.stage,
-                expected_go_live_date=record.expected_go_live_date,
-                create_dt=record.create_dt,
-                update_dt=record.update_dt,
-                item_link_id=record.pkid,
-                deleted_dt=deleted_time,
-            )
-        )
 
     try:
+        for record in records:
+            deleted_rows.append(
+                ItemLinkDeleted(
+                    item_group=record.item_group,
+                    item=record.item,
+                    replace_item=record.replace_item,
+                    mfg_part_num=record.mfg_part_num,
+                    manufacturer=record.manufacturer,
+                    item_description=record.item_description,
+                    repl_mfg_part_num=record.repl_mfg_part_num,
+                    repl_manufacturer=record.repl_manufacturer,
+                    repl_item_description=record.repl_item_description,
+                    stage=record.stage,
+                    expected_go_live_date=record.expected_go_live_date,
+                    create_dt=record.create_dt,
+                    update_dt=record.update_dt,
+                    item_link_id=record.pkid,
+                    deleted_dt=deleted_time,
+                )
+            )
+            ItemGroup.remove_for_item_link(record, session=db.session)
+            db.session.delete(record)
+
         if deleted_rows:
             db.session.add_all(deleted_rows)
-        deleted_query.delete(synchronize_session=False)
         db.session.commit()
     except Exception as exc:  # pragma: no cover - rollback safety
         db.session.rollback()
@@ -165,31 +167,33 @@ def archive_completed():
 
     archived_rows: list[ItemLinkArchived] = []
     archive_time = now_ny_naive()
-    for record in records:
-        archived_rows.append(
-            ItemLinkArchived(
-                item_group=record.item_group,
-                item=record.item,
-                replace_item=record.replace_item,
-                mfg_part_num=record.mfg_part_num,
-                manufacturer=record.manufacturer,
-                item_description=record.item_description,
-                repl_mfg_part_num=record.repl_mfg_part_num,
-                repl_manufacturer=record.repl_manufacturer,
-                repl_item_description=record.repl_item_description,
-                stage=record.stage,
-                expected_go_live_date=record.expected_go_live_date,
-                create_dt=record.create_dt,
-                update_dt=record.update_dt,
-                item_link_id=record.pkid,
-                archived_dt=archive_time,
-            )
-        )
 
     try:
+        for record in records:
+            archived_rows.append(
+                ItemLinkArchived(
+                    item_group=record.item_group,
+                    item=record.item,
+                    replace_item=record.replace_item,
+                    mfg_part_num=record.mfg_part_num,
+                    manufacturer=record.manufacturer,
+                    item_description=record.item_description,
+                    repl_mfg_part_num=record.repl_mfg_part_num,
+                    repl_manufacturer=record.repl_manufacturer,
+                    repl_item_description=record.repl_item_description,
+                    stage=record.stage,
+                    expected_go_live_date=record.expected_go_live_date,
+                    create_dt=record.create_dt,
+                    update_dt=record.update_dt,
+                    item_link_id=record.pkid,
+                    archived_dt=archive_time,
+                )
+            )
+            ItemGroup.remove_for_item_link(record, session=db.session)
+            db.session.delete(record)
+
         if archived_rows:
             db.session.add_all(archived_rows)
-        completed_query.delete(synchronize_session=False)
         db.session.commit()
     except Exception as exc:  # pragma: no cover - safety rollback
         db.session.rollback()
@@ -1066,6 +1070,7 @@ def api_delete_item_link(item: str, replace_item: str):
     record = ItemLink.query.filter_by(item=item, replace_item=replace_item).first()
     if not record:
         return jsonify({"error": "Not found"}), 404
+    ItemGroup.remove_for_item_link(record, session=db.session)
     db.session.delete(record)
     db.session.commit()
     return jsonify({"status": "deleted", "item": item, "replace_item": replace_item})

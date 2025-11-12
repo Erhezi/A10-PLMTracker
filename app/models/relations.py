@@ -514,6 +514,63 @@ class ItemGroup(db.Model):
 		if removed_membership_ids:
 			cls._prune_orphans(session, removed_membership_ids)
 
+	@classmethod
+	def remove_for_item_link(cls, item_link: ItemLink | int, *, session=None) -> None:
+		"""Remove pivot links and orphaned memberships tied to an ItemLink."""
+
+		if isinstance(item_link, ItemLink):
+			link_id = item_link.pkid
+			session = cls._resolve_session(session, item_link)
+		else:
+			link_id = int(item_link)
+			session = session or db.session
+
+		if not link_id:
+			return
+
+		links = (
+			session.query(ItemGroupLink)
+			.filter(ItemGroupLink.item_link_id == link_id)
+			.all()
+		)
+		def _cleanup_memberships(link_obj: ItemLink) -> None:
+			codes = [code for code, _ in cls._desired_pairs_for_link(link_obj) if code]
+			if not codes:
+				return
+			fallback_memberships = (
+				session.query(cls)
+				.filter(cls.item_group == link_obj.item_group)
+				.filter(cls.item.in_(codes))
+				.all()
+			)
+			fallback_ids = {
+				membership.pkid
+				for membership in fallback_memberships
+				if membership.pkid is not None
+			}
+			if fallback_ids:
+				cls._prune_orphans(session, fallback_ids)
+
+		if not links:
+			if isinstance(item_link, ItemLink):
+				_cleanup_memberships(item_link)
+			return
+
+		membership_ids: set[int] = {
+			int(link.item_group_pkid)
+			for link in links
+			if link.item_group_pkid is not None
+		}
+		for link in links:
+			session.delete(link)
+
+		session.flush()
+
+		if membership_ids:
+			cls._prune_orphans(session, membership_ids)
+		elif isinstance(item_link, ItemLink):
+			_cleanup_memberships(item_link)
+
 	@staticmethod
 	def _desired_pairs_for_link(item_link: ItemLink) -> list[tuple[str | None, str]]:
 		replace_value = item_link.replace_item

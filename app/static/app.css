@@ -71,6 +71,7 @@ body { font-feature-settings: "tnum"; }
 .btn:disabled {
   --bs-btn-disabled-color: #68a7cf;
   --bs-btn-disabled-border-color: #68a7cf;
+  --bs-btn-disabled-bg: none;
 }
 
 .bg-primary,

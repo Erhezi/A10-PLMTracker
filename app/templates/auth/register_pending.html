@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Registration Pending — PLM Tracker{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card shadow-sm border-0 p-4">
+      <h2 class="h4 fw-semibold mb-3 text-primary">Registration Received</h2>
+      <p class="mb-3">Thank you for signing up. Your registration has been submitted for review by an administrator.</p>
+      <p class="mb-3">Once your access is approved, we will send a confirmation email to{% if email %} <strong>{{ email }}</strong>{% else %} your inbox{% endif %}. You will be able to log in after approval.</p>
+      <p class="mb-4">If you do not hear back within a reasonable time, please reach out to Korgun Maral at <a href="mailto:kmaral@montefiore">kmaral@montefiore</a> for assistance.</p>
+      <a class="btn btn-primary" href="{{ url_for('auth.login') }}">Return to Login</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -15,7 +15,7 @@ class User(db.Model, UserMixin):
     name = db.Column(db.String(120))
     user_role = db.Column(db.String(50), nullable=False, server_default=text("'user'"), index=True)  # e.g., 'admin', 'user'
     pw_hash = db.Column(db.String(255), nullable=False)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
     created_at = db.Column(db.DateTime(timezone=False), default=now_ny_naive, nullable=False)
     last_login_at = db.Column(db.DateTime)
 
@@ -23,6 +23,13 @@ class User(db.Model, UserMixin):
     reset_code = db.Column(db.String(10))
     reset_code_expiry = db.Column(db.DateTime)
 
+    # For user approval
+    approved_by = db.Column(db.String(255))
+    approved_at = db.Column(db.DateTime)
+
+    # For user disabling
+    disabled_by = db.Column(db.String(255))
+    disabled_at = db.Column(db.DateTime)
 
     # Flask-Login required attribute name is 'id' or 'get_id'; we map id property.
     @property

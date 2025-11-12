@@ -23,13 +23,12 @@ def register():
         if existing:
             flash("Email already registered", "error")
             return render_template("auth/register.html")
-        user = User(email=email, name=name)
+        user = User(email=email, name=name, is_active=False)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        login_user(user)
-        flash("Registered and logged in", "success")
-        return redirect(url_for("main.index"))
+        flash("Registration received. Please wait for admin approval.", "info")
+        return redirect(url_for("auth.register_pending", email=email))
     return render_template("auth/register.html")
 
 
@@ -42,12 +41,24 @@ def login():
         if not user or not user.check_password(password):
             flash("Invalid credentials", "error")
             return render_template("auth/login.html")
+        if not user.is_active:
+            flash(
+                "Your account is pending administrator approval. Please contact Korgun Maral (kmaral@montefiore) if you need assistance.",
+                "warning",
+            )
+            return render_template("auth/login.html")
         login_user(user)
         user.last_login_at = db.func.now()
         db.session.commit()
         flash("Logged in", "success")
         return redirect(url_for("main.index"))
     return render_template("auth/login.html")
+
+
+@bp.route("/register/pending")
+def register_pending():
+    email = request.args.get("email", "")
+    return render_template("auth/register_pending.html", email=email)
 
 
 @bp.route("/logout", methods=["POST"])  # POST to avoid CSRF (add token later)

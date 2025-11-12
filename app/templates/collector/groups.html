@@ -316,6 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const COLUMN_TOKEN_MODES = new Set(['item','replace-item']);
   const TRACKING_COMPLETED_STAGE = 'Tracking Completed';
   const TRACKING_COMPLETED_WARNING = 'Once set to Tracking Completed, this row cannot move to another stage. To revive it, archive the completed row and create a new entry. Continue?';
+  const TRACKING_COMPLETED_EDIT_TOOLTIP = 'Tracking Completed rows cannot be edited. Archive the row and add a new one to make changes.';
   const BATCH_LOCKED_STAGES = new Set([TRACKING_COMPLETED_STAGE.toLowerCase()]);
   const BATCH_LOCKED_TOOLTIP = 'Tracking Completed rows cannot be included in batch actions.';
   const buildHintMessage = (limit) => `Use ";" to search multiple terms (max ${limit}).`;
@@ -506,6 +507,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateWrikeSetupButtonState(wrikeSetupParButton, WRIKE_PENDING_CLINICAL_SELECTION_HINT, WRIKE_ID3_STAGE_REQUIREMENT_MESSAGE);
   }
 
+  const isBatchModeEnabled = () => !!(batchToggle && batchToggle.checked);
+
   const getSelectedCheckboxes = () => {
     if(!table) return [];
     return Array.from(table.querySelectorAll('tbody .row-select')).filter(cb => cb.checked);
@@ -565,23 +568,48 @@ document.addEventListener('DOMContentLoaded', () => {
     updateSelectedCount();
   };
   const isStageBatchLocked = (stage) => BATCH_LOCKED_STAGES.has(normalizeStageName(stage));
+  const updateRowEditState = (row, stageValue) => {
+    if(!row) return;
+    const editBtn = row.querySelector('.edit-cell .edit-btn');
+    if(!editBtn) return;
+    if(isBatchModeEnabled()){
+      editBtn.disabled = true;
+      editBtn.removeAttribute('title');
+      return;
+    }
+    const locked = isStageBatchLocked(stageValue);
+    if(locked){
+      if(row.classList.contains('table-warning')){
+        exitEdit(row);
+      }
+      editBtn.disabled = true;
+      editBtn.title = TRACKING_COMPLETED_EDIT_TOOLTIP;
+    } else {
+      editBtn.disabled = false;
+      editBtn.removeAttribute('title');
+    }
+  };
+
   const updateRowSelectionState = (row) => {
     if(!row) return;
+    const stageValue = getRowStageValue(row);
+    const locked = isStageBatchLocked(stageValue);
     const checkbox = row.querySelector('.row-select');
-    if(!checkbox) return;
-    const locked = isStageBatchLocked(getRowStageValue(row));
-    if(locked){
-      if(checkbox.checked){
-        checkbox.checked = false;
+    if(checkbox){
+      if(locked){
+        if(checkbox.checked){
+          checkbox.checked = false;
+        }
+        checkbox.disabled = true;
+        checkbox.title = BATCH_LOCKED_TOOLTIP;
+      } else {
+        checkbox.disabled = false;
+        checkbox.removeAttribute('title');
       }
-      checkbox.disabled = true;
-      checkbox.title = BATCH_LOCKED_TOOLTIP;
-      row.classList.add('batch-row-locked');
-    } else {
-      checkbox.disabled = false;
-      checkbox.removeAttribute('title');
-      row.classList.remove('batch-row-locked');
+      checkbox.classList.remove('d-none');
     }
+    row.classList.toggle('batch-row-locked', locked);
+    updateRowEditState(row, stageValue);
   };
   const refreshAllRowSelectionStates = () => {
     if(!table) return;
@@ -1496,7 +1524,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function enterEdit(row, editButton){
     row.querySelectorAll('.read-value').forEach(el => el.classList.add('d-none'));
-    row.querySelectorAll('select, input').forEach(el => el.classList.remove('d-none'));
+    row.querySelectorAll('select, input:not([type="checkbox"])').forEach(el => el.classList.remove('d-none'));
     const actionDiv = row.querySelector('.action-buttons');
     actionDiv.classList.remove('d-none');
     editButton.classList.add('d-none');
@@ -1531,7 +1559,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function exitEdit(row){
     row.querySelectorAll('.read-value').forEach(el => el.classList.remove('d-none'));
-    row.querySelectorAll('select, input').forEach(el => el.classList.add('d-none'));
+    row.querySelectorAll('select, input:not([type="checkbox"])').forEach(el => el.classList.add('d-none'));
     const actionDiv = row.querySelector('.action-buttons');
     actionDiv.classList.add('d-none');
     row.querySelector('.edit-btn').classList.remove('d-none');
@@ -1553,6 +1581,10 @@ document.addEventListener('DOMContentLoaded', () => {
         inp.value = cell.dataset.value || '';
       }
     });
+    const rowCheckbox = row.querySelector('.row-select');
+    if(rowCheckbox){
+      rowCheckbox.classList.remove('d-none');
+    }
   }
   async function saveRow(row){
     const item = row.dataset.item;
@@ -1708,6 +1740,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       showSelectedActive = false;
       resetFilters();
+      refreshAllRowSelectionStates();
     }
   }
 

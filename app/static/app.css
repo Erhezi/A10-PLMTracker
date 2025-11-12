@@ -66,6 +66,13 @@ body { font-feature-settings: "tnum"; }
   color: var(--plm-accent-hover);
 }
 
+/* Muted disabled buttons */
+.btn.disabled,
+.btn:disabled {
+  --bs-btn-disabled-color: #68a7cf;
+  --bs-btn-disabled-border-color: #68a7cf;
+}
+
 .bg-primary,
 .navbar.bg-primary,
 .navbar-dark.bg-primary,
@@ -81,6 +88,17 @@ body { font-feature-settings: "tnum"; }
   color: var(--plm-accent) !important;
 }
 
+/* Page headers: ensure branded navy text */
+h1.h4.fw-semibold {
+  color: var(--plm-accent);
+}
+
+/* Brand toggles: align switch active state with Montefiore blue */
+.form-check-input:checked {
+  background-color: #003769;
+  border-color: #003769;
+}
+
 .bg-soft-accent { background: var(--plm-accent-soft); }
 .text-accent { color: var(--plm-accent); }
 .text-accent-pink { color: var(--plm-accent-pink); }
@@ -90,8 +108,9 @@ body { font-feature-settings: "tnum"; }
   line-height: 1;
   display: inline-block;
   vertical-align: baseline; /* baseline alignment then nudge down visually */
-  margin-left: 0.5rem;
-  transform: translateY(0.28rem); /* slightly larger downward nudge to resemble subscript */
+  margin-left: -0.5rem;
+  transform: translateY(0.32rem); /* slightly larger downward nudge to resemble subscript */
+  font-weight: 400 !important;
 }
 
 .dashboard-action-btn {

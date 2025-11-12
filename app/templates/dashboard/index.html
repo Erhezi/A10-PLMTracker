@@ -118,6 +118,8 @@
   </div>
 </div>
 
+{% include 'dashboard/_pull_requester.html' %}
+
 <!-- Section 2 + 3 container -->
 <div id="section-content" class="container-fluid p-0">
   <div class="row g-4">
@@ -281,8 +283,6 @@
         <div class="d-flex justify-content-between align-items-center border-top small px-3 py-2" id="inventory-pager" style="display:none;">
           <div>
             <button class="btn btn-outline-secondary btn-sm" id="inv-first" disabled>&laquo; First</button>
-
-          {% include 'dashboard/_pull_requester.html' %}
             <button class="btn btn-outline-secondary btn-sm" id="inv-prev" disabled>&lsaquo; Prev</button>
             <button class="btn btn-outline-secondary btn-sm" id="inv-next" disabled>Next &rsaquo;</button>
             <button class="btn btn-outline-secondary btn-sm" id="inv-last" disabled>Last &raquo;</button>
@@ -290,7 +290,7 @@
           <div id="inv-page-info" class="text-muted"></div>
         </div>
       </div>
-
+      
       <!-- Par Location Table -->
       <div class="card shadow-sm">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
@@ -586,6 +586,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const perPage = 20; // inventory rows per page
   const parPerPage = 100; // par rows per page
   let totalPages = 1;
+  let inventoryVisibleTotal = 0;
   // Par table pagination state
   const parPager = document.getElementById('par-pager');
   const parBtnFirst = document.getElementById('par-first');
@@ -595,6 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const parPageInfo = document.getElementById('par-page-info');
   let parCurrentPage = 1;
   let parTotalPages = 1;
+  let parVisibleTotal = 0;
   const filterForm = document.getElementById('dashboard-filters');
   const selItemGroup = filterForm.querySelector('input[name="item_group"]'); // hidden field storing comma list
   const itemGroupMulti = document.getElementById('item-group-multiselect');
@@ -1749,24 +1751,32 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updatePager() {
-    if(totalPages <= 1){
+    if(inventoryVisibleTotal <= 0){
       pager.style.display = 'none';
+      pageInfo.textContent = '';
       return;
     }
+    const pageCount = Math.max(totalPages, 1);
+    currentPage = Math.min(Math.max(currentPage, 1), pageCount);
     pager.style.display = '';
     btnFirst.disabled = btnPrev.disabled = currentPage <= 1;
-    btnNext.disabled = btnLast.disabled = currentPage >= totalPages;
-    pageInfo.textContent = `Page ${currentPage} / ${totalPages}`;
+    const disableForward = pageCount <= 1 || currentPage >= pageCount;
+    btnNext.disabled = btnLast.disabled = disableForward;
+    pageInfo.textContent = `Page ${currentPage} / ${pageCount}`;
   }
   function updateParPager(){
-    if(parTotalPages <= 1){
+    if(parVisibleTotal <= 0){
       parPager.style.display = 'none';
+      parPageInfo.textContent = '';
       return;
     }
+    const pageCount = Math.max(parTotalPages, 1);
+    parCurrentPage = Math.min(Math.max(parCurrentPage, 1), pageCount);
     parPager.style.display = '';
     parBtnFirst.disabled = parBtnPrev.disabled = parCurrentPage <= 1;
-    parBtnNext.disabled = parBtnLast.disabled = parCurrentPage >= parTotalPages;
-    parPageInfo.textContent = `Page ${parCurrentPage} / ${parTotalPages}`;
+    const disableForward = pageCount <= 1 || parCurrentPage >= pageCount;
+    parBtnNext.disabled = parBtnLast.disabled = disableForward;
+    parPageInfo.textContent = `Page ${parCurrentPage} / ${pageCount}`;
   }
 
   async function loadKpiStats() {
@@ -1825,10 +1835,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const rows = data.rows || [];
       const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
-      const hiddenCount = rows.length - visibleRows.length;
-      currentPage = data.page || 1;
-      totalPages = data.pages || 1;
-      console.log('Fetched rows:', rows.length, 'visible rows:', visibleRows.length);
+      const rawHiddenCount = Math.max(0, rows.length - visibleRows.length);
+      const totalAll = Number(data.total ?? rows.length);
+      const hiddenTotal = Number(data.hidden_total ?? (hideROnly ? rawHiddenCount : 0));
+      let visibleTotal = data.visible_total;
+      if(visibleTotal === null || visibleTotal === undefined || Number.isNaN(Number(visibleTotal))){
+        if(hideROnly){
+          const fallback = Number.isFinite(totalAll) ? totalAll - hiddenTotal : null;
+          visibleTotal = Number.isFinite(fallback) ? fallback : visibleRows.length;
+        } else {
+          visibleTotal = Number.isFinite(totalAll) ? totalAll : visibleRows.length;
+        }
+      }
+      inventoryVisibleTotal = Math.max(0, Number(visibleTotal) || 0);
+      totalPages = Number.isFinite(Number(data.pages)) ? Number(data.pages) : (perPage > 0 ? Math.ceil(inventoryVisibleTotal / perPage) : 0);
+      currentPage = Math.min(Math.max(Number(data.page) || page || 1, 1), totalPages > 0 ? totalPages : 1);
+      const hiddenOnPage = hideROnly ? Math.max(0, Number(data.hidden_on_page ?? rawHiddenCount)) : rawHiddenCount;
+      console.log('Fetched rows:', rows.length, 'visible rows:', visibleRows.length, 'visible total:', inventoryVisibleTotal);
       
       tbody.innerHTML = '';
       for (const r of visibleRows) {
@@ -1931,7 +1954,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       applyColumnState(inventoryTable, columnState.inventory);
       const totalLabel = data.total ?? rows.length;
-      const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
+  const hiddenLabel = (hideROnly && hiddenOnPage > 0) ? ` / ${hiddenOnPage} hidden by toggle` : '';
       countEl.textContent = `${totalLabel} total / ${visibleRows.length} this page${hiddenLabel}`;
       updatePager();
       console.log('Table populated successfully');
@@ -1954,9 +1977,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await resp.json();
       const rows = data.rows || [];
       const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
-      const hiddenCount = rows.length - visibleRows.length;
-      parCurrentPage = data.page || 1;
-      parTotalPages = data.pages || 1;
+      const rawHiddenCount = Math.max(0, rows.length - visibleRows.length);
+      const totalAll = Number(data.total ?? rows.length);
+      const hiddenTotal = Number(data.hidden_total ?? (hideROnly ? rawHiddenCount : 0));
+      let visibleTotal = data.visible_total;
+      if(visibleTotal === null || visibleTotal === undefined || Number.isNaN(Number(visibleTotal))){
+        if(hideROnly){
+          const fallback = Number.isFinite(totalAll) ? totalAll - hiddenTotal : null;
+          visibleTotal = Number.isFinite(fallback) ? fallback : visibleRows.length;
+        } else {
+          visibleTotal = Number.isFinite(totalAll) ? totalAll : visibleRows.length;
+        }
+      }
+      parVisibleTotal = Math.max(0, Number(visibleTotal) || 0);
+      parTotalPages = Number.isFinite(Number(data.pages)) ? Number(data.pages) : (parPerPage > 0 ? Math.ceil(parVisibleTotal / parPerPage) : 0);
+      parCurrentPage = Math.min(Math.max(Number(data.page) || page || 1, 1), parTotalPages > 0 ? parTotalPages : 1);
+      const hiddenOnPage = hideROnly ? Math.max(0, Number(data.hidden_on_page ?? rawHiddenCount)) : rawHiddenCount;
       parTbody.innerHTML = '';
       for(const r of visibleRows){
         function fmt(val){ return (val===null||val===undefined||val==='') ? '' : val; }
@@ -2056,7 +2092,7 @@ document.addEventListener('DOMContentLoaded', () => {
       applyColumnState(parTable, columnState.par);
       attachParRowClick();
       const totalLabel = data.total ?? rows.length;
-      const hiddenLabel = (hideROnly && hiddenCount > 0) ? ` / ${hiddenCount} hidden by toggle` : '';
+      const hiddenLabel = (hideROnly && hiddenOnPage > 0) ? ` / ${hiddenOnPage} hidden by toggle` : '';
       parCountEl.textContent = `${totalLabel} total / ${visibleRows.length} this page${hiddenLabel}`;
     updateParPager();
     } catch(e){

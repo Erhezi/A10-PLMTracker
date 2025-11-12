@@ -489,19 +489,55 @@ def api_inventory():
     per_page = max(min(per_page, 200), 1)
 
     all_rows = _filtered_inventory_rows(request.args)
-    total = len(all_rows)
-    start = (page - 1) * per_page
-    end = start + per_page
-    rows = all_rows[start:end]
+    annotated_rows = [(row, _is_r_only_location(row)) for row in all_rows]
+    total = len(annotated_rows)
+
+    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    total_hidden = sum(1 for _, is_hidden in annotated_rows if is_hidden) if hide_r_only else 0
+    total_visible = total - total_hidden if hide_r_only else total
+
+    pages = (total_visible + per_page - 1) // per_page if per_page else 1
+    max_page = pages if pages > 0 else 1
+    page = max(1, min(page, max_page))
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+
+    hidden_on_page = 0
+    if hide_r_only:
+        rows: list[dict] = []
+        if total_visible > 0:
+            visible_seen = 0
+            for row, is_hidden in annotated_rows:
+                if is_hidden:
+                    if start_index <= visible_seen < end_index:
+                        hidden_on_page += 1
+                    continue
+                if start_index <= visible_seen < end_index:
+                    rows.append(row)
+                visible_seen += 1
+                if visible_seen >= end_index:
+                    break
+        else:
+            rows = []
+            if total_hidden > 0:
+                hidden_on_page = min(total_hidden, per_page)
+    else:
+        slice_start = (page - 1) * per_page
+        slice_end = slice_start + per_page
+        rows = [row for row, _ in annotated_rows[slice_start:slice_end]]
+
     if rows:
         print(rows[0]) #debug (keep it for now)
     return jsonify({
         "rows": rows,
         "count": len(rows),
         "total": total,
+        "visible_total": total_visible,
+        "hidden_total": total_hidden,
+        "hidden_on_page": hidden_on_page,
         "page": page,
         "per_page": per_page,
-        "pages": (total + per_page - 1) // per_page if per_page else 1,
+        "pages": pages,
     })
 
 
@@ -619,17 +655,53 @@ def api_par():
     per_page = max(min(per_page, 200), 1)
 
     all_rows = _filtered_par_rows(request.args)
-    total = len(all_rows)
-    start = (page - 1) * per_page
-    end = start + per_page
-    rows = all_rows[start:end]
+    annotated_rows = [(row, _is_r_only_location(row)) for row in all_rows]
+    total = len(annotated_rows)
+
+    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    total_hidden = sum(1 for _, is_hidden in annotated_rows if is_hidden) if hide_r_only else 0
+    total_visible = total - total_hidden if hide_r_only else total
+
+    pages = (total_visible + per_page - 1) // per_page if per_page else 1
+    max_page = pages if pages > 0 else 1
+    page = max(1, min(page, max_page))
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+
+    hidden_on_page = 0
+    if hide_r_only:
+        rows: list[dict] = []
+        if total_visible > 0:
+            visible_seen = 0
+            for row, is_hidden in annotated_rows:
+                if is_hidden:
+                    if start_index <= visible_seen < end_index:
+                        hidden_on_page += 1
+                    continue
+                if start_index <= visible_seen < end_index:
+                    rows.append(row)
+                visible_seen += 1
+                if visible_seen >= end_index:
+                    break
+        else:
+            rows = []
+            if total_hidden > 0:
+                hidden_on_page = min(total_hidden, per_page)
+    else:
+        slice_start = (page - 1) * per_page
+        slice_end = slice_start + per_page
+        rows = [row for row, _ in annotated_rows[slice_start:slice_end]]
+
     return jsonify({
         "rows": rows,
         "count": len(rows),
         "total": total,
+        "visible_total": total_visible,
+        "hidden_total": total_hidden,
+        "hidden_on_page": hidden_on_page,
         "page": page,
         "per_page": per_page,
-        "pages": (total + per_page - 1) // per_page if per_page else 1,
+        "pages": pages,
     })
 
 

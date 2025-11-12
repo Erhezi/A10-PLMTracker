@@ -1,0 +1,36 @@
+{% set counts = stage_counts or {} %}
+{% set extra = stage_counts_extra or {} %}
+{% set unstaged = stage_counts_unstaged or 0 %}
+{% set active_total = stage_active_total or 0 %}
+{% set stages = [
+  ('Pending Item Number', 'stage-pending-item-number'),
+  ('Pending Clinical Readiness', 'stage-pending-clinical-readiness'),
+  ('Tracking - Item Transition', 'stage-tracking-item-transition'),
+  ('Tracking - Discontinued', 'stage-tracking-discontinued'),
+  ('Tracking Completed', 'stage-tracking-completed'),
+  ('Deleted', 'stage-deleted')
+] %}
+<div class="card shadow-sm border-0 stage-summary-card">
+  <div class="card-body py-2">
+    <h2 class="h6 fw-semibold mb-2">Rows per Stage</h2>
+    <div class="stage-summary-row">
+      {% for label, css_class in stages %}
+        <div class="stage-summary-box {{ css_class }}">
+          <div class="stage-summary-count">{{ counts.get(label, 0) }}</div>
+          <div class="stage-summary-label">{{ label }}</div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="stage-summary-meta">
+      <span>Total Active ItemLink rows: {{ active_total }}</span>
+      {% if unstaged %}<span>Unstaged: {{ unstaged }}</span>{% endif %}
+      {% if extra %}
+        <span>Other stages:
+          {% for name, value in extra|dictsort %}
+            {{ name }} ({{ value }}){% if not loop.last %}, {% endif %}
+          {% endfor %}
+        </span>
+      {% endif %}
+    </div>
+  </div>
+</div>

@@ -144,6 +144,32 @@ footer { font-size: .75rem; }
   --blue-900: #1c367e;
 }
 
+.palette-pink {
+  --pink-50:  #fff5fa;   /* very light blush */
+  --pink-100: #ffe4ef;   /* cotton-candy tint */
+  --pink-200: #ffc2d9;   /* soft pastel pink */
+  --pink-300: #ff99bf;   /* bright pink */
+  --pink-400: #f766a3;   /* vivid rose */
+  --pink-500: #e93b8d;   /* mid magenta */
+  --pink-600: #d91d7b;   /* saturated hot pink */
+  --pink-700: #ca006c;   /* deep magenta (anchor) */
+  --pink-800: #9e0055;   /* plum-rose */
+  --pink-900: #72003f;   /* wine-berry */
+}
+
+.palette-blue2 {
+  --blue2-50:  #f5fbff;   /* whisper blue */
+  --blue2-100: #e1f3fb;   /* pale azure */
+  --blue2-200: #b9e1f3;   /* light sky */
+  --blue2-300: #94c5e3;   /* base (given) */
+  --blue2-400: #68a7cf;   /* muted turquoise */
+  --blue2-500: #3f87b9;   /* hospital teal */
+  --blue2-600: #22689c;   /* strong clinical blue */
+  --blue2-700: #003769;   /* deep brand navy (anchor) */
+  --blue2-800: #112b47;   /* midnight navy (given) */
+  --blue2-900: #0b1c2e;   /* near-black blue */
+}
+
 
 /* flash toast base: span full width, lighter shades, close on far right */
 .flash-toast {
@@ -215,6 +241,14 @@ footer { font-size: .75rem; }
 .stage-tracking-completed { background: #198754 !important; color: #fff !important; }
 .stage-tracking-discontinued { background: #414042 !important; color: #fff !important; }
 .stage-tracking-item-transition { background: #003769 !important; color: #fff !important; }
+
+.stage-summary-card { border-radius: 0.5rem; }
+.stage-summary-row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: stretch; }
+.stage-summary-box { min-width: 120px; padding: 0.5rem 0.7rem; border-radius: 0.55rem; color: #fff; display: flex; flex-direction: column; gap: 0.2rem; box-shadow: 0 0.25rem 0.6rem rgba(17, 24, 39, 0.08); }
+.stage-summary-count { font-size: 1.2rem; font-weight: 600; line-height: 1; }
+.stage-summary-label { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.01em; opacity: 0.88; }
+.stage-summary-meta { margin-top: 0.5rem; font-size: 0.7rem; color: #6c757d; display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.stage-summary-meta span { white-space: nowrap; }
 
 /* Inventory table specific tweaks */
 #table-inventory { font-size: .8rem; }

@@ -69,7 +69,7 @@ def collect():
     from flask import current_app
     max_per_side = current_app.config.get('MAX_BATCH_PER_SIDE', 6)
     max_combinations = max_per_side * max_per_side  # Calculate total combinations for display
-    
+
     return render_template(
         "collector/collect.html",
         allowed_stages=ALLOWED_STAGES,
@@ -90,9 +90,29 @@ def groups():
         .order_by(ItemLink.item_group.desc(), ItemLink.item)
         .all()
     )
-    # Count rows currently flagged as deleted
-    count_deleted = ItemLink.query.filter(ItemLink.stage == 'Deleted').count()
-    count_completed = ItemLink.query.filter(ItemLink.stage == 'Tracking Completed').count()
+    stage_counts_query = (
+        db.session.query(ItemLink.stage, func.count(ItemLink.pkid))
+        .group_by(ItemLink.stage)
+        .all()
+    )
+    stage_counts: dict[str, int] = {stage: 0 for stage in ALLOWED_STAGES}
+    unstaged_count = 0
+    extra_stage_counts: dict[str, int] = {}
+    for stage_value, count_value in stage_counts_query:
+        count_int = int(count_value or 0)
+        if stage_value in stage_counts:
+            stage_counts[stage_value] = count_int
+        elif stage_value is None or str(stage_value).strip() == "":
+            unstaged_count += count_int
+        else:
+            key = str(stage_value)
+            extra_stage_counts[key] = extra_stage_counts.get(key, 0) + count_int
+
+    archived_total = int(db.session.query(func.count(ItemLinkArchived.pkid)).scalar() or 0)
+    active_total = len(items)
+
+    count_deleted = stage_counts.get('Deleted', 0)
+    count_completed = stage_counts.get('Tracking Completed', 0)
     stage_transitions = {
         stage: sorted(StageTransitionHelper.allowed_targets(stage))
         for stage in ALLOWED_STAGES
@@ -105,6 +125,11 @@ def groups():
         count_deleted=count_deleted,
         count_completed=count_completed,
         stage_transitions=stage_transitions,
+        stage_counts=stage_counts,
+        stage_counts_unstaged=unstaged_count,
+        stage_counts_extra=extra_stage_counts,
+        stage_archived_total=archived_total,
+        stage_active_total=active_total,
     )
 
 @bp.post('/groups/clear-deleted')

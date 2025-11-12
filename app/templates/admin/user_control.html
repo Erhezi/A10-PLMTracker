@@ -229,6 +229,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // initial sort helper: sorts by a given column index and direction without toggling
+    function initialSort(index, dir) {
+        if (index == null || index < 0) return;
+        sortState.index = index;
+        sortState.dir = dir === 'asc' ? 'asc' : 'desc';
+        const factor = sortState.dir === 'asc' ? 1 : -1;
+        const sorted = Array.from(tbody.rows).sort((a, b) => {
+            let valA = getCellValue(a, index).toString().trim().toLowerCase();
+            let valB = getCellValue(b, index).toString().trim().toLowerCase();
+            const type = sortableHeaders[index] ? sortableHeaders[index].dataset.sortType || 'text' : 'text';
+            if (type === 'text') {
+                const cmp = valA.localeCompare(valB, undefined, { sensitivity: 'base' });
+                if (cmp !== 0) return cmp * factor;
+            }
+            const originalDiff = Number(a.dataset.originalIndex || 0) - Number(b.dataset.originalIndex || 0);
+            return originalDiff;
+        });
+        sorted.forEach(row => tbody.appendChild(row));
+        updateSortIndicators();
+        updateVisibleCount();
+    }
+
     if (filterInput) {
         filterInput.addEventListener('input', applyFilter);
     }
@@ -242,7 +264,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    updateSortIndicators();
+    // Find the index of the "Access" header dynamically so this works whether the Actions
+    // column exists or not. Default to column with leading text 'access'.
+    const allHeaders = Array.from(table.querySelectorAll('th'));
+    const accessIndex = allHeaders.findIndex(th => th.textContent && th.textContent.trim().toLowerCase().startsWith('access'));
+
+    // Apply initial descending sort on Access column (if found), then apply filter to update visible rows.
+    initialSort(accessIndex, 'desc');
     applyFilter();
 });
 </script>

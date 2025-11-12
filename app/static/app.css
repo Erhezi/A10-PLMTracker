@@ -318,6 +318,28 @@ footer { font-size: .75rem; }
 #table-par tbody tr.inventory-row-selected {
   transition: background-color 120ms ease-in;
 }
+
+/* Admin user control toolbar responsive layout */
+.user-control-toolbar { width: 100%; }
+
+.user-filter-panel { max-width: 800px; }
+
+.user-filter-row { width: 100%; }
+
+.user-filter-row .input-group { flex: 1 1 auto; min-width: 0; }
+
+.user-filter-input { min-width: 400px; }
+
+.user-filter-hint { flex: 1 1 580px; min-width: 300px; overflow-wrap: anywhere; }
+
+.user-rows-count { white-space: nowrap; }
+
+@media (max-width: 575.98px) {
+  .user-filter-panel { max-width: 100%; }
+  .user-filter-input { min-width: 0; }
+  .user-filter-hint { flex: 1 1 auto; }
+  .user-rows-count { align-self: flex-start; }
+}
 /* ---------------------------------------------- */
 /* Shared column sizing & overflow helpers        */
 /* ---------------------------------------------- */

@@ -6,13 +6,27 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-body">
+    <div class="d-flex flex-column flex-md-row align-items-md-end gap-3 mb-1 user-control-toolbar">
+            <div class="flex-grow-1 w-100 user-filter-panel">
+                <label for="user-filter-input" class="form-label small text-muted mb-1">Quick Filter</label>
+                <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 user-filter-row">
+                    <div class="input-group input-group-sm flex-nowrap flex-grow-1">
+                        <input type="text" id="user-filter-input" class="form-control user-filter-input" placeholder="Search..." autocomplete="off" aria-describedby="user-filter-hint">
+                        <button type="button" class="btn btn-outline-secondary" id="user-filter-clear">Clear</button>
+                    </div>
+                    <div class="small text-muted user-filter-hint" id="user-filter-hint">Use ";" to search multiple terms. Use "*" as a wildcard.</div>
+                </div>
+            </div>
+            <div class="small text-muted pt-2 pt-md-0 text-md-end ms-md-auto user-rows-count">Rows: <span id="user-table-visible-count">{{ users|length }}</span> / {{ users|length }}</div>
+        </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0 user-control-table">
                 <thead class="table-light text-muted">
                     <tr>
-                        <th scope="col" class="text-uppercase small fw-semibold">Email</th>
-                        <th scope="col" class="text-uppercase small fw-semibold">Role</th>
-                        <th scope="col" class="text-uppercase small fw-semibold">Access</th>
+                        <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Email <span class="sort-indicator"></span></th>
+                        <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Name <span class="sort-indicator"></span></th>
+                        <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Role <span class="sort-indicator"></span></th>
+                        <th scope="col" class="text-uppercase small fw-semibold sortable text-center align-middle" data-sort-type="text">Access <span class="sort-indicator"></span></th>
                         {% if current_user.user_role == 'admin' and current_user.is_active %}
                         <th scope="col" class="text-uppercase small fw-semibold text-center">Actions</th>
                         {% endif %}
@@ -22,6 +36,7 @@
                     {% for user in users %}
                     <tr>
                         <td class="fw-semibold">{{ user.email }}</td>
+                        <td class="small">{{ user.name or '' }}</td>
                         <td>
                             <form method="POST" action="{{ url_for('admin.update_user_role', user_email=user.email) }}">
                                 <select class="form-select form-select-sm user-control-dropdown" name="user_role">
@@ -31,7 +46,13 @@
                                 </select>
                             </form>
                         </td>
-                        <td class="fw-semibold text-uppercase small">{{ 'ACTIVE' if user.is_active else 'PENDING' }}</td>
+                        <td class="fw-semibold text-uppercase small text-center align-middle" data-sort-value="{{ 'active' if user.is_active else 'pending' }}">
+                            {% if user.is_active %}
+                            <span class="badge text-bg-success" data-sort-value="active">ACTIVE</span>
+                            {% else %}
+                            <span class="badge text-bg-warning text-dark" data-sort-value="pending">PENDING</span>
+                            {% endif %}
+                        </td>
                         {% if current_user.user_role == 'admin' and current_user.is_active %}
                         <td class="text-center">
                             <div class="d-inline-flex flex-wrap gap-2 justify-content-center">
@@ -67,6 +88,163 @@ function confirmDeletion(userEmail) {
         form.submit();
     }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const table = document.querySelector('.user-control-table');
+    if (!table) return;
+
+    const tbody = table.tBodies[0];
+    const filterInput = document.getElementById('user-filter-input');
+    const clearBtn = document.getElementById('user-filter-clear');
+    const visibleCountEl = document.getElementById('user-table-visible-count');
+    const rows = Array.from(tbody.rows);
+    const sortableHeaders = Array.from(table.querySelectorAll('th.sortable'));
+    const sortState = { index: null, dir: 'asc' };
+
+    rows.forEach((row, idx) => {
+        row.dataset.originalIndex = String(idx);
+        row.dataset.searchText = buildSearchText(row);
+        row.querySelectorAll('select').forEach(selectEl => {
+            selectEl.addEventListener('change', () => {
+                row.dataset.searchText = buildSearchText(row);
+                applyFilter();
+            });
+        });
+    });
+
+    sortableHeaders.forEach((th, idx) => {
+        th.setAttribute('tabindex', '0');
+        th.setAttribute('role', 'button');
+        th.setAttribute('aria-sort', 'none');
+        th.addEventListener('click', () => sortBy(idx));
+        th.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                sortBy(idx);
+            }
+        });
+    });
+
+    function buildSearchText(row) {
+        const email = row.cells[0] ? row.cells[0].textContent || '' : '';
+        const name = row.cells[1] ? row.cells[1].textContent || '' : '';
+        const roleSelect = row.querySelector('select[name="user_role"]');
+        const role = roleSelect ? roleSelect.value : '';
+        const accessCell = row.cells[3];
+        const access = accessCell ? accessCell.textContent || '' : '';
+        return [email, name, role, access].map(val => val.trim().toLowerCase()).join(' ');
+    }
+
+    function termMatches(text, term) {
+        if (!term) return true;
+        const negated = term.startsWith('!');
+        const rawTerm = negated ? term.slice(1) : term;
+        const normalized = rawTerm.toLowerCase();
+        if (!normalized.replace(/\*/g, '')) {
+            return negated ? false : true;
+        }
+        const fragments = normalized.split('*').filter(Boolean);
+        let cursor = 0;
+        let matched = true;
+        for (const fragment of fragments) {
+            const idx = text.indexOf(fragment, cursor);
+            if (idx === -1) {
+                matched = false;
+                break;
+            }
+            cursor = idx + fragment.length;
+        }
+        return negated ? !matched : matched;
+    }
+
+    function applyFilter() {
+        if (!filterInput) {
+            updateVisibleCount();
+            return;
+        }
+        const raw = filterInput.value.trim();
+        if (!raw) {
+            rows.forEach(row => row.classList.remove('d-none'));
+            updateVisibleCount();
+            return;
+        }
+        const terms = raw.split(';').map(term => term.trim()).filter(Boolean);
+        rows.forEach(row => {
+            const text = row.dataset.searchText || '';
+            const isMatch = terms.every(term => termMatches(text, term));
+            row.classList.toggle('d-none', !isMatch);
+        });
+        updateVisibleCount();
+    }
+
+    function updateVisibleCount() {
+        if (!visibleCountEl) return;
+        const visible = rows.filter(row => !row.classList.contains('d-none')).length;
+        visibleCountEl.textContent = String(visible);
+    }
+
+    function getCellValue(row, index) {
+        const cell = row.cells[index];
+        if (!cell) return '';
+        if (cell.dataset.sortValue) return cell.dataset.sortValue;
+        const dataValue = cell.querySelector('[data-sort-value]');
+        if (dataValue) return dataValue.dataset.sortValue || dataValue.textContent || '';
+        const select = cell.querySelector('select');
+        if (select) return select.value;
+        return cell.textContent || '';
+    }
+
+    function sortBy(index) {
+        const type = sortableHeaders[index] ? sortableHeaders[index].dataset.sortType || 'text' : 'text';
+        const nextDir = sortState.index === index && sortState.dir === 'asc' ? 'desc' : 'asc';
+        sortState.index = index;
+        sortState.dir = nextDir;
+        const factor = nextDir === 'asc' ? 1 : -1;
+        const sorted = Array.from(tbody.rows).sort((a, b) => {
+            let valA = getCellValue(a, index).toString().trim().toLowerCase();
+            let valB = getCellValue(b, index).toString().trim().toLowerCase();
+            if (type === 'text') {
+                const cmp = valA.localeCompare(valB, undefined, { sensitivity: 'base' });
+                if (cmp !== 0) return cmp * factor;
+            }
+            const originalDiff = Number(a.dataset.originalIndex || 0) - Number(b.dataset.originalIndex || 0);
+            return originalDiff;
+        });
+        sorted.forEach(row => tbody.appendChild(row));
+        updateSortIndicators();
+        updateVisibleCount();
+    }
+
+    function updateSortIndicators() {
+        sortableHeaders.forEach((th, idx) => {
+            const indicator = th.querySelector('.sort-indicator');
+            if (sortState.index === idx) {
+                const arrow = sortState.dir === 'asc' ? '\u2191' : '\u2193';
+                if (indicator) indicator.textContent = arrow;
+                th.setAttribute('aria-sort', sortState.dir === 'asc' ? 'ascending' : 'descending');
+            } else {
+                if (indicator) indicator.textContent = '';
+                th.setAttribute('aria-sort', 'none');
+            }
+        });
+    }
+
+    if (filterInput) {
+        filterInput.addEventListener('input', applyFilter);
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (!filterInput) return;
+            filterInput.value = '';
+            filterInput.focus();
+            applyFilter();
+        });
+    }
+
+    updateSortIndicators();
+    applyFilter();
+});
 </script>
 
 {% endblock %}

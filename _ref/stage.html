@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PLM Stage Transition Diagram</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; background:#fff; color:#2c3e50; }
+    h1 { color:#1a5276; border-bottom:2px solid #1a5276; padding-bottom:0.3em; }
+    .mermaid { border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:#fafafa; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });</script>
+</head>
+<body>
+  <h1>Stage Transition Diagram (Rotated View)</h1>
+  <div class="mermaid">
+flowchart TD
+    %% === Normal Stage Column ===
+    subgraph NORMAL_FLOW["Normal Stage Flow"]
+        TD[Tracking - Discontinued]
+        PIN[Pending Item Number]
+        PCR[Pending Clinical Readiness]
+        TIT[Tracking - Item Transition]
+        TC[Tracking Completed]
+    end
+
+    %% === Deleted Lane (Right Side) ===
+    subgraph DELETED_FLOW["Deleted / Reactivation"]
+        style DELETED_FLOW fill:#f8f8f8,stroke:#ccc
+        DEL[Deleted]
+        ARCH[(Archived)]
+    end
+
+    %% === Normal vertical flow ===
+    TD --> PIN
+    PIN --> PCR
+    PCR --> TIT
+    TIT --> TC
+    TIT --> PCR
+    TD --> TC
+
+    %% === Delete (horizontal to the right) ===
+    TD -.-> DEL
+    PIN -.-> DEL
+    PCR -.-> DEL
+    TIT -.-> DEL
+    TC -.-> DEL
+
+    %% === Restore (horizontal back left) ===
+    DEL --> TD
+    DEL --> PIN
+    DEL --> PCR
+    DEL --> TIT
+
+    %% === Archive below Completed ===
+    TC --> ARCH
+
+    %% === Visual styling ===
+    classDef normal fill:#e8f4fc,stroke:#1a5276,stroke-width:1px;
+    classDef deleted fill:#fdecea,stroke:#c0392b,stroke-width:1px;
+    class TD,PIN,PCR,TIT,TC normal;
+    class DEL,ARCH deleted;
+  </div>
+</body>
+</html>

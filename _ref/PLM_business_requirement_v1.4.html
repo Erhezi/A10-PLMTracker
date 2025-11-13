@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PLM Business Requirements v1.4</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2em;
+      line-height: 1.6;
+      color: #1f2a37;
+      background: #fff;
+    }
+    h1, h2, h3, h4 {
+      color: #0f4c81;
+    }
+    h1 {
+      border-bottom: 3px solid #0f4c81;
+      padding-bottom: 0.4em;
+      margin-bottom: 0.6em;
+    }
+    h2 {
+      border-bottom: 1px solid #d9e2ec;
+      padding-bottom: 0.2em;
+      margin-top: 2em;
+    }
+    h3 {
+      margin-top: 1.5em;
+    }
+    h4 {
+      margin-top: 1em;
+    }
+    ul {
+      margin-top: 0.4em;
+    }
+    li + li {
+      margin-top: 0.3em;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1em 0;
+      font-size: 0.95em;
+    }
+    table, th, td {
+      border: 1px solid #d0d7e2;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f4f7fb;
+    }
+    .meta {
+      background: #f4f7fb;
+      border: 1px solid #d9e2ec;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 1em;
+    }
+    .toc-top {
+      background: #f9fbfc;
+      border: 1px solid #dfe7ef;
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 1.5em;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .toc-top strong {
+      margin-right: 8px;
+    }
+    .toc-top a {
+      color: #0f4c81;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .callout {
+      border-left: 4px solid #0f4c81;
+      background: #f8fbff;
+      padding: 10px 16px;
+      margin: 1.2em 0;
+    }
+    .mermaid {
+      border: 1px solid #dfe3eb;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fafafa;
+    }
+    .note {
+      font-style: italic;
+      color: #5f6c7b;
+      margin-top: 0.3em;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });</script>
+</head>
+<body>
+
+  <h1>PLM Business Requirements v1.4</h1>
+
+  <div class="meta">
+    <strong>Project:</strong> Product Lifecycle Management (PLM)<br/>
+    <strong>Date:</strong> 2025-11-13<br/>
+    <strong>Prepared by:</strong> Dan Li (dli2@montefiore.org)<br/>
+    <strong>Version:</strong> v1.4<br/>
+    <strong>Primary references:</strong> application source (<code>app/**</code>), stage diagram (<code>_ref/stage.html</code>), regression tests (<code>tests/**/*.py</code>)
+  </div>
+
+  <div class="toc-top">
+    <strong>Quick Links:</strong>
+    <a href="#overview">Overview</a>
+    <a href="#functional">Functional Requirements</a>
+    <a href="#diagram">Stage Transition Diagram</a>
+    <a href="#nonfunctional">Non-Functional & Operations</a>
+    <a href="#assumptions">Assumptions & Open Items</a>
+  </div>
+
+  <section id="overview">
+    <h2>1. Overview</h2>
+    <p>
+      The PLM Tracker is a Flask-based operational tool that manages product lifecycle transitions,
+      inventory alignment, requester analytics, and export-ready workbooks for downstream teams.
+      The system is composed of modular blueprints with a shared SQL Server schema (<code>PLM</code>) and
+      centralized business rules written in Python utilities and enforced by automated tests.
+    </p>
+    <ul>
+      <li><strong>Authentication & Admin:</strong> Manual user provisioning with Microsoft Graph powered notifications, granular roles, and hosted-under-prefix support.</li>
+      <li><strong>Collector:</strong> Core module for item linkage, stage governance, conflict triage, Excel ingestion, and burn-rate job scheduling.</li>
+      <li><strong>Dashboard:</strong> Filterable inventory & PAR analytics, requester insights, KPI rollups, order-point documentation, and chart-ready APIs.</li>
+      <li><strong>Export:</strong> Configurable workbook generator with pipeline-based transforms, column modes, and highlight logic aligned with UI rules.</li>
+      <li><strong>Utilities:</strong> Shared engines for stage transitions, group assignment, node conflict detection, item location math, burn-rate refresh, and MS Graph integration.</li>
+    </ul>
+  </section>
+
+  <section id="functional">
+    <h2>2. Functional Requirements</h2>
+
+    <h3 id="auth">2.1 Authentication & Access Control</h3>
+    <ul>
+      <li><strong>User lifecycle:</strong> Self-registration (<code>/auth/register</code>) captures email, password, and display name; new accounts default to <em>inactive</em> until manually approved. Users see a pending screen (<code>/auth/register_pending</code>) while waiting.</li>
+      <li><strong>Role model:</strong> Roles (<code>admin</code>, <code>user</code>, <code>view-only</code>) are stored on <code>User.user_role</code> with server defaults. Admin-only routes enforce both authentication and role checks inside <code>admin_bp.before_request</code>.</li>
+      <li><strong>Authentication flow:</strong> Login blocks inactive accounts, updates <code>last_login_at</code>, and issues Flask-Login sessions. Logout is <code>POST</code>-only to prevent CSRF.</li>
+      <li><strong>Password reset:</strong> Three-step flow (request → verify code → update) issues a six-digit code via Microsoft Graph (<code>send_mail</code>) that expires in 2 minutes (<code>reset_code_expiry</code>).</li>
+      <li><strong>Admin console:</strong> <code>/admin/user-control</code> lists every account with actions to approve, disable, delete (not self), or change roles. Approvals log <code>approved_by/at</code> and trigger Graph notification emails; disabling captures <code>disabled_by/at</code>.</li>
+      <li><strong>Deploy under prefix:</strong> <code>PathPrefixMiddleware</code> plus <code>URL_PREFIX</code>/<code>static_url_path</code> settings allow hosting under <code>/plm</code> or any IIS virtual directory without breaking routes or static assets.</li>
+    </ul>
+
+    <h3 id="collector">2.2 Collector Module</h3>
+
+    <h4>2.2.1 Item Link Lifecycle & UI</h4>
+    <ul>
+      <li><strong>Canonical stage list:</strong> User-facing stage pickers, batch APIs, and validation derive from <code>StageTransitionHelper.STAGES</code> (Tracking-Discontinued → Pending Item Number → Pending Clinical Readiness → Tracking-Item Transition → Tracking Completed / Deleted).</li>
+      <li><strong>Collector landing (<code>/collect</code>):</strong> Shows sample items, enforces <code>MAX_BATCH_PER_SIDE</code> (default 6 per list) and renders ISO date limits for Expected Go Live (current date -3 months to +6 months).</li>
+      <li><strong>Groups view (<code>/groups</code>):</strong> Displays every active <code>ItemLink</code> with stage counts, unstaged extras, archive totals, and per-stage allowed transition lists to drive UI dropdowns.</li>
+      <li><strong>Lifecycle housekeeping:</strong> <em>Clear Deleted</em> migrates rows to <code>ItemLinkDeleted</code> with <code>deleted_dt</code> before removal; <em>Archive Completed</em> copies Tracking Completed rows to <code>ItemLinkArchived</code> while severing group membership.</li>
+      <li><strong>Search helpers:</strong> Item lookup restricts to company 3000 when selecting source items but relaxes for replacements; contract item search normalizes user input (remove dashes/spaces) against <code>ContractItem.search_shadow</code> and supports HTMX fragments.</li>
+      <li><strong>Conflict triage:</strong> <code>/conflicts</code> lists the latest 200+ <code>ConflictError</code> records with type filters, per-type counts, purge-by-date (within last 365 days), and single-record delete actions.</li>
+      <li><strong>Manual deletes:</strong> <code>DELETE /api/item-links/&lt;item&gt;/&lt;replace_item&gt;</code> removes a pair, drops it from <code>ItemGroup</code>, and returns a JSON status for inline UI updates.</li>
+    </ul>
+
+    <h4>2.2.2 Stage Governance</h4>
+    <ul>
+      <li><strong>Transition enforcement:</strong> <code>StageTransitionHelper.evaluate_transition</code> centralizes adjacency rules, rejects invalid target stages, and returns human-readable reasons (e.g., “Tracking Completed is final” or “Deleted rows must move to an active stage before completion”).</li>
+      <li><strong>Deleted reactivation logic:</strong> Moving from Deleted to any active stage auto-adjusts based on replacement metadata: no replacement → revert to Tracking - Discontinued; <code>PENDING***</code> replacement → Pending Item Number; otherwise the requested stage is honored.</li>
+      <li><strong>Batch stage updates:</strong> <code>/groups/batch/stage</code> accepts an array of row identifiers, runs each through the transition helper, stamps <code>update_dt</code>, refreshes related Wrike records, and reports per-row success/failure with reasons.</li>
+      <li><strong>Archival policy:</strong> Tracking Completed rows are treated as final; to “revive” an item, archive the row and create a new ItemLink (mirrors helper guidance).</li>
+      <li><strong>Allowed stage filters:</strong> Dashboard APIs limit selectable stages to <code>{"Tracking - Discontinued","Tracking - Item Transition","Pending Clinical Readiness"}</code> to keep analytics focused on actionable work.</li>
+    </ul>
+
+    <h4>2.2.3 Batch Intake & Data Quality</h4>
+    <ul>
+      <li><strong>AddItemPairs engine:</strong> JSON-based bulk creation enforces balanced item/replacement lists, <code>max_per_side</code> limits, <code>NO REPLACEMENT</code> sentinels, and <code>PENDING***</code> placeholders. It reuses or allocates <code>ItemGroup</code> ids via <code>BatchGroupPlanner</code>, merges overlapping groups, logs conflicts, queues <code>PendingItems</code>, and emits <code>burn_rate_jobs</code> for downstream processing.</li>
+      <li><strong>Conflict detection:</strong> <code>node_check.RelationGraph</code> blocks self-directed, reciprocal, chaining, and many-to-many relationships while ignoring inactive rows (Deleted/Tracking Completed). Findings are persisted as <code>ConflictError</code> entries with triggering link references.</li>
+      <li><strong>Excel ingestion:</strong> <code>/api/item-links/upload</code> accepts <code>.xlsx/.xlsm/.xltx/.xltm</code>, requires “Item” and “Replace Item” columns (six-digit numeric IDs or <code>NO REPLACEMENT</code>), returns row-level errors, and deduplicates parsed burn-rate jobs before scheduling.</li>
+      <li><strong>Wrike coordination:</strong> <code>/groups/batch/wrike/&lt;field&gt;</code> validates 10-digit IDs before updating <code>ItemLinkWrike</code> (<code>wrike_id1-3</code>) and syncing metadata with the main record.</li>
+      <li><strong>Go-live planning:</strong> <code>/groups/batch/go-live</code> parses ISO dates, sets <code>expected_go_live_date</code>, and returns a summarized success/failed tally plus fresh Deleted/Completed counts.</li>
+      <li><strong>Group integrity:</strong> <code>ItemGroup.ensure_allowed_side</code> prevents the same item from existing on both sides of a group; pending placeholders only reserve the original side per <code>tests/test_itemgroup_pending.py</code>.</li>
+    </ul>
+
+    <h4>2.2.4 Burn-rate Automation & Telemetry</h4>
+    <ul>
+      <li><strong>Job scheduling:</strong> <code>burn_rate_refresh.schedule_burn_rate_refresh</code> normalizes ItemLink IDs, checks <code>ENABLE_BURN_RATE_REFRESH</code> and database backend (<code>mssql*</code>), and offloads work to a thread pool.</li>
+      <li><strong>Data hydration:</strong> Worker threads fetch inventory/group pairs from <code>PLMZDate</code>; when absent, they fall back to <code>ItemGroup</code> + <code>ItemLocations</code> to map links to inventory_base_ids and locations.</li>
+      <li><strong>Procedure execution:</strong> For each hydrated pair, the worker executes the relevant stored procedures (e.g., rolling burn-rate persistence) using the application session and logs summary info.</li>
+      <li><strong>Status tracking:</strong> <code>BurnRateRefreshJob</code> rows move through PENDING → RUNNING → SUCCESS/FAILED with timestamps and optional messages. The <code>/api/burn-rate-jobs</code> endpoint filters by job ids or ItemLink ids and returns ISO timestamps for UI polling.</li>
+      <li><strong>Error handling:</strong> Failures capture exception text (trimmed to 500 chars) and mark affected jobs FAILED so operators can rerun uploads after remediation.</li>
+    </ul>
+
+    <h3 id="dashboard">2.3 Dashboard & Analytics</h3>
+    <ul>
+      <li><strong>Login guard with test fallback:</strong> Routes use <code>_safe_login_required</code> so automated tests can exercise APIs without registering Flask-Login.</li>
+      <li><strong>Inventory API (<code>/dashboard/api/inventory</code>):</strong> Supports pagination (capped at 200 rows/page), R-only hiding, tri-state filters (e.g., Auto Replenishment) via <code>_normalize_tri_state</code>, and stage filters constrained to actionable stages.</li>
+      <li><strong>PAR API (<code>/dashboard/api/par</code>):</strong> Reuses filter pipeline, computes reorder-point deltas, derives setup actions (<code>assign_setup_action</code>), and annotates weeks-on-hand for both original and replacement sides.</li>
+      <li><strong>Requester insights (<code>/dashboard/api/requesters</code>):</strong> Builds an item pool from filtered inventory + PAR rows, queries <code>Requesters365Day</code> for R-locations, aggregates by requester (names, emails, requisitions, counts), and returns pre-sorted lists plus distinct email addresses.</li>
+      <li><strong>Filter metadata (<code>/dashboard/api/filter-options</code>):</strong> Returns active item groups plus member items; SQL filters limit groups to the allowed stage set for both UX clarity and query performance.</li>
+      <li><strong>KPI stats & refresh timestamp:</strong> <code>/dashboard/api/stats</code> reports distinct item groups/items/locations (optionally excluding R-only). <code>/dashboard/api/refresh-timestamp</code> surfaces the last successful upstream refresh via <code>ProcessLog.get_latest_success_timestamp</code>.</li>
+      <li><strong>Historical series:</strong> <code>/dashboard/api/qty/&lt;group&gt;</code> and <code>/dashboard/api/issue/&lt;group&gt;</code> expose time-series data from <code>PLMQty</code> and <code>PLMDailyIssueOutQty</code> for chart widgets (item/location keyed, ISO datetimes, quantity/issue values).</li>
+      <li><strong>Knowledge base:</strong> <code>/dashboard/documents/order-point-calculation</code> hosts the Order Point calc reference so analysts can align manual decisions with system-calculated values.</li>
+    </ul>
+
+    <h3 id="export">2.4 Export & Workbook Delivery</h3>
+    <ul>
+      <li><strong>Table configs:</strong> Inventory & PAR exports are defined via <code>TABLE_CONFIGS</code> with base pipelines, column definitions, header overrides, row highlight rules, and sheet names.</li>
+      <li><strong>Column modes:</strong> Users can request <code>all</code>, <code>visible</code>, or custom modes (e.g., <code>inventory_setup</code>, <code>par_setup_replacement</code>) enforced by <code>COLUMN_MODE_REGISTRY</code>. Custom modes require explicit column lists; invalid fields trigger 400 errors.</li>
+      <li><strong>Row scopes & filters:</strong> Exports honor either the filtered dataset (default) or the full dataset (<code>row_scope=all</code>) and can apply the R-only hiding rule before workbook generation.</li>
+      <li><strong>Pipeline steps:</strong> <code>apply_pipeline</code> composes reusable functions (e.g., <code>apply_inventory_recommended_bin_display</code>, <code>apply_setup_action_rules</code>, <code>sort_export_rows</code>) so workbook content matches UI business rules.</li>
+      <li><strong>Workbook rendering:</strong> <code>render_workbook</code> builds OpenPyXL workbooks, freezes headers, auto-sizes columns, applies autofilters, translates <code>Decimal</code> to Excel-friendly types, and highlights rows with notes or per-mode predicates (e.g., only highlight non “NEW ITEM” inventory recommendations).</li>
+      <li><strong>Recommended setup logic:</strong> <code>item_locations</code> + <code>export.prep</code> classify group topology (<code>1-1</code>, <code>many-1</code>, <code>1-0</code>), compute recommended reorder points/min/max, respect action overrides (Create → “NEW ITEM”, Update → current RI values), and normalize preferred bins (<code>TBD</code>, <code>N.A.</code>, etc.).</li>
+    </ul>
+
+    <h3 id="utilities">2.5 Utilities & Integrations</h3>
+    <ul>
+      <li><strong>Item location math:</strong> <code>build_location_pairs</code> queries <code>PLM.vw_PLMTrackerBase</code>, calculates burn-rate estimates (<code>burnrate_estimator</code>), weeks-on-hand, and per-side inventory metrics for downstream modules.</li>
+      <li><strong>Batch group planning:</strong> <code>BatchGroupPlanner</code> keeps per-group relation graphs, allocates new ids, tracks merges, and exposes <code>consume_pending_merges</code> so database updates stay in sync with in-memory plans.</li>
+      <li><strong>MS Graph integration:</strong> <code>msgraph.py</code> handles OAuth2 client credentials flow (tenant/client/secret configurable via <code>Config</code>) and posts emails via <code>/sendMail</code>, used for password resets and account approvals.</li>
+      <li><strong>Process logging:</strong> <code>ProcessLog</code> mirrors the SQL Server table for upstream ETL monitoring; <code>duration_ms</code> is computed in Python when both timestamps exist.</li>
+      <li><strong>Playground + static assets:</strong> Ancillary blueprints (<code>app/playground</code>) and JS/CSS assets support prototyping and internal demos without impacting production routes.</li>
+      <li><strong>Automated regression tests:</strong> Targeted suites cover stage transitions (<code>tests/test_stage_transition.py</code>), conflict logic (<code>tests/test_node_conflicts.py</code>), group assignment (<code>tests/test_group_assignment.py</code>), dashboard filters (<code>tests/test_dashboard_tri_state_filters.py</code>), requester aggregation (<code>tests/test_requesters_modal.py</code>), burn-rate scheduling (<code>tests/test_burn_rate_refresh.py</code>), export highlighting (<code>tests/test_export_workbook.py</code>), and item location recommendations (<code>tests/test_item_locations.py</code>).</li>
+    </ul>
+  </section>
+
+  <section id="diagram">
+    <h2>3. Stage Transition Diagram & Policy</h2>
+    <p>
+      Stage governance references the rotated diagram in <code>_ref/stage.html</code>. The same Mermaid source is embedded below for convenience.
+    </p>
+    <div class="mermaid">
+flowchart TD
+    %% === Normal Stage Column ===
+    subgraph NORMAL_FLOW["Normal Stage Flow"]
+        TD[Tracking - Discontinued]
+        PIN[Pending Item Number]
+        PCR[Pending Clinical Readiness]
+        TIT[Tracking - Item Transition]
+        TC[Tracking Completed]
+    end
+
+    %% === Deleted Lane (Right Side) ===
+    subgraph DELETED_FLOW["Deleted / Reactivation"]
+        style DELETED_FLOW fill:#f8f8f8,stroke:#ccc
+        DEL[Deleted]
+        ARCH[(Archived)]
+    end
+
+    %% === Normal vertical flow ===
+    TD --> PIN
+    PIN --> PCR
+    PCR --> TIT
+    TIT --> TC
+    TIT --> PCR
+    TD --> TC
+
+    %% === Delete (horizontal to the right) ===
+    TD -.-> DEL
+    PIN -.-> DEL
+    PCR -.-> DEL
+    TIT -.-> DEL
+    TC -.-> DEL
+
+    %% === Restore (horizontal back left) ===
+    DEL --> TD
+    DEL --> PIN
+    DEL --> PCR
+    DEL --> TIT
+
+    %% === Archive below Completed ===
+    TC --> ARCH
+
+    %% === Visual styling ===
+    classDef normal fill:#e8f4fc,stroke:#1a5276,stroke-width:1px;
+    classDef deleted fill:#fdecea,stroke:#c0392b,stroke-width:1px;
+    class TD,PIN,PCR,TIT,TC normal;
+    class DEL,ARCH deleted;
+    </div>
+
+    <p class="note">Stage adjustments after a Deleted → Active transition depend on replacement metadata (see table below).</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Current Stage</th>
+          <th>Allowed Targets</th>
+          <th>Special Rules & Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Tracking - Discontinued</td>
+          <td>Self, Deleted, Tracking Completed</td>
+          <td>Direct completion allowed when lifecycle work is already finished.</td>
+        </tr>
+        <tr>
+          <td>Pending Item Number</td>
+          <td>Self, Pending Clinical Readiness, Deleted</td>
+          <td>Cannot skip straight to Item Transition; requires clinical readiness.</td>
+        </tr>
+        <tr>
+          <td>Pending Clinical Readiness</td>
+          <td>Self, Deleted, Tracking - Item Transition</td>
+          <td>Only MM/PDE/MDM (final owner TBD) may promote once item setup is complete.</td>
+        </tr>
+        <tr>
+          <td>Tracking - Item Transition</td>
+          <td>Pending Clinical Readiness, Deleted, Tracking Completed</td>
+          <td>Allows backstep to PCR if validation fails. Completion archives row.</td>
+        </tr>
+        <tr>
+          <td>Tracking Completed</td>
+          <td>Self</td>
+          <td>Final state; to restart, archive and add a new ItemLink.</td>
+        </tr>
+        <tr>
+          <td>Deleted</td>
+          <td>Self, Tracking - Discontinued, Pending Item Number, Pending Clinical Readiness, Tracking - Item Transition</td>
+          <td>
+            Replacement absent → revert to Tracking - Discontinued.<br/>
+            Replacement <code>PENDING***</code> → revert to Pending Item Number.<br/>
+            Replacement present → honor requested target except Tracking Completed (explicitly blocked).
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="nonfunctional">
+    <h2>4. Non-Functional & Operational Requirements</h2>
+    <ul>
+      <li><strong>Security:</strong> All functional routes use login protection; admin endpoints double-check role + active status. Passwords are hashed via Werkzeug, and reset codes are short-lived.</li>
+      <li><strong>Configurable limits:</strong> <code>MAX_BATCH_PER_SIDE</code>, <code>ENABLE_BURN_RATE_REFRESH</code>, and <code>INCLUDE_OR_INVENTORY_LOCATIONS</code> store ops toggles. Invalid config (e.g., missing Graph secrets) raises explicit errors before use (<code>Config.validate()</code>).</li>
+      <li><strong>Database bootstrap:</strong> On startup, <code>create_app</code> ensures the <code>PLM</code> schema exists (SQL Server only) and runs <code>db.create_all()</code> so new environments self-seed.</li>
+      <li><strong>Logging & audit:</strong> Stage changes, conflict detections, burn-rate jobs, user approvals, and disablements all persist to database tables for traceability.</li>
+      <li><strong>Data retention:</strong> Conflict purge enforces a 365-day lookback, Deleted rows move to a tombstone table, and completed rows move to archives before deletion.</li>
+      <li><strong>Performance & pagination:</strong> Inventory/PAR APIs cap per-page sizes (≤200) and limit aggregator queries to filtered item pools; conflict lists cap at 1000 to protect rendering.</li>
+      <li><strong>Error surfacing:</strong> Batch endpoints return structured JSON with per-row messages; UI surfaces flash messages for admin actions and file uploads.</li>
+      <li><strong>Test coverage:</strong> Automated tests assert stage rules, conflict scenarios, burn-rate scheduling, export formatting, dashboard filters, and item location recommendations to prevent regressions (see section 2.5).</li>
+    </ul>
+  </section>
+
+  <section id="assumptions">
+    <h2>5. Assumptions & Open Items</h2>
+    <ul>
+      <li><strong>Wrike workflow ownership:</strong> Current logic merely stores IDs; downstream automation or sync behavior is outside scope and needs clarification if bi-directional updates are required.</li>
+      <li><strong>Audit & alerting:</strong> Burn-rate job failures write to DB but do not yet notify operators; consider email/Splunk hooks if failures should be surfaced automatically.</li>
+      <li><strong>Stage approvals:</strong> Responsibility for PCR → TIT transitions is noted as “MM/PDE/MDM (owner TBD)” in code comments; final RACI should be confirmed.</li>
+      <li><strong>ProcessLog accuracy:</strong> Refresh timestamp relies on upstream processes updating <code>process_log</code> with status SUCCESS; ensure ETL jobs follow this convention.</li>
+      <li><strong>SSO roadmap:</strong> Authentication is presently local-only; if enterprise SSO is adopted in the future, registration, approval, and reset flows will need rework.</li>
+      <li><strong>Playground scope:</strong> The playground blueprint is intended for experimentation and is not subject to the same validation as collector/dashboard modules.</li>
+    </ul>
+  </section>
+
+</body>
+</html>

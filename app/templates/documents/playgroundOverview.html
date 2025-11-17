@@ -1,73 +1,126 @@
 {% extends 'base.html' %}
-{% block title %}Playground Overview — PLM Tracker{% endblock %}
+{% block title %}Playground Overview - PLM Tracker{% endblock %}
 {% block content %}
 <div class="container py-4">
   <nav aria-label="breadcrumb" class="small mb-3">
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{{ url_for('playground.index') }}">Playground</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Documentation</li>
+      <li class="breadcrumb-item active" aria-current="page">Relation Guide</li>
     </ol>
   </nav>
 
-  <h1 class="h3 fw-semibold mb-3">Playground Data &amp; Rendering</h1>
+  <h1 class="h3 fw-semibold mb-3">Playground at a Glance</h1>
   <p class="text-muted">
-    The Playground is a force-directed, read-only visual built on top of the <code>ItemLink</code> table. This page explains
-    how <code>app/playground/routes.py</code> curates the dataset and how the template renders it.
+    Use the Playground when you need a fast, visual read on how items transition between each other. It runs on top of the
+    same <code>ItemLink</code> data as the Groups view, but the graph makes tangled relationships stand out so you can trace
+    risk before it becomes a problem.
   </p>
 
   <section id="selection" class="mt-4">
-    <h2 class="h4">Row selection</h2>
-    <p class="text-muted">
-      <code>playground.index</code> ingests filters from the query string and enforces safe bounds before hitting the
-      database.
-    </p>
+    <h2 class="h4">Getting the right rows</h2>
+    <p class="text-muted">Most investigations start by narrowing the dataset. The filter panel reflects everything listed here.</p>
     <ul>
-      <li><strong>Limit.</strong> <code>limit</code> defaults to 50 and is clamped between 50 and 1,500. We always fetch <code>limit * 3</code> rows so the layout engine has enough context even after filter combinations trim the list.</li>
-      <li><strong>Stage scopes.</strong> By default we only include transition-focused stages (Pending Clinical Readiness, Tracking - Discontinued, Tracking - Item Transition). Checking "Include all stages" appends Tracking Completed and Deleted; enabling the quantity overlay disables that option to keep parsing predictable.</li>
-      <li><strong>Search.</strong> Search terms feed <code>_build_search_filter</code>, which runs a case-insensitive <code>ILIKE</code> across item codes, descriptions, and manufacturer names.</li>
-      <li><strong>Quantity overlay.</strong> When "Apply inventory quantity" is on, we pin the inventory location and query <code>ItemLocations</code> to annotate nodes with <code>available_quantity</code>.</li>
-      <li><strong>Skip logic.</strong> Placeholders such as <code>NO REPLACEMENT</code> and <code>PENDING***</code> are filtered by <code>_is_skip_candidate</code> so the graph stays meaningful.</li>
+      <li><strong>Limit.</strong> Start with 50 linked items to quickly spot outliers, then raise the cap (max 1,500) if you need broader coverage.</li>
+      <li><strong>Stage scopes.</strong> Leave the default "transition-focused" stages on when hunting blockers. Flip on "Include all stages" only when verifying final clean up.</li>
+      <li><strong>Search.</strong> Search by item code, description, or manufacturer to pull one family into view. Combine with a stage filter to isolate questionable replacements.</li>
+      <li><strong>Quantity overlay.</strong> Choose an inventory location and enable "Apply inventory quantity" to paint nodes with available stock so you can confirm there is inventory backing the path you're about to activate.</li>
+      <li><strong>Skip logic.</strong> The view automatically hides placeholder values (for example, <code>NO REPLACEMENT</code>) so that you only work with actionable nodes.</li>
     </ul>
   </section>
 
   <section id="graph" class="mt-5">
-    <h2 class="h4">Graph building</h2>
-    <div class="row g-4">
-      <div class="col-lg-6">
-        <div class="border rounded p-3 h-100">
-          <h3 class="h6 text-uppercase text-muted">Nodes</h3>
-          <ul class="small mb-0">
-            <li><strong>Roles.</strong> Each item accrues <em>origin</em> and/or <em>replacement</em> roles depending on which side of the relation it appears. The legend in <code>playground-graph.js</code> uses these roles to color nodes.</li>
-            <li><strong>Stages &amp; groups.</strong> We capture up to ten group ids and all stage labels encountered for the node. Discontinued-only nodes import <em>Tracking - Discontinued</em> so analysts see why they appear.</li>
-            <li><strong>Descriptions.</strong> Item and manufacturer descriptions are trimmed to the first five values per node to keep payload size reasonable.</li>
-          </ul>
-        </div>
-      </div>
-      <div class="col-lg-6">
-        <div class="border rounded p-3 h-100">
-          <h3 class="h6 text-uppercase text-muted">Links</h3>
-          <ul class="small mb-0">
-            <li><strong>Direction.</strong> Every link goes from source item to replacement item. If an item lacks a qualifying replacement the edge is skipped.</li>
-            <li><strong>Metadata.</strong> We attach <code>item_group</code>, <code>stage</code>, and description snippets so the tooltip can show the same detail as the Groups view.</li>
-            <li><strong>Filtering.</strong> Inactive pairs (Tracking Completed/Deleted) are excluded from link generation, mirroring the conflict rules in <code>node_check.is_active_stage</code>.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-    <p class="small text-muted mt-3">
-      The final JSON payload (<code>#playground-data</code>) contains <code>graph_data["nodes"]</code>, <code>["links"]</code>, and
-      a <code>meta</code> object describing the inventory overlay context.
-    </p>
+    <h2 class="h4">Reading the graph</h2>
+    <p class="text-muted mb-3">Every bubble is an item, every arrow is the proposed or active replacement.</p>
+    <ul>
+      <li><strong>Color = role.</strong> Origins are shaded differently from replacements so you can immediately see which items still drive demand.</li>
+      <li><strong>Size = quantity (optional).</strong> When the quantity overlay is on, bigger nodes mean more available stock at the selected location.</li>
+      <li><strong>Arrows = direction.</strong> Links always move left-to-right (origin -&gt; replacement). Hover a link to read the stage, group, and short descriptions that triggered the pairing.</li>
+      <li><strong>Clusters = lifecycle.</strong> Rings of items sharing one parent usually indicate a staged roll out; crisscrossing triangles often point to data conflicts.</li>
+      <li><strong>JSON payload.</strong> All of this comes from the <code>#playground-data</code> script block, so anything you see is exportable for ad-hoc audits.</li>
+    </ul>
   </section>
 
   <section id="rendering" class="mt-5">
-    <h2 class="h4">Rendering &amp; interactions</h2>
+    <h2 class="h4">Interacting with the view</h2>
     <ul>
-      <li><strong>Layout.</strong> <code>playground-graph.js</code> initializes D3's force simulation after <code>DOMContentLoaded</code>. Users can pause/resume the animation via the "Animate layout" toggle.</li>
-      <li><strong>Filters.</strong> Form submissions simply reload the page with the new query string, so the URL always captures the current state. Hidden inputs (<code>#hidden-apply-quantity</code>, <code>#hidden-inventory-location</code>) keep checkboxes and selects in sync.</li>
-      <li><strong>Accessibility.</strong> Stage filters remain focusable even when the animation toggle is disabled. The script restores the original disabled state so keyboard users can tab through every option.</li>
-      <li><strong>Performance.</strong> The browser only renders the subset returned by the server. If analysts need wider context they can raise the limit to 1,500 or use the Dashboard or Groups tables for exhaustive exports.</li>
+      <li><strong>Animate or freeze.</strong> Start with the animation on to let dense clusters settle, then pause it while you compare tooltips.</li>
+      <li><strong>URL = state.</strong> The query string stores every filter, so copying the link shares the exact scenario with another analyst.</li>
+      <li><strong>Keyboard friendly.</strong> All stage toggles stay focusable even when disabled, which lets you tab through filters quickly during live reviews.</li>
+      <li><strong>Performance.</strong> Because the browser only renders the rows you fetched, increase the limit or open the Dashboard export if you need a complete audit.</li>
     </ul>
+  </section>
+
+  <section id="violations" class="mt-5">
+    <h2 class="h4">Find problems fast</h2>
+    <p class="text-muted">
+      These red flags show up repeatedly across real audits. When you see the same shape in your Playground view, drill in on that
+      set of item codes and resolve the underlying relation.
+    </p>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Many-to-many conflicts</h3>
+          <p class="small mb-3">
+            A single origin pointing to multiple replacements while another origin also points to one of those replacements
+            (for example, A-&gt;B, A-&gt;C, and D-&gt;B). These create ambiguity during cutover because two demand streams now
+            depend on the same replacement stack.
+          </p>
+          <figure class="text-center">
+            <svg width="240" height="140" role="img" aria-label="Many to many example">
+              <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#6c757d"></path>
+                </marker>
+              </defs>
+              <circle cx="60" cy="35" r="20" fill="#8ecae6" stroke="#0d6efd" stroke-width="2"></circle>
+              <text x="60" y="40" text-anchor="middle" font-size="11" fill="#0d0d0d">D</text>
+              <circle cx="60" cy="95" r="22" fill="#8ecae6" stroke="#0d6efd" stroke-width="2"></circle>
+              <text x="60" y="100" text-anchor="middle" font-size="11" fill="#0d0d0d">A</text>
+              <circle cx="180" cy="45" r="20" fill="#f7ede2" stroke="#ff5400" stroke-width="2"></circle>
+              <text x="180" y="50" text-anchor="middle" font-size="11" fill="#0d0d0d">B</text>
+              <circle cx="180" cy="105" r="20" fill="#f7ede2" stroke="#ff5400" stroke-width="2"></circle>
+              <text x="180" y="110" text-anchor="middle" font-size="11" fill="#0d0d0d">C</text>
+              <line x1="78" y1="35" x2="158" y2="43" stroke="#6c757d" stroke-width="2" marker-end="url(#arrow)"></line>
+              <line x1="84" y1="90" x2="158" y2="55" stroke="#6c757d" stroke-width="2" marker-end="url(#arrow)"></line>
+              <line x1="84" y1="100" x2="158" y2="100" stroke="#6c757d" stroke-width="2" marker-end="url(#arrow)"></line>
+            </svg>
+            <figcaption class="small text-muted mt-2">Pause and verify that each origin has a unique downstream path.</figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Active chaining</h3>
+          <p class="small mb-3">
+            Sequential relations (A-&gt;B, B-&gt;C) are fine while upstream items are inactive. When both links are marked
+            active at the same time, requesters may jump straight from A to C without validation. Move one of the steps to
+            Tracking Completed or Deleted to keep the lifecycle linear.
+          </p>
+          <figure class="text-center">
+            <svg width="240" height="120" role="img" aria-label="Chaining example">
+              <defs>
+                <marker id="arrow2" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L0,6 L9,3 z" fill="#6c757d"></path>
+                </marker>
+              </defs>
+              <circle cx="40" cy="60" r="20" fill="#8ecae6" stroke="#0d6efd" stroke-width="2"></circle>
+              <text x="40" y="65" text-anchor="middle" font-size="11" fill="#0d0d0d">A</text>
+              <circle cx="120" cy="60" r="20" fill="#f7ede2" stroke="#ff5400" stroke-width="2"></circle>
+              <text x="120" y="65" text-anchor="middle" font-size="11" fill="#0d0d0d">B</text>
+              <circle cx="200" cy="60" r="20" fill="#f7ede2" stroke="#ff5400" stroke-width="2"></circle>
+              <text x="200" y="65" text-anchor="middle" font-size="11" fill="#0d0d0d">C</text>
+              <line x1="60" y1="60" x2="100" y2="60" stroke="#6c757d" stroke-width="2" marker-end="url(#arrow2)"></line>
+              <line x1="140" y1="60" x2="180" y2="60" stroke="#6c757d" stroke-width="2" marker-end="url(#arrow2)"></line>
+            </svg>
+            <figcaption class="small text-muted mt-2">Active chains highlight items that skipped a stage.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+    <p class="small text-muted mt-4">
+      Save a screenshot of these shapes and keep them next to your Playground session. When the live data mimics one of the
+      diagrams, you have a relation violation to resolve.
+    </p>
   </section>
 </div>
 {% endblock %}

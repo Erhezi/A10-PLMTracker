@@ -116,6 +116,12 @@ def order_point_calc_doc():
     return render_template("documents/orderPointCalc.html")
 
 
+@bp.route("/documents/export-to-excel")
+@login_required
+def export_excel_guide():
+    return render_template("documents/exportGuide.html")
+
+
 def _normalize_code(value: object | None) -> str:
     if value is None:
         return ""

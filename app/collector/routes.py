@@ -58,6 +58,12 @@ def stage_transition_doc():
     return render_template("documents/stageTransitions.html")
 
 
+@bp.route("/documents/item-group")
+@login_required
+def item_group_doc():
+    return render_template("documents/itemGroupGuide.html")
+
+
 @bp.route("/documents/batch-change")
 @login_required
 def batch_change_doc():

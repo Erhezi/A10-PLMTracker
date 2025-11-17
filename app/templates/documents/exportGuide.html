@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}Export to Excel Guide - PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('dashboard.order_point_calc_doc') }}">Calculation Guide</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Export to Excel Guide</li>
+    </ol>
+  </nav>
+
+  <header class="mb-4">
+    <h1 class="h3 mb-2">Export to Excel Guide</h1>
+    <p class="text-muted mb-0">Use this companion guide when you need a clean Excel file for the Inventory or PAR teams. Each section explains how the dashboard filters drive the export and what each workbook is designed to show.</p>
+  </header>
+
+  <section class="mt-4">
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h2 class="h5 mb-2">Rows follow your filters</h2>
+          <p class="small text-muted mb-2">Every export reuses the same filtered dataset that powers the dashboard tables. Anything you exclude before opening the modal stays out of the spreadsheet.</p>
+          <ul class="mb-0">
+            <li><strong>Item Group, Location, and Stage pickers.</strong> The multi-select dropdowns at the top of the dashboard are applied server-side before the workbook is assembled.</li>
+            <li><strong>Location type.</strong> Switching between Inventory and Par tabs changes the <code>location_type</code> filter used by the export route.</li>
+            <li><strong>Description search and requester filters.</strong> The text search box, requester modal, and Notify Requesters filters all narrow the row pool; the export mirrors that same scope.</li>
+            <li><strong>Column filter row.</strong> Tri-state toggles (Auto Repl, Active, Action/Setup Action), highlight pills, and quantity thresholds all run before Excel is rendered, so every on-screen filter counts.</li>
+            <li><strong>Hide R-only.</strong> The Hide R-only switch is honored everywhere, including Excel.</li>
+            <li><strong>Pagination does not matter.</strong> Even though the UI shows 50 rows per page, the export always pulls the entire filtered set.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h2 class="h5 mb-2">Columns come from export modes</h2>
+          <p class="small text-muted mb-2">Pick a mode at the top of the modal. Modes control which columns are shown, header overrides, and highlight rules.</p>
+          <ul class="mb-0">
+            <li><strong>Inventory locations (full view).</strong> Mirrors the on-screen grid for ad-hoc analysis.</li>
+            <li><strong>Inventory setup.</strong> Applies the <code>inventory_setup</code> preset so Infor-ready columns (PreferredBin, ReorderPoint, etc.) stay in front.</li>
+            <li><strong>PAR setup &rarr; replacement.</strong> Outputs only the future PAR rows when originals are already cleared.</li>
+            <li><strong>PAR setup &rarr; original.</strong> Emits the Now* rows so teams can verify what to remove after go-live.</li>
+            <li><strong>PAR setup &rarr; combined.</strong> Stacks replacement and original rows together so each bin shows the before/after story.</li>
+            <li><strong>Custom selection.</strong> Adjust the checkbox list for one-off views; the browser remembers your last choice.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">Inventory setup export</h2>
+    <p class="text-muted">Ideal when Materials needs Infor-ready instructions for an Inventory Location.</p>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Before you export</h3>
+          <ul class="mb-0">
+            <li>Go to <strong>Dashboard -> Inventory Locations</strong> and confirm the filters (item group, requester, stage, Hide R-only) match the work batch.</li>
+            <li>Use the Min/Max/Reorder filters plus the tri-state toggles so Add and Replace rows stay grouped together.</li>
+            <li>Spot-check <em>Recommended Bin</em>; the export uses the same recommendation logic the dashboard shows, so what you see is exactly what Infor will receive.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">How to export</h3>
+          <ol class="mb-0 small">
+            <li>Select <strong>Export</strong> -> <strong>Inventory setup</strong>.</li>
+            <li>Keep the Infor-ready fields checked (company, location, recommended bins, min/max, reorder point) or deselect extras you do not need.</li>
+            <li>Click <strong>Download Excel</strong>. The filename includes the current date to simplify version control.</li>
+          </ol>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="border rounded p-3">
+          <h3 class="h6 text-uppercase text-muted">What the workbook shows</h3>
+          <ul class="mb-0">
+            <li><strong>Highlight by action.</strong> <em>Add</em> and <em>Replace</em> rows are shaded so Infor reviewers can jump to the real work.</li>
+            <li><strong>Current vs. recommended.</strong> The sheet keeps current values and recommended values side-by-side for quick comparisons.</li>
+            <li><strong>Preferred Bin (Recom.).</strong> Empty bins are relabeled as <em>TBD</em> to drive follow-up conversations.</li>
+            <li><strong>Stable ordering.</strong> <code>sort_export_rows</code> groups Company -> Location -> Recommended Bin so a location’s bins always stay together.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">PAR setup exports</h2>
+    <p class="text-muted">Use these modes when Nursing, PAR owners, or Capital Equipment need a bin-by-bin plan.</p>
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted mb-1">Combined (recommended)</h3>
+          <p class="small text-muted mb-2">Mode: <code>par_setup_combined</code></p>
+          <ul class="mb-0">
+            <li>Shows replacement rows first, then the matching original rows.</li>
+            <li>Highlights replacement rows so the add steps jump off the page.</li>
+            <li>Original rows include sequential <em>Now*</em> bins (A, B, C) to keep Infor values unique.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted mb-1">Replacement only</h3>
+          <p class="small text-muted mb-2">Mode: <code>par_setup_replacement</code></p>
+          <ul class="mb-0">
+            <li>Keeps only the future rows along with recommended min/max/bin values.</li>
+            <li>Great once the original bins are already deactivated.</li>
+            <li>Highlighting remains on so you can filter by Setup Action.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted mb-1">Original only</h3>
+          <p class="small text-muted mb-2">Mode: <code>par_setup_original</code></p>
+          <ul class="mb-0">
+            <li>Outputs the Now* rows alone so you can verify cleanup tasks after go-live.</li>
+            <li>Every row is forced to <em>Setup Action = Replace</em> so Infor interprets the row correctly.</li>
+            <li>Pairs with the Replacement-only export when you need separate workbooks per audience.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="border rounded p-3 mt-4">
+      <h3 class="h6 text-uppercase text-muted">How to export</h3>
+      <ol class="mb-0 small">
+        <li>Switch <strong>Location Type = Par Location</strong> in the dashboard and verify the Par table reflects the scope you need.</li>
+        <li>Click <strong>Export</strong> and choose Combined, Replacement, or Original depending on your audience.</li>
+        <li>Leave both the current and recommended columns selected when you send the file to Infor; Excel autofilter is enabled so you can hide what you do not need.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">Wrike task downloads</h2>
+    <p class="text-muted">The Wrike buttons on <em>Groups</em> reuse these same exports so the Excel attachment matches the dashboard.</p>
+    <ul>
+      <li><strong>Shared column modes.</strong> The modal maps <em>Set-up Inv.</em> to the <code>inventory_setup</code> preset and <em>Set-up Par</em> to <code>par_setup_combined</code> (see <code>wrikeExportTargets</code> in <code>app/templates/collector/groups.html</code>).</li>
+      <li><strong>Scoped columns.</strong> Only Wrike-critical fields (company, location, recommended bins, Infor-ready min/max and notes) are kept, but the data matches the dashboard export exactly.</li>
+      <li><strong>Consistent filtering.</strong> The modal sends the same filters you used in the dashboard, so the Wrike attachment references the identical row set.</li>
+      <li><strong>Get Item #.</strong> The Wrike task for acquiring new item numbers uses a lighter preset (contract and manufacturer fields) but follows the same filtered-row rules.</li>
+    </ul>
+  </section>
+
+  <section class="mt-5">
+    <h2 class="h5">Tips for a smooth handoff</h2>
+    <ul>
+      <li><strong>Note blockers inline.</strong> Add comments in Excel before sending so Materials or Nursing know why a line is still pending.</li>
+      <li><strong>Keep one sheet per audience.</strong> Inventory prefers the Inventory setup export, while PAR managers usually need the combined PAR view.</li>
+      <li><strong>Re-run before sharing.</strong> Filters change daily. Download a fresh file right before you email or upload to Teams.</li>
+      <li><strong>Need calculation details?</strong> Use the breadcrumb above to jump back to the calculation guide.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

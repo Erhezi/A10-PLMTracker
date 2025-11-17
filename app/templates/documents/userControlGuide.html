@@ -5,22 +5,23 @@
   <nav aria-label="breadcrumb" class="small mb-3">
     <ol class="breadcrumb">
       <li class="breadcrumb-item"><a href="{{ url_for('admin.user_control') }}">User Control</a></li>
-      <li class="breadcrumb-item active" aria-current="page">Guide</li>
+      <li class="breadcrumb-item active" aria-current="page">Access Control Guide</li>
     </ol>
   </nav>
 
   <h1 class="h3 fw-semibold mb-3">Admin User Control</h1>
   <p class="text-muted">
-    This guide explains the safeguards and workflows implemented in <code>app/admin/routes.py</code> and the
-    <code>admin/user_control.html</code> template so administrators can describe the process to stakeholders.
+    Use this guide as your playbook for reviewing user accounts, approving access, and
+    keeping the PLM Tracker roster accurate. Each section walks through what you see in the
+    User Control table, what to watch for, and how to explain the process to business partners.
   </p>
 
   <section id="access" class="mt-4">
     <h2 class="h4">Access control</h2>
     <ul>
-      <li><strong>Admin-only.</strong> The blueprint registers a <code>before_request</code> hook (<code>restrict_to_admin</code>) that redirects non-admins to the login page with an "Admins only" flash message.</li>
-      <li><strong>Active account required.</strong> Even admins must have <code>is_active=True</code>. Otherwise we short-circuit the request to prevent locked accounts from changing others.</li>
-      <li><strong>Self-service exceptions.</strong> When a user's role changes mid-session we allow the request to finish if they are editing their own record. This prevents logout loops during self-demotions.</li>
+      <li><strong>For admins only.</strong> Only administrators can open the User Control page. If someone without admin rights tries to access it, they are routed back to the login screen with a reminder that the area is restricted.</li>
+      <li><strong>Active admins.</strong> An admin account must be active to make changes. If an admin is disabled, they cannot reactivate themselves until another admin restores their access.</li>
+      <li><strong>Graceful self-edits.</strong> When you adjust your own role or status, the system lets the current page finish loading so you are not bounced out mid-change. Use this to test permissions safely.</li>
     </ul>
   </section>
 
@@ -31,9 +32,9 @@
         <div class="border rounded p-3 h-100">
           <h3 class="h6 text-uppercase text-muted">Approvals &amp; disables</h3>
           <ul class="small mb-0">
-            <li><strong>Approve access.</strong> Sets <code>is_active=True</code>, records <code>approved_by</code> / <code>approved_at</code>, clears any prior disable metadata, and emails the user via <code>utility.msgraph.send_mail</code>.</li>
-            <li><strong>Disable access.</strong> Sets <code>is_active=False</code> plus <code>disabled_by</code> / <code>disabled_at</code>. Admins cannot disable themselves.</li>
-            <li><strong>Delete user.</strong> Permanently removes the row. Self-deletion is blocked for safety.</li>
+            <li><strong>Approve access.</strong> Use the green check to activate a pending user. The system timestamps who approved the request and notifies the employee by email so they know they can log in.</li>
+            <li><strong>Disable access.</strong> Choose the red “Disable” button to pause an account when someone leaves a project or needs a timeout. You cannot disable your own account, so coordinate with another admin if your access needs to change.</li>
+            <li><strong>Delete user.</strong> Remove test or duplicate accounts with the delete option. The user is removed from the table entirely and cannot be restored without re-registering.</li>
           </ul>
         </div>
       </div>
@@ -41,9 +42,9 @@
         <div class="border rounded p-3 h-100">
           <h3 class="h6 text-uppercase text-muted">Roles</h3>
           <ul class="small mb-0">
-            <li><strong>Editable list.</strong> Role changes (<em>admin</em>, <em>user</em>, <em>view-only</em>) are saved through <code>update_user_role</code>. The handler validates the choice before committing.</li>
-            <li><strong>View-only scope.</strong> View-only users can only see Groups, Dashboard, and Playground tabs as enforced in <code>base.html</code>.</li>
-            <li><strong>Self-updates.</strong> Updating your own role stays on the same page so you are not logged out while testing permissions.</li>
+            <li><strong>Pick the right role.</strong> Choose between <em>Admin</em>, <em>User</em>, or <em>View-only</em> from the dropdown in each row. Save the change and the table confirms the new level immediately.</li>
+            <li><strong>What view-only sees.</strong> View-only accounts can open dashboards and reports but cannot make edits or see the collection workflows. Use this when someone just needs read access.</li>
+            <li><strong>Testing your own role.</strong> If you downgrade yourself to User or View-only, the page stays open so you can verify exactly what those roles experience before logging back in as an admin.</li>
           </ul>
         </div>
       </div>
@@ -53,10 +54,10 @@
   <section id="ui" class="mt-5">
     <h2 class="h4">Table interactions</h2>
     <ul>
-      <li><strong>Filtering.</strong> The quick filter accepts semicolon-delimited terms and <code>*</code> wildcards. The matching logic lives in the inline JS functions <code>termMatches</code> and <code>applyFilter</code>.</li>
-      <li><strong>Sorting.</strong> Clicking on headers toggles ascending/descending order using <code>data-sort-type</code> hints. Non-text values (badges, selects) expose <code>data-sort-value</code> so the script compares normalized strings.</li>
-      <li><strong>Row count.</strong> <code>#user-table-visible-count</code> updates whenever filters or sorts run, giving admins immediate feedback on how many entries remain visible.</li>
-      <li><strong>Action buttons.</strong> All destructive actions require explicit POSTs and confirm messages on the client side, so accidental clicks are minimized.</li>
+      <li><strong>Filtering.</strong> Use the quick filter to narrow the list by name, email, or role. Separate multiple search terms with semicolons and add <code>*</code> as a wildcard when you only remember part of a word.</li>
+      <li><strong>Sorting.</strong> Click any column header to sort by that value. Click again to flip between ascending or descending order. The table remembers which column you last sorted.</li>
+      <li><strong>Row count.</strong> A counter above the table shows how many records match your current filters so you can confirm the list looks right before sharing it.</li>
+      <li><strong>Action buttons.</strong> Approve, disable, delete, and role-change buttons all prompt for confirmation to prevent accidental clicks. Nothing happens until you confirm.</li>
     </ul>
   </section>
 </div>

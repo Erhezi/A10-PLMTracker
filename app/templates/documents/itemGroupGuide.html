@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Item Group Guide - PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.groups') }}">Groups</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Item Group Guide</li>
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.stage_transition_doc') }}">Stage Transition Guide</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.batch_change_doc') }}">Batch Change Guide</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 fw-semibold mb-3">Working inside the Item Groups tab</h1>
+
+  <section class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <h2 class="h5 mb-3">Why we rely on item groups</h2>
+      <p class="mb-3">
+        Every conversion relationship runs through an <strong>item group</strong>. By assigning an arbitrary numeric group to the
+        legacy item, its replacement, and any supporting contract records, we get one place to manage the lifecycle.
+      </p>
+      <ul class="mb-0">
+        <li>Grouping highlights conflicts immediately, because the tracker can see both sides of the conversion before data entry finishes.</li>
+        <li>The burn-rate metrics (reorder point, max quantity, par targets) all reference the shared group so calculations stay consistent.</li>
+        <li>Stages, clinical readiness, and Wrike tasks travel with the group, making it easy to monitor several related items as one project.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="filters" class="mt-4">
+    <h2 class="h4">Use filters to focus</h2>
+    <p class="mb-3">The toolbar above the table provides two quick ways to narrow the list.</p>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Filter mode</h3>
+          <p class="small mb-2">Pick a column-specific filter or search every column at once.</p>
+          <ul class="small mb-0">
+            <li><strong>Contains / Not Contains</strong> scan the full row for free text.</li>
+            <li><strong>Item Group</strong> and <strong>Stage</strong> are the fastest way to isolate a project or workflow bucket.</li>
+            <li><strong>Item</strong> and <strong>Replace Item</strong> zero in on exact six-digit numbers. Use <code>;</code> to search up to 10 values.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Quick filter</h3>
+          <p class="small mb-2">As you type, the grid immediately trims to matching rows.</p>
+          <ul class="small mb-0">
+            <li>The total counts in the header update so you can see how many records remain.</li>
+            <li>Use the <em>Clear All</em> button whenever you need to reset the view to its original order.</li>
+            <li>Switch to <em>Show Selected</em> in batch mode to confirm which rows are active before making changes.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="editing" class="mt-5">
+    <h2 class="h4">Editing individual records</h2>
+    <p>
+      Each row exposes an <strong>Edit</strong> button. Clicking it unlocks stage changes, Wrike task IDs, go-live targets, and notes for that specific group.
+    </p>
+    <ul>
+      <li>The edit panel slides down inside the row. Update only the fields that need attention; the tracker will keep the rest of the data untouched.</li>
+      <li>If a stage option is unavailable, hover over the stage badge to see the reason, or open the <a href="{{ url_for('collector.stage_transition_doc') }}" target="_blank" rel="noopener">Stage Transition Guide</a>.</li>
+      <li>Use the <em>Actions</em> dropdown to archive or delete when a conversion is done or was created in error. Deleted rows can be restored from the toolbar.</li>
+    </ul>
+    <p class="small text-muted mb-0">Remember that every edit updates the shared group, so the legacy and replacement items stay synchronized.</p>
+  </section>
+
+  <section id="batch" class="mt-5">
+    <h2 class="h4">Batch changes at scale</h2>
+    <p>
+      Toggle <strong>Batch Change</strong> to reveal multi-select checkboxes and the batch action toolbar.
+      Choose the rows you want, pick the action (stage, Wrike creation, go-live update), and confirm.
+    </p>
+    <ul>
+      <li>Filters apply first, so it helps to narrow the list before you hit the <em>Select All</em> checkbox.</li>
+      <li>The toolbar shows how many rows will be affected and disables actions that are not valid for the selected stages.</li>
+      <li>For a full walkthrough of the modal dialogs and error handling, switch to the <a href="{{ url_for('collector.batch_change_doc') }}" target="_blank" rel="noopener">Batch Change Guide</a>.</li>
+    </ul>
+    <p class="mb-0">
+      After a batch action completes, the tracker refreshes the table with toast messages describing any skipped or invalid rows. Review those messages so the group data remains trustworthy.
+    </p>
+  </section>
+</div>
+{% endblock %}

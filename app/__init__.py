@@ -75,6 +75,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None):
     from .playground.routes import bp as playground_bp
     from .main.routes import bp as main_bp
     from .admin.routes import admin_bp
+    from .selfawareness.routes import bp as selfawareness_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(collector_bp)
@@ -82,6 +83,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None):
     app.register_blueprint(playground_bp)
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(selfawareness_bp)
 
     if url_prefix:
         # WSGI middleware so IIS-hosted app sees the correct SCRIPT_NAME

@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Doc - PLM Tracker{% endblock %}
+
+{% block content %}
+<div class="doc-layout" id="docLayout">
+  <div class="doc-main">
+    <header class="doc-hero card shadow-sm border-0 p-4">
+      <h1 class="h4 fw-semibold mb-0">Welcome to PLM Tracker Docs</h1>
+      <p class="mb-0 text-muted">
+        Watch the workflow overview and keep the full onboarding manual open alongside the product.
+      </p>
+    </header>
+
+    <section class="card shadow-sm border-0 p-4">
+      <div class="ratio ratio-16x9 rounded overflow-hidden border bg-dark-subtle">
+        <video
+          class="w-100 h-100"
+          controls
+          preload="metadata"
+          poster="{{ url_for('static', filename='img/montefiore_logo_embedded.svg') }}"
+        >
+          <source src="{{ url_for('selfawareness.workflow_video') }}" type="video/mp4" />
+          <track
+            src="{{ url_for('selfawareness.workflow_captions') }}"
+            kind="subtitles"
+            srclang="en"
+            label="English"
+            default
+          />
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    </section>
+
+    <section class="doc-overview card shadow-sm border-0 p-4">
+      <div class="d-flex flex-column gap-3">
+        <div>
+          <h2 class="h5 fw-semibold mb-1">Why this matters</h2>
+          <p class="text-muted mb-0">
+            The manual captures the guardrails that keep conversions predictable. Use this page as your launchpad:
+            re-watch the workflow, skim the highlights, then explore every section of the manual without leaving the app.
+          </p>
+        </div>
+        <div class="row g-3">
+          {% for section in manual_highlights %}
+          <div class="col-md-6">
+            <article class="doc-highlight p-3 h-100">
+              <h3 class="h6 fw-semibold mb-2">{{ section.title }}</h3>
+              <p class="mb-0 small text-muted">{{ section.body }}</p>
+            </article>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="doc-sidebar" id="docSidebar" aria-label="Onboarding manual side pane">
+    <div class="doc-sidebar-inner shadow-sm">
+      <div class="doc-sidebar-header d-flex justify-content-between align-items-center">
+        <div>
+          <p class="small text-uppercase text-muted mb-1">Reference</p>
+          <h2 class="h6 text-dark mb-0">Onboarding Manual</h2>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary border-0" id="docSidebarClose" type="button" aria-label="Collapse manual panel">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="doc-sidebar-body mt-3">
+        <div class="doc-search input-group input-group-sm mb-3">
+          <span class="input-group-text bg-transparent text-muted border-end-0">
+            <i class="bi bi-search"></i>
+          </span>
+          <input
+            id="manualSearchInput"
+            type="search"
+            class="form-control border-start-0"
+            placeholder="Search the manual..."
+            autocomplete="off"
+          />
+        </div>
+        <p class="small text-muted">
+          Results update as you type. Click a heading to jump directly to that section.
+        </p>
+        <div class="manual-section-list" id="manualSections">
+          {% for section in manual_doc %}
+          <article
+            class="manual-section py-3 border-bottom"
+            id="manual-section-{{ section.id }}"
+            data-search-text="{{ section.search_blob }}"
+          >
+            <h3 class="h6 text-dark mb-2">{{ section.title }}</h3>
+            <div class="text-muted small d-flex flex-column gap-2">
+              {% for block in section.blocks %}
+                {% if block.type == 'paragraph' %}
+                  <p class="mb-0">{{ block.text }}</p>
+                {% elif block.type == 'list' %}
+                  <ul class="mb-0 ps-3">
+                    {% for item in block.list_items %}
+                    <li class="mb-1">{{ item }}</li>
+                    {% endfor %}
+                  </ul>
+                {% elif block.type == 'table' %}
+                  <div class="table-responsive manual-table">
+                    <table class="table table-sm table-striped align-middle mb-0 w-100">
+                      <tbody>
+                        {% for row in block.rows %}
+                        <tr>
+                          {% for cell in row %}
+                          <td>{{ cell }}</td>
+                          {% endfor %}
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </article>
+          {% endfor %}
+          {% if not manual_doc %}
+          <p class="text-muted small mb-0">Manual content unavailable.</p>
+          {% endif %}
+        </div>
+        <p id="manualNoResults" class="text-muted small mt-3 d-none">No sections matched your search.</p>
+        <p class="small text-muted mt-3 mb-0">
+          Need the original layout? <a class="text-decoration-underline" href="{{ manual_download_url }}" target="_blank" rel="noopener">Download the DOCX</a>.
+        </p>
+      </div>
+    </div>
+  </aside>
+
+  <button class="btn btn-primary doc-sidebar-toggle shadow" id="docSidebarOpen" type="button" aria-label="Show manual panel">
+    <i class="bi bi-journal-text me-1"></i>
+    Manual
+  </button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(() => {
+  const layout = document.getElementById('docLayout');
+  const sidebar = document.getElementById('docSidebar');
+  const openBtn = document.getElementById('docSidebarOpen');
+  const closeBtn = document.getElementById('docSidebarClose');
+  const searchInput = document.getElementById('manualSearchInput');
+  const manualSections = Array.from(document.querySelectorAll('#manualSections .manual-section'));
+  const noResultsMsg = document.getElementById('manualNoResults');
+  const sidebarInner = document.querySelector('#docSidebar .doc-sidebar-inner');
+  const docMain = document.querySelector('.doc-main');
+  const docOverviewCard = document.querySelector('.doc-main .doc-overview');
+  const desktopQuery = window.matchMedia('(min-width: 992px)');
+  if (!layout || !sidebar || !openBtn || !closeBtn) return;
+
+  const setCollapsed = (collapsed) => {
+    layout.classList.toggle('sidebar-collapsed', collapsed);
+    sidebar.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+  };
+
+  openBtn.addEventListener('click', () => setCollapsed(false));
+  closeBtn.addEventListener('click', () => setCollapsed(true));
+
+  if (window.matchMedia('(max-width: 991px)').matches) {
+    setCollapsed(true);
+  }
+
+  if (searchInput && manualSections.length) {
+    const filterSections = () => {
+      const term = searchInput.value.trim().toLowerCase();
+      let matchCount = 0;
+      manualSections.forEach((section) => {
+        const matches = !term || section.dataset.searchText?.includes(term);
+        section.classList.toggle('manual-section-hidden', !matches);
+        if (matches) matchCount += 1;
+      });
+      if (noResultsMsg) {
+        noResultsMsg.classList.toggle('d-none', matchCount !== 0);
+      }
+    };
+    searchInput.addEventListener('input', filterSections);
+    filterSections();
+  }
+
+  const clampSidebarHeight = () => {
+    if (!sidebarInner || !docMain) return;
+    if (!desktopQuery.matches) {
+      sidebarInner.style.removeProperty('max-height');
+      sidebarInner.style.removeProperty('overflow-y');
+      return;
+    }
+    const targetHeight = docOverviewCard
+      ? docOverviewCard.offsetTop + docOverviewCard.offsetHeight
+      : docMain.scrollHeight;
+    if (targetHeight > 0) {
+      sidebarInner.style.maxHeight = `${Math.round(targetHeight)}px`;
+      sidebarInner.style.overflowY = 'scroll';
+    }
+  };
+
+  const handleDesktopQueryChange = () => clampSidebarHeight();
+  if (desktopQuery.addEventListener) {
+    desktopQuery.addEventListener('change', handleDesktopQueryChange);
+  } else if (desktopQuery.addListener) {
+    desktopQuery.addListener(handleDesktopQueryChange);
+  }
+  window.addEventListener('resize', clampSidebarHeight);
+  if (window.ResizeObserver) {
+    const observerTarget = docOverviewCard || docMain;
+    if (observerTarget) {
+      const resizeObserver = new ResizeObserver(() => clampSidebarHeight());
+      resizeObserver.observe(observerTarget);
+    }
+  }
+  clampSidebarHeight();
+})();
+</script>
+{% endblock %}

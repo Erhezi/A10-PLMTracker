@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Playground Overview — PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('playground.index') }}">Playground</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Documentation</li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 fw-semibold mb-3">Playground Data &amp; Rendering</h1>
+  <p class="text-muted">
+    The Playground is a force-directed, read-only visual built on top of the <code>ItemLink</code> table. This page explains
+    how <code>app/playground/routes.py</code> curates the dataset and how the template renders it.
+  </p>
+
+  <section id="selection" class="mt-4">
+    <h2 class="h4">Row selection</h2>
+    <p class="text-muted">
+      <code>playground.index</code> ingests filters from the query string and enforces safe bounds before hitting the
+      database.
+    </p>
+    <ul>
+      <li><strong>Limit.</strong> <code>limit</code> defaults to 50 and is clamped between 50 and 1,500. We always fetch <code>limit * 3</code> rows so the layout engine has enough context even after filter combinations trim the list.</li>
+      <li><strong>Stage scopes.</strong> By default we only include transition-focused stages (Pending Clinical Readiness, Tracking - Discontinued, Tracking - Item Transition). Checking "Include all stages" appends Tracking Completed and Deleted; enabling the quantity overlay disables that option to keep parsing predictable.</li>
+      <li><strong>Search.</strong> Search terms feed <code>_build_search_filter</code>, which runs a case-insensitive <code>ILIKE</code> across item codes, descriptions, and manufacturer names.</li>
+      <li><strong>Quantity overlay.</strong> When "Apply inventory quantity" is on, we pin the inventory location and query <code>ItemLocations</code> to annotate nodes with <code>available_quantity</code>.</li>
+      <li><strong>Skip logic.</strong> Placeholders such as <code>NO REPLACEMENT</code> and <code>PENDING***</code> are filtered by <code>_is_skip_candidate</code> so the graph stays meaningful.</li>
+    </ul>
+  </section>
+
+  <section id="graph" class="mt-5">
+    <h2 class="h4">Graph building</h2>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Nodes</h3>
+          <ul class="small mb-0">
+            <li><strong>Roles.</strong> Each item accrues <em>origin</em> and/or <em>replacement</em> roles depending on which side of the relation it appears. The legend in <code>playground-graph.js</code> uses these roles to color nodes.</li>
+            <li><strong>Stages &amp; groups.</strong> We capture up to ten group ids and all stage labels encountered for the node. Discontinued-only nodes import <em>Tracking - Discontinued</em> so analysts see why they appear.</li>
+            <li><strong>Descriptions.</strong> Item and manufacturer descriptions are trimmed to the first five values per node to keep payload size reasonable.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Links</h3>
+          <ul class="small mb-0">
+            <li><strong>Direction.</strong> Every link goes from source item to replacement item. If an item lacks a qualifying replacement the edge is skipped.</li>
+            <li><strong>Metadata.</strong> We attach <code>item_group</code>, <code>stage</code>, and description snippets so the tooltip can show the same detail as the Groups view.</li>
+            <li><strong>Filtering.</strong> Inactive pairs (Tracking Completed/Deleted) are excluded from link generation, mirroring the conflict rules in <code>node_check.is_active_stage</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="small text-muted mt-3">
+      The final JSON payload (<code>#playground-data</code>) contains <code>graph_data["nodes"]</code>, <code>["links"]</code>, and
+      a <code>meta</code> object describing the inventory overlay context.
+    </p>
+  </section>
+
+  <section id="rendering" class="mt-5">
+    <h2 class="h4">Rendering &amp; interactions</h2>
+    <ul>
+      <li><strong>Layout.</strong> <code>playground-graph.js</code> initializes D3's force simulation after <code>DOMContentLoaded</code>. Users can pause/resume the animation via the "Animate layout" toggle.</li>
+      <li><strong>Filters.</strong> Form submissions simply reload the page with the new query string, so the URL always captures the current state. Hidden inputs (<code>#hidden-apply-quantity</code>, <code>#hidden-inventory-location</code>) keep checkboxes and selects in sync.</li>
+      <li><strong>Accessibility.</strong> Stage filters remain focusable even when the animation toggle is disabled. The script restores the original disabled state so keyboard users can tab through every option.</li>
+      <li><strong>Performance.</strong> The browser only renders the subset returned by the server. If analysts need wider context they can raise the limit to 1,500 or use the Dashboard or Groups tables for exhaustive exports.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

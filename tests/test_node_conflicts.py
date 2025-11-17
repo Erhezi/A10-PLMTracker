@@ -71,6 +71,7 @@ def test_many_to_many_conflict_reference_links():
 
     mm_conflict = next(c for c in conflicts if c.error_type == CONFLICT_MANY_TO_MANY)
     assert {link.pkid for link in mm_conflict.triggering_links} == {21, 22}
+    assert "because we already have A -> X, Y -> B" in mm_conflict.message
 
 
 def test_many_to_many_conflict_detects_groupwide_violation():
@@ -86,6 +87,7 @@ def test_many_to_many_conflict_detects_groupwide_violation():
 
     mm_conflict = next(c for c in conflicts if c.error_type == CONFLICT_MANY_TO_MANY)
     assert {link.pkid for link in mm_conflict.triggering_links} == {31, 32}
+    assert "because we already have A -> B, A -> C" in mm_conflict.message
 
 
 def test_conflict_error_log_rejects_unknown_type():
@@ -142,6 +144,7 @@ def test_detect_many_to_many_conflict_with_global_state():
     assert conflict is not None
     assert conflict.error_type == CONFLICT_MANY_TO_MANY
     assert {link.pkid for link in conflict.triggering_links} == {101, 202}
+    assert "because we already have A -> X, C -> B" in conflict.message
 
 
 def test_detect_many_to_many_conflict_respects_skip_item():

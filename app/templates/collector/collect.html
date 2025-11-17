@@ -1,7 +1,22 @@
 {% extends 'base.html' %}
 {% block title %}Collect Links — PLM Tracker{% endblock %}
 {% block content %}
-<h1 class="h4 fw-semibold mb-3">Item Relation Collection</h1>
+<h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">
+  <span>
+    Item Relation Collection
+    <a
+      href="{{ url_for('collector.collection_docs') }}#collect-workflow"
+      class="text-decoration-none text-accent-pink d-inline-flex align-items-center"
+      style="font-size: 0.6em; vertical-align: super; margin-left: 0.25em;"
+      target="_blank"
+      rel="noopener"
+      title="Open collection workflow documentation"
+    >
+      <i class="bi bi-info-circle" aria-hidden="true"></i>
+      <span class="visually-hidden">Open collection workflow documentation</span>
+    </a>
+  </span>
+</h1>
 <p class="text-muted small mb-4">Search and check source item(s) and replacement item(s), then Create Links. Sentinel: <span class="badge bg-secondary">NO REPLACEMENT</span>. Selecting a Contract Item whose Item Type is <code>Special</code> will add a placeholder replacement in the form <code>PENDING***&lt;mfg part number&gt;</code> and auto-stage it to <em>Pending Item Number</em>.</p>
 
 <div class="row g-4">

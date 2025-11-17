@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}User Control Guide — PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('admin.user_control') }}">User Control</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Guide</li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 fw-semibold mb-3">Admin User Control</h1>
+  <p class="text-muted">
+    This guide explains the safeguards and workflows implemented in <code>app/admin/routes.py</code> and the
+    <code>admin/user_control.html</code> template so administrators can describe the process to stakeholders.
+  </p>
+
+  <section id="access" class="mt-4">
+    <h2 class="h4">Access control</h2>
+    <ul>
+      <li><strong>Admin-only.</strong> The blueprint registers a <code>before_request</code> hook (<code>restrict_to_admin</code>) that redirects non-admins to the login page with an "Admins only" flash message.</li>
+      <li><strong>Active account required.</strong> Even admins must have <code>is_active=True</code>. Otherwise we short-circuit the request to prevent locked accounts from changing others.</li>
+      <li><strong>Self-service exceptions.</strong> When a user's role changes mid-session we allow the request to finish if they are editing their own record. This prevents logout loops during self-demotions.</li>
+    </ul>
+  </section>
+
+  <section id="lifecycle" class="mt-5">
+    <h2 class="h4">Lifecycle actions</h2>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Approvals &amp; disables</h3>
+          <ul class="small mb-0">
+            <li><strong>Approve access.</strong> Sets <code>is_active=True</code>, records <code>approved_by</code> / <code>approved_at</code>, clears any prior disable metadata, and emails the user via <code>utility.msgraph.send_mail</code>.</li>
+            <li><strong>Disable access.</strong> Sets <code>is_active=False</code> plus <code>disabled_by</code> / <code>disabled_at</code>. Admins cannot disable themselves.</li>
+            <li><strong>Delete user.</strong> Permanently removes the row. Self-deletion is blocked for safety.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Roles</h3>
+          <ul class="small mb-0">
+            <li><strong>Editable list.</strong> Role changes (<em>admin</em>, <em>user</em>, <em>view-only</em>) are saved through <code>update_user_role</code>. The handler validates the choice before committing.</li>
+            <li><strong>View-only scope.</strong> View-only users can only see Groups, Dashboard, and Playground tabs as enforced in <code>base.html</code>.</li>
+            <li><strong>Self-updates.</strong> Updating your own role stays on the same page so you are not logged out while testing permissions.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ui" class="mt-5">
+    <h2 class="h4">Table interactions</h2>
+    <ul>
+      <li><strong>Filtering.</strong> The quick filter accepts semicolon-delimited terms and <code>*</code> wildcards. The matching logic lives in the inline JS functions <code>termMatches</code> and <code>applyFilter</code>.</li>
+      <li><strong>Sorting.</strong> Clicking on headers toggles ascending/descending order using <code>data-sort-type</code> hints. Non-text values (badges, selects) expose <code>data-sort-value</code> so the script compares normalized strings.</li>
+      <li><strong>Row count.</strong> <code>#user-table-visible-count</code> updates whenever filters or sorts run, giving admins immediate feedback on how many entries remain visible.</li>
+      <li><strong>Action buttons.</strong> All destructive actions require explicit POSTs and confirm messages on the client side, so accidental clicks are minimized.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

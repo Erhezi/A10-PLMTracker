@@ -3,6 +3,25 @@
 {% block title %}Playground · PLM Tracker{% endblock %}
 
 {% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+  <h1 class="h4 fw-semibold mb-0 d-flex align-items-center gap-2 flex-wrap">
+    <span>
+      Playground
+      <a
+        href="{{ url_for('playground.documentation') }}"
+        class="text-decoration-none text-accent-pink d-inline-flex align-items-center"
+        style="font-size: 0.6em; vertical-align: super; margin-left: 0.25em;"
+        target="_blank"
+        rel="noopener"
+        title="Open playground documentation"
+      >
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <span class="visually-hidden">Open playground documentation</span>
+      </a>
+    </span>
+  </h1>
+  <p class="text-muted small mb-0">Force-directed visualization of active ItemLink pairs. Filters update the dataset server-side.</p>
+</div>
 <div class="row g-4">
   <div class="col-12 col-xl-3">
     <div class="card border-0 shadow-sm h-100">

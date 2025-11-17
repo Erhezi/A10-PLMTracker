@@ -214,12 +214,88 @@
   </section>
 
   <section class="mt-5">
-    <h2 class="h5">Fallbacks &amp; Notes</h2>
+    <h2 class="h5">Burn Rate Fallbacks &amp; Notes</h2>
     <ul>
       <li>If a required multiplier is missing or non-positive, the calculator falls back to the best available source values without changing sign.</li>
       <li>The output keeps whole numbers when possible; all rounding uses "round half up" unless otherwise noted.</li>
       <li>The documentation will expand as new <code>BRCalcType</code> strategies are introduced.</li>
     </ul>
+  </section>
+
+  <section id="inventory-setup-export" class="mt-5">
+    <h2 class="h4 mb-3">Inventory Setup Export</h2>
+    <p class="text-muted mb-3">
+      Dashboard &rarr; Inventory Locations &rarr; Export exposes the <strong>Inventory setup</strong> mode. The export route
+      (<code>@dashboard.export_table("inventory")</code> in <code>app/dashboard/routes.py</code>) reuses the same
+      <code>_filtered_inventory_rows</code> helper that powers the on-screen table, so every filter (stage, tri-state toggles,
+      quantity thresholds, search) applies before the workbook is assembled.
+    </p>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Pipeline</h3>
+          <ol class="small mb-0">
+            <li><strong>Row gathering.</strong> <code>build_location_pairs</code> queries PLM Tracker base views with <code>include_par=False</code> and optional OR filtering. The helper keeps both source (<code>*_ri</code>) and replacement columns in each row.</li>
+            <li><strong>Stage &amp; attribute filters.</strong> Tri-state helpers such as <code>_apply_tri_state_filter</code> and <code>_apply_quantity_filter</code> strip rows that do not match the UI toggles. Stage filters default to <code>PLMTrackerBase</code> values <em>Pending Clinical Readiness</em>, <em>Tracking - Item Transition</em>, and <em>Tracking - Discontinued</em>.</li>
+            <li><strong>Setup classification.</strong> Every remaining row is passed through <code>assign_setup_action(table="inventory")</code>, which calls <code>derive_setup_action</code> / <code>should_mark_update_as_no_action</code> to convert backend <code>action</code> flags into <em>Add</em>, <em>Replace</em>, or <em>No Action (U)</em>.</li>
+            <li><strong>Export mode.</strong> Selecting <em>Inventory setup</em> attaches the <code>inventory_setup</code> <code>ColumnMode</code> defined in <code>app/export/modes.py</code>. Its pipeline applies <code>prepare_inventory_setup_rows</code>, <code>apply_setup_action_rules(table="inventory")</code>, and <code>sort_export_rows("inventory_setup")</code>.</li>
+            <li><strong>Workbook rendering.</strong> The ordered rows plus <code>INVENTORY_EXPORT_COLUMNS</code> (or a filtered subset) are sent to <code>render_workbook</code>, which enforces header overrides, freeze panes, auto-filters, width heuristics, and row highlighting.</li>
+          </ol>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Highlight &amp; headers</h3>
+          <ul class="small mb-0">
+            <li><strong>Header overrides.</strong> <code>INVENTORY_SETUP_HEADER_OVERRIDES</code> remaps column names to Lawson-friendly titles (for example, <code>recommended_preferred_bin_ri</code> becomes <em>PreferredBin</em>).</li>
+            <li><strong>Recommended bins.</strong> <code>apply_inventory_recommended_bin_display</code> recalculates <em>Preferred Bin (Recom.)</em> using <code>compute_inventory_recommended_preferred_bin</code> so blank values emit TBD instead of <code>N/A</code>.</li>
+            <li><strong>Highlighting.</strong> The <code>_inventory_setup_should_highlight</code> predicate only shades rows whose recommended bin is not <em>NEW ITEM</em>. Combined with <code>highlight_notes=True</code>, this matches the legacy Lawson review sheet where actionable rows are pink.</li>
+            <li><strong>Sorting.</strong> Rows are grouped by <code>(company, location_ri, recommended_preferred_bin_ri)</code> via <code>sort_export_rows</code> to minimize bin shuffling for the same inventory location.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="small text-muted mt-3 mb-0">
+      The entire export stack is unit-tested through <code>tests/test_export_workbook.py</code> and the dashboard API tests.
+      Those suites assert that requested column subsets, highlight rules, and setup actions remain stable as new attributes are added.
+    </p>
+  </section>
+
+  <section id="par-setup-export" class="mt-5">
+    <h2 class="h4 mb-3">PAR Setup Export</h2>
+    <p class="text-muted mb-3">
+      Choosing <strong>PAR setup &rpar; combined</strong> in the export modal activates the <code>par_setup_combined</code>
+      column mode. The upstream data is produced by <code>_filtered_par_rows</code> with <code>include_par=True</code> and
+      location type restricted to <em>Par Location</em>. After filters are applied the logic mirrors inventory, but with
+      PAR-specific calculations (for example, <code>weeks_reorder</code> derivations executed in <code>_filtered_par_rows</code>).
+    </p>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Replacement rows</h3>
+          <ul class="small mb-0">
+            <li><strong>Action cleanup.</strong> <code>apply_setup_action_rules(table="par", forced_item_set="Replacement")</code> removes muted entries and normalizes <em>Add/Replace</em> labels.</li>
+            <li><strong>Quantities.</strong> <code>prepare_par_setup_combined_rows</code> keeps Lawson-ready min/max/reorder values
+              (<code>recommended_*_ri</code>) alongside current state columns for comparison.</li>
+            <li><strong>Highlight predicate.</strong> The combined export highlights rows whose <code>item_set</code> equals <em>Replacement</em>, signaling to the PAR team which rows require inventory location updates.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Original rows</h3>
+          <ul class="small mb-0">
+            <li><strong>Preferred bin synthesis.</strong> <code>prepare_par_setup_original_rows</code> builds sequential <em>Now*</em> bin labels via the <code>_letter_suffix</code> helper to keep duplicates unique inside Lawson's 10-character constraint.</li>
+            <li><strong>Forced Replace.</strong> Original-side entries are emitted with <code>setup_action="Replace"</code> so downstream consumers always treat them as retirements once the replacement goes live.</li>
+            <li><strong>Combined ordering.</strong> The final list is sorted by company, inventory location, and recommended bin to keep mirrored replacement/original rows adjacent.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="small text-muted mt-3">
+      Additional PAR-specific modes (<code>par_setup_replacement</code>, <code>par_setup_original</code>) can still be selected for single-sided workflows.
+      All three modes share the same <code>render_workbook</code> engine, so update cadence and formatting stay consistent with the Inventory export.
+    </p>
   </section>
 </div>
 {% endblock %}

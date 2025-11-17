@@ -46,6 +46,30 @@ ALLOWED_UPLOAD_EXTENSIONS = (".xlsx", ".xlsm", ".xltx", ".xltm")
 
 bp = Blueprint("collector", __name__, url_prefix="")
 
+@bp.route("/documents/collection-workflows")
+@login_required
+def collection_docs():
+    return render_template("documents/collectionWorkflows.html")
+
+
+@bp.route("/documents/stage-transitions")
+@login_required
+def stage_transition_doc():
+    return render_template("documents/stageTransitions.html")
+
+
+@bp.route("/documents/batch-change")
+@login_required
+def batch_change_doc():
+    return render_template("documents/batchChange.html")
+
+
+@bp.route("/documents/conflict-guide")
+@login_required
+def conflict_doc():
+    return render_template("documents/conflictGuide.html")
+
+
 @bp.route("/collect")
 @login_required
 def collect():

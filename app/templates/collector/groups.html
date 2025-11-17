@@ -1,7 +1,22 @@
 {% extends 'base.html' %}
 {% block title %}Groups — PLM Tracker{% endblock %}
 {% block content %}
-<h1 class ="h4 fw-semibold mb-3">Item Groups</h1>
+<h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">
+  <span>
+    Item Groups
+    <a
+      href="{{ url_for('collector.stage_transition_doc') }}"
+      class="text-decoration-none text-accent-pink d-inline-flex align-items-center"
+      style="font-size: 0.6em; vertical-align: super; margin-left: 0.25em;"
+      target="_blank"
+      rel="noopener"
+      title="Open stage transition documentation"
+    >
+      <i class="bi bi-info-circle" aria-hidden="true"></i>
+      <span class="visually-hidden">Open stage transition documentation</span>
+    </a>
+  </span>
+</h1>
 <p class="text-muted small">List all items entered for tracking</p>
 
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3" id="batch-action-toolbar">
@@ -198,6 +213,15 @@
 <div class="mt-4" id="groups-stage-stats">
   {% include 'collector/_collect_stages_stats.html' %}
 </div>
+
+<script type="application/json" id="stage-stats-data">
+  {{ {
+    "counts": stage_counts,
+    "unstaged": stage_counts_unstaged,
+    "extra": stage_counts_extra,
+    "active_total": stage_active_total
+  } | tojson }}
+</script>
 
 <!-- Batch action modals -->
 <div class="modal fade" id="batch-stage-modal" tabindex="-1" aria-labelledby="batch-stage-label" aria-hidden="true">
@@ -402,6 +426,165 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const normalizeStageName = (stage) => (stage || '').trim().toLowerCase();
   const stageMatches = (stageValue, targetStage) => normalizeStageName(stageValue) === normalizeStageName(targetStage);
+
+  const stageStats = (() => {
+    const container = document.getElementById('groups-stage-stats');
+    if(!container){
+      return null;
+    }
+    const dataEl = document.getElementById('stage-stats-data');
+    let initial = { counts:{}, extra:{}, unstaged:0 };
+    if(dataEl){
+      try {
+        initial = JSON.parse(dataEl.textContent) || initial;
+      } catch (err) {
+        console.error('Unable to parse stage stats manifest', err);
+      }
+    }
+    const stageBoxMap = new Map();
+    container.querySelectorAll('.stage-summary-box[data-stage]').forEach(box => {
+      const stageName = (box.dataset.stage || '').trim();
+      if(!stageName) return;
+      const countEl = box.querySelector('.stage-summary-count');
+      const count = parseInt(countEl ? countEl.textContent : '0', 10);
+      stageBoxMap.set(stageName, {
+        box,
+        countEl,
+        count: Number.isNaN(count) ? 0 : count,
+      });
+    });
+    const unstagedWrapper = container.querySelector('[data-role="stage-summary-unstaged"]');
+    const unstagedValueEl = unstagedWrapper ? unstagedWrapper.querySelector('.stage-summary-value') : null;
+    const extraWrapper = container.querySelector('[data-role="stage-summary-extra"]');
+    const extraValuesContainer = extraWrapper ? extraWrapper.querySelector('.stage-summary-extra-values') : null;
+
+    const extraMap = new Map();
+    if(extraValuesContainer){
+      extraValuesContainer.querySelectorAll('.stage-summary-extra-entry').forEach(entry => {
+        const name = (entry.dataset.stage || '').trim();
+        if(!name) return;
+        const valueEl = entry.querySelector('.stage-summary-value');
+        const value = parseInt(valueEl ? valueEl.textContent : '0', 10);
+        extraMap.set(name, Number.isNaN(value) ? 0 : value);
+      });
+    }
+
+    const state = {
+      extra: extraMap,
+      unstaged: (() => {
+        if(unstagedValueEl){
+          const value = parseInt(unstagedValueEl.textContent || '0', 10);
+          if(!Number.isNaN(value)){
+            return value;
+          }
+        }
+        const fallback = parseInt(initial.unstaged, 10);
+        return Number.isNaN(fallback) ? 0 : fallback;
+      })(),
+    };
+
+    const setUnstaged = (value) => {
+      const safe = Math.max(0, Number(value) || 0);
+      state.unstaged = safe;
+      if(unstagedValueEl){
+        unstagedValueEl.textContent = String(safe);
+      }
+      if(unstagedWrapper){
+        unstagedWrapper.classList.toggle('d-none', safe === 0);
+      }
+    };
+
+    const renderExtra = () => {
+      if(!extraWrapper || !extraValuesContainer) return;
+      extraValuesContainer.innerHTML = '';
+      const entries = Array.from(state.extra.entries())
+        .filter(([, value]) => (Number(value) || 0) > 0)
+        .sort(([a], [b]) => a.localeCompare(b));
+      if(entries.length === 0){
+        extraWrapper.classList.add('d-none');
+        return;
+      }
+      extraWrapper.classList.remove('d-none');
+      entries.forEach(([name, value], idx) => {
+        if(idx > 0){
+          extraValuesContainer.append(document.createTextNode(', '));
+        }
+        const entry = document.createElement('span');
+        entry.className = 'stage-summary-extra-entry';
+        entry.dataset.stage = name;
+        entry.append(document.createTextNode(name));
+        entry.append(document.createTextNode(' ('));
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'stage-summary-value';
+        valueSpan.textContent = String(value);
+        entry.append(valueSpan);
+        entry.append(document.createTextNode(')'));
+        extraValuesContainer.append(entry);
+      });
+    };
+
+    const updateKnownStage = (stageName, value) => {
+      const info = stageBoxMap.get(stageName);
+      if(!info) return;
+      const safe = Math.max(0, Number(value) || 0);
+      info.count = safe;
+      if(info.countEl){
+        info.countEl.textContent = String(safe);
+      }
+    };
+
+    const changeStageCount = (stageValue, delta) => {
+      const key = (stageValue || '').trim();
+      if(!key){
+        setUnstaged(state.unstaged + delta);
+        return;
+      }
+      if(stageBoxMap.has(key)){
+        const current = stageBoxMap.get(key).count || 0;
+        updateKnownStage(key, current + delta);
+        return;
+      }
+      const current = state.extra.get(key) || 0;
+      const next = Number(current) + delta;
+      if(next <= 0){
+        state.extra.delete(key);
+      } else {
+        state.extra.set(key, next);
+      }
+      renderExtra();
+    };
+
+    renderExtra();
+    setUnstaged(state.unstaged);
+
+    return {
+      handleStageChange(oldStage, newStage){
+        const prev = (oldStage || '').trim();
+        const next = (newStage || '').trim();
+        if(normalizeStageName(prev) === normalizeStageName(next)){
+          return;
+        }
+        changeStageCount(prev, -1);
+        changeStageCount(next, 1);
+      },
+      resetFromServer(manifest){
+        const payload = manifest || {};
+        const counts = payload.counts || {};
+        Object.keys(counts).forEach(stageName => {
+          updateKnownStage(stageName, counts[stageName]);
+        });
+        if(payload.extra){
+          state.extra = new Map(Object.entries(payload.extra).map(([name, value]) => [name, Number(value) || 0]));
+        } else {
+          state.extra = new Map();
+        }
+        renderExtra();
+        if(Object.prototype.hasOwnProperty.call(payload, 'unstaged')){
+          setUnstaged(payload.unstaged);
+        }
+      },
+    };
+  })();
 
   function summarizeSelectionStages(rows){
     const stageSet = new Set();
@@ -726,6 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const applyRecordToRow = (row, rec) => {
     if(!row || !rec) return;
+    const previousStage = getRowStageValue(row);
     if(Object.prototype.hasOwnProperty.call(rec, 'replace_item')){
       row.dataset.replaceItem = rec.replace_item ?? '';
     }
@@ -776,6 +960,9 @@ document.addEventListener('DOMContentLoaded', () => {
           updateCell.textContent = rec.update_dt;
         }
       }
+    }
+    if(stageStats){
+      stageStats.handleStageChange(previousStage, rec.stage || '');
     }
     updateRowSelectionState(row);
   };
@@ -1645,6 +1832,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const sel = stageCell.querySelector('select');
         if(sel) sel.value = rec.stage || '';
+        if(stageStats){
+          stageStats.handleStageChange(currentStage, rec.stage || '');
+        }
       }
       // Date update
       const dateCell = row.querySelector('.date-cell');

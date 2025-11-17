@@ -7,6 +7,13 @@ from .. import db
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
+
+@admin_bp.route('/documents/user-control')
+@login_required
+def user_control_doc():
+    return render_template('documents/userControlGuide.html')
+
+
 @admin_bp.before_request
 def restrict_to_admin():
     if not current_user.is_authenticated:

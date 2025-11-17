@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Batch Change Guide - PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.groups') }}">Groups</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.stage_transition_doc') }}">Stage Transition Guide</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Batch Change Guide</li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 fw-semibold mb-3">Batch Change Guide</h1>
+
+  <section id="getting-started" class="mt-4">
+    <h2 class="h4">1. Turn on Batch Change and pick rows</h2>
+    <ul>
+      <li>Flip the <strong>Batch Change</strong> switch in the toolbar. Selection checkboxes will appear in the table.</li>
+      <li>Use the filters (especially Stage) to narrow the table before selecting rows. Cleaner filters mean fewer rejected updates.</li>
+      <li>Only active rows (not Tracking Completed) can enter batch mode. Locked rows show a tooltip explaining why they are skipped.</li>
+      <li>Use the header checkbox to select everything that currently passes your filters.</li>
+    </ul>
+  </section>
+
+  <section id="stage" class="mt-5">
+    <h2 class="h4">2. Change project stage</h2>
+    <p>
+      Use <strong>Change Project Stage</strong> when every selected row is in the same current stage and ready to move forward (or back).
+      Review the <a href="{{ url_for('collector.stage_transition_doc') }}">Stage Transition Guide</a> if you are unsure which destination is valid.
+    </p>
+    <ol>
+      <li>Select rows that currently share the same stage. Mixed selections disable the button.</li>
+      <li>Click <em>Change Project Stage</em>, choose the new stage from the dropdown, and confirm.</li>
+      <li>If a transition is not allowed (for example, leaving Tracking Completed), the system cancels the job and highlights the affected rows.</li>
+    </ol>
+    <p class="small text-muted mb-0">Tip: Deleted rows automatically return to the proper active stage based on their replacement data.</p>
+  </section>
+
+  <section id="wrike" class="mt-5">
+    <h2 class="h4">3. Create or update Wrike tasks</h2>
+    <p>
+      The three Wrike buttons map to the milestones in the tracker (Get Item #, Set-up Inventory, Set-up Par). Each action opens
+      the Wrike modal so you can paste an existing task ID or generate download files for the Wrike team.
+    </p>
+    <ul>
+      <li><strong>Enter a Wrike ID.</strong> Paste the 10-digit ID provided by the project manager, then click <em>Apply Wrike ID</em>.</li>
+      <li><strong>Need the item numbers?</strong> Use <em>Download Excel</em> inside the modal to grab the template that lists the selected items.</li>
+      <li><strong>Validation.</strong> The modal enforces a 10-digit numeric ID and skips any rows that already carry the same value.</li>
+    </ul>
+  </section>
+
+  <section id="go-live" class="mt-5">
+    <h2 class="h4">4. Update go-live dates</h2>
+    <p>
+      Use <strong>Change Go Live Date</strong> to set or adjust the expected conversion date for a group of rows.</p>
+    <ol>
+      <li>Select the rows that should share the same go-live date.</li>
+      <li>Click the button, choose the date from the picker (the tracker enforces valid calendar values), and confirm.</li>
+      <li>The confirmation toast lists how many records were updated. Any failures stay selected so you can fix and retry.</li>
+    </ol>
+  </section>
+
+  <section id="troubleshooting" class="mt-5">
+    <h2 class="h4">Troubleshooting tips</h2>
+    <ul>
+      <li><strong>Nothing happens when I click Apply.</strong> Check the red alert inside the modal; it spells out the error returned by the API.</li>
+      <li><strong>The button is disabled.</strong> Make sure Batch Change is turned on, at least one row is selected, and that the rows meet the action-specific rules (for example, same current stage).</li>
+      <li><strong>Rows highlight in orange.</strong> Those rows failed during processing. Read the toast, adjust the data, and rerun the action.</li>
+      <li><strong>Need an audit trail?</strong> Batch results are logged; share the timestamp from the toast with an admin if you need deeper review.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

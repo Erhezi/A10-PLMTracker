@@ -3,7 +3,22 @@
 {% block content %}
 <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
 	<div>
-		<h1 class="h4 fw-semibold mb-1">Conflict Alerts</h1>
+		<h1 class="h4 fw-semibold mb-1 d-flex align-items-center gap-2 flex-wrap">
+      <span>
+        Conflict Alerts
+        <a
+          href="{{ url_for('collector.conflict_doc') }}"
+          class="text-decoration-none text-accent-pink d-inline-flex align-items-center"
+          style="font-size: 0.6em; vertical-align: super; margin-left: 0.25em;"
+          target="_blank"
+          rel="noopener"
+          title="Open conflict handling documentation"
+        >
+          <i class="bi bi-info-circle" aria-hidden="true"></i>
+          <span class="visually-hidden">Open conflict handling documentation</span>
+        </a>
+      </span>
+    </h1>
 		<p class="text-muted small mb-0">Review attempted ItemLink insertions that were rejected by backend validation.</p>
 	</div>
 	<div class="text-lg-end">

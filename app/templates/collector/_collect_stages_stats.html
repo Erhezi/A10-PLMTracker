@@ -15,22 +15,29 @@
     <h2 class="h6 fw-semibold mb-2">Rows per Stage</h2>
     <div class="stage-summary-row">
       {% for label, css_class in stages %}
-        <div class="stage-summary-box {{ css_class }}">
+        <div class="stage-summary-box {{ css_class }}" data-stage="{{ label }}">
           <div class="stage-summary-count">{{ counts.get(label, 0) }}</div>
           <div class="stage-summary-label">{{ label }}</div>
         </div>
       {% endfor %}
     </div>
     <div class="stage-summary-meta">
-      <span>Total Active ItemLink rows: {{ active_total }}</span>
-      {% if unstaged %}<span>Unstaged: {{ unstaged }}</span>{% endif %}
-      {% if extra %}
-        <span>Other stages:
-          {% for name, value in extra|dictsort %}
-            {{ name }} ({{ value }}){% if not loop.last %}, {% endif %}
-          {% endfor %}
+      <span data-role="stage-summary-active">Total Active ItemLink rows: <span class="stage-summary-value">{{ active_total }}</span></span>
+      <span data-role="stage-summary-unstaged"{% if not unstaged %} class="d-none"{% endif %}>
+        Unstaged: <span class="stage-summary-value">{{ unstaged }}</span>
+      </span>
+      <span data-role="stage-summary-extra"{% if not extra %} class="d-none"{% endif %}>
+        Other stages:
+        <span class="stage-summary-extra-values">
+          {% if extra %}
+            {% for name, value in extra|dictsort %}
+              <span class="stage-summary-extra-entry" data-stage="{{ name }}">
+                {{ name }} (<span class="stage-summary-value">{{ value }}</span>)
+              </span>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          {% endif %}
         </span>
-      {% endif %}
+      </span>
     </div>
   </div>
 </div>

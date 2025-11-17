@@ -174,10 +174,24 @@ class RelationGraph:
 			if src != item
 		]
 		if existing_outgoing and existing_incoming:
-			message = (
-				f"Adding {item} -> {replace_item} would create a many-to-many relation"
-				f" with existing links from {item} and to {replace_item}."
+			existing_pairs = sorted(
+				{
+					f"{link.item} -> {link.replace_item}"
+					for link in (*existing_outgoing, *existing_incoming)
+					if getattr(link, "item", None) and getattr(link, "replace_item", None)
+				}
 			)
+			existing_detail = ", ".join(existing_pairs)
+			if existing_detail:
+				message = (
+					f"Adding {item} -> {replace_item} would create a many-to-many relation"
+					f" because we already have {existing_detail}."
+				)
+			else:
+				message = (
+					f"Adding {item} -> {replace_item} would create a many-to-many relation"
+					f" with existing links from {item} and to {replace_item}."
+				)
 			results.append(
 				ConflictResult(
 					CONFLICT_MANY_TO_MANY,
@@ -226,19 +240,40 @@ class RelationGraph:
 				for repl in replacements_over_limit:
 					trigger_links.extend(self._incoming.get(repl, {}).values())
 
+				existing_pairs = sorted(
+					{
+						f"{link.item} -> {link.replace_item}"
+						for link in trigger_links
+						if getattr(link, "item", None) and getattr(link, "replace_item", None)
+					}
+				)
+				existing_detail = ", ".join(existing_pairs)
+
 				source_list = ", ".join(sorted(sources_over_limit)) or "source items"
 				replace_list = ", ".join(sorted(replacements_over_limit)) or "replacement items"
 				if sources_over_limit != pre_multi_source or replacements_over_limit != pre_multi_replace:
-					message = (
-						f"Adding {item} -> {replace_item} would create a many-to-many relation "
-						f"because source items {source_list} would have multiple replacements and"
-						f" replacement items {replace_list} would have multiple sources."
-					)
+					if existing_detail:
+						message = (
+							f"Adding {item} -> {replace_item} would create a many-to-many relation "
+							f"because we already have {existing_detail}."
+						)
+					else:
+						message = (
+							f"Adding {item} -> {replace_item} would create a many-to-many relation "
+							f"because source items {source_list} would have multiple replacements and"
+							f" replacement items {replace_list} would have multiple sources."
+						)
 				else:
-					message = (
-						f"Group already contains multiple replacements for {source_list} and multiple "
-						f"sources for {replace_list}; adding {item} -> {replace_item} would continue the many-to-many relation."
-					)
+					if existing_detail:
+						message = (
+							f"Group already contains {existing_detail}; adding {item} -> {replace_item} "
+							f"would continue the many-to-many relation."
+						)
+					else:
+						message = (
+							f"Group already contains multiple replacements for {source_list} and multiple "
+							f"sources for {replace_list}; adding {item} -> {replace_item} would continue the many-to-many relation."
+						)
 
 				results.append(
 					ConflictResult(
@@ -353,18 +388,31 @@ def detect_many_to_many_conflict(
 	if not outgoing_links or not incoming_links:
 		return None
 
-	existing_replacements = ", ".join(sorted({link.replace_item for link in outgoing_links if link.replace_item}))
-	existing_sources = ", ".join(sorted({link.item for link in incoming_links if link.item}))
-	if not existing_replacements:
-		existing_replacements = "other replacements"
-	if not existing_sources:
-		existing_sources = "other source items"
-
-	message = (
-		f"Item {item} already has replacement(s) {existing_replacements}; "
-		f"replacement {replace_item} already belongs to {existing_sources}. "
-		"Creating this link would form a many-to-many relation."
+	existing_pairs = sorted(
+		{
+			f"{link.item} -> {link.replace_item}"
+			for link in (*outgoing_links, *incoming_links)
+			if getattr(link, "item", None) and getattr(link, "replace_item", None)
+		}
 	)
+	existing_detail = ", ".join(existing_pairs)
+	if existing_detail:
+		message = (
+			f"Adding {item} -> {replace_item} would create a many-to-many relation "
+			f"because we already have {existing_detail}."
+		)
+	else:
+		existing_replacements = ", ".join(sorted({link.replace_item for link in outgoing_links if link.replace_item}))
+		existing_sources = ", ".join(sorted({link.item for link in incoming_links if link.item}))
+		if not existing_replacements:
+			existing_replacements = "other replacements"
+		if not existing_sources:
+			existing_sources = "other source items"
+		message = (
+			f"Item {item} already has replacement(s) {existing_replacements}; "
+			f"replacement {replace_item} already belongs to {existing_sources}. "
+			"Creating this link would form a many-to-many relation."
+		)
 
 	seen_links: dict[int, ItemLink] = {}
 	for link in (*outgoing_links, *incoming_links):

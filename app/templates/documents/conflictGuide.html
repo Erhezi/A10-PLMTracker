@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}Conflict Guide - PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.conflicts') }}">Conflicts</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Conflict Guide</li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 fw-semibold mb-3">Conflict Handling Guide</h1>
+
+  <section class="mt-4" id="conflict-types">
+    <h2 class="h4">1. What triggers a conflict?</h2>
+    <p>
+      Conflicts are created when a user attempts to add an item pair that breaks the relationship rules enforced by
+      <code>node_check.py</code> and <code>AddItemPairs</code>. The system stops the insert and records the attempt so you can
+      investigate. Common triggers include:
+    </p>
+    <ul>
+      <li><strong>Self-directed links</strong> : an item cannot replace itself.</li>
+      <li><strong>Reciprocal entries</strong> : item A already replaces item B, so the opposite direction would create a loop.</li>
+      <li><strong>Chaining loops</strong> : the proposed pair would create a cycle across more than two items.</li>
+      <li><strong>Many-to-many violations</strong> : the replacement is already in use, or the source item already feeds another active replacement.</li>
+      <li><strong>Out-of-scope data</strong> : either side is inactive (Deleted/Completed) or not approved for company 3000.</li>
+    </ul>
+    <p class="small text-muted mb-0">Each log entry captures the item numbers, conflict type, and message shown to the user for quick follow-up.</p>
+  </section>
+
+  <section class="mt-5" id="resolution">
+    <h2 class="h4">2. Recommended cleanup workflow</h2>
+    <ol>
+      <li>
+        <strong>Review the conflict details.</strong> Identify the group and items listed in the log and locate them in the Groups tab.
+      </li>
+      <li>
+        <strong>Decide the right action.</strong> Complete the existing relation if it is already live, or delete it if it was
+        an abandoned attempt. Do not leave stale rows in the tracker -- they will keep generating conflicts.
+      </li>
+      <li>
+        <strong>Archive or delete finished items.</strong> After the problematic rows are marked Completed (and archived) or
+        Deleted, the conflict queue will drop the entry on the next refresh because the blocking data is gone.
+      </li>
+      <li>
+        <strong>Retry the conversion.</strong> Once the tracker no longer has the conflicting combination, re-run the collect
+        action or batch upload as needed.
+      </li>
+    </ol>
+    <p class="small text-muted mb-0">Aim to clear conflicts during the same review session so the log reflects only open issues.</p>
+  </section>
+
+  <section class="mt-5" id="purge">
+    <h2 class="h4">3. Keep the log tidy with regular purges</h2>
+    <p>
+      The purge tool on the Conflicts page deletes entries older than the date you choose. Purging does not touch live
+      ItemLink data; it simply removes the historical noise so the dashboard loads faster and reviewers can focus on recent
+      attempts.
+    </p>
+    <ul>
+      <li>Pick a cadence (monthly or after each cleanup sprint) that matches your review cycle.</li>
+      <li>Filter by conflict type before purging if you only want to remove a specific category.</li>
+      <li>Record the purge date in your team notes if you need an audit trail of when logs were cleared.</li>
+    </ul>
+    <p class="small text-muted mb-0">If a conflict keeps returning after purge, re-open the Groups tab to confirm the underlying data truly changed.</p>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}Stage Transitions - PLM Tracker{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <nav aria-label="breadcrumb" class="small mb-3">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.groups') }}">Groups</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Stage Transition Guide</li>
+      <li class="breadcrumb-item"><a href="{{ url_for('collector.batch_change_doc') }}">Batch Change Guide</a></li>
+    </ol>
+  </nav>
+
+  <h1 class="h3 fw-semibold mb-3">Understanding Stage Transitions</h1>
+
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body text-center">
+      <h2 class="h5">Stage transition map</h2>
+      <p class="text-muted small mb-3">Each arrow below represents a path the tracker allows.</p>
+      <img class="img-fluid" src="{{ url_for('static', filename='img/stage_transition_whitebg.svg') }}" alt="Diagram of the PLM Tracker stage transitions" />
+    </div>
+  </div>
+
+  <section id="stage-overview" class="mt-4">
+    <h2 class="h4">Stage overview</h2>
+    <p class="mb-3">Every record stays within this set of stages. Choose the option that best reflects the work still needed.</p>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Early intake</h3>
+          <ul class="mb-0">
+            <li><strong>Pending Item Number</strong> - waiting on an ERP item number or supporting contract data.</li>
+            <li><strong>Pending Clinical Readiness</strong> - awaiting clinical sign-off, conversion plans, or supply readiness.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Active tracking</h3>
+          <ul class="mb-0">
+            <li><strong>Tracking - Item Transition</strong> - the replacement has started to flow and we are monitoring usage.</li>
+            <li><strong>Tracking - Discontinued</strong> - no replacement will be added, but the legacy item still needs follow-up.</li>
+            <li><strong>Tracking Completed</strong> - all tasks are finished and the conversion can roll off active dashboards.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Exception states</h3>
+          <ul class="mb-0">
+            <li><strong>Deleted</strong> - temporary parking spot when a record was added in error or is no longer needed.</li>
+            <li><strong>Archived</strong> - long-term history for completed work that we still want to reference.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="transitions" class="mt-5">
+    <h2 class="h4">Moving between stages</h2>
+    <p>
+      The system only enables the transitions listed below to keep the workflow clean. If the option you want is missing,
+      move through the intermediary stage first or resolve the blockers noted in the error message.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered mb-0">
+        <thead class="table-light text-uppercase small text-muted">
+          <tr>
+            <th scope="col">Current stage</th>
+            <th scope="col">You can move to</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set transitions = {
+            "Pending Item Number": ["Pending Item Number", "Pending Clinical Readiness", "Deleted"],
+            "Pending Clinical Readiness": ["Pending Clinical Readiness", "Tracking - Item Transition", "Deleted"],
+            "Tracking - Item Transition": ["Pending Clinical Readiness", "Tracking Completed", "Deleted"],
+            "Tracking - Discontinued": ["Tracking - Discontinued", "Tracking Completed", "Deleted"],
+            "Tracking Completed": ["Tracking Completed"],
+            "Deleted": ["Deleted", "Tracking - Discontinued", "Pending Item Number", "Pending Clinical Readiness", "Tracking - Item Transition"],
+            "Archived": ["Archived"]
+          } %}
+          {% for stage, targets in transitions.items() %}
+          <tr>
+            <td class="fw-semibold">{{ stage }}</td>
+            <td>{{ targets | join(', ') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small text-muted mt-2 mb-0">Batch updates follow this same logic so every record stays in a valid state.</p>
+  </section>
+
+  <section id="special-cases" class="mt-5">
+    <h2 class="h4">Special handling for Deleted and Archived</h2>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Deleted</h3>
+          <ul class="small mb-0">
+            <li>Think of Deleted as a holding bay. Use it when a record was added too early or needs major edits.</li>
+            <li>Bringing a record back out of Deleted sends it to the correct active stage automatically based on what
+              information is still missing.</li>
+            <li>If no replacement exists, the item returns to <em>Tracking - Discontinued</em>. If the replacement is still
+              pending, it returns to <em>Pending Item Number</em>.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted">Tracking Completed &amp; Archived</h3>
+          <ul class="small mb-0">
+            <li><strong>Tracking Completed is final.</strong> Once a conversion reaches this stage it cannot move back to an
+              earlier step. Use Deleted instead if additional cleanup is required.</li>
+            <li>Archiving removes a completed record from day-to-day dashboards but keeps the history searchable.</li>
+            <li>Use the Archive option in the Groups tab after confirming that reporting teams no longer need the live record.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tips" class="mt-5">
+    <h2 class="h4">Tips for smooth stage changes</h2>
+    <ul>
+      <li>Before running a batch update, scan the table filters to make sure every selected row truly shares the same goal.</li>
+      <li>Resolve data readiness issues (item numbers, contracts, clinical sign-off) before pushing items into transition.</li>
+      <li>If a button is disabled, hover over the stage badge for the built-in explanation or check the toast message for
+        details.</li>
+      <li>When in doubt, leave the record where it is and ask an admin to review; we prefer a slower change over an invalid
+        history.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

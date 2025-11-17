@@ -60,6 +60,12 @@ def _build_search_filter(term: str):
     )
 
 
+@bp.route("/documents/overview")
+@login_required
+def documentation():
+    return render_template("documents/playgroundOverview.html")
+
+
 @bp.route("/")
 @login_required
 def index():

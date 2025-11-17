@@ -56,16 +56,20 @@ MANUAL_SUMMARY = [
 ]
 
 
-def _ref_dir() -> Path:
-    return Path(current_app.root_path).parent / "_ref"
+def _doc_search_paths() -> list[Path]:
+    """Possible locations for doc assets; prefer static but allow legacy _ref for safety."""
+    project_root = Path(current_app.root_path).parent
+    return [Path(current_app.static_folder), project_root / "_ref"]
 
 
 def _resolve_ref_file(filename: str) -> Path:
-    path = _ref_dir() / filename
-    if not path.exists():
-        current_app.logger.warning("Requested documentation asset missing: %s", path)
-        abort(404)
-    return path
+    for base in _doc_search_paths():
+        path = base / filename
+        if path.exists():
+            return path
+
+    current_app.logger.warning("Requested documentation asset missing: %s", filename)
+    abort(404)
 
 
 def _load_manual_doc() -> list[dict]:

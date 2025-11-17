@@ -4,7 +4,7 @@
 <div class="container py-4">
   <nav aria-label="breadcrumb" class="small mb-3">
     <ol class="breadcrumb">
-      <li class="breadcrumb-item"><a href="{{ url_for('collector.groups') }}">Groups</a></li>
+      <li class="breadcrumb-item text-body-secondary">Groups</li>
       <li class="breadcrumb-item active" aria-current="page">Item Group Guide</li>
       <li class="breadcrumb-item"><a href="{{ url_for('collector.stage_transition_doc') }}">Stage Transition Guide</a></li>
       <li class="breadcrumb-item"><a href="{{ url_for('collector.batch_change_doc') }}">Batch Change Guide</a></li>
@@ -64,7 +64,7 @@
     </p>
     <ul>
       <li>The edit panel slides down inside the row. Update only the fields that need attention; the tracker will keep the rest of the data untouched.</li>
-      <li>If a stage option is unavailable, hover over the stage badge to see the reason, or open the <a href="{{ url_for('collector.stage_transition_doc') }}" target="_blank" rel="noopener">Stage Transition Guide</a>.</li>
+      <li>If a stage option is unavailable, hover over the stage badge to see the reason, or open the <a href="{{ url_for('collector.stage_transition_doc') }}">Stage Transition Guide</a>.</li>
       <li>Use the <em>Actions</em> dropdown to archive or delete when a conversion is done or was created in error. Deleted rows can be restored from the toolbar.</li>
     </ul>
     <p class="small text-muted mb-0">Remember that every edit updates the shared group, so the legacy and replacement items stay synchronized.</p>
@@ -79,7 +79,7 @@
     <ul>
       <li>Filters apply first, so it helps to narrow the list before you hit the <em>Select All</em> checkbox.</li>
       <li>The toolbar shows how many rows will be affected and disables actions that are not valid for the selected stages.</li>
-      <li>For a full walkthrough of the modal dialogs and error handling, switch to the <a href="{{ url_for('collector.batch_change_doc') }}" target="_blank" rel="noopener">Batch Change Guide</a>.</li>
+      <li>For a full walkthrough of the modal dialogs and error handling, switch to the <a href="{{ url_for('collector.batch_change_doc') }}">Batch Change Guide</a>.</li>
     </ul>
     <p class="mb-0">
       After a batch action completes, the tracker refreshes the table with toast messages describing any skipped or invalid rows. Review those messages so the group data remains trustworthy.

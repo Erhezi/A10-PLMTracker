@@ -38,6 +38,14 @@
       <li>Items that appear grayed out are not ready for company 3000 or do not have the required contract access for MHS users. Grayed-out rows cannot be added until the underlying setup is complete.</li>
       <li>If your search comes back empty, verify the number in ERP or your source of truth. When the item truly does not exist in our system, contact an administrator so we can review and load the missing data.</li>
     </ul>
+    <div class="row row-cols-1 row-cols-lg-2 g-4 mt-4 align-items-stretch">
+      <div class="col">
+        {% include 'documents/_guidde_video_picker.html' %}
+      </div>
+      <div class="col">
+        {% include 'documents/_guidde_video_picker_relations.html' %}
+      </div>
+    </div>
   </section>
 
   <section id="batch-workflow" class="mt-5">
@@ -50,6 +58,9 @@
       <li>Upload the file through the batch ingestion form. The system fills in the remaining details, validates the entries, and places them in the correct workflow stage.</li>
       <li>If a replacement item number is unknown, leave that pair out of the file and add it manually with the picker. Manual entry keeps the link between the contract record and the item master so we can trace the entire lifecycle from contract onboarding through conversion.</li>
     </ul>
+    <div class="mt-4">
+      {% include 'documents/_guidde_video_batch_upload.html' %}
+    </div>
   </section>
 
   <section id="error-handling" class="mt-5">
@@ -64,6 +75,9 @@
     <p class="mb-0">
       If you attempt to add a pair that already exists, the tracker will simply skip it, so you can re-run uploads without creating duplicates. For all other failures, use the guidance above to clear the issue and resubmit.
     </p>
+    <div class="mt-4">
+      {% include 'documents/_guidde_video_error_handling.html' %}
+    </div>
   </section>
 </div>
 {% endblock %}

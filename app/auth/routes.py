@@ -78,8 +78,9 @@ def logout():
 @bp.route("/reset_password", methods=["GET", "POST"])
 def reset_password_request():
 
-    def generate_temp_code(length=6):
-        return ''.join(random.choices(string.digits, k=length))
+    def generate_temp_code(length=8):
+        charset = string.ascii_uppercase + string.digits
+        return "".join(random.choices(charset, k=length))
     
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
@@ -89,15 +90,19 @@ def reset_password_request():
             return redirect(url_for("auth.reset_password_request"))
         code = generate_temp_code()
         user.reset_code = code
-        user.reset_code_expiry = datetime.now() + timedelta(minutes=2)
+        user.reset_code_expiry = datetime.now() + timedelta(minutes=30)
         db.session.commit()
         # In production, send code via email. For demo, flash it.
         # flash(f"Your reset code is: {code}", "info")
         # Send code via Microsoft Graph email
         send_mail(
             to_email=email,
-            subject="Your PLM Tracker Password Reset Code",
-            body=f"Your password reset code is: {code}\nThis code will expire in 2 minutes."
+            subject="PLM Tracker Password Reset Instructions",
+            body=(
+                "You (or someone using your email) requested to reset your PLM Tracker password.\n"
+                f"Use this verification code within 30 minutes: {code}\n\n"
+                "If you did not request a reset you can ignore this email."
+            ),
         )
         flash("If the email exists, a code has been sent.", "info")
         return redirect(url_for("auth.reset_password_verify", email=email))

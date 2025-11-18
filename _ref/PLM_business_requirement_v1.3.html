@@ -81,7 +81,7 @@
         <li>User accounts live in <code>PLM.users</code> (model <code>app/models/auth.py</code>) with salted Werkzeug hashes; <code>user_role</code> supports <em>admin</em>, <em>user</em>, and <em>view-only</em> (default).</li>
         <li>Flask-Login secures all blueprints; <code>/auth/logout</code> is POST-only to reduce CSRF risk (Flask-WTF tokens remain a follow-up).</li>
         <li>Registration stays on for internal pilots: duplicate emails are rejected and successful registrations auto-login the user.</li>
-        <li>Password resets issue a six-digit code (valid for two minutes) and email it via Microsoft Graph using the procurement data team service account; verification and update endpoints complete the flow.</li>
+        <li>Password resets issue an eight-character alphanumeric code (valid for 30 minutes) and email it via Microsoft Graph using the procurement data team service account; verification and update endpoints complete the flow.</li>
         <li>The admin console (<code>/admin/user-control</code>) lists every account, lets admins update roles, blocks self-deletion, and kicks non-admins back to login.</li>
         <li>The view-only role currently mirrors user permissions in the UI; true read-only enforcement is tracked as an enhancement.</li>
       </ul>

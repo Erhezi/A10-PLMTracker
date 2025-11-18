@@ -149,7 +149,7 @@
       <li><strong>User lifecycle:</strong> Self-registration (<code>/auth/register</code>) captures email, password, and display name; new accounts default to <em>inactive</em> until manually approved. Users see a pending screen (<code>/auth/register_pending</code>) while waiting.</li>
       <li><strong>Role model:</strong> Roles (<code>admin</code>, <code>user</code>, <code>view-only</code>) are stored on <code>User.user_role</code> with server defaults. Admin-only routes enforce both authentication and role checks inside <code>admin_bp.before_request</code>.</li>
       <li><strong>Authentication flow:</strong> Login blocks inactive accounts, updates <code>last_login_at</code>, and issues Flask-Login sessions. Logout is <code>POST</code>-only to prevent CSRF.</li>
-      <li><strong>Password reset:</strong> Three-step flow (request → verify code → update) issues a six-digit code via Microsoft Graph (<code>send_mail</code>) that expires in 2 minutes (<code>reset_code_expiry</code>).</li>
+      <li><strong>Password reset:</strong> Three-step flow (request → verify code → update) issues an eight-character alphanumeric code via Microsoft Graph (<code>send_mail</code>) that expires in 30 minutes (<code>reset_code_expiry</code>).</li>
       <li><strong>Admin console:</strong> <code>/admin/user-control</code> lists every account with actions to approve, disable, delete (not self), or change roles. Approvals log <code>approved_by/at</code> and trigger Graph notification emails; disabling captures <code>disabled_by/at</code>.</li>
       <li><strong>Deploy under prefix:</strong> <code>PathPrefixMiddleware</code> plus <code>URL_PREFIX</code>/<code>static_url_path</code> settings allow hosting under <code>/plm</code> or any IIS virtual directory without breaking routes or static assets.</li>
     </ul>
@@ -334,7 +334,7 @@ flowchart TD
   <section id="nonfunctional">
     <h2>4. Non-Functional & Operational Requirements</h2>
     <ul>
-      <li><strong>Security:</strong> All functional routes use login protection; admin endpoints double-check role + active status. Passwords are hashed via Werkzeug, and reset codes are short-lived.</li>
+      <li><strong>Security:</strong> All functional routes use login protection; admin endpoints double-check role + active status. Passwords are hashed via Werkzeug, and reset codes expire after 30 minutes.</li>
       <li><strong>Configurable limits:</strong> <code>MAX_BATCH_PER_SIDE</code>, <code>ENABLE_BURN_RATE_REFRESH</code>, and <code>INCLUDE_OR_INVENTORY_LOCATIONS</code> store ops toggles. Invalid config (e.g., missing Graph secrets) raises explicit errors before use (<code>Config.validate()</code>).</li>
       <li><strong>Database bootstrap:</strong> On startup, <code>create_app</code> ensures the <code>PLM</code> schema exists (SQL Server only) and runs <code>db.create_all()</code> so new environments self-seed.</li>
       <li><strong>Logging & audit:</strong> Stage changes, conflict detections, burn-rate jobs, user approvals, and disablements all persist to database tables for traceability.</li>

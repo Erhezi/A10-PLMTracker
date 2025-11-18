@@ -69,7 +69,7 @@
     <ul>
       <li>Email/password registration stores bcrypt hashes in <code>PLM.users</code>; logins update <code>last_login_at</code> via Flask-Login.</li>
       <li>Role options today: <strong>admin</strong>, <strong>user</strong>, <strong>view-only</strong> (default <code>user</code>). Admin-only routes are enforced; view-only behaves like user until read-only UI gates are finalized.</li>
-      <li>Password reset flow issues a six-digit code (valid for 2 minutes) and delivers it through Microsoft Graph using the configured service account.</li>
+      <li>Password reset flow issues an eight-character alphanumeric code (valid for 30 minutes) and delivers it through Microsoft Graph using the configured service account.</li>
       <li>Logout is POST-only to reduce CSRF exposure; CSRF tokens will be layered in once Flask-WTF is wired.</li>
       <li>The admin console (<code>/admin/user-control</code>) lists all users, allows role changes, and permits admin-led deletions (self-delete is blocked).</li>
     </ul>

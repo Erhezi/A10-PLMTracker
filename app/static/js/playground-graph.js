@@ -63,8 +63,8 @@
   };
 
   const ROLE_COLORS = {
-    source: "#f97316",
-    target: "#3b82f6",
+    source: "#e93b8d",
+    target: "#3f87b9",
     both: "#a855f7",
     fallback: "#e5e7eb",
   };

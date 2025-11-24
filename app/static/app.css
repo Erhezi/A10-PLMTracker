@@ -482,11 +482,11 @@ footer { font-size: .75rem; }
 /* Source vs replacement color banding */
 #table-inventory tbody td.col-src,
 #table-par tbody td.col-src {
-  background: #fff9e6;
+  background: #fff5fa; /* very light blush */ /* fff9e6 - very light yellow - use to be */
 }
 #table-inventory tbody td.col-repl,
 #table-par tbody td.col-repl {
-  background: #e9f7ff;
+  background: #f5fbff; /* e9f7ff very light azure */
 }
 #table-inventory tbody td.col-recom,
 #table-par tbody td.col-recom {
@@ -494,7 +494,7 @@ footer { font-size: .75rem; }
   border-left: 1px solid rgba(129, 61, 214, 0.18);
   border-right: 1px solid rgba(129, 61, 214, 0.18);
 }
-/* Notes column override: remove pale-yellow source band for Notes cells
+/* Notes column override: remove pale-blush source band for Notes cells
    Target the per-table data-column-id set by JS so other col-src
    styling remains intact. Use transparent background to match other text cells.
    The selector is intentionally specific and placed after the col-src rule.
@@ -1011,10 +1011,10 @@ footer { font-size: .75rem; }
   text-overflow: ellipsis;
 }
 
-/* Source (Item/Mfg/Mfg Part/Description) - pale yellow (tbody only) */
-tbody td.col-src { background: #fff9e6; }
+/* Source (Item/Mfg/Mfg Part/Description) - pale blush (tbody only) */
+tbody td.col-src { background: #fff5fa; }
 /* Replacement columns - pale blue (tbody only) */
-tbody td.col-repl { background: #e9f7ff; }
+tbody td.col-repl { background: #f5fbff; }
 
 #itemlink-table th.col-desc,
 #itemlink-table td.col-desc { padding-right: 15px; }

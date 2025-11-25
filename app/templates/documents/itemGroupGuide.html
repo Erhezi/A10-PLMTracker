@@ -21,8 +21,8 @@
         legacy item, its replacement, and any supporting contract records, we get one place to manage the lifecycle.
       </p>
       <ul class="mb-0">
-        <li>Grouping highlights conflicts immediately, because the tracker can see both sides of the conversion before data entry finishes.</li>
-        <li>The burn-rate metrics (reorder point, max quantity, par targets) all reference the shared group so calculations stay consistent.</li>
+        <li>Grouping highlights conflicts immediately, allow us to maintain the clean and simple relations for all conversion effort.</li>
+        <li>The system set up metrics (reorder point, max quantity, par targets) all reference the shared group so calculations stay consistent and simple for many-to-one or one-to-many conversions.</li>
         <li>Stages, clinical readiness, and Wrike tasks travel with the group, making it easy to monitor several related items as one project.</li>
       </ul>
     </div>
@@ -55,19 +55,26 @@
         </div>
       </div>
     </div>
+    <!-- add video _guidde_video_use_filter_to_focus -->
+    <div class="mt-4">
+      {% include 'documents/_guidde_video_use_filter_to_focus.html' %}
+    </div>
   </section>
 
   <section id="editing" class="mt-5">
     <h2 class="h4">Editing individual records</h2>
     <p>
-      Each row exposes an <strong>Edit</strong> button. Clicking it unlocks stage changes, Wrike task IDs, go-live targets, and notes for that specific group.
+      Each row exposes an <strong>Edit</strong> button. Clicking it unlocks stage changes, Wrike task IDs, and go-live target date for that specific row.
     </p>
     <ul>
       <li>The edit panel slides down inside the row. Update only the fields that need attention; the tracker will keep the rest of the data untouched.</li>
       <li>If a stage option is unavailable, hover over the stage badge to see the reason, or open the <a href="{{ url_for('collector.stage_transition_doc') }}">Stage Transition Guide</a>.</li>
-      <li>Use the <em>Actions</em> dropdown to archive or delete when a conversion is done or was created in error. Deleted rows can be restored from the toolbar.</li>
+      <li>Use the <em>Stage</em> dropdown to complete or delete when a conversion is done or was created in error.</li>
     </ul>
-    <p class="small text-muted mb-0">Remember that every edit updates the shared group, so the legacy and replacement items stay synchronized.</p>
+    <div class="mt-4">
+      {% include 'documents/_guidde_video_edit_individual_record.html' %}
+    </div>
+    <p class="small text-muted mb-0">Remember that every edit would apply to the row, not the entire item group.</p>
   </section>
 
   <section id="batch" class="mt-5">
@@ -84,6 +91,9 @@
     <p class="mb-0">
       After a batch action completes, the tracker refreshes the table with toast messages describing any skipped or invalid rows. Review those messages so the group data remains trustworthy.
     </p>
+    <div class="mt-4">
+      {% include 'documents/_guidde_video_batch_change.html' %}
+    </div>
   </section>
 </div>
 {% endblock %}

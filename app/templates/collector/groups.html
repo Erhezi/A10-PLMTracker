@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% set can_manage_cleanup = current_user.user_role == 'admin' %}
 {% block title %}Groups — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">
@@ -64,13 +65,41 @@
   <div class="ms-auto d-flex align-items-end gap-2 flex-wrap justify-content-end text-end">
     <div class="small text-muted flex-shrink-0">Rows: <span id="visible-count">0</span> / {{ items|length }}</div>
     <div class="small text-muted flex-shrink-0 d-none" id="selected-count-container">Selected: <span id="selected-count">0</span></div>
+    {% set clear_disabled_reason = None %}
+    {% if not can_manage_cleanup %}
+      {% set clear_disabled_reason = 'Only admins can clear deleted rows.' %}
+    {% elif count_deleted == 0 %}
+      {% set clear_disabled_reason = 'No rows with stage Deleted to clear.' %}
+    {% endif %}
     <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');" class="m-0">
-      <button id="clear-deleted-btn" type="submit" class="btn btn-sm btn-outline-danger" {% if count_deleted == 0 %}disabled{% endif %}>
+      <button
+        id="clear-deleted-btn"
+        type="submit"
+        class="btn btn-sm btn-outline-danger"
+        data-can-manage="{{ 1 if can_manage_cleanup else 0 }}"
+        data-empty-title="No rows with stage Deleted to clear."
+        data-locked-title="Only admins can clear deleted rows."
+        {% if clear_disabled_reason %}disabled title="{{ clear_disabled_reason }}"{% endif %}
+      >
         Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
       </button>
     </form>
+    {% set archive_disabled_reason = None %}
+    {% if not can_manage_cleanup %}
+      {% set archive_disabled_reason = 'Only admins can archive completed rows.' %}
+    {% elif count_completed == 0 %}
+      {% set archive_disabled_reason = 'No rows with stage Tracking Completed to archive.' %}
+    {% endif %}
     <form id="archive-completed-form" method="post" action="{{ url_for('collector.archive_completed') }}" onsubmit="return confirm('Archive all rows with stage=Tracking Completed? This removes them from the tracker.');" class="m-0">
-      <button id="archive-completed-btn" type="submit" class="btn btn-sm btn-outline-secondary" {% if count_completed == 0 %}disabled{% endif %}>
+      <button
+        id="archive-completed-btn"
+        type="submit"
+        class="btn btn-sm btn-outline-secondary"
+        data-can-manage="{{ 1 if can_manage_cleanup else 0 }}"
+        data-empty-title="No rows with stage Tracking Completed to archive."
+        data-locked-title="Only admins can archive completed rows."
+        {% if archive_disabled_reason %}disabled title="{{ archive_disabled_reason }}"{% endif %}
+      >
         Archive Completed (<span id="archive-completed-count">{{ count_completed }}</span>)
       </button>
     </form>
@@ -151,7 +180,6 @@
               {% endif %}
             </span>
             <select class="form-select form-select-sm d-none" name="stage">
-              <option value="">--</option>
               {% for s in allowed_stages %}
                 <option value="{{ s }}" {% if r.stage==s %}selected{% endif %}>{{ s }}</option>
               {% endfor %}
@@ -386,6 +414,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const stageError = document.getElementById('batch-stage-error');
   const wrikeError = document.getElementById('batch-wrike-error');
   const goLiveError = document.getElementById('batch-go-live-error');
+  const clearDeletedBtn = document.getElementById('clear-deleted-btn');
+  const archiveCompletedBtn = document.getElementById('archive-completed-btn');
+  const canManageClearDeleted = !!(clearDeletedBtn && clearDeletedBtn.dataset.canManage === '1');
+  const canManageArchiveCompleted = !!(archiveCompletedBtn && archiveCompletedBtn.dataset.canManage === '1');
   const wrikeInputLabel = document.getElementById('batch-wrike-input-label');
   const wrikeModalTitle = wrikeModalEl ? wrikeModalEl.querySelector('.modal-title') : null;
   const bootstrapModalCtor = (typeof window !== 'undefined' && window.bootstrap && typeof window.bootstrap.Modal === 'function') ? window.bootstrap.Modal : null;
@@ -855,14 +887,22 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const updateDeletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
     const countEl = document.getElementById('clear-deleted-count');
-    const btn = document.getElementById('clear-deleted-btn');
+    const btn = clearDeletedBtn;
     if(!countEl || !btn) return;
     if(providedCount !== undefined && providedCount !== null){
       const num = Number(providedCount);
       if(!Number.isNaN(num)){
         const safe = Math.max(0, num);
         countEl.textContent = safe;
-        btn.disabled = safe === 0;
+        const shouldDisable = !canManageClearDeleted || safe === 0;
+        btn.disabled = shouldDisable;
+        if(!canManageClearDeleted && btn.dataset.lockedTitle){
+          btn.title = btn.dataset.lockedTitle;
+        } else if(shouldDisable && safe === 0 && btn.dataset.emptyTitle){
+          btn.title = btn.dataset.emptyTitle;
+        } else if(!shouldDisable){
+          btn.removeAttribute('title');
+        }
         return;
       }
     }
@@ -877,18 +917,36 @@ document.addEventListener('DOMContentLoaded', () => {
       current += 1;
     }
     countEl.textContent = current;
-    btn.disabled = current === 0;
+    if(btn){
+      const shouldDisable = !canManageClearDeleted || current === 0;
+      btn.disabled = shouldDisable;
+      if(!canManageClearDeleted && btn.dataset.lockedTitle){
+        btn.title = btn.dataset.lockedTitle;
+      } else if(shouldDisable && current === 0 && btn.dataset.emptyTitle){
+        btn.title = btn.dataset.emptyTitle;
+      } else if(!shouldDisable){
+        btn.removeAttribute('title');
+      }
+    }
   };
   const updateCompletedCountUI = ({ providedCount, oldStage, newStage } = {}) => {
     const countEl = document.getElementById('archive-completed-count');
-    const btn = document.getElementById('archive-completed-btn');
+    const btn = archiveCompletedBtn;
     if(!countEl || !btn) return;
     if(providedCount !== undefined && providedCount !== null){
       const num = Number(providedCount);
       if(!Number.isNaN(num)){
         const safe = Math.max(0, num);
         countEl.textContent = safe;
-        btn.disabled = safe === 0;
+        const shouldDisable = !canManageArchiveCompleted || safe === 0;
+        btn.disabled = shouldDisable;
+        if(!canManageArchiveCompleted && btn.dataset.lockedTitle){
+          btn.title = btn.dataset.lockedTitle;
+        } else if(shouldDisable && safe === 0 && btn.dataset.emptyTitle){
+          btn.title = btn.dataset.emptyTitle;
+        } else if(!shouldDisable){
+          btn.removeAttribute('title');
+        }
         return;
       }
     }
@@ -903,7 +961,17 @@ document.addEventListener('DOMContentLoaded', () => {
       current += 1;
     }
     countEl.textContent = current;
-    btn.disabled = current === 0;
+    if(btn){
+      const shouldDisable = !canManageArchiveCompleted || current === 0;
+      btn.disabled = shouldDisable;
+      if(!canManageArchiveCompleted && btn.dataset.lockedTitle){
+        btn.title = btn.dataset.lockedTitle;
+      } else if(shouldDisable && current === 0 && btn.dataset.emptyTitle){
+        btn.title = btn.dataset.emptyTitle;
+      } else if(!shouldDisable){
+        btn.removeAttribute('title');
+      }
+    }
   };
   const applyRecordToRow = (row, rec) => {
     if(!row || !rec) return;

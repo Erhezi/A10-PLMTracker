@@ -3,7 +3,7 @@ from io import BytesIO
 from decimal import Decimal
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from datetime import date, datetime, timedelta
@@ -165,6 +165,9 @@ def groups():
 @bp.post('/groups/clear-deleted')
 @login_required
 def clear_deleted():
+    if current_user.user_role != 'admin':
+        flash('Access denied: Only admins can clear deleted rows.', 'danger')
+        return redirect(url_for('collector.groups'))
     # Move rows marked Deleted into the dedicated history table before removal
     deleted_query = ItemLink.query.filter(ItemLink.stage == 'Deleted')
     records = deleted_query.all()
@@ -213,6 +216,9 @@ def clear_deleted():
 @bp.post('/groups/archive-completed')
 @login_required
 def archive_completed():
+    if current_user.user_role != 'admin':
+        flash('Access denied: Only admins can archive completed rows.', 'danger')
+        return redirect(url_for('collector.groups'))
     # Move Tracking Completed rows into the archive table, preserving history
     completed_query = ItemLink.query.filter(ItemLink.stage == 'Tracking Completed')
     records = completed_query.all()

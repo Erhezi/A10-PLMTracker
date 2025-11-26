@@ -18,7 +18,6 @@
       </a>
     </span>
   </h1>
-  <p class="text-muted small mb-0">Force-directed visualization of active ItemLink pairs. Filters update the dataset server-side.</p>
 </div>
 <div class="row g-4">
   <div class="col-12 col-xl-3">
@@ -162,14 +161,24 @@
       if (!scopeForm) {
         return;
       }
-
-  const stageInputs = Array.from(scopeForm.querySelectorAll('input[name="stage"]'));
-  const originalStageDisabledState = new Map(stageInputs.map((input) => [input, input.disabled]));
+      const stageInputs = Array.from(scopeForm.querySelectorAll('input[name="stage"]'));
+      const originalStageDisabledState = new Map(stageInputs.map((input) => [input, input.disabled]));
       const applyQuantityToggle = document.getElementById("toggle-apply-quantity");
       const locationControls = document.getElementById("inventory-location-controls");
       const locationSelect = document.getElementById("inventory-location-select");
       const hiddenApplyQuantity = document.getElementById("hidden-apply-quantity");
       const hiddenLocation = document.getElementById("hidden-inventory-location");
+
+      function submitScopeForm() {
+        if (!scopeForm) {
+          return;
+        }
+        if (typeof scopeForm.requestSubmit === "function") {
+          scopeForm.requestSubmit();
+        } else {
+          scopeForm.submit();
+        }
+      }
 
       function setHiddenApplyQuantity(enabled) {
         if (hiddenApplyQuantity) {
@@ -187,12 +196,7 @@
         if (!scopeToggle) {
           return;
         }
-        const { checkAllStages = false, disableStageInputs } = options;
-        if (checkAllStages) {
-          stageInputs.forEach((input) => {
-            input.checked = true;
-          });
-        }
+        const { disableStageInputs } = options;
         stageInputs.forEach((input) => {
           if (typeof disableStageInputs === "boolean") {
             input.disabled = disableStageInputs;
@@ -229,17 +233,16 @@
           setHiddenLocation("");
         }
 
-  applyScopeState({ checkAllStages: false, disableStageInputs: false });
+        applyScopeState({ disableStageInputs: false });
 
         if (shouldSubmit) {
-          scopeForm.requestSubmit();
+          submitScopeForm();
         }
       }
 
       if (scopeToggle) {
         scopeToggle.addEventListener("change", function () {
-          applyScopeState({ checkAllStages: scopeToggle.checked });
-          scopeForm.requestSubmit();
+          submitScopeForm();
         });
       }
 
@@ -253,13 +256,13 @@
         locationSelect.addEventListener("change", function () {
           setHiddenLocation(locationSelect.value);
           if (applyQuantityToggle && applyQuantityToggle.checked) {
-            scopeForm.requestSubmit();
+            submitScopeForm();
           }
         });
       }
 
       syncQuantityUI(false);
-      applyScopeState({ checkAllStages: scopeToggle && scopeToggle.checked, disableStageInputs: false });
+      applyScopeState({ disableStageInputs: false });
     });
   </script>
   <script src="{{ url_for('static', filename='js/playground-graph.js') }}" defer></script>

@@ -5,8 +5,8 @@
   <nav aria-label="breadcrumb" class="small mb-3">
     <ol class="breadcrumb">
       <li class="breadcrumb-item text-body-secondary">Dashboard</li>
-      <li class="breadcrumb-item"><a href="{{ url_for('dashboard.order_point_calc_doc') }}">Calculation Guide</a></li>
       <li class="breadcrumb-item active" aria-current="page">Export to Excel Guide</li>
+      <li class="breadcrumb-item"><a href="{{ url_for('dashboard.order_point_calc_doc') }}">Calculation Guide</a></li>
     </ol>
   </nav>
 
@@ -14,7 +14,10 @@
     <h1 class="h3 mb-2">Export to Excel Guide</h1>
     <p class="text-muted mb-0">Use this companion guide when you need a clean Excel file for the Inventory or PAR teams. Each section explains how the dashboard filters drive the export and what each workbook is designed to show.</p>
   </header>
-
+  
+  <div class="mt-4">
+    {% include 'documents/_guidde_video_dashboard_usage.html' %}
+  </div>
   <section class="mt-4">
     <div class="row g-4">
       <div class="col-lg-6">

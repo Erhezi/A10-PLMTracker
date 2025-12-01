@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% set can_manage_cleanup = current_user.user_role == 'admin' %}
+{% set can_edit = current_user.user_role != 'view-only' %}
 {% block title %}Groups — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">
@@ -18,6 +19,7 @@
 </h1>
 <p class="text-muted small">List all items entered for tracking</p>
 
+{% if can_edit %}
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3" id="batch-action-toolbar">
   <div class="btn-group btn-group-sm" role="group" aria-label="Batch change actions">
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="stage" disabled>Change Project Stage</button>
@@ -37,6 +39,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <div class="d-flex align-items-end gap-3 flex-wrap mb-2">
   <div style="width:170px;">
@@ -111,7 +114,9 @@
     <thead class="table-light small sticky-top shadow-sm" style="z-index:5;">
       <tr>
   <th style="width:46px;" class="text-center sortable select-header d-none" data-type="none"><input type="checkbox" id="batch-select-all" class="form-check-input" title="Select all"></th>
+  {% if can_edit %}
   <th style="width:58px;" class="text-center sortable edit-header" data-sort="none" data-type="none">Edit <span class="sort-indicator"></span></th>
+  {% endif %}
         <th class="text-center sortable" data-type="number" style="min-width:50px; width:50px;">Item Group <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text" style="min-width:70px;">Item <span class="sort-indicator"></span></th>
         <th class="sortable col-src" data-type="text">Mfg Part # <span class="sort-indicator"></span></th>
@@ -137,6 +142,7 @@
           <td class="text-center select-cell d-none">
             <input type="checkbox" class="form-check-input row-select" />
           </td>
+          {% if can_edit %}
           <td class="text-center edit-cell">
             <button class="btn btn-outline-primary btn-sm edit-btn" type="button">Edit</button>
             <div class="d-none action-buttons">
@@ -144,6 +150,7 @@
               <button class="btn btn-secondary btn-sm cancel-btn" type="button" title="Cancel edits">Cancel</button>
             </div>
           </td>
+          {% endif %}
           <td class="text-center fw-semibold" data-column="item-group" style="min-width:50px;">{{ r.item_group }}</td>
           <td class="font-monospace col-src">{{ r.item }}</td>
           <td title="{{ r.mfg_part_num }}" class="text-truncate col-src" style="max-width:140px;">{{ r.mfg_part_num }}</td>

@@ -866,6 +866,7 @@ class PLMTrackerBase(db.Model):
 	Inventory_base_ID = db.Column("Inventory_base_ID", db.BIGINT, nullable=True)
 	PreferredBin = db.Column("PreferredBin", db.String(40), nullable=True)
 	ItemDescription = db.Column("ItemDescription", db.String(255), nullable=True)
+	ItemDescription2 = db.Column("ItemDescription2", db.String(255), nullable=True) #added to capture information 'replaced by item # replace item mfg # replace item mfg part num'
 	ManufacturerNumber = db.Column("ManufacturerNumber", db.String(100), nullable=True)
 	Active = db.Column("Active", db.String(5), nullable=True)
 	Discontinued = db.Column("Discontinued", db.String(5), nullable=True)

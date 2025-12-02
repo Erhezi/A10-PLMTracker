@@ -23,7 +23,7 @@
       <div class="card-body d-flex flex-column">
         <label class="form-label small text-uppercase">Items</label>
    <input id="item-search" name="q" class="form-control mb-2" placeholder="Search item (by 6-digit Infor Item Number)..." autocomplete="off"
-     hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" hx-vals='{"picker":"item"}' />
+     hx-get="{{ url_for('collector.api_search_items') }}" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" hx-vals='{"picker":"item"}' />
         <div class="small text-muted mb-2">Check boxes to select. Max {{ max_per_side }} per side.</div>
         <div id="item-selected" class="mb-2"></div>
         <div id="item-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
@@ -35,7 +35,7 @@
       <div class="card-body d-flex flex-column">
         <label class="form-label small text-uppercase">Replacement Items</label>
    <input id="repl-search" name="q" class="form-control mb-2" placeholder="Search replacement (by 6-digit Infor Item Number)..." autocomplete="off"
-     hx-get="/api/items/search" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" hx-vals='{"picker":"replace"}' />
+     hx-get="{{ url_for('collector.api_search_items') }}" hx-trigger="keyup changed delay:300ms" hx-target="#repl-results" hx-params="*" hx-vals='{"picker":"replace"}' />
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-sentinel="NO REPLACEMENT">Add NO REPLACEMENT</button>
           <button type="button" class="btn btn-sm btn-outline-primary" id="toggle-repl-mode" data-mode="item" title="Toggle search between Item and Contract Item">Mode: Item</button>
@@ -201,8 +201,8 @@
       });
     }
   }
-  const ORIGINAL_REPL_ENDPOINT = window.withAppPath('/api/items/search');
-  const CONTRACT_ITEM_ENDPOINT = window.withAppPath('/api/contract-items/search');
+  const ORIGINAL_REPL_ENDPOINT = window.withAppPath({{ url_for('collector.api_search_items') | tojson }});
+  const CONTRACT_ITEM_ENDPOINT = window.withAppPath({{ url_for('collector.api_search_contract_items') | tojson }});
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
   const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
   const escapeHtml = (value) => {

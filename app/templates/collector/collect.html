@@ -201,8 +201,8 @@
       });
     }
   }
-  const ORIGINAL_REPL_ENDPOINT = window.withAppPath({{ url_for('collector.api_search_items') | tojson }});
-  const CONTRACT_ITEM_ENDPOINT = window.withAppPath({{ url_for('collector.api_search_contract_items') | tojson }});
+  const ORIGINAL_REPL_ENDPOINT = window.withAppPath("{{ url_for('collector.api_search_items') }}");
+  const CONTRACT_ITEM_ENDPOINT = window.withAppPath("{{ url_for('collector.api_search_contract_items') }}");
   const SENTINELS = ['NO REPLACEMENT']; // PENDING handled dynamically as PENDING***<mfg_part>
   const escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
   const escapeHtml = (value) => {

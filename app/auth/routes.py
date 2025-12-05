@@ -78,9 +78,8 @@ def logout():
 @bp.route("/reset_password", methods=["GET", "POST"])
 def reset_password_request():
 
-    def generate_temp_code(length=8):
-        charset = string.ascii_uppercase + string.digits
-        return "".join(random.choices(charset, k=length))
+    def generate_temp_code(length=6):
+        return "".join(random.choices(string.digits, k=length))
     
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()

@@ -222,26 +222,26 @@ def _auto_value_profile(value: object | None) -> tuple[str, str]:
     return lowered, text
 
 
-def _recommended_auto_for_group(group_rows: List[Dict]) -> Optional[str]:
-    normalized_values: Dict[str, str] = {}
-    for row in group_rows:
-        normalized, display = _auto_value_profile(row.get("auto_replenishment"))
-        if not normalized or normalized == "tbd":
-            continue
-        normalized_values.setdefault(normalized, display)
-    if not normalized_values:
-        return None
-    if len(normalized_values) == 1:
-        normalized = next(iter(normalized_values))
-        display = normalized_values[normalized]
-        if display:
-            return display
-        if normalized == "yes":
-            return "Yes"
-        if normalized == "no":
-            return "No"
-        return normalized.title()
-    return "TBD"
+# def _recommended_auto_for_group(group_rows: List[Dict]) -> Optional[str]:
+#     normalized_values: Dict[str, str] = {}
+#     for row in group_rows:
+#         normalized, display = _auto_value_profile(row.get("auto_replenishment"))
+#         if not normalized or normalized == "tbd":
+#             continue
+#         normalized_values.setdefault(normalized, display)
+#     if not normalized_values:
+#         return None
+#     if len(normalized_values) == 1:
+#         normalized = next(iter(normalized_values))
+#         display = normalized_values[normalized]
+#         if display:
+#             return display
+#         if normalized == "yes":
+#             return "Yes"
+#         if normalized == "no":
+#             return "No"
+#         return normalized.title()
+#     return "TBD"
 
 
 def _recommended_reorder_policy_for_group(group_rows: List[Dict]) -> Optional[str]:
@@ -323,9 +323,13 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
         for row in group_rows:
             row["group_type"] = relation_display
 
-        auto_recommendation = _recommended_auto_for_group(group_rows)
+        # auto_recommendation = _recommended_auto_for_group(group_rows)
+        # auto_recommendation = "Yes" # default to "Yes" according to business rules
         for row in group_rows:
-            row["recommended_auto_replenishment_ri"] = auto_recommendation
+            if _is_par_location(row):
+                row["recommended_auto_replenishment_ri"] = "No"
+            else:
+                row["recommended_auto_replenishment_ri"] = "Yes"
 
         if relation in {"1-0", "many-0"}:
             for row in group_rows:
@@ -357,12 +361,13 @@ def _annotate_replacement_setups(rows: List[Dict], br_calc_type: str = "simple")
                 row["recommended_reorder_quantity_code_ri"] = "N.A."
                 row["recommended_transaction_uom_ri"] = "N.A."
             elif action_value == "update":
-                auto_normalized, auto_display = _auto_value_profile(row.get("auto_replenishment_ri"))
-                if not auto_normalized or auto_normalized == "tbd":
-                    row["recommended_auto_replenishment_ri"] = "TBD"
-                else:
-                    row["recommended_auto_replenishment_ri"] = auto_display
-
+                # auto_replenishment_ri is ignored for recommendation, always "Yes" (Inventory) or "No" (Par) unless relation is 1-0/many-0
+                # auto_normalized, auto_display = _auto_value_profile(row.get("auto_replenishment_ri"))
+                # if not auto_normalized or auto_normalized == "tbd":
+                #     row["recommended_auto_replenishment_ri"] = "TBD"
+                # else:
+                #     row["recommended_auto_replenishment_ri"] = auto_display
+                
                 reorder_value = row.get("reorder_quantity_code_ri")
                 if reorder_value is None:
                     row["recommended_reorder_quantity_code_ri"] = "TBD"

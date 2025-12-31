@@ -99,6 +99,23 @@ def infer_setup_table(row: dict, explicit: str | None = None) -> str | None:
     return None
 
 
+def _boolean_values_match(left, right) -> bool:
+    def _norm(v):
+        if v is None:
+            return None
+        s = str(v).strip().lower()
+        if s in ("yes", "y", "true", "t", "1", "active"):
+            return True
+        if s in ("no", "n", "false", "f", "0", "inactive"):
+            return False
+        return None
+
+    l_bool, r_bool = _norm(left), _norm(right)
+    if l_bool is not None and r_bool is not None:
+        return l_bool == r_bool
+    return setup_values_match(left, right)
+
+
 def should_mark_update_as_no_action(row: dict, *, table: str | None = None, action_source: str | None = None) -> bool:
     if not isinstance(row, dict):
         return False
@@ -113,13 +130,22 @@ def should_mark_update_as_no_action(row: dict, *, table: str | None = None, acti
             ("reorder_quantity_code_ri", "recommended_reorder_quantity_code_ri"),
             ("min_order_qty_ri", "recommended_min_order_qty_ri"),
             ("max_order_qty_ri", "recommended_max_order_qty_ri"),
+            ("auto_replenishment_ri", "recommended_auto_replenishment_ri"),
         ]
     elif context == "par":
-        comparisons = [("reorder_point_ri", "recommended_reorder_point_ri")]
+        comparisons = [
+            ("reorder_point_ri", "recommended_reorder_point_ri"),
+            ("auto_replenishment_ri", "recommended_auto_replenishment_ri"),
+        ]
     else:
         return False
     for current_field, recommended_field in comparisons:
-        if not setup_values_match(row.get(current_field), row.get(recommended_field)):
+        val_cur = row.get(current_field)
+        val_rec = row.get(recommended_field)
+        if current_field == "auto_replenishment_ri":
+            if not _boolean_values_match(val_cur, val_rec):
+                return False
+        elif not setup_values_match(val_cur, val_rec):
             return False
     return True
 
@@ -305,9 +331,9 @@ def prepare_inventory_setup_rows(rows: list[Row]) -> list[Row]:
         raw_value = updated.get("recommended_auto_replenishment_ri")
         normalized = str(raw_value).strip().lower() if raw_value is not None else ""
         if normalized == "yes":
-            updated["recommended_auto_replenishment_ri"] = "TRUE"
+            updated["recommended_auto_replenishment_ri"] = "True"
         elif normalized == "no":
-            updated["recommended_auto_replenishment_ri"] = "FALSE"
+            updated["recommended_auto_replenishment_ri"] = "False"
         elif normalized in {"true", "false"}:
             updated["recommended_auto_replenishment_ri"] = normalized.capitalize()
         elif normalized == "tbd":

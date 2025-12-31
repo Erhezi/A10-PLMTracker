@@ -201,6 +201,7 @@ INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "min_order_qty_ri": "Current Min (Repl. Item)",
     "max_order_qty_ri": "Current Max (Repl. Item)",
     "reorder_point_ri": "Current Reorder (Repl. Item)",
+    "auto_replenishment_ri": "Current Auto-repl. (Repl. Item)",
 }
 
 PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {

@@ -532,8 +532,8 @@ def api_inventory():
         slice_end = slice_start + per_page
         rows = [row for row, _ in annotated_rows[slice_start:slice_end]]
 
-    if rows:
-        print(rows[0]) #debug (keep it for now)
+    # if rows:
+    #     print(rows[0]) #debug (keep it for now)
     return jsonify({
         "rows": rows,
         "count": len(rows),

@@ -392,7 +392,7 @@ def prepare_inventory_setup_rows(rows: list[Row]) -> list[Row]:
             updated["recommended_auto_replenishment_ri"] = "TBD"
         else:
             updated["recommended_auto_replenishment_ri"] = "TBD"
-        updated["recommended_auto_replenishment"] = "No"
+        updated["recommended_auto_replenishment"] = "False"
         prepared.append(updated)
 
     return prepared

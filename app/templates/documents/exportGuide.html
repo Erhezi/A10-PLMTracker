@@ -40,7 +40,9 @@
           <p class="small text-muted mb-2">Pick a mode at the top of the modal. Modes control which columns are shown, header overrides, and highlight rules.</p>
           <ul class="mb-0">
             <li><strong>Inventory locations (full view).</strong> Mirrors the on-screen grid for ad-hoc analysis.</li>
-            <li><strong>Inventory setup.</strong> Applies the <code>inventory_setup</code> preset so Infor-ready columns (PreferredBin, ReorderPoint, etc.) stay in front.</li>
+            <li><strong>Inventory setup &rarr; combined.</strong> Uses <code>inventory_setup_combined</code> so current and recommended bins ride in one sheet.</li>
+            <li><strong>Inventory setup &rarr; replacement.</strong> Runs the <code>inventory_setup</code> pipeline to show only future bins with the Infor headers.</li>
+            <li><strong>Inventory setup &rarr; original.</strong> Applies <code>inventory_setup_original</code> to isolate the removal list after replacements go live.</li>
             <li><strong>PAR setup &rarr; replacement.</strong> Outputs only the future PAR rows when originals are already cleared.</li>
             <li><strong>PAR setup &rarr; original.</strong> Emits the Now* rows so teams can verify what to remove after go-live.</li>
             <li><strong>PAR setup &rarr; combined.</strong> Stacks replacement and original rows together so each bin shows the before/after story.</li>
@@ -69,12 +71,49 @@
         <div class="border rounded p-3 h-100">
           <h3 class="h6 text-uppercase text-muted">How to export</h3>
           <ol class="mb-0 small">
-            <li>Select <strong>Export</strong> -> <strong>Inventory setup</strong>.</li>
+            <li>Select <strong>Export</strong> -> <strong>Inventory setup</strong> and choose Combined, Replacement only, or Original only depending on your audience.</li>
             <li>Keep the Infor-ready fields checked (company, location, recommended bins, min/max, reorder point) or deselect extras you do not need.</li>
             <li>Click <strong>Download Excel</strong>. The filename includes the current date to simplify version control.</li>
           </ol>
         </div>
       </div>
+    </div>
+    <div class="row g-4 mt-4">
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted mb-1">Combined (recommended)</h3>
+          <p class="small text-muted mb-2">Mode: <code>inventory_setup_combined</code></p>
+          <ul class="mb-0">
+            <li>Keeps replacement and original rows together so Materials sees the full bin story in one sheet.</li>
+            <li>Header overrides rename the &ldquo;Current&rdquo; columns to the exact Infor template labels for faster copy/paste.</li>
+            <li>Rows stay sorted Company &rarr; Location &rarr; Bin so Add/Replace instructions are grouped by worksite.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted mb-1">Replacement only</h3>
+          <p class="small text-muted mb-2">Mode: <code>inventory_setup</code></p>
+          <ul class="mb-0">
+            <li>Forces <em>Item Set = Replacement</em> so only the future bins show up in the workbook.</li>
+            <li>Applies the setup-action rules and recommended bin logic the export pipeline enforces for Infor.</li>
+            <li>Highlights Add/Replace rows (except NEW ITEM bins) so you can filter to the live work quickly.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="border rounded p-3 h-100">
+          <h3 class="h6 text-uppercase text-muted mb-1">Original only</h3>
+          <p class="small text-muted mb-2">Mode: <code>inventory_setup_original</code></p>
+          <ul class="mb-0">
+            <li>Locks <em>Item Set = Original</em> so you can send a cleanup list once replacements are live.</li>
+            <li>Uses the current (non-RI) columns for company, bin, and UOM so removals mirror what Infor already has.</li>
+            <li>Still respects the same highlight rules and stable sorting, making it easy to reconcile with the other modes.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4 mt-4">
       <div class="col-12">
         <div class="border rounded p-3">
           <h3 class="h6 text-uppercase text-muted">What the workbook shows</h3>

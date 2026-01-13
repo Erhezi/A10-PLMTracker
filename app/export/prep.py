@@ -11,6 +11,14 @@ PipelineStep = Callable[[list[Row]], list[Row]]
 
 MAX_PREFERRED_BIN_LENGTH = 10
 
+INVENTORY_SETUP_COMPARISONS: tuple[tuple[str, str], ...] = (
+    ("transaction_uom_ri", "recommended_transaction_uom_ri"),
+    ("reorder_quantity_code_ri", "recommended_reorder_quantity_code_ri"),
+    ("min_order_qty_ri", "recommended_min_order_qty_ri"),
+    ("max_order_qty_ri", "recommended_max_order_qty_ri"),
+    ("auto_replenishment_ri", "recommended_auto_replenishment_ri"),
+)
+
 
 def apply_pipeline(rows: list[Row], steps: Iterable[PipelineStep]) -> list[Row]:
     current = rows
@@ -99,18 +107,23 @@ def infer_setup_table(row: dict, explicit: str | None = None) -> str | None:
     return None
 
 
-def _boolean_values_match(left, right) -> bool:
-    def _norm(v):
-        if v is None:
-            return None
-        s = str(v).strip().lower()
-        if s in ("yes", "y", "true", "t", "1", "active"):
-            return True
-        if s in ("no", "n", "false", "f", "0", "inactive"):
-            return False
+def _normalize_boolean_flag(value) -> bool | None:
+    if value is None:
         return None
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if not s:
+        return None
+    if s in {"yes", "y", "true", "t", "1", "active"}:
+        return True
+    if s in {"no", "n", "false", "f", "0", "inactive"}:
+        return False
+    return None
 
-    l_bool, r_bool = _norm(left), _norm(right)
+
+def _boolean_values_match(left, right) -> bool:
+    l_bool, r_bool = _normalize_boolean_flag(left), _normalize_boolean_flag(right)
     if l_bool is not None and r_bool is not None:
         return l_bool == r_bool
     return setup_values_match(left, right)
@@ -125,13 +138,7 @@ def should_mark_update_as_no_action(row: dict, *, table: str | None = None, acti
         return False
     context = infer_setup_table(row, explicit=table)
     if context == "inventory":
-        comparisons = [
-            ("transaction_uom_ri", "recommended_transaction_uom_ri"),
-            ("reorder_quantity_code_ri", "recommended_reorder_quantity_code_ri"),
-            ("min_order_qty_ri", "recommended_min_order_qty_ri"),
-            ("max_order_qty_ri", "recommended_max_order_qty_ri"),
-            ("auto_replenishment_ri", "recommended_auto_replenishment_ri"),
-        ]
+        comparisons = list(INVENTORY_SETUP_COMPARISONS)
     elif context == "par":
         comparisons = [
             ("reorder_point_ri", "recommended_reorder_point_ri"),
@@ -210,6 +217,49 @@ def apply_setup_action_rules(
         normalized.append(updated)
 
     return normalized
+
+
+def apply_inventory_replacement_setup_action(rows: list[Row]) -> list[Row]:
+    if not rows:
+        return []
+
+    processed: list[Row] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        updated = dict(row)
+        no_action = True
+        for current_field, recommended_field in INVENTORY_SETUP_COMPARISONS:
+            val_cur = updated.get(current_field)
+            val_rec = updated.get(recommended_field)
+            if current_field == "auto_replenishment_ri":
+                if not _boolean_values_match(val_cur, val_rec):
+                    no_action = False
+                    break
+            elif not setup_values_match(val_cur, val_rec):
+                no_action = False
+                break
+        updated["setup_action"] = "No Action (U)" if no_action else "Replace"
+        processed.append(updated)
+
+    return processed
+
+
+def apply_inventory_original_setup_action(rows: list[Row]) -> list[Row]:
+    if not rows:
+        return []
+
+    processed: list[Row] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        updated = dict(row)
+        auto_flag = _normalize_boolean_flag(updated.get("auto_replenishment"))
+        updated["setup_action"] = "No Action (U)" if auto_flag is False else "Replace"
+        updated["notes"] = ""
+        processed.append(updated)
+
+    return processed
 
 
 def apply_inventory_recommended_bin_display(rows: list[Row]) -> list[Row]:
@@ -308,6 +358,8 @@ def sort_export_rows(rows: list[Row], column_mode: str) -> list[Row]:
 
     if column_mode == "inventory_setup":
         key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
+    elif column_mode == "inventory_setup_original":
+        key_fields = ("company", "location", "preferred_bin")
     elif column_mode == "par_setup_replacement":
         key_fields = ("company", "location_ri", "recommended_preferred_bin_ri")
     elif column_mode == "par_setup_original":
@@ -340,9 +392,88 @@ def prepare_inventory_setup_rows(rows: list[Row]) -> list[Row]:
             updated["recommended_auto_replenishment_ri"] = "TBD"
         else:
             updated["recommended_auto_replenishment_ri"] = "TBD"
+        updated["recommended_auto_replenishment"] = "No"
         prepared.append(updated)
 
     return prepared
+
+
+def prepare_inventory_setup_combined_rows(rows: list[Row]) -> list[Row]:
+    if not rows:
+        return []
+
+    normalized_rows = prepare_inventory_setup_rows(rows)
+
+    replacement_rows = apply_inventory_replacement_setup_action(
+        apply_setup_action_rules(
+            normalized_rows,
+            table="inventory",
+            forced_item_set="Replacement",
+        )
+    )
+    original_rows = apply_inventory_original_setup_action(
+        apply_setup_action_rules(
+            normalized_rows,
+            table="inventory",
+            forced_item_set="Original",
+        )
+    )
+
+    combined: list[Row] = []
+
+    for row in sort_export_rows(replacement_rows, "inventory_setup"):
+        combined.append({
+            "company": row.get("company"),
+            "location_ri": row.get("location_ri"),
+            "replacement_item": row.get("replacement_item"),
+            "recommended_transaction_uom_ri": row.get("recommended_transaction_uom_ri"),
+            "recommended_preferred_bin_ri": row.get("recommended_preferred_bin_ri"),
+            "recommended_min_order_qty_ri": row.get("recommended_min_order_qty_ri"),
+            "recommended_max_order_qty_ri": row.get("recommended_max_order_qty_ri"),
+            "recommended_reorder_point_ri": row.get("recommended_reorder_point_ri"),
+            "recommended_auto_replenishment_ri": row.get("recommended_auto_replenishment_ri"),
+            "manufacturer_number_ri": row.get("manufacturer_number_ri"),
+            "setup_action": row.get("setup_action"),
+            "notes": row.get("notes"),
+            "preferred_bin_ri": row.get("preferred_bin_ri"),
+            "min_order_qty_ri": row.get("min_order_qty_ri"),
+            "max_order_qty_ri": row.get("max_order_qty_ri"),
+            "reorder_point_ri": row.get("reorder_point_ri"),
+            "auto_replenishment_ri": row.get("auto_replenishment_ri"),
+            "item_set": row.get("item_set") or "Replacement",
+        })
+
+    for row in sort_export_rows(original_rows, "inventory_setup_original"):
+        combined.append({
+            "company": row.get("company"),
+            "location_ri": row.get("location"),
+            "replacement_item": row.get("item"),
+            "recommended_transaction_uom_ri": row.get("transaction_uom"),
+            "recommended_preferred_bin_ri": row.get("preferred_bin"),
+            "recommended_min_order_qty_ri": row.get("min_order_qty"),
+            "recommended_max_order_qty_ri": row.get("max_order_qty"),
+            "recommended_reorder_point_ri": row.get("reorder_point"),
+            "recommended_auto_replenishment_ri": row.get("recommended_auto_replenishment"),
+            "manufacturer_number_ri": row.get("manufacturer_number"),
+            "setup_action": row.get("setup_action"),
+            "notes": row.get("notes"),
+            "preferred_bin_ri": row.get("preferred_bin_ri"),
+            "min_order_qty_ri": row.get("min_order_qty_ri"),
+            "max_order_qty_ri": row.get("max_order_qty_ri"),
+            "reorder_point_ri": row.get("reorder_point_ri"),
+            "auto_replenishment_ri": row.get("auto_replenishment"),
+            "item_set": row.get("item_set") or "Original",
+        })
+
+    def _combined_sort_key(entry: dict) -> tuple[str, str, str]:
+        return (
+            _sort_value(entry.get("company")),
+            _sort_value(entry.get("location_ri")),
+            _sort_value(entry.get("recommended_preferred_bin_ri")),
+        )
+
+    combined.sort(key=_combined_sort_key)
+    return combined
 
 
 def prepare_par_setup_combined_rows(rows: list[Row]) -> list[Row]:
@@ -414,6 +545,8 @@ def prepare_par_setup_combined_rows(rows: list[Row]) -> list[Row]:
 
 __all__ = [
     "MAX_PREFERRED_BIN_LENGTH",
+    "apply_inventory_original_setup_action",
+    "apply_inventory_replacement_setup_action",
     "apply_inventory_recommended_bin_display",
     "apply_pipeline",
     "apply_setup_action_rules",
@@ -422,6 +555,7 @@ __all__ = [
     "filter_export_columns",
     "parse_column_selection",
     "prepare_inventory_setup_rows",
+    "prepare_inventory_setup_combined_rows",
     "prepare_par_setup_combined_rows",
     "prepare_par_setup_original_rows",
     "setup_values_match",

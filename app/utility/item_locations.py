@@ -129,6 +129,7 @@ def build_location_pairs(
             "recommended_preferred_bin_ri": None,
             "recommended_transaction_uom_ri": r.MatchedTransactionUOM_ri,
             "recommended_transaction_uom_multiplier_ri": r.MatchedTransactionUOMMultiplier_ri,
+            "recommentded_auto_replenishment": "No",
             # row level
             "action": r.action,
             "notes": getattr(r, "notes", None),

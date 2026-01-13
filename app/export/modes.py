@@ -5,8 +5,11 @@ from functools import partial
 from typing import Callable, Mapping, Sequence
 
 from .prep import (
+    apply_inventory_original_setup_action,
     apply_inventory_recommended_bin_display,
+    apply_inventory_replacement_setup_action,
     apply_setup_action_rules,
+    prepare_inventory_setup_combined_rows,
     prepare_inventory_setup_rows,
     prepare_par_setup_combined_rows,
     prepare_par_setup_original_rows,
@@ -31,6 +34,15 @@ def _par_setup_combined_should_highlight(row: Row) -> bool:
     if item_set is None:
         return False
     return str(item_set).strip().lower() == "replacement"
+
+
+def _select_columns(source: Sequence[tuple[str, str]], fields: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    header_lookup = {field: header for header, field in source}
+    selected: list[tuple[str, str]] = []
+    for field in fields:
+        header = header_lookup.get(field, field.replace("_", " ").title())
+        selected.append((header, field))
+    return tuple(selected)
 
 INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
@@ -79,7 +91,6 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Buy UOM Multiplier (RI)", "buy_uom_multiplier_ri"),
     ("Transaction UOM (RI)", "transaction_uom_ri"),
     ("Transaction UOM (Recom.)", "recommended_transaction_uom_ri"),
-    ("Transaction UOM Multiplier (RI)", "transaction_uom_multiplier_ri"),
     ("Transaction UOM Multiplier (Recom.)", "recommended_transaction_uom_multiplier_ri"),
     ("Reorder Policy (RI)", "reorder_quantity_code_ri"),
     ("Reorder Policy (Recom.)", "recommended_reorder_quantity_code_ri"),
@@ -96,6 +107,58 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Setup Action", "setup_action"),
     ("Notes", "notes"),
 ]
+
+INVENTORY_SETUP_FIELDS: tuple[str, ...] = (
+    "company",
+    "location_ri",
+    "replacement_item",
+    "recommended_transaction_uom_ri",
+    "recommended_preferred_bin_ri",
+    "recommended_min_order_qty_ri",
+    "recommended_max_order_qty_ri",
+    "recommended_reorder_point_ri",
+    "recommended_auto_replenishment_ri",
+    "manufacturer_number_ri",
+    "setup_action",
+    "notes",
+    "preferred_bin_ri",
+    "min_order_qty_ri",
+    "max_order_qty_ri",
+    "reorder_point_ri",
+    "auto_replenishment_ri",
+    "item_set",
+)
+
+INVENTORY_SETUP_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = _select_columns(
+    INVENTORY_EXPORT_COLUMNS,
+    INVENTORY_SETUP_FIELDS,
+)
+
+INVENTORY_SETUP_ORIGINAL_FIELDS: tuple[str, ...] = (
+    "company",
+    "location",
+    "item",
+    "transaction_uom",
+    "preferred_bin",
+    "min_order_qty",
+    "max_order_qty",
+    "reorder_point",
+    "recommended_auto_replenishment",
+    "manufacturer_number",
+    "setup_action",
+    "notes",
+    "preferred_bin_ri",
+    "min_order_qty_ri",
+    "max_order_qty_ri",
+    "reorder_point_ri",
+    "auto_replenishment",
+    "item_set",
+)
+
+INVENTORY_SETUP_ORIGINAL_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = _select_columns(
+    INVENTORY_EXPORT_COLUMNS,
+    INVENTORY_SETUP_ORIGINAL_FIELDS,
+)
 
 PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
@@ -202,6 +265,37 @@ INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "max_order_qty_ri": "Current Max (Repl. Item)",
     "reorder_point_ri": "Current Reorder (Repl. Item)",
     "auto_replenishment_ri": "Current Auto-repl. (Repl. Item)",
+    "item_set": "Item Set",
+}
+
+INVENTORY_SETUP_COMBINED_HEADER_OVERRIDES: dict[str, str] = {
+    **INVENTORY_SETUP_HEADER_OVERRIDES,
+    "preferred_bin_ri": "Current PreferredBin",
+    "min_order_qty_ri": "Current Min",
+    "max_order_qty_ri": "Current Max",
+    "reorder_point_ri": "Current Reorder",
+    "auto_replenishment_ri": "Current Auto-repl.",
+}
+
+INVENTORY_SETUP_ORIGINAL_HEADER_OVERRIDES: dict[str, str] = {
+    "company": INVENTORY_SETUP_HEADER_OVERRIDES["company"],
+    "location": INVENTORY_SETUP_HEADER_OVERRIDES["location_ri"],
+    "item": INVENTORY_SETUP_HEADER_OVERRIDES["item"],
+    "transaction_uom": INVENTORY_SETUP_HEADER_OVERRIDES["recommended_transaction_uom_ri"],
+    "preferred_bin": INVENTORY_SETUP_HEADER_OVERRIDES["recommended_preferred_bin_ri"],
+    "min_order_qty": INVENTORY_SETUP_HEADER_OVERRIDES["recommended_min_order_qty_ri"],
+    "max_order_qty": INVENTORY_SETUP_HEADER_OVERRIDES["recommended_max_order_qty_ri"],
+    "reorder_point": INVENTORY_SETUP_HEADER_OVERRIDES["recommended_reorder_point_ri"],
+    "recommended_auto_replenishment": INVENTORY_SETUP_HEADER_OVERRIDES["recommended_auto_replenishment_ri"],
+    "manufacturer_number": INVENTORY_SETUP_HEADER_OVERRIDES["manufacturer_number_ri"],
+    "setup_action": INVENTORY_SETUP_HEADER_OVERRIDES["setup_action"],
+    "notes": INVENTORY_SETUP_HEADER_OVERRIDES["notes"],
+    "preferred_bin_ri": INVENTORY_SETUP_HEADER_OVERRIDES["preferred_bin_ri"],
+    "min_order_qty_ri": INVENTORY_SETUP_HEADER_OVERRIDES["min_order_qty_ri"],
+    "max_order_qty_ri": INVENTORY_SETUP_HEADER_OVERRIDES["max_order_qty_ri"],
+    "reorder_point_ri": INVENTORY_SETUP_HEADER_OVERRIDES["reorder_point_ri"],
+    "auto_replenishment": "Current Auto-repl. (Item)",
+    "item_set": "Item Set",
 }
 
 PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {
@@ -282,13 +376,36 @@ TABLE_CONFIGS: dict[str, TableConfig] = {
 }
 
 COLUMN_MODE_REGISTRY: dict[str, ColumnMode] = {
+    "inventory_setup_combined": ColumnMode(
+        key="inventory_setup_combined",
+        columns=INVENTORY_SETUP_EXPORT_COLUMNS,
+        header_overrides=INVENTORY_SETUP_COMBINED_HEADER_OVERRIDES,
+        pipeline=(prepare_inventory_setup_combined_rows,),
+        highlight_notes=True,
+        highlight_row_predicate=_inventory_setup_should_highlight,
+    ),
     "inventory_setup": ColumnMode(
         key="inventory_setup",
+        columns=INVENTORY_SETUP_EXPORT_COLUMNS,
         header_overrides=INVENTORY_SETUP_HEADER_OVERRIDES,
         pipeline=(
             prepare_inventory_setup_rows,
-            partial(apply_setup_action_rules, table="inventory"),
+            partial(apply_setup_action_rules, table="inventory", forced_item_set="Replacement"),
+            apply_inventory_replacement_setup_action,
             partial(sort_export_rows, column_mode="inventory_setup"),
+        ),
+        highlight_notes=True,
+        highlight_row_predicate=_inventory_setup_should_highlight,
+    ),
+    "inventory_setup_original": ColumnMode(
+        key="inventory_setup_original",
+        columns=INVENTORY_SETUP_ORIGINAL_EXPORT_COLUMNS,
+        header_overrides=INVENTORY_SETUP_ORIGINAL_HEADER_OVERRIDES,
+        pipeline=(
+            prepare_inventory_setup_rows,
+            partial(apply_setup_action_rules, table="inventory", forced_item_set="Original"),
+            apply_inventory_original_setup_action,
+            partial(sort_export_rows, column_mode="inventory_setup_original"),
         ),
         highlight_notes=True,
         highlight_row_predicate=_inventory_setup_should_highlight,

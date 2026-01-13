@@ -141,7 +141,7 @@
     <h2 class="h5">Wrike task downloads</h2>
     <p class="text-muted">The Wrike buttons on <em>Groups</em> reuse these same exports so the Excel attachment matches the dashboard.</p>
     <ul>
-      <li><strong>Shared column modes.</strong> The modal maps <em>Set-up Inv.</em> to the <code>inventory_setup</code> preset and <em>Set-up Par</em> to <code>par_setup_combined</code> (see <code>wrikeExportTargets</code> in <code>app/templates/collector/groups.html</code>).</li>
+      <li><strong>Shared column modes.</strong> The modal maps <em>Set-up Inv.</em> to the <code>inventory_setup_combined</code> preset and <em>Set-up Par</em> to <code>par_setup_combined</code> (see <code>wrikeExportTargets</code> in <code>app/templates/collector/groups.html</code>).</li>
       <li><strong>Scoped columns.</strong> Only Wrike-critical fields (company, location, recommended bins, Infor-ready min/max and notes) are kept, but the data matches the dashboard export exactly.</li>
       <li><strong>Consistent filtering.</strong> The modal sends the same filters you used in the dashboard, so the Wrike attachment references the identical row set.</li>
       <li><strong>Get Item #.</strong> The Wrike task for acquiring new item numbers uses a lighter preset (contract and manufacturer fields) but follows the same filtered-row rules.</li>

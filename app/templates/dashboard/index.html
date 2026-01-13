@@ -520,7 +520,11 @@
           </div>
           <div class="form-check export-column-mode-option d-none" data-table="inventory">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-setup" value="inventory_setup" data-table="inventory">
-            <label class="form-check-label" for="export-column-inventory-setup">Inventory set up</label>
+            <label class="form-check-label" for="export-column-inventory-setup">Inventory set up (replacement)</label>
+          </div>
+          <div class="form-check export-column-mode-option d-none" data-table="inventory">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-setup-original" value="inventory_setup_original" data-table="inventory">
+            <label class="form-check-label" for="export-column-inventory-setup-original">Inventory set up (original)</label>
           </div>
           <div class="form-check export-column-mode-option d-none" data-table="par">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-replacement" value="par_setup_replacement" data-table="par">
@@ -803,6 +807,47 @@ document.addEventListener('DOMContentLoaded', () => {
         'max_order_qty_ri',
         'reorder_point_ri',
         'auto_replenishment_ri',
+        'item_set',
+      ],
+      inventory_setup_combined: [
+        'company',
+        'location_ri',
+        'replacement_item',
+        'recommended_transaction_uom_ri',
+        'recommended_preferred_bin_ri',
+        'recommended_min_order_qty_ri',
+        'recommended_max_order_qty_ri',
+        'recommended_reorder_point_ri',
+        'recommended_auto_replenishment_ri',
+        'manufacturer_number_ri',
+        'setup_action',
+        'notes',
+        'preferred_bin_ri',
+        'min_order_qty_ri',
+        'max_order_qty_ri',
+        'reorder_point_ri',
+        'auto_replenishment_ri',
+        'item_set',
+      ],
+      inventory_setup_original: [
+        'company',
+        'location',
+        'item',
+        'transaction_uom',
+        'preferred_bin',
+        'min_order_qty',
+        'max_order_qty',
+        'reorder_point',
+        'recommended_auto_replenishment',
+        'manufacturer_number',
+        'setup_action',
+        'notes',
+        'preferred_bin_ri',
+        'min_order_qty_ri',
+        'max_order_qty_ri',
+        'reorder_point_ri',
+        'auto_replenishment',
+        'item_set',
       ],
     },
     par: {
@@ -845,11 +890,15 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   };
   const exportExtraColumns = {
+    inventory: [
+      { field: 'recommended_auto_replenishment', label: 'AutomaticPurchaseOrder (True/False)' },
+      { field: 'item_set', label: 'Item Set' },
+    ],
     par: [
       { field: 'item_set', label: 'Item Set' },
     ],
   };
-  const customExportModes = new Set(['custom', 'inventory_setup', 'par_setup_replacement', 'par_setup_original']);
+  const customExportModes = new Set(['custom', 'inventory_setup', 'inventory_setup_combined', 'inventory_setup_original', 'par_setup_replacement', 'par_setup_original']);
   const exportState = {
     tableKey: null,
     rowScope: 'filtered',
@@ -2525,13 +2574,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setExportColumnMode(mode){
+    const inventoryModes = ['inventory_setup', 'inventory_setup_combined', 'inventory_setup_original'];
     const parModes = ['par_setup_replacement', 'par_setup_original'];
-    const allowedModes = ['all', 'visible', 'custom', 'inventory_setup', ...parModes];
+    const allowedModes = ['all', 'visible', 'custom', ...inventoryModes, ...parModes];
     let normalized = allowedModes.includes(mode) ? mode : 'all';
-    if(normalized === 'inventory_setup' && exportState.tableKey !== 'inventory'){
+    let isInventoryPreset = inventoryModes.includes(normalized);
+    let isParPreset = parModes.includes(normalized);
+    if(isInventoryPreset && exportState.tableKey !== 'inventory'){
       normalized = 'all';
-    } else if(parModes.includes(normalized) && exportState.tableKey !== 'par'){
+      isInventoryPreset = false;
+    } else if(isParPreset && exportState.tableKey !== 'par'){
       normalized = 'all';
+      isParPreset = false;
     }
     exportState.columnMode = normalized;
     if(normalized === 'custom' && exportState.selectedFields.length === 0){
@@ -2541,7 +2595,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if(exportState.allColumns.length){
         exportState.selectedFields = exportState.allColumns.map(col => col.field);
       }
-    } else if(normalized === 'inventory_setup' || parModes.includes(normalized)){
+    } else if(isInventoryPreset || isParPreset){
       const presets = (exportPresetFields[exportState.tableKey] || {})[normalized] || [];
       const availableFields = new Set(exportState.allColumns.map(col => col.field));
       const filtered = presets.filter(field => availableFields.has(field));

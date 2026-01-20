@@ -476,6 +476,56 @@ def prepare_inventory_setup_combined_rows(rows: list[Row]) -> list[Row]:
     return combined
 
 
+def _format_item_reference(replacement_item: object, manufacturer_number: object) -> str:
+    replacement_text = str(replacement_item or "").strip()
+    manufacturer_text = str(manufacturer_number or "").strip()
+    return f"SEE ITEM NO {replacement_text} MFG NO {manufacturer_text}".strip()
+
+
+def prepare_inventory_item_description_update_original_rows(rows: list[Row]) -> list[Row]:
+    if not rows:
+        return []
+
+    prepared: list[Row] = []
+    seen_items: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        item_value = row.get("item")
+        item_key = str(item_value or "").strip().casefold()
+        if item_key in seen_items:
+            continue
+        seen_items.add(item_key)
+
+        stage_raw = row.get("stage")
+        stage = str(stage_raw or "").strip().lower()
+        replacement_text = str(row.get("replacement_item") or "").strip()
+        manufacturer_text = str(row.get("manufacturer_number_ri") or "").strip()
+        reference_text = _format_item_reference(replacement_text, manufacturer_text)
+        reference2 = ""
+        description2 = ""
+
+        is_discontinued = "discontinued" in stage or not replacement_text
+        if is_discontinued:
+            reference2 = 'DISCONTINUED'
+            description2 = 'DISCONTINUED'
+        elif stage in {"tracking - item transition", "pending clinical readiness"}:
+            if replacement_text or manufacturer_text:
+                reference2 = reference_text
+                description2 = f"DISCONTINUED {reference_text}".strip()
+
+        prepared.append({
+            "item_group_export": 1,
+            "replacement_item": row.get("item"),
+            "stock_uom": row.get("stock_uom"),
+            "reference2": reference2,
+            "description2": description2,
+        })
+
+    return prepared
+
+
 def prepare_par_setup_combined_rows(rows: list[Row]) -> list[Row]:
     if not rows:
         return []
@@ -556,6 +606,7 @@ __all__ = [
     "parse_column_selection",
     "prepare_inventory_setup_rows",
     "prepare_inventory_setup_combined_rows",
+    "prepare_inventory_item_description_update_original_rows",
     "prepare_par_setup_combined_rows",
     "prepare_par_setup_original_rows",
     "setup_values_match",

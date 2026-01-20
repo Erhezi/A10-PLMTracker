@@ -919,9 +919,15 @@ def export_table(table_key: str):
     workbook.save(output)
     output.seek(0)
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename_prefix = table_config.sheet_name.lower().replace(" ", "_")
-    filename = f"{filename_prefix}_{timestamp}.xlsx"
+    now = datetime.utcnow()
+    if column_mode == "inventory_item_description_update_original":
+        date_stamp = now.strftime("%Y%m%d")
+        time_stamp = now.strftime("%H%M%S")
+        filename = f"item_description_update_{date_stamp}_{time_stamp}.xlsx"
+    else:
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        filename_prefix = table_config.sheet_name.lower().replace(" ", "_")
+        filename = f"{filename_prefix}_{timestamp}.xlsx"
 
     return send_file(
         output,

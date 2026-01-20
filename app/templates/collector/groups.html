@@ -26,6 +26,7 @@
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id1" disabled>Create Wrike Task - Get Item #</button>
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id2" disabled>Create Wrike Task - Set-up Inv.</button>
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id3" disabled>Create Wrike Task - Set-up Par</button>
+    <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="wrike_id4" disabled>Create Wrike Task - Update Desc.</button>
     <button type="button" class="btn btn-outline-primary batch-action-btn" data-action="go_live" disabled>Change Go Live Date</button>
   </div>
   <div class="d-flex align-items-center gap-2 ms-auto">
@@ -130,6 +131,7 @@
         <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID1</small> Get Item # <span class="sort-indicator"></span></th>
         <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID2</small> Set-up Inv. <span class="sort-indicator"></span></th>
         <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID3</small> Set-up Par <span class="sort-indicator"></span></th>
+        <th class="sortable text-center wrike-col" data-type="wrike"><small class="wrike-id text-muted">Wrike ID4</small> Update Desc <span class="sort-indicator"></span></th>
         <th class="sortable text-center go-live-col" data-type="date" style="min-width:90px; width:90px;">Go Live <span class="sort-indicator"></span></th>
         <th class="sortable text-center" data-type="date">CreateDT <span class="sort-indicator"></span></th>
         <th class="sortable text-center" data-type="datetime">UpdateDT <span class="sort-indicator"></span></th>
@@ -180,6 +182,7 @@
           {% set wrike_id1 = wrike.wrike_id1 if wrike else '' %}
           {% set wrike_id2 = wrike.wrike_id2 if wrike else '' %}
           {% set wrike_id3 = wrike.wrike_id3 if wrike else '' %}
+          {% set wrike_id4 = wrike.wrike_id4 if wrike else '' %}
           <td class="stage-cell text-center" data-value="{{ r.stage or '' }}">
             <span class="read-value">
               {% if r.stage %}
@@ -222,6 +225,16 @@
             </span>
             <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" class="form-control form-control-sm d-none" name="wrike_id3" value="{{ wrike_id3 or '' }}" />
           </td>
+          <td class="wrike-cell text-center" data-field="wrike_id4" data-value="{{ wrike_id4 or '' }}">
+            <span class="read-value">
+              {% if wrike_id4 %}
+                <a href="https://www.wrike.com/open.htm?id={{ wrike_id4 }}" target="_blank" rel="noopener" class="small">{{ wrike_id4 }}</a>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </span>
+            <input type="text" pattern="\d{10}" inputmode="numeric" maxlength="10" minlength="10" class="form-control form-control-sm d-none" name="wrike_id4" value="{{ wrike_id4 or '' }}" />
+          </td>
           <td class="date-cell text-center" data-value="{{ r.expected_go_live_date }}" style="width:90px; min-width:90px;">
             <span class="read-value">
               {% if not r.expected_go_live_date or r.expected_go_live_date|string|lower in ['nan','none',''] %}
@@ -237,7 +250,7 @@
         </tr>
         {% endfor %}
       {% else %}
-      <tr><td colspan="17" class="text-muted fst-italic">No ItemLink records.</td></tr>
+      <tr><td colspan="18" class="text-muted fst-italic">No ItemLink records.</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -342,6 +355,7 @@
       "wrike_id1": url_for("collector.batch_update_wrike", field="wrike_id1"),
       "wrike_id2": url_for("collector.batch_update_wrike", field="wrike_id2"),
       "wrike_id3": url_for("collector.batch_update_wrike", field="wrike_id3"),
+      "wrike_id4": url_for("collector.batch_update_wrike", field="wrike_id4"),
     },
     "goLive": url_for("collector.batch_update_go_live"),
   } | tojson }}
@@ -402,13 +416,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const wrikeGetItemButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id1');
   const wrikeSetupInvButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id2');
   const wrikeSetupParButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id3');
+  const wrikeUpdateDescButton = batchButtons.find(btn => btn.dataset.action === 'wrike_id4');
   const MULTI_STAGE_SELECTION_ALERT = 'Change Project Stage is only available when all selected rows share the same current stage. Filter on Stage and try again.';
   const STAGE_PENDING_ITEM_NUMBER = 'Pending Item Number';
   const WRIKE_ID1_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Get Item # is only available when all selected rows are in Pending Item Number stage.';
   const STAGE_PENDING_CLINICAL_READINESS = 'Pending Clinical Readiness';
+  const STAGE_TRACKING_ITEM_TRANSITION = 'Tracking - Item Transition';
+  const STAGE_TRACKING_DISCONTINUED = 'Tracking - Discontinued';
   const WRIKE_PENDING_CLINICAL_SELECTION_HINT = 'Select Pending Clinical Readiness rows to create Wrike IDs.';
   const WRIKE_ID2_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Set-up Inv. is only available when all selected rows are in Pending Clinical Readiness stage.';
   const WRIKE_ID3_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Set-up Par is only available when all selected rows are in Pending Clinical Readiness stage.';
+  const WRIKE_ID4_STAGE_REQUIREMENT_MESSAGE = 'Create Wrike Task - Update Desc. is only available when all selected rows are in Pending Clinical Readiness, Tracking - Item Transition, or Tracking - Discontinued stage.';
   const selectHeader = table ? table.querySelector('.select-header') : null;
   const editHeader = table ? table.querySelector('.edit-header') : null;
   const selectAll = document.getElementById('batch-select-all');
@@ -722,9 +740,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function updateWrikeUpdateDescButtonState(){
+    if(!wrikeUpdateDescButton){
+      return;
+    }
+    if(batchToggle && !batchToggle.checked){
+      wrikeUpdateDescButton.disabled = true;
+      wrikeUpdateDescButton.title = 'Enable Batch Change to update Wrike tasks.';
+      return;
+    }
+    const selectedRows = getSelectedRows();
+    if(!selectedRows.length){
+      wrikeUpdateDescButton.disabled = true;
+      wrikeUpdateDescButton.title = 'Select Pending Clinical Readiness, Tracking - Item Transition, or Tracking - Discontinued rows to create Wrike IDs.';
+      return;
+    }
+    const allowed = selectedRows.every(row => {
+      const stageValue = getRowStageValue(row);
+      return stageMatches(stageValue, STAGE_PENDING_CLINICAL_READINESS)
+        || stageMatches(stageValue, STAGE_TRACKING_ITEM_TRANSITION)
+        || stageMatches(stageValue, STAGE_TRACKING_DISCONTINUED);
+    });
+    wrikeUpdateDescButton.disabled = !allowed;
+    if(!allowed){
+      wrikeUpdateDescButton.title = WRIKE_ID4_STAGE_REQUIREMENT_MESSAGE;
+    } else {
+      wrikeUpdateDescButton.removeAttribute('title');
+    }
+  }
+
   function updateWrikeSetupButtonsState(){
     updateWrikeSetupButtonState(wrikeSetupInvButton, WRIKE_PENDING_CLINICAL_SELECTION_HINT, WRIKE_ID2_STAGE_REQUIREMENT_MESSAGE);
     updateWrikeSetupButtonState(wrikeSetupParButton, WRIKE_PENDING_CLINICAL_SELECTION_HINT, WRIKE_ID3_STAGE_REQUIREMENT_MESSAGE);
+    updateWrikeUpdateDescButtonState();
   }
 
   const isBatchModeEnabled = () => !!(batchToggle && batchToggle.checked);
@@ -1010,7 +1058,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const inp = dateCell.querySelector('input');
       if(inp) inp.value = rec.expected_go_live_date || '';
     }
-    ['wrike_id1','wrike_id2','wrike_id3'].forEach(field => {
+    ['wrike_id1','wrike_id2','wrike_id3','wrike_id4'].forEach(field => {
       const cell = row.querySelector(`.wrike-cell[data-field="${field}"]`);
       if(!cell) return;
       const span = cell.querySelector('.read-value');
@@ -1323,6 +1371,18 @@ document.addEventListener('DOMContentLoaded', () => {
         'item_set',
       ],
     },
+    wrike_id4: {
+      mode: 'dashboard',
+      tableKey: 'inventory',
+      columnMode: 'inventory_item_description_update_original',
+      columns: [
+        'item_group_export',
+        'replacement_item',
+        'stock_uom',
+        'reference2',
+        'description2',
+      ],
+    },
   };
   const sanitizeDownloadSegment = (value) => {
     const cleaned = (value || '')
@@ -1370,6 +1430,7 @@ document.addEventListener('DOMContentLoaded', () => {
       wrike_id1: 'assign_item_number_Wrike',
       wrike_id2: 'set_up_inventory_Wrike',
       wrike_id3: 'set_up_par_Wrike',
+      wrike_id4: 'item_description_update_original_Wrike',
     };
     const base = baseMap[field] || 'wrike_export';
     const cleanId = sanitizeDownloadSegment(wrikeId || 'NOT ENTERED');
@@ -1866,7 +1927,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const formData = new FormData();
       formData.append('stage', stage);
       if(dateVal) formData.append('expected_go_live_date', dateVal);
-      ['wrike_id1','wrike_id2','wrike_id3'].forEach(field => {
+      ['wrike_id1','wrike_id2','wrike_id3','wrike_id4'].forEach(field => {
         const input = row.querySelector(`input[name="${field}"]`);
         if(!input) return;
         formData.append(field, input.value.trim());
@@ -1926,7 +1987,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const inp = dateCell.querySelector('input');
         if(inp) inp.value = rec.expected_go_live_date || '';
       }
-        ['wrike_id1','wrike_id2','wrike_id3'].forEach(field => {
+        ['wrike_id1','wrike_id2','wrike_id3','wrike_id4'].forEach(field => {
           const cell = row.querySelector(`.wrike-cell[data-field="${field}"]`);
           if(!cell) return;
           const span = cell.querySelector('.read-value');
@@ -2210,6 +2271,18 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
       }
+      if(action === 'wrike_id4'){
+        const allAllowed = selected.every(row => {
+          const stageValue = getRowStageValue(row);
+          return stageMatches(stageValue, STAGE_PENDING_CLINICAL_READINESS)
+            || stageMatches(stageValue, STAGE_TRACKING_ITEM_TRANSITION)
+            || stageMatches(stageValue, STAGE_TRACKING_DISCONTINUED);
+        });
+        if(!allAllowed){
+          alert(WRIKE_ID4_STAGE_REQUIREMENT_MESSAGE);
+          return;
+        }
+      }
       const visibleSelection = filterToSelectedRows();
       if(!visibleSelection.length){
         return;
@@ -2231,11 +2304,13 @@ document.addEventListener('DOMContentLoaded', () => {
           if(action === 'wrike_id1') wrikeInputLabel.textContent = 'Wrike ID (Get Item #)';
           if(action === 'wrike_id2') wrikeInputLabel.textContent = 'Wrike ID (Set-up Inv.)';
           if(action === 'wrike_id3') wrikeInputLabel.textContent = 'Wrike ID (Set-up Par)';
+          if(action === 'wrike_id4') wrikeInputLabel.textContent = 'Wrike ID (Update Desc)';
         }
         if(wrikeModalTitle){
           if(action === 'wrike_id1') wrikeModalTitle.textContent = 'Create Wrike Task - Get Item #';
           if(action === 'wrike_id2') wrikeModalTitle.textContent = 'Create Wrike Task - Set-up Inv.';
           if(action === 'wrike_id3') wrikeModalTitle.textContent = 'Create Wrike Task - Set-up Par';
+          if(action === 'wrike_id4') wrikeModalTitle.textContent = 'Create Wrike Task - Update Desc.';
         }
         if(wrikeDownloadBtn){
           // Only enable Excel export for Wrike flows that have a dashboard preset backing it

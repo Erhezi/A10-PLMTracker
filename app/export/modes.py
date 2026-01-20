@@ -9,6 +9,7 @@ from .prep import (
     apply_inventory_recommended_bin_display,
     apply_inventory_replacement_setup_action,
     apply_setup_action_rules,
+    prepare_inventory_item_description_update_original_rows,
     prepare_inventory_setup_combined_rows,
     prepare_inventory_setup_rows,
     prepare_par_setup_combined_rows,
@@ -158,6 +159,14 @@ INVENTORY_SETUP_ORIGINAL_FIELDS: tuple[str, ...] = (
 INVENTORY_SETUP_ORIGINAL_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = _select_columns(
     INVENTORY_EXPORT_COLUMNS,
     INVENTORY_SETUP_ORIGINAL_FIELDS,
+)
+
+INVENTORY_ITEM_DESCRIPTION_UPDATE_ORIGINAL_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Item Group", "item_group_export"),
+    ("Item", "replacement_item"),
+    ("StockUOM", "stock_uom"),
+    ("Reference2", "reference2"),
+    ("Description2", "description2"),
 )
 
 PAR_EXPORT_COLUMNS: list[tuple[str, str]] = [
@@ -376,6 +385,11 @@ TABLE_CONFIGS: dict[str, TableConfig] = {
 }
 
 COLUMN_MODE_REGISTRY: dict[str, ColumnMode] = {
+    "inventory_item_description_update_original": ColumnMode(
+        key="inventory_item_description_update_original",
+        columns=INVENTORY_ITEM_DESCRIPTION_UPDATE_ORIGINAL_COLUMNS,
+        pipeline=(prepare_inventory_item_description_update_original_rows,),
+    ),
     "inventory_setup_combined": ColumnMode(
         key="inventory_setup_combined",
         columns=INVENTORY_SETUP_EXPORT_COLUMNS,
@@ -454,4 +468,5 @@ __all__ = [
     "PAR_EXPORT_COLUMNS",
     "PAR_SETUP_COMBINED_EXPORT_COLUMNS",
     "TABLE_CONFIGS",
+    "INVENTORY_ITEM_DESCRIPTION_UPDATE_ORIGINAL_COLUMNS",
 ]

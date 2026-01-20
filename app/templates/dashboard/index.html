@@ -526,6 +526,10 @@
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-setup-original" value="inventory_setup_original" data-table="inventory">
             <label class="form-check-label" for="export-column-inventory-setup-original">Inventory set up (original)</label>
           </div>
+          <div class="form-check export-column-mode-option d-none" data-table="inventory">
+            <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-item-desc-original" value="inventory_item_description_update_original" data-table="inventory">
+            <label class="form-check-label" for="export-column-inventory-item-desc-original">Item Description Update (Original)</label>
+          </div>
           <div class="form-check export-column-mode-option d-none" data-table="par">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-replacement" value="par_setup_replacement" data-table="par">
             <label class="form-check-label" for="export-column-par-setup-replacement">Par set up (replacement)</label>
@@ -849,6 +853,13 @@ document.addEventListener('DOMContentLoaded', () => {
         'auto_replenishment',
         'item_set',
       ],
+      inventory_item_description_update_original: [
+        'item_group_export',
+        'replacement_item',
+        'stock_uom',
+        'reference2',
+        'description2',
+      ],
     },
     par: {
       par_setup_replacement: [
@@ -893,12 +904,15 @@ document.addEventListener('DOMContentLoaded', () => {
     inventory: [
       { field: 'recommended_auto_replenishment', label: 'AutomaticPurchaseOrder (True/False)' },
       { field: 'item_set', label: 'Item Set' },
+      { field: 'item_group_export', label: 'Item Group' },
+      { field: 'reference2', label: 'Reference2' },
+      { field: 'description2', label: 'Description2' },
     ],
     par: [
       { field: 'item_set', label: 'Item Set' },
     ],
   };
-  const customExportModes = new Set(['custom', 'inventory_setup', 'inventory_setup_combined', 'inventory_setup_original', 'par_setup_replacement', 'par_setup_original']);
+  const customExportModes = new Set(['custom', 'inventory_setup', 'inventory_setup_combined', 'inventory_setup_original', 'inventory_item_description_update_original', 'par_setup_replacement', 'par_setup_original']);
   const exportState = {
     tableKey: null,
     rowScope: 'filtered',
@@ -2574,7 +2588,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setExportColumnMode(mode){
-    const inventoryModes = ['inventory_setup', 'inventory_setup_combined', 'inventory_setup_original'];
+    const inventoryModes = ['inventory_setup', 'inventory_setup_combined', 'inventory_setup_original', 'inventory_item_description_update_original'];
     const parModes = ['par_setup_replacement', 'par_setup_original'];
     const allowedModes = ['all', 'visible', 'custom', ...inventoryModes, ...parModes];
     let normalized = allowedModes.includes(mode) ? mode : 'all';

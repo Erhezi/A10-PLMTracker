@@ -1691,7 +1691,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>`;
         }).join('');
         itemGroupMenu.innerHTML = `
-          <input type="text" class="form-control form-control-sm mb-2" id="ig-search" placeholder="Search (use * wildcard)" autocomplete="off" />
+          <input type="text" class="form-control form-control-sm mb-2" id="ig-search" placeholder="Search (use * wildcard, ; multi-entry)" autocomplete="off" style="font-size: 0.8rem;" />
           <div class="d-flex gap-2 mb-2">
             <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-select-all">Select All</button>
             <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1" id="ig-clear">Clear</button>
@@ -2953,18 +2953,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if(searchInput){
       let lastFilter = '';
       searchInput.addEventListener('input', () => {
-        const term = searchInput.value.trim();
-        if(term === lastFilter) return;
-        lastFilter = term;
-        if(!term){
+        const rawTerm = searchInput.value.trim();
+        if(rawTerm === lastFilter) return;
+        lastFilter = rawTerm;
+        
+        const terms = rawTerm.split(';').map(t => t.trim()).filter(t => t.length > 0);
+
+        if(!terms.length){
           // reset all
           itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => { div.style.display=''; div.removeAttribute('data-hidden'); });
           return;
         }
-        const regex = buildWildcardRegex(term);
+        const regexes = terms.map(t => buildWildcardRegex(t)).filter(r => r !== null);
+        
         itemGroupMenu.querySelectorAll('.item-group-option').forEach(div => {
           const label = (div.getAttribute('data-label') || '').toLowerCase();
-          const match = !regex || regex.test(label);
+          const match = regexes.length === 0 || regexes.some(regex => regex.test(label));
           if(match){
             div.style.display='';
             div.removeAttribute('data-hidden');

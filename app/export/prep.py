@@ -239,7 +239,10 @@ def apply_inventory_replacement_setup_action(rows: list[Row]) -> list[Row]:
             elif not setup_values_match(val_cur, val_rec):
                 no_action = False
                 break
-        updated["setup_action"] = "No Action (U)" if no_action else "Replace"
+        discontinued_flag = _normalize_boolean_flag(updated.get("discontinued_ri"))
+        
+        updated["setup_action"] = "No Action (U)" if (no_action is True and discontinued_flag is False) else "Replace"
+        updated["discontinued_ri"] = "No"
         processed.append(updated)
 
     return processed
@@ -255,7 +258,9 @@ def apply_inventory_original_setup_action(rows: list[Row]) -> list[Row]:
             continue
         updated = dict(row)
         auto_flag = _normalize_boolean_flag(updated.get("auto_replenishment"))
-        updated["setup_action"] = "No Action (U)" if auto_flag is False else "Replace"
+        discontinued_flag = _normalize_boolean_flag(updated.get("discontinued"))
+        updated["setup_action"] = "No Action (U)" if (auto_flag is False and discontinued_flag is True) else "Replace"
+        updated["discontinued"] = "Yes"
         updated["notes"] = ""
         processed.append(updated)
 
@@ -432,6 +437,7 @@ def prepare_inventory_setup_combined_rows(rows: list[Row]) -> list[Row]:
             "recommended_max_order_qty_ri": row.get("recommended_max_order_qty_ri"),
             "recommended_reorder_point_ri": row.get("recommended_reorder_point_ri"),
             "recommended_auto_replenishment_ri": row.get("recommended_auto_replenishment_ri"),
+            "discontinued_ri": row.get("discontinued_ri"),
             "manufacturer_number_ri": row.get("manufacturer_number_ri"),
             "setup_action": row.get("setup_action"),
             "notes": row.get("notes"),
@@ -454,6 +460,7 @@ def prepare_inventory_setup_combined_rows(rows: list[Row]) -> list[Row]:
             "recommended_max_order_qty_ri": row.get("max_order_qty"),
             "recommended_reorder_point_ri": row.get("reorder_point"),
             "recommended_auto_replenishment_ri": row.get("recommended_auto_replenishment"),
+            "discontinued_ri": row.get("discontinued"),
             "manufacturer_number_ri": row.get("manufacturer_number"),
             "setup_action": row.get("setup_action"),
             "notes": row.get("notes"),

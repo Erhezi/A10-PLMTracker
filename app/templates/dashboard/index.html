@@ -528,7 +528,7 @@
           </div>
           <div class="form-check export-column-mode-option d-none" data-table="inventory">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-inventory-item-desc-original" value="inventory_item_description_update_original" data-table="inventory">
-            <label class="form-check-label" for="export-column-inventory-item-desc-original">Item Description Update (Original)</label>
+            <label class="form-check-label" for="export-column-inventory-item-desc-original">Item description update (original, at item level)</label>
           </div>
           <div class="form-check export-column-mode-option d-none" data-table="par">
             <input class="form-check-input" type="radio" name="export-column-mode" id="export-column-par-setup-replacement" value="par_setup_replacement" data-table="par">
@@ -803,26 +803,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'recommended_max_order_qty_ri',
         'recommended_reorder_point_ri',
         'recommended_auto_replenishment_ri',
-        'manufacturer_number_ri',
-        'setup_action',
-        'notes',
-        'preferred_bin_ri',
-        'min_order_qty_ri',
-        'max_order_qty_ri',
-        'reorder_point_ri',
-        'auto_replenishment_ri',
-        'item_set',
-      ],
-      inventory_setup_combined: [
-        'company',
-        'location_ri',
-        'replacement_item',
-        'recommended_transaction_uom_ri',
-        'recommended_preferred_bin_ri',
-        'recommended_min_order_qty_ri',
-        'recommended_max_order_qty_ri',
-        'recommended_reorder_point_ri',
-        'recommended_auto_replenishment_ri',
+        'discontinued_ri',
         'manufacturer_number_ri',
         'setup_action',
         'notes',
@@ -843,6 +824,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'max_order_qty',
         'reorder_point',
         'recommended_auto_replenishment',
+        'discontinued',
         'manufacturer_number',
         'setup_action',
         'notes',
@@ -912,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
       { field: 'item_set', label: 'Item Set' },
     ],
   };
-  const customExportModes = new Set(['custom', 'inventory_setup', 'inventory_setup_combined', 'inventory_setup_original', 'inventory_item_description_update_original', 'par_setup_replacement', 'par_setup_original']);
+  const customExportModes = new Set(['custom', 'inventory_setup', 'inventory_setup_original', 'inventory_item_description_update_original', 'par_setup_replacement', 'par_setup_original']);
   const exportState = {
     tableKey: null,
     rowScope: 'filtered',
@@ -1639,6 +1621,8 @@ document.addEventListener('DOMContentLoaded', () => {
         button.dataset.headerLabel = label;
         button.setAttribute('data-bs-toggle', 'dropdown');
         button.setAttribute('aria-expanded', 'false');
+        // Use fixed strategy to prevent clipping by the table container
+        button.setAttribute('data-bs-popper-config', '{"strategy":"fixed"}');
         button.innerHTML = `<span class="filter-label">All</span><span class="filter-caret">▾</span>`;
 
         const menu = document.createElement('div');
@@ -2588,7 +2572,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setExportColumnMode(mode){
-    const inventoryModes = ['inventory_setup', 'inventory_setup_combined', 'inventory_setup_original', 'inventory_item_description_update_original'];
+    const inventoryModes = ['inventory_setup', 'inventory_setup_original', 'inventory_item_description_update_original'];
     const parModes = ['par_setup_replacement', 'par_setup_original'];
     const allowedModes = ['all', 'visible', 'custom', ...inventoryModes, ...parModes];
     let normalized = allowedModes.includes(mode) ? mode : 'all';

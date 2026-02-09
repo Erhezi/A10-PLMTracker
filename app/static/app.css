@@ -401,6 +401,8 @@ footer { font-size: .75rem; }
   gap: .25rem;
   width: 100%;
   height: 100%;
+  position: relative;
+  z-index: 1060;
 }
 
 .column-filter-toggle {
@@ -450,6 +452,7 @@ footer { font-size: .75rem; }
 .column-filter-menu {
   min-width: 120px;
   font-size: .8rem;
+  z-index: 1065;
 }
 
 .column-filter-menu .dropdown-item {

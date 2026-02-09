@@ -19,9 +19,10 @@
     <tbody>
     {% for it in items %}
     {% set in_company_3000 = (it.company_3000 == 'Yes') %}
-    <tr data-item-row data-item-code="{{ it.item }}" data-in3000="{{ 'true' if in_company_3000 else 'false' }}" class="item-row{% if enforce_company_3000 and not in_company_3000 %} muted-row{% endif %}">
+    {% set is_active = (it.is_active == 'Yes') %}
+        <tr data-item-row data-item-code="{{ it.item }}" data-in3000="{{ 'true' if in_company_3000 else 'false' }}" class="item-row{% if enforce_company_3000 and not in_company_3000 %} muted-row{% endif %}{% if not is_active %} muted-row{% endif %}">
         <td>
-          <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ it.item }}"{% if enforce_company_3000 and not in_company_3000 %} disabled aria-disabled="true" title="Only items in Company 3000 can be selected"{% endif %}>
+              <input type="checkbox" class="form-check-input" data-pick-checkbox value="{{ it.item }}"{% if enforce_company_3000 and not in_company_3000 %} disabled aria-disabled="true" title="Only items in Company 3000 can be selected"{% endif %}{% if not is_active %} disabled aria-disabled="true" title="Inactive items cannot be selected"{% endif %}>
         </td>
         <td class="text-nowrap fw-semibold">{{ it.item }}</td>
         <td>{{ it.manufacturer or '' }}</td>

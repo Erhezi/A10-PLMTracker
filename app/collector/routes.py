@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from flask_login import login_required, current_user
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, case
 from sqlalchemy.orm import selectinload
 from datetime import date, datetime, timedelta
 from openpyxl import load_workbook, Workbook
@@ -679,12 +679,12 @@ def api_search_items():
 @bp.get("/api/contract-items/search")
 @login_required
 def api_search_contract_items():
-    """Search ContractItem by normalized user input against Item.search_shadow.
+    """Search ContractItem by mfg_part_num (strict) or search_shadow (fuzzy).
 
     Behavior changes:
-      - Only searches on Item.search_shadow (joined via ContractItem.item)
-      - Input is normalized by removing spaces and hyphens before building LIKE pattern
-      - LIKE pattern: if length > 3 use %term%, else term% (prefix search for short inputs)
+      - Searches exact match on mfg_part_num (using raw input)
+      - OR searches on Item.search_shadow (using normalized input)
+      - Exact matches on mfg_part_num are returned first
     """
     q_raw = (request.args.get("q") or "").strip()
     if not q_raw:
@@ -701,10 +701,27 @@ def api_search_contract_items():
 
     query = ContractItem.query
     like_term = f"%{q_norm}%" if len(q_norm) > 3 else f"{q_norm}%"
-    query = query.filter(ContractItem.search_shadow.ilike(like_term))
+
+    query = query.filter(
+        or_(
+            ContractItem.mfg_part_num == q_raw,
+            ContractItem.search_shadow.ilike(like_term)
+        )
+    )
+
+    # Sort: Exact match on mfg_part_num first (1), others (0) -> DESC
+    match_priority = case(
+        (ContractItem.mfg_part_num == q_raw, 1),
+        else_=0
+    )
 
     rows = (
-        query.order_by(ContractItem.mfg_part_num, ContractItem.manufacturer, ContractItem.item)
+        query.order_by(
+            match_priority.desc(),
+            ContractItem.mfg_part_num,
+            ContractItem.manufacturer,
+            ContractItem.item
+        )
         .limit(limit)
         .all()
     )

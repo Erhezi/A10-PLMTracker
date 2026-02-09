@@ -26,7 +26,12 @@
      hx-get="{{ url_for('collector.api_search_items') }}" hx-trigger="keyup changed delay:300ms" hx-target="#item-results" hx-params="*" hx-vals='{"picker":"item"}' />
         <div class="small text-muted mb-2">Check boxes to select. Max {{ max_per_side }} per side.</div>
         <div id="item-selected" class="mb-2"></div>
-        <div id="item-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
+        <div class="position-relative flex-grow-1" style="min-height: 100px;">
+          <div id="item-results" class="overflow-auto h-100" style="max-height:300px"></div>
+          <div id="item-loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(255,255,255,0.7); z-index: 10;">
+            <div class="spinner-border text-primary" role="status" aria-live="polite" aria-label="Searching items"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -45,7 +50,12 @@
           </div>
         </div>
         <div id="repl-selected" class="mb-2"></div>
-        <div id="repl-results" class="flex-grow-1 overflow-auto" style="max-height:300px"></div>
+        <div class="position-relative flex-grow-1" style="min-height: 100px;">
+          <div id="repl-results" class="overflow-auto h-100" style="max-height:300px"></div>
+          <div id="repl-loading" class="d-none position-absolute top-0 start-0 w-100 h-100 align-items-center justify-content-center" style="background: rgba(255,255,255,0.7); z-index: 10;">
+            <div class="spinner-border text-primary" role="status" aria-live="polite" aria-label="Searching replacement items"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -167,6 +177,9 @@
   const batchPanel = document.getElementById('batch-upload-panel');
   const batchToggle = document.getElementById('batch-upload-toggle');
   const uploadBtnDefaultText = uploadBtn ? uploadBtn.textContent : '';
+  const itemResults = document.getElementById('item-results');
+  const itemLoading = document.getElementById('item-loading');
+  const replLoading = document.getElementById('repl-loading');
   if(uploadInvalid){
     uploadInvalid.style.display = 'none';
   }
@@ -777,6 +790,11 @@
   document.body.addEventListener('htmx:afterSwap', evt => {
     const tgt = evt.target;
     if(tgt.id==='item-results' || tgt.id==='repl-results'){
+      const loading = tgt.id === 'item-results' ? itemLoading : replLoading;
+      if(loading){
+        loading.classList.add('d-none');
+        loading.classList.remove('d-flex');
+      }
       const isRepl = tgt.id==='repl-results';
       const currentMode = replSearch.getAttribute('data-mode') || 'item';
       const shouldAutoSelectAll = isRepl && currentMode === 'contract' && contractAutoSelectEnabled;
@@ -852,6 +870,30 @@
           renderSelections();
         });
       });
+    }
+  });
+
+  document.body.addEventListener('htmx:beforeRequest', evt => {
+    const tgt = evt.detail && evt.detail.target;
+    if(!tgt) return;
+    if(tgt.id==='item-results' || tgt.id==='repl-results'){
+      const loading = tgt.id === 'item-results' ? itemLoading : replLoading;
+      if(loading){
+        loading.classList.remove('d-none');
+        loading.classList.add('d-flex');
+      }
+    }
+  });
+
+  document.body.addEventListener('htmx:requestError', evt => {
+    const tgt = evt.detail && evt.detail.target;
+    if(!tgt) return;
+    if(tgt.id==='item-results' || tgt.id==='repl-results'){
+      const loading = tgt.id === 'item-results' ? itemLoading : replLoading;
+      if(loading){
+        loading.classList.add('d-none');
+        loading.classList.remove('d-flex');
+      }
     }
   });
 

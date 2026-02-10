@@ -24,6 +24,9 @@ PipelineStep = Callable[[list[Row]], list[Row]]
 def _inventory_setup_should_highlight(row: Row) -> bool:
     recommended_bin = row.get("recommended_preferred_bin_ri")
     if isinstance(recommended_bin, str) and recommended_bin.strip().upper() == "NEW ITEM":
+        description = str(row.get("item_description_ri") or "").strip()
+        if not description:
+            return True
         return False
     return True
 

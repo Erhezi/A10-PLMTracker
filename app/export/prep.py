@@ -441,6 +441,7 @@ def prepare_inventory_setup_combined_rows(rows: list[Row]) -> list[Row]:
             "manufacturer_number_ri": row.get("manufacturer_number_ri"),
             "setup_action": row.get("setup_action"),
             "notes": row.get("notes"),
+            "item_description_ri": row.get("item_description_ri"),
             "preferred_bin_ri": row.get("preferred_bin_ri"),
             "min_order_qty_ri": row.get("min_order_qty_ri"),
             "max_order_qty_ri": row.get("max_order_qty_ri"),

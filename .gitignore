@@ -147,3 +147,6 @@ _ref/**
 !_ref/**/
 # Un-ignore the design doc so it can be tracked
 !_ref/overall_design.md
+
+# Ignore everything under _query_backup
+_query_backup/**

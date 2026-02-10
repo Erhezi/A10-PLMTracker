@@ -501,7 +501,7 @@ def _populate_notes(rows: List[Dict]) -> None:
             item_raw = row.get("item")
             bin_raw = row.get("preferred_bin")
             item_code = str(item_raw).strip() if item_raw is not None else "unknown item"
-            preferred_bin = str(bin_raw).strip() if bin_raw is not None else "None"
+            preferred_bin = str(bin_raw).strip() if not (bin_raw is None or bin_raw.strip() == '') else "[blank]"
             notes.append(f"source item {item_code} in bin {preferred_bin}")
 
         if _is_tbd(row.get("recommended_auto_replenishment_ri")):
@@ -533,7 +533,13 @@ def _populate_notes(rows: List[Dict]) -> None:
                         f"source item {src_item} is using {src_uom}**{src_mult} as its Transaction UOMs, replacement item {repl_item} currently is available in these UOMs {summary} for transaction"
                     )
 
-        row["notes"] = "\n".join(notes) if notes else None
+        description_ri = str(row.get("item_description_ri") or "").strip()
+        if not description_ri:
+            repl_item_check = str(row.get("replacement_item") or "").strip()
+            if repl_item_check:
+                notes.append(f"check if {repl_item_check} is active or not, if not active, contact MDM to activate.")
+
+        row["notes"] = ";\n".join(notes) if notes else None
 
 
 def _normalize_location_type(value: object | None) -> str:

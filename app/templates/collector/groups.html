@@ -158,10 +158,12 @@
           <td title="{{ r.mfg_part_num }}" class="text-truncate col-src" style="max-width:140px;">{{ r.mfg_part_num }}</td>
           <td class="text-truncate col-src" style="max-width:120px;">{{ r.manufacturer }}</td>
           <td class="text-truncate col-src col-desc" style="max-width:260px;" title="{{ r.item_description }}">{{ r.item_description }}</td>
+          {% set repl_active = replace_item_active_map.get(r.replace_item) if replace_item_active_map is defined else None %}
+          {% set repl_inactive = repl_active and repl_active|string|lower == 'no' %}
           <td class="font-monospace ellipsis col-70 col-repl" title="{% if r.replace_item is not none %}{{ r.replace_item }}{% endif %}">
             {% if r.stage == 'Tracking - Discontinued' and (r.replace_item is none or r.replace_item|string|lower in ['nan','']) %}
               <span class="text-muted fst-italic">null</span>
-            {% else %}<span class="ellipsis-text">{{ r.replace_item }}</span>{% endif %}
+            {% else %}<span class="ellipsis-text{% if repl_inactive %} text-danger fw-semibold{% endif %}">{{ r.replace_item }}</span>{% endif %}
           </td>
           <td title="{{ r.repl_mfg_part_num }}" class="text-truncate col-repl" style="max-width:140px;">
             {% if r.stage == 'Tracking - Discontinued' and (r.repl_mfg_part_num is none or r.repl_mfg_part_num|string|lower in ['nan','']) %}

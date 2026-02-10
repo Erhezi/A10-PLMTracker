@@ -1000,3 +1000,31 @@ class PLMDailyIssueOutQty(db.Model):
 	__mapper_args__ = {
 		"primary_key": [Inventory_base_ID, PKID_ItemLink, trx_date]
 	}
+
+class PLMRplacementActiveStatus(db.Model):
+	"""Read-only mapping to PLM.vw_PLMReplacementActiveStatus view.
+
+	A utility reference table to keep track if the replacement item is still active or not on the backend.
+	"""
+
+	__tablename__ = "vw_PLMReplacementActiveStatus"
+	__table_args__ = {"schema": "PLM"}
+
+	# Columns
+	PKID_ItemLink = db.Column("PKID", db.BIGINT, nullable=False, primary_key=True)
+
+	Replace_Item = db.Column("Replace Item", db.String(250), nullable=True)
+	Item_Group = db.Column("Item Group", db.Integer, nullable=False)
+	is_active = db.Column("is_active", db.Integer, nullable=True)
+
+	__mapper_args__ = {
+		"primary_key": [PKID_ItemLink]
+	}
+
+	def __repr__(self):
+		return (
+			f"<PLMReplacementActiveStatus replace={self.Replace_Item} group={self.Item_Group} "
+			f"pkid={self.PKID_ItemLink} active={self.is_active}>"
+		)
+
+	

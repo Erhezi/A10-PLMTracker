@@ -120,6 +120,20 @@ def groups():
         .order_by(ItemLink.item_group.desc(), ItemLink.item)
         .all()
     )
+    replace_items = {
+        str(link.replace_item).strip()
+        for link in items
+        if link.replace_item and str(link.replace_item).strip()
+        and not str(link.replace_item).strip().upper().startswith("PENDING***")
+        and str(link.replace_item).strip().upper() != "NO REPLACEMENT"
+    }
+    replace_item_active_map: dict[str, str | None] = {}
+    if replace_items:
+        replace_item_rows = Item.query.filter(Item.item.in_(replace_items)).all()
+        replace_item_active_map = {
+            row.item: row.is_active
+            for row in replace_item_rows
+        }
     stage_counts_query = (
         db.session.query(ItemLink.stage, func.count(ItemLink.pkid))
         .group_by(ItemLink.stage)
@@ -152,6 +166,7 @@ def groups():
         "collector/groups.html",
         items=items,
         allowed_stages=ALLOWED_STAGES,
+        replace_item_active_map=replace_item_active_map,
         count_deleted=count_deleted,
         count_completed=count_completed,
         stage_transitions=stage_transitions,

@@ -968,6 +968,8 @@ def api_upload_item_links():
         if not item_record:
             row["errors"].append(f"Item {item_code} not found in PLM items view (check on Infor to confirm the item is valid).")
             continue
+        if (item_record.is_active or "").strip() != "Yes":
+            row["errors"].append(f"Item {item_code} is inactive and cannot be added.")
         if (item_record.company_3000 or "").strip() != "Yes":
             row["errors"].append(f"Item {item_code} is not available in company 3000.")
         if row.get("replace_is_sentinel"):
@@ -977,6 +979,8 @@ def api_upload_item_links():
         if not repl_record:
             row["errors"].append(f"Replace Item {repl_code} not found in PLM items view (check on Infor to confirm the item is valid).")
             continue
+        if (repl_record.is_active or "").strip() != "Yes":
+            row["errors"].append(f"Replace Item {repl_code} is inactive and cannot be added.")
 
     from flask import current_app
 

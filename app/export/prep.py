@@ -219,6 +219,21 @@ def apply_setup_action_rules(
     return normalized
 
 
+def apply_fixed_field_value(rows: list[Row], *, field: str, value: object) -> list[Row]:
+    if not rows:
+        return []
+
+    normalized: list[Row] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        updated = dict(row)
+        updated[field] = value
+        normalized.append(updated)
+
+    return normalized
+
+
 def apply_inventory_replacement_setup_action(rows: list[Row]) -> list[Row]:
     if not rows:
         return []
@@ -561,6 +576,7 @@ def prepare_par_setup_combined_rows(rows: list[Row]) -> list[Row]:
             "recommended_reorder_point_ri": row.get("recommended_reorder_point_ri"),
             "stock_uom_ri": row.get("stock_uom_ri"),
             "recommended_preferred_bin_ri": row.get("recommended_preferred_bin_ri"),
+            "discontinued_ri": "No",
             "action": row.get("action"),
             "setup_action": row.get("setup_action") or derive_setup_action(row, table="par"),
             "notes": row.get("notes"),
@@ -582,6 +598,7 @@ def prepare_par_setup_combined_rows(rows: list[Row]) -> list[Row]:
             "recommended_reorder_point_ri": row.get("reorder_point"),
             "stock_uom_ri": row.get("stock_uom"),
             "recommended_preferred_bin_ri": row.get("preferred_bin"),
+            "discontinued_ri": "Yes",
             "action": row.get("action"),
             "setup_action": row.get("setup_action") or derive_setup_action(row, table="par"),
             "notes": row.get("notes"),
@@ -603,6 +620,7 @@ def prepare_par_setup_combined_rows(rows: list[Row]) -> list[Row]:
 
 __all__ = [
     "MAX_PREFERRED_BIN_LENGTH",
+    "apply_fixed_field_value",
     "apply_inventory_original_setup_action",
     "apply_inventory_replacement_setup_action",
     "apply_inventory_recommended_bin_display",

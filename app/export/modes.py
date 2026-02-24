@@ -5,6 +5,7 @@ from functools import partial
 from typing import Callable, Mapping, Sequence
 
 from .prep import (
+    apply_fixed_field_value,
     apply_inventory_original_setup_action,
     apply_inventory_recommended_bin_display,
     apply_inventory_replacement_setup_action,
@@ -47,6 +48,23 @@ def _select_columns(source: Sequence[tuple[str, str]], fields: Sequence[str]) ->
         header = header_lookup.get(field, field.replace("_", " ").title())
         selected.append((header, field))
     return tuple(selected)
+
+
+def _insert_column_before(
+    columns: Sequence[tuple[str, str]],
+    *,
+    target_field: str,
+    insert_column: tuple[str, str],
+) -> tuple[tuple[str, str], ...]:
+    normalized = list(columns)
+    try:
+        target_index = next(index for index, (_, field) in enumerate(normalized) if field == target_field)
+    except StopIteration:
+        normalized.append(insert_column)
+        return tuple(normalized)
+
+    normalized.insert(target_index, insert_column)
+    return tuple(normalized)
 
 INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Stage", "stage"),
@@ -249,6 +267,7 @@ PAR_SETUP_COMBINED_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("ReorderPoint", "recommended_reorder_point_ri"),
     ("UOM Unit Of Measure", "stock_uom_ri"),
     ("BIN Location                        (All New Sequence)", "recommended_preferred_bin_ri"),
+    ("Discontinued (Yes/No)", "discontinued_ri"),
     ("Requested update/Action", "setup_action"),
     ("Notes", "notes"),
     ("Current Bin (Repl. Item)", "preferred_bin_ri"),
@@ -256,8 +275,16 @@ PAR_SETUP_COMBINED_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Item Set", "item_set"),
 ]
 
-PAR_SETUP_REPLACEMENT_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = tuple(list(PAR_EXPORT_COLUMNS) + [("Item Set", "item_set")])
-PAR_SETUP_ORIGINAL_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = tuple(list(PAR_EXPORT_COLUMNS) + [("Item Set", "item_set")])
+PAR_SETUP_REPLACEMENT_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = _insert_column_before(
+    tuple(list(PAR_EXPORT_COLUMNS) + [("Item Set", "item_set")]),
+    target_field="action",
+    insert_column=("Discontinued (Yes/No)", "discontinued_ri"),
+)
+PAR_SETUP_ORIGINAL_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = _insert_column_before(
+    tuple(list(PAR_EXPORT_COLUMNS) + [("Item Set", "item_set")]),
+    target_field="action",
+    insert_column=("Discontinued (Yes/No)", "discontinued"),
+)
 
 INVENTORY_SETUP_HEADER_OVERRIDES: dict[str, str] = {
     "company": "Company",
@@ -328,10 +355,12 @@ PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES: dict[str, str] = {
     "recommended_reorder_point_ri": "ReorderPoint",
     "stock_uom_ri": "UOM Unit Of Measure",
     "recommended_preferred_bin_ri": "BIN Location                        (All New Sequence)",
+    "discontinued_ri": "Discontinued (Yes/No)",
     "setup_action": "Requested update/Action",
     "notes": "Notes",
     "preferred_bin_ri": "Current Bin (Repl. Item)",
     "reorder_point_ri": "Current Reorder (Repl. Item)",
+    "auto_replenishment_ri": "Current Auto-repl. (Repl. Item)",
     "item_set": "Item Set",
 }
 
@@ -348,10 +377,12 @@ PAR_SETUP_ORIGINAL_HEADER_OVERRIDES: dict[str, str] = {
     "reorder_point": "ReorderPoint",
     "stock_uom": "UOM Unit Of Measure",
     "preferred_bin": "BIN Location                        (All New Sequence)",
+    "discontinued": "Discontinued (Yes/No)",
     "setup_action": "Requested update/Action",
     "notes": "Notes",
     "preferred_bin_ri": "Current Bin (Repl. Item)",
     "reorder_point_ri": "Current Reorder (Repl. Item)",
+    "auto_replenishment": "Current Auto-repl. (Item)",
     "replacement_item": "Replacement Item",
     "item_set": "Item Set",
 }
@@ -437,6 +468,7 @@ COLUMN_MODE_REGISTRY: dict[str, ColumnMode] = {
         header_overrides=PAR_SETUP_REPLACEMENT_HEADER_OVERRIDES,
         pipeline=(
             partial(apply_setup_action_rules, table="par", forced_item_set="Replacement"),
+            partial(apply_fixed_field_value, field="discontinued_ri", value="No"),
             partial(sort_export_rows, column_mode="par_setup_replacement"),
         ),
         highlight_notes=True,
@@ -453,6 +485,7 @@ COLUMN_MODE_REGISTRY: dict[str, ColumnMode] = {
                 forced_setup_action="Replace",
                 forced_item_set="Original",
             ),
+            partial(apply_fixed_field_value, field="discontinued", value="Yes"),
             partial(sort_export_rows, column_mode="par_setup_original"),
         ),
     ),

@@ -1,7 +1,28 @@
 # PLM Migration Plan — PRIME → PLM (branch `migrateO2`)
 
-**Status:** DRAFT FOR REVIEW — no changes made to any server yet.
+**Status:** REVIEWED — decisions locked 2026-09-04. Building migration scripts.
 **Rule for this whole effort:** nothing is dropped, truncated, or altered on the source. Source stays live and authoritative until we jointly agree to cut over.
+
+---
+
+## 0. Decisions (locked)
+
+| # | Decision | Ruling |
+|---|---|---|
+| A | How to reference the `infor` tables | **Three-part names** — `PLMPreprocessorShared.infor.MDM_ITEM`. Traditional and unambiguous; no synonym layer for other team members to decode. |
+| B | `ParItemBin` | **Not migrated.** `infor.ParItemBin` already on the target is an unchanged table sourced directly from Infor, used only by the PLM app. Already marked done. `PLM.ParItemBin` stays behind → **23 tables to migrate, not 24.** |
+| C | `PastYearRequestersCount`, `WrikeTask` | **Migrate as-is.** Not used today, but keep them available for future use. |
+| D | `usp_RunPLM_Batch` | Definition supplied. It is a sequential driver — a cursor over 7 procs at ord 10/20/30/40/50/70/80, each wrapped in TRY/CATCH and logged to `PLM.process_log`, continuing on error (fail-fast `THROW` is commented out). No external table references; migrates unchanged. |
+| E | `BullardBurnDown.vw_PLMIntegration` | **Owned by you.** Stays on PRIME for now. → see Post-migration follow-up below. |
+| F | Cutover style | **Hard switch**, once everything is verified and tested. No parallel-run period. |
+
+### Post-migration follow-up (owner: Erhezi)
+
+After PLM is live on the new server:
+1. Move the **BullardBurnDown** structure to `YNBBSTVWP02\PROCDATASRVPROD`.
+2. Repoint the **Power BI dashboard** to the new server.
+
+Until step 1 happens, `BullardBurnDown.vw_PLMIntegration` on PRIME reads a `PLM` schema that is no longer being written to — it goes stale at cutover, by design.
 
 ---
 
@@ -22,23 +43,23 @@
 
 ---
 
-## 2. What has to move — 51 objects
+## 2. What has to move — 50 objects
 
-**24 tables · 16 views · 11 stored procedures**, totalling **2,862,947 rows / 375 MB**. This is small; the data copy is not the hard part.
+**23 tables · 16 views · 11 stored procedures**, totalling **2,857,123 rows / 373.6 MB** (ParItemBin excluded per Decision B). This is small; the data copy is not the hard part.
 
-### 2.1 Tables (24)
+### 2.1 Tables (23 migrated + 1 excluded)
 
 | Table | Rows | Size | Identity | Written by |
 |---|---:|---:|:--:|---|
 | `DailyIssueOutQty` | 1,291,669 | 277.9 MB | | sp_PLM_extractDailyIssueOutQty_FullRefresh |
 | `PLMItemBRRolling_Log` | 894,710 | 28.0 MB | `run_id` | sp_PLM_MakePLMItemBRRolling_InvID_PKID |
 | `PLMItemGroupBRRolling_Log` | 480,210 | 16.5 MB | `run_id` | sp_PLM_MakePLMItemGroupBRRolling_ItemGroup |
-| `PastYearRequestersCount` | 44,585 | 2.3 MB | | **external ETL — no writer found** |
+| `PastYearRequestersCount` | 44,585 | 2.3 MB | | external ETL — no writer; migrate as-is (Decision C) |
 | `ItemLocations` | 43,981 | 14.8 MB | | sp_PLM_MakeItemLocations_FullRefresh |
 | `ItemLocationsBR` | 43,981 | 13.0 MB | | sp_PLM_MakeItemLocationsBR_FullRefresh |
 | `ItemStartEndDate` | 43,981 | 8.0 MB | | sp_PLM_MakeItemStartEndDate_FullRefresh |
 | `PLMItemBRRolling` | 6,305 | 7.1 MB | | sp_PLM_MakePLMItemBRRolling / Persist |
-| `ParItemBin` | 5,824 | 1.6 MB | | **external ETL — no writer found** |
+| ~~`ParItemBin`~~ | ~~5,824~~ | ~~1.6 MB~~ | | **EXCLUDED** — target already has `infor.ParItemBin` (Decision B) |
 | `PLMItemGroupBRRolling` | 3,681 | 2.0 MB | | sp_PLM_MakePLMItemGroupBRRolling / Persist |
 | `process_log` | 2,758 | 0.8 MB | `pkid` | usp_RunPLM_Batch |
 | `ItemGroupLink` | 344 | 0.3 MB | `PKID` | sp_ProcessPendingItems |
@@ -50,7 +71,7 @@
 | `ItemLinkArchived` | 16 | 0.4 MB | `PKID` | app |
 | `PendingItems` | 15 | 0.3 MB | `PKID` | sp_ProcessPendingItems |
 | `users` | 14 | 0.2 MB | `user_id` | app (auth) |
-| `WrikeTask` | 6 | 0.1 MB | | **external ETL — no writer found** |
+| `WrikeTask` | 6 | 0.1 MB | | external ETL — no writer; migrate as-is (Decision C) |
 | `ConflictError` | 3 | 0.3 MB | `PKID` | sp_ProcessPendingItems |
 | `ConflictErrorPendingItemAddition_log` | 0 | 0.0 MB | `PKID` | sp_ProcessPendingItems |
 | `ItemLinkDeleted` | 0 | 0.4 MB | `PKID` | app |
@@ -75,7 +96,7 @@ TIER 4  vw_PLMQty (→vw_PLMZDate)
 
 `sp_MakeCopyItemLink`, `sp_PLM_extractDailyIssueOutQty_FullRefresh`, `sp_PLM_MakeItemLocations_FullRefresh`, `sp_PLM_MakeItemLocationsBR_FullRefresh`, `sp_PLM_MakeItemStartEndDate_FullRefresh`, `sp_PLM_MakePLMItemBRRolling_InvID_PKID`, `sp_PLM_MakePLMItemGroupBRRolling_ItemGroup`, `sp_PLM_PersistItemBRRolling`, `sp_PLM_PersistItemGroupBRRolling`, `sp_ProcessPendingItems`, `usp_RunPLM_Batch`
 
-Deploy after tables + views (several call views; two call each other). `usp_RunPLM_Batch` is the orchestrator — it last ran **2026-09-04 08:09**, so a scheduler is actively driving it.
+Deploy after tables + views (several call views; two call each other). `usp_RunPLM_Batch` is the orchestrator: a cursor over 7 procs in ord order **10 MakeItemLocations → 20 MakeItemStartEndDate → 30 extractDailyIssueOutQty → 40 MakeItemLocationsBR → 50 ProcessPendingItems → 70 MakePLMItemGroupBRRolling → 80 MakePLMItemBRRolling**, each in TRY/CATCH and logged to `PLM.process_log`, continuing past errors. Note `sp_MakeCopyItemLink` and the two Persist procs are *not* in the batch — the Persist procs are called from inside the two Make…Rolling procs. Last ran **2026-09-04 08:09**.
 
 ---
 
@@ -99,13 +120,19 @@ I verified each pair on both servers: **identical column count, identical column
 
 **The catch:** these live in the `PLMPreprocessorShared` database, *not* in the `PLM` database we are migrating into. Same server, so a cross-database reference works — but the object names in our code must change either way.
 
-### 3.1 DECISION A — how to reference them
+### 3.1 How we reference them — RESOLVED (Decision A)
 
-**Option 1 — three-part names.** Rewrite every reference to `PLMPreprocessorShared.infor.MDM_ITEM`. Explicit, but hard-codes the source database name into 12 modules; any future move means editing all of them again.
+**Three-part names.** Every reference becomes `PLMPreprocessorShared.infor.<TABLE>`, spelled out in
+full in each module. No synonym layer — the point is that any team member reading the view can see
+exactly which database and schema the data comes from without chasing an indirection.
 
-**Option 2 — local synonyms (recommended).** Create an `infor` schema inside the `PLM` database holding 9 synonyms pointing at `PLMPreprocessorShared.infor.*`. Module code then reads `infor.MDM_ITEM` — short, matches the mental model of "the data is under schema infor", and if that data ever moves again we repoint 9 synonyms instead of editing 12 modules. It also absorbs the two renames in one place, so `INVENTORY_LOCATION` can stay spelled that way in our SQL if we want a smaller diff.
+The two renames are applied literally at each site:
 
-I recommend Option 2, with synonyms named after the **target** names (`infor.ITEM_LOCATION`, `infor.MDM_MANUFACTURER_NAME`) so the code reads truthfully.
+```
+[DM_MONTYNT\dli2].INVENTORY_LOCATION           -> PLMPreprocessorShared.infor.ITEM_LOCATION
+[DM_MONTYNT\dli2].MDM_MANUFACTURER_NAME_INFOR  -> PLMPreprocessorShared.infor.MDM_MANUFACTURER_NAME
+[DM_MONTYNT\dli2].<other 7>                    -> PLMPreprocessorShared.infor.<same name>
+```
 
 ### 3.2 Modules requiring query edits — 12 of 27
 
@@ -179,8 +206,8 @@ Set them in `.env` rather than editing defaults, so rollback is a one-line rever
 | Phase | Work | Touches source? |
 |---|---|---|
 | 0 | Re-script all 27 modules + 24 table DDL from live PRIME | read-only |
-| 1 | Create `infor` schema + 9 synonyms in target PLM db (Decision A) | no |
-| 2 | Create 24 tables (PKs, defaults, identity) in target | no |
+| 1 | *(dropped — Decision A chose three-part names; no synonyms to create)* | n/a |
+| 2 | Create **23** tables (PKs, defaults, identity) in target — ParItemBin excluded | no |
 | 3 | Copy data, reseed identities, add FKs + indexes, verify counts | read-only |
 | 4 | Deploy 16 views in tier order, with the 12 remapped queries | no |
 | 5 | Deploy 11 procs | no |
@@ -193,27 +220,27 @@ Phases 0–6 are all reversible and invisible to production.
 
 ---
 
-## 8. Open questions for you
+## 8. Questions — all resolved
 
-1. **Decision A** — synonyms (my recommendation) or three-part names?
-2. **`ParItemBin`** — the target PLM database *already* contains `infor.ParItemBin` with 5,824 rows and a byte-identical column list. Someone has started staging this. Do we keep our own `PLM.ParItemBin` copy, or adopt `infor.ParItemBin` as the single source? (Nothing in PLM code references this table today, so either is safe.)
-3. **Three tables have no writer and no reader** — `ParItemBin`, `PastYearRequestersCount` (44,585 rows), `WrikeTask`. No live PLM module and no app code touches them. Migrate as-is, or leave them behind? If they are fed by an outside ETL that someone still consumes, that feed needs repointing and I need to know who owns it.
-4. **SQL Agent jobs** — my login is denied `SELECT` on `msdb.dbo.sysjobsteps`, so I cannot enumerate what schedules `usp_RunPLM_Batch` (it ran today at 08:09). Need a DBA to list the source jobs and recreate them on the target, or grant `SQLAgentReaderRole`.
-5. **`BullardBurnDown.vw_PLMIntegration`** — this view in PRIME reads from `PLM.*` and is the only outside consumer. It keeps working since we drop nothing, but it will go stale the moment PLM writes move to the new server. Who owns it?
-6. **Compat level 130 → 150** — the target runs the newer cardinality estimator. Behaviour is equivalent but plans can differ; I'd rather find out during the phase 7 parallel run than after cutover. Flagging it, not proposing action.
-7. **Cutover style** — hard switch, or parallel-run both for a period? Phase 7 assumes parallel; happy to compress if you want it faster.
-
----
+| Q | Answer |
+|---|---|
+| 1. Synonyms or three-part names? | Three-part names. Keep it traditional so naming does not confuse other team members. |
+| 2. `ParItemBin` | Keep the target's `infor.ParItemBin`; do not migrate `PLM.ParItemBin`. It is an unchanged Infor-sourced table used only by the PLM app, already marked done. |
+| 3. `PastYearRequestersCount`, `WrikeTask` | Migrate as-is. Not needed today, possibly needed later. |
+| 4. What schedules `usp_RunPLM_Batch`? | Proc definition supplied (see §0/D). The SQL Agent job that *calls* it still needs a DBA to enumerate and recreate — `msdb.dbo.sysjobsteps` remains unreadable to us. **Still open as an operational task, not a design question.** |
+| 5. `BullardBurnDown.vw_PLMIntegration` | Owned by Erhezi. Will be moved to the new server after PLM go-live, along with a Power BI repoint. |
+| 6. Cutover style | Hard switch after full verification and testing. |
 
 ## 9. Risk register
 
 | Risk | Severity | Mitigation |
 |---|---|---|
 | Migrating from stale `_query_backup` | **High** | Re-script from live (§4). Already caught one broken view. |
-| Missed rename (`INVENTORY_LOCATION`, `MDM_MANUFACTURER_NAME_INFOR`) | High | Both identified; synonyms confine them to one place. |
+| Missed rename (`INVENTORY_LOCATION`, `MDM_MANUFACTURER_NAME_INFOR`) | High | Both identified; remap is scripted, not hand-edited, and the deploy verifies every module compiles. |
 | Identity seeds not preserved → PK collisions | High | Explicit reseed list in §5. |
 | FK load-order failure | Medium | Load `ItemGroup`/`ItemLink` first; add FKs after data. |
-| Orphaned ETL feeds (`ParItemBin` etc.) | Medium | Open question 3 — needs an owner. |
-| Unknown SQL Agent jobs | Medium | Open question 4 — needs DBA. |
+| Orphaned ETL feeds | Low | Resolved: ParItemBin stays on target as `infor.ParItemBin`; the other two migrate as-is. |
+| Unknown SQL Agent job wrapping `usp_RunPLM_Batch` | **Medium — still open** | Needs a DBA to list source jobs and recreate on target, or grant `SQLAgentReaderRole`. Blocks phase 9 only. |
 | `infor` feed on target drifts from source | Low | Verified in exact sync today; re-verify at cutover. |
+| Hard switch leaves no parallel safety net | Medium | Phase 6/7 verification must be thorough: every view runs, full batch executes, row counts reconcile against source before the switch. Source stays intact as rollback. |
 | Collation mismatch | None | Verified identical. |

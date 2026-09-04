@@ -1,0 +1,28 @@
+Every external reference rewritten by generate_ddl.py
+'moved'  = same table name, now three-part
+'renamed'= table name changed on the target
+
+vw_365Day_Requesters                          moved        REQUISITION_LINE -> REQUISITION_LINE
+vw_365Day_Requesters                          moved        MDM_REQUESTER -> MDM_REQUESTER
+vw_90Day_PO                                   moved        PURCHASEORDER_LINE -> PURCHASEORDER_LINE
+vw_90Day_PO                                   moved        MDM_ITEMUOM -> MDM_ITEMUOM
+vw_ContractItem                               moved        CONTRACTLINE -> CONTRACTLINE
+vw_ContractItem                               moved        CONTRACTLINE -> CONTRACTLINE
+vw_ContractItem                               renamed      MDM_MANUFACTURER_NAME_INFOR -> MDM_MANUFACTURER_NAME
+vw_Item                                       moved        MDM_ITEM -> MDM_ITEM
+vw_ItemUOM                                    moved        MDM_ITEMUOM -> MDM_ITEMUOM
+vw_PLMItemCommodityCode                       moved        MDM_ITEM -> MDM_ITEM
+vw_PLMPendingItemsExport                      moved        CONTRACTLINE -> CONTRACTLINE
+vw_PLMTrackerBase                             moved        MDM_ITEM -> MDM_ITEM
+vw_PLMTrackerBase                             moved        MDM_ITEMUOM -> MDM_ITEMUOM
+vw_PLMTrackerBase                             moved        MDM_ITEMUOM -> MDM_ITEMUOM
+vw_PLMQty                                     renamed      INVENTORY_LOCATION -> ITEM_LOCATION
+vw_PLMQty                                     moved        MDM_ITEMUOM -> MDM_ITEMUOM
+sp_PLM_MakeItemLocations_FullRefresh          renamed      INVENTORY_LOCATION -> ITEM_LOCATION
+sp_PLM_MakeItemLocations_FullRefresh          moved        MDM_ITEMUOM -> MDM_ITEMUOM
+sp_PLM_MakeItemLocations_FullRefresh          moved        MDM_ITEMUOM -> MDM_ITEMUOM
+sp_PLM_MakeItemStartEndDate_FullRefresh       renamed      INVENTORY_LOCATION -> ITEM_LOCATION
+sp_PLM_extractDailyIssueOutQty_FullRefresh    moved        INVENTORY_TRANSACTION -> INVENTORY_TRANSACTION
+sp_PLM_extractDailyIssueOutQty_FullRefresh    moved        INVENTORY_TRANSACTION -> INVENTORY_TRANSACTION
+sp_PLM_extractDailyIssueOutQty_FullRefresh    moved        MDM_ITEMUOM -> MDM_ITEMUOM
+sp_PLM_extractDailyIssueOutQty_FullRefresh    moved        MDM_ITEMUOM -> MDM_ITEMUOM

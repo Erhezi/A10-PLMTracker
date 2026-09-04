@@ -62,11 +62,12 @@ EXCLUDED = {"ParItemBin"}
 
 
 def columns(cur, table):
+    # is_computed columns are formulas - they cannot be inserted into.
     cur.execute("""SELECT c.name, c.is_identity
                    FROM sys.columns c
                    JOIN sys.objects o ON c.object_id = o.object_id
                    JOIN sys.schemas s ON o.schema_id = s.schema_id
-                   WHERE s.name = 'PLM' AND o.name = ?
+                   WHERE s.name = 'PLM' AND o.name = ? AND c.is_computed = 0
                    ORDER BY c.column_id""", table)
     rows = cur.fetchall()
     return [r[0] for r in rows], any(r[1] for r in rows)

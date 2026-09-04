@@ -71,10 +71,22 @@ DB_NAME=PLM
 Set them in `.env` (and regenerate `.env.enc`) rather than editing the defaults in
 `app/config.py`, so rollback is a one-line revert. No model changes — the schema is still `PLM`.
 
-## Still open
+## Status — migrated and verified 2026-09-04
 
-- **The SQL Agent job that calls `PLM.usp_RunPLM_Batch` has not been identified.** Our login cannot
-  read `msdb.dbo.sysjobsteps`. A DBA needs to list the source job and recreate it on the target, or
-  grant `SQLAgentReaderRole`. Without this the batch will not run on a schedule after cutover.
-- **Post-migration (owner: Erhezi):** move the `BullardBurnDown` structure to the new server and
+Phases 2–6 are done. 23 tables, 16 views, 11 procedures live on the target; 2,168,280 rows loaded;
+`usp_RunPLM_Batch` ran end to end with all 7 steps `Success`; the column and index diff against
+source reports **zero differences**. Not yet cut over.
+
+## Remaining work
+
+- **Repoint the daily job.** The batch is driven by a daily job in a separate Python package, not a
+  SQL Agent job. That package's connection string needs to move to
+  `YNBBSTVWP02\PROCDATASRVPROD` / `PLM` at cutover.
+- **Repoint this app** — the two `.env` values above, plus regenerate `.env.enc`.
+- **Post-cutover (owner: Erhezi):** move the `BullardBurnDown` structure to the new server and
   repoint the Power BI dashboard.
+
+## Note on `process_log.duration_ms`
+
+It is a PERSISTED computed column. `copy_data.py` deliberately skips computed columns, and
+`generate_ddl.py` emits them as formulas — do not "fix" either to insert into it.

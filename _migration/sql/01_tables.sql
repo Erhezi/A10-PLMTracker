@@ -354,7 +354,7 @@ CREATE TABLE [PLM].[process_log] (
     [exec_end] datetime2(3) NULL,
     [status] varchar(16) NOT NULL CONSTRAINT [DF__process_l__statu__7A3F72E5] DEFAULT ('Unknown'),
     [err_msg] nvarchar(4000) NULL,
-    [duration_ms] bigint NULL,
+    [duration_ms] AS (case when [exec_end] IS NOT NULL then datediff_big(millisecond,[exec_start],[exec_end])  end) PERSISTED,
     CONSTRAINT [PK__process___40A64C0B10912D03] PRIMARY KEY CLUSTERED ([pkid])
 );
 GO

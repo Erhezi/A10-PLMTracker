@@ -92,16 +92,24 @@ def main():
     for name, oid in tables:
         c.execute("""SELECT c.name, ty.name, c.max_length, c.precision, c.scale, c.is_nullable,
                             c.is_identity, CONVERT(bigint, ISNULL(ic.seed_value,0)), CONVERT(bigint, ISNULL(ic.increment_value,0)),
-                            dc.name, dc.definition
+                            dc.name, dc.definition, c.is_computed, cc.definition, ISNULL(cc.is_persisted,0)
                      FROM sys.columns c
                      JOIN sys.types ty ON c.user_type_id = ty.user_type_id
                      LEFT JOIN sys.identity_columns ic
                             ON c.object_id = ic.object_id AND c.column_id = ic.column_id
                      LEFT JOIN sys.default_constraints dc
                             ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+                     LEFT JOIN sys.computed_columns cc
+                            ON c.object_id = cc.object_id AND c.column_id = cc.column_id
                      WHERE c.object_id = ? ORDER BY c.column_id""", oid)
         lines = []
-        for (cn_, ty, ml, pr, sc, nul, ident, seed, incr, dname, ddef) in c.fetchall():
+        for (cn_, ty, ml, pr, sc, nul, ident, seed, incr, dname, ddef,
+             computed, cdef, persisted) in c.fetchall():
+            if computed:
+                # A computed column is a formula, not storage - no type, no nullability,
+                # and copy_data.py must never try to insert into it.
+                lines.append(f"    [{cn_}] AS {cdef}" + (" PERSISTED" if persisted else ""))
+                continue
             piece = f"    [{cn_}] {col_type(ty, ml, pr, sc)}"
             if ident:
                 piece += f" IDENTITY({seed},{incr})"

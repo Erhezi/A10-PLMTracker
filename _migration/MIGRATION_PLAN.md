@@ -1,6 +1,6 @@
 # PLM Migration Plan — PRIME → PLM (branch `migrateO2`)
 
-**Status:** REVIEWED — decisions locked 2026-09-04. Building migration scripts.
+**Status:** MIGRATED AND VERIFIED — 2026-09-04. All 50 objects live on the target; schema is byte-identical to source. Not yet cut over.
 **Rule for this whole effort:** nothing is dropped, truncated, or altered on the source. Source stays live and authoritative until we jointly agree to cut over.
 
 ---
@@ -12,6 +12,7 @@
 | A | How to reference the `infor` tables | **Three-part names** — `PLMPreprocessorShared.infor.MDM_ITEM`. Traditional and unambiguous; no synonym layer for other team members to decode. |
 | B | `ParItemBin` | **Not migrated.** `infor.ParItemBin` already on the target is an unchanged table sourced directly from Infor, used only by the PLM app. Already marked done. `PLM.ParItemBin` stays behind → **23 tables to migrate, not 24.** |
 | C | `PastYearRequestersCount`, `WrikeTask` | **Migrate as-is.** Not used today, but keep them available for future use. |
+| D2 | What schedules the batch | **Not a SQL Agent job.** A daily job in a separate Python package drives it. → that package's connection string must be repointed at cutover. |
 | D | `usp_RunPLM_Batch` | Definition supplied. It is a sequential driver — a cursor over 7 procs at ord 10/20/30/40/50/70/80, each wrapped in TRY/CATCH and logged to `PLM.process_log`, continuing on error (fail-fast `THROW` is commented out). No external table references; migrates unchanged. |
 | E | `BullardBurnDown.vw_PLMIntegration` | **Owned by you.** Stays on PRIME for now. → see Post-migration follow-up below. |
 | F | Cutover style | **Hard switch**, once everything is verified and tested. No parallel-run period. |
@@ -23,6 +24,63 @@ After PLM is live on the new server:
 2. Repoint the **Power BI dashboard** to the new server.
 
 Until step 1 happens, `BullardBurnDown.vw_PLMIntegration` on PRIME reads a `PLM` schema that is no longer being written to — it goes stale at cutover, by design.
+
+---
+
+## 0b. Migration results — 2026-09-04
+
+Executed phases 2 through 6 against the target. **PRIME was never written to.**
+
+| Step | Result |
+|---|---|
+| Tables created | 23/23 |
+| Data loaded | **2,168,280 rows in 61.5 s** — every table matched source exactly |
+| Indexes | 54/54 |
+| Foreign keys | 6/6, created `WITH CHECK` — the loaded data passed referential validation |
+| Views | 16/16 deployed; **all 16 return row counts identical to source** |
+| Procedures | 11/11 deployed |
+| Full batch run | `usp_RunPLM_Batch` — **all 7 steps `Success`**, 328.6 s |
+| Schema diff | **273 columns, 75 indexes — zero differences** |
+
+### One defect found and fixed
+
+`process_log.duration_ms` is a **computed column** on the source
+(`datediff_big(millisecond, exec_start, exec_end)`, PERSISTED). The first generator emitted it as a
+plain `bigint`, so new rows on the target would have had a NULL duration — silently breaking any
+batch-duration monitoring.
+
+Fixed in three places: `generate_ddl.py` now emits computed columns, `copy_data.py` now excludes
+them from inserts, and the live target column was converted in place. All 1,379 copied values
+recomputed **identically** (0 mismatches). The full column diff now reports zero differences.
+
+*(An earlier note in this plan claimed "0 computed columns" — that check was wrong. The row counts
+first quoted here were also inflated: a `sys.partitions` join double-counted tables with multiple
+allocation units. The real migrated total is 2,168,280 rows, not 2.86 M.)*
+
+### Expected post-batch differences — not defects
+
+Running the batch on the target at 15:53 (source last ran 08:09) recomputes the rolling tables, so a
+few counts now legitimately differ:
+
+| Table | Source | Target | Why |
+|---|---:|---:|---|
+| `process_log` | 1,379 | 1,386 | +7 rows — the batch's own 7 steps |
+| `PLMItemBRRolling_Log` | 447,355 | 454,511 | +1 run's log entries |
+| `PLMItemGroupBRRolling_Log` | 240,105 | 243,925 | +1 run's log entries |
+| `DailyIssueOutQty` | 1,291,669 | 1,290,834 | −835, **entirely on 2025-09-03** — the oldest day in the `getdate()-365` window. Every one of the 1,286,296 rows dated later is identical on both sides. |
+| `PLMItemBRRolling` | 6,305 | 6,304 | −1: item 105451 @ PMOSC6E had exactly one DailyIssueOutQty row, on 2025-09-03. It aged out between 08:09 and 15:53, so no burn rate could be computed. |
+| `PLMItemGroupBRRolling` | 3,681 | 3,680 | −1: group 138 @ PMOSC6E, the same cascade |
+
+Confirmation that the pipeline itself is faithful: `ItemLocations`, `ItemLocationsBR` and
+`ItemStartEndDate` are all fully rebuilt by the batch and land on **exactly** the source's 43,981
+rows each.
+
+### Benign catalog artifact
+
+`sys.sql_expression_dependencies` on the target lists one unresolved name, `'p'`, for
+`sp_ProcessPendingItems`. That is the `UPDATE p ... FROM PLM.PendingItems AS p` alias form, which the
+dependency parser cannot classify. The source does not record it (compat 130 vs 150). The procedure
+executes correctly — it ran `Success` in the batch.
 
 ---
 

@@ -246,18 +246,33 @@ Identity reseed values to preserve (app hands out these PKIDs): `ItemLink`=369, 
 
 ---
 
-## 6. Application change
+## 6. Application change — done
 
-Smaller than expected. `app/__init__.py` binds `MetaData(schema="PLM")` and the target schema is also `PLM`, so **no model changes at all**. The entire app-side change is two values in [app/config.py:11-12](app/config.py#L11-L12), both already env-overridable:
+Smaller than expected, and now complete. `app/__init__.py` binds `MetaData(schema="PLM")` and the
+target schema is also `PLM`, so **no model changes at all**.
 
-```
-DB_SERVER = YNBBSTVWP02\PROCDATASRVPROD     (was MISCPrdAdhocDB)
-DB_NAME   = PLM                              (was PRIME)
-```
+`app/config.py` now carries a named-target registry instead of loose server/database strings:
 
-Set them in `.env` rather than editing defaults, so rollback is a one-line revert. Note `.env` is encrypted to `.env.enc` — that needs regenerating too.
+| Target | Server | Database |
+|---|---|---|
+| **`O2`** (default) | `YNBBSTVWP02\PROCDATASRVPROD` | `PLM` |
+| `PRIME` | `MISCPrdAdhocDB` | `PRIME` |
 
----
+Because `O2` is the default, the cutover required **no `.env` change and no `.env.enc`
+regeneration** — that file never held connection details. Rollback is a single variable:
+`DB_TARGET=PRIME`.
+
+Precedence: `DATABASE_URL` overrides everything; `DB_SERVER` / `DB_NAME` / `ODBC_DRIVER` /
+`DB_TRUSTED` override individual values of the selected target; otherwise the registry wins. An
+unknown `DB_TARGET` raises at import rather than silently falling back. `Config.describe_db()`
+reports the live backend — worth logging for the first few days.
+
+The URI is built through `odbc_connect` rather than embedding the host in the URL, because
+`YNBBSTVWP02\PROCDATASRVPROD` is a **named instance** and that backslash is not valid unescaped in
+a URL host.
+
+**Verified:** both targets connect through SQLAlchemy; the app boots against O2 and reads
+`vw_PLMTrackerBase` (3,844), `vw_PLMQty` (33,860), `users` (14), `ItemLink` (173); 50/50 tests pass.
 
 ## 7. Proposed sequence
 

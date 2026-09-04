@@ -59,17 +59,43 @@ loads parents first and uses `DELETE` on the two FK-referenced tables.
    Two are renamed on the target: `INVENTORY_LOCATION` → `ITEM_LOCATION` and
    `MDM_MANUFACTURER_NAME_INFOR` → `MDM_MANUFACTURER_NAME`.
 
-## Cutover
+## Cutover — the app connection
 
-Hard switch, after everything above is verified. The app change is two environment values:
+`app/config.py` holds a registry of named backends, so switching is one environment variable and
+no code edit:
+
+```python
+DB_TARGETS = {
+    "O2":    {"server": r"YNBBSTVWP02\PROCDATASRVPROD", "database": "PLM"},
+    "PRIME": {"server": "MISCPrdAdhocDB",                "database": "PRIME"},
+}
+DEFAULT_DB_TARGET = "O2"
+```
+
+**O2 is the default**, so the cutover needs no configuration at all — nothing to add to `.env`, and
+`.env.enc` does not need regenerating (it never held connection details).
+
+To roll back, set one variable:
 
 ```
-DB_SERVER=YNBBSTVWP02\PROCDATASRVPROD
-DB_NAME=PLM
+DB_TARGET=PRIME
 ```
 
-Set them in `.env` (and regenerate `.env.enc`) rather than editing the defaults in
-`app/config.py`, so rollback is a one-line revert. No model changes — the schema is still `PLM`.
+Escape hatches, in precedence order: `DATABASE_URL` overrides everything; `DB_SERVER` / `DB_NAME` /
+`ODBC_DRIVER` / `DB_TRUSTED` override individual values of the selected target; otherwise the
+registry wins. An unknown `DB_TARGET` fails loudly at import rather than silently falling back.
+
+`Config.describe_db()` reports which backend the running process is actually using — worth logging
+or exposing on a health endpoint for the first few days after cutover.
+
+No model changes were needed: `app/__init__.py` binds `MetaData(schema="PLM")` and the schema name
+is `PLM` on both servers.
+
+### A note on the URI format
+
+The URI is built with `odbc_connect` rather than putting the host in the URL, because
+`YNBBSTVWP02\PROCDATASRVPROD` is a **named instance** — that backslash is not valid unescaped in a
+URL host and the old `mssql+pyodbc://{server}/{db}` form is unreliable with it.
 
 ## Status — migrated and verified 2026-09-04
 
@@ -82,7 +108,7 @@ source reports **zero differences**. Not yet cut over.
 - **Repoint the daily job.** The batch is driven by a daily job in a separate Python package, not a
   SQL Agent job. That package's connection string needs to move to
   `YNBBSTVWP02\PROCDATASRVPROD` / `PLM` at cutover.
-- **Repoint this app** — the two `.env` values above, plus regenerate `.env.enc`.
+- ~~Repoint this app~~ — **done.** `DEFAULT_DB_TARGET = "O2"` in `app/config.py`; app verified live against the new server, 50/50 tests passing.
 - **Post-cutover (owner: Erhezi):** move the `BullardBurnDown` structure to the new server and
   repoint the Power BI dashboard.
 

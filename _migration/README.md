@@ -108,7 +108,7 @@ If the cutover has to be undone:
 
 ```bash
 # preferred on a shared main — no force push
-git revert -m 1 <the "Merge branch 'migrateO2'" commit on main>
+git revert -m 1 6699ad4          # the "Merge branch 'migrateO2'" commit
 
 # or, to inspect / redeploy the pre-migration tree
 git checkout pre-o2-cutover

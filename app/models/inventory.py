@@ -41,13 +41,15 @@ class ContractItem(db.Model):
     manufacturer = db.Column("manufacturer", db.String(255), primary_key=True)
     mfg_part_num = db.Column("mfg_part_num", db.String(100), primary_key=True)
 
-     # Computed column in DB consist of stripped (spaces/dashes removed)
-    search_shadow = db.Column("search_shadow", db.String(200))
+     # Computed column in DB: stripped (spaces/dashes removed) mfg part | vendor item | item number
+    search_shadow = db.Column("search_shadow", db.String(302))
 
     # Additional columns
     item_description = db.Column("item_description", db.String(500))
     item_type = db.Column("item_type", db.String(100))
     item = db.Column("item", db.String(50))
+    # Infor long item number; populated only for item_type == 'Special' (blank for Itemmast)
+    long_item_number = db.Column("long_item_number", db.String(100))
     is_mhs = db.Column("is_mhs", db.String(5))  # take value 'Yes' or 'No', indicate if item is on MHS Contracts (meaning it is not entity specific)
     last_update_date = db.Column("last_update_date", db.DateTime)
 

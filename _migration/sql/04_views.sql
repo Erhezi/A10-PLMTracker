@@ -47,7 +47,8 @@ and EXC_FLAG = 'default'
 GO
 
 CREATE OR ALTER view [PLM].[vw_ContractItem] AS
-select contract_id, manufacturer, mfg_part_num, search_shadow, item_description, item_type, item, is_mhs, last_update_date
+select contract_id, manufacturer, mfg_part_num, search_shadow, item_description, item_type, item, long_item_number,
+is_mhs, last_update_date
 from(
 select *, row_number() over (partition by contract_id, manufacturer, mfg_part_num order by item desc) as rk
 from(
@@ -55,21 +56,16 @@ select distinct
 WorkingContractID as contract_id, 
 m.ManufacturerName as manufacturer, 
 ManufacturerNumber as mfg_part_num,
-concat(DerivedStrippedManufacturerNumber,'|',DerivedStrippedVendorItem) as search_shadow, 
+concat(DerivedStrippedManufacturerNumber,'|',DerivedStrippedVendorItem, '|', ItemNumber) as search_shadow, 
 ItemDescription as item_description, 
 ItemType as item_type, 
 IIF(itemtype = 'Itemmast', ItemNumber, '') as item,
+IIF(itemtype = 'Special', ItemNumber, '') as long_item_number,
 (select max(try_convert(date, [update stamp])) from PLMPreprocessorShared.infor.[CONTRACTLINE]) as last_update_date,
 iif([Contract.MMAHSOrganizationEID] = '105188574', 'Yes', 'No') as is_mhs
 from PLMPreprocessorShared.infor.[CONTRACTLINE] [c]
 left join PLMPreprocessorShared.infor.[MDM_MANUFACTURER_NAME] [m]
 on c.Manufacturer = m.Manufacturer
-where [Contract.ContractStatus] = 'Active'
-and [Contract.OnHold] = 'No'
-and OnHold = 'No'
-and ContractLineState = 'Active'
-and ActiveLine = 'Yes'
-and ExpirationDate >= getdate()
 )[x]
 )[xx]
 where rk = 1;

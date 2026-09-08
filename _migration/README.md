@@ -20,6 +20,7 @@ target. Nothing drops, truncates or alters anything on `MISCPrdAdhocDB`.
 | `sql/06_verify.sql` | Smoke test — object counts, reference resolution, every view executed |
 | `sql/remap_report.txt` | Every external reference that was rewritten, for review |
 | `copy_data.py` | Moves the table data, preserves identity seeds |
+| `copy_bullard.py` | One-time — moves the `BullardBurnDown` data to the `PBI` database on O2 |
 
 ## Order of operations
 
@@ -136,8 +137,36 @@ source reports **zero differences**. Not yet cut over.
   SQL Agent job. That package's connection string needs to move to
   `YNBBSTVWP02\PROCDATASRVPROD` / `PLM` at cutover.
 - ~~Repoint this app~~ — **done.** `DEFAULT_DB_TARGET = "O2"` in `app/config.py`; app verified live against the new server, 50/50 tests passing.
-- **Post-cutover (owner: Erhezi):** move the `BullardBurnDown` structure to the new server and
-  repoint the Power BI dashboard.
+- ~~Move the `BullardBurnDown` data~~ — **done 2026-09-08.** See below.
+- **Repoint the Power BI dashboard** at `PBI` on `YNBBSTVWP02\PROCDATASRVPROD` (owner: Erhezi).
+- **Repoint whatever writes `BullardBurnDown.DailyArchive` daily.** Until then PRIME keeps
+  collecting new rows and the O2 copy goes stale — re-run `copy_bullard.py` when it moves.
+
+## BullardBurnDown data move — 2026-09-08
+
+The structure was already created on the target by Erhezi, in the **`PBI`** database (not `PLM`),
+schema `BullardBurnDown`. `copy_bullard.py` moved the contents:
+
+| Table | Rows | Checksum |
+|---|---|---|
+| `DailyArchive` | 183,623 | matches source |
+| `SearchTerms` | 1,365 | matches source |
+
+Verified with `--verify`: row counts and `CHECKSUM_AGG(BINARY_CHECKSUM(*))` identical on both sides.
+All 6 `BullardBurnDown` views on the target return counts identical to PRIME, `vw_PLMIntegration`
+included — so its cross-database reference to `PLM` on O2 resolves.
+
+Index parity was restored after the load — the target was missing the source's nonclustered
+`IX_DailyArchive_Date`, created 2026-09-08:
+
+```sql
+CREATE NONCLUSTERED INDEX IX_DailyArchive_Date
+    ON BullardBurnDown.DailyArchive ([Date]);
+```
+
+Both tables now match source on the PK and on every nonclustered index.
+
+Note the table is `SearchTerms`, plural, on both servers.
 
 ## Note on `process_log.duration_ms`
 

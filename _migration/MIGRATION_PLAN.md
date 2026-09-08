@@ -20,10 +20,17 @@
 ### Post-migration follow-up (owner: Erhezi)
 
 After PLM is live on the new server:
-1. Move the **BullardBurnDown** structure to `YNBBSTVWP02\PROCDATASRVPROD`.
-2. Repoint the **Power BI dashboard** to the new server.
+1. ~~Move the **BullardBurnDown** structure to `YNBBSTVWP02\PROCDATASRVPROD`.~~ **Done 2026-09-08.**
+   It landed in the **`PBI`** database, not `PLM` — structure created by Erhezi, data moved by
+   `_migration/copy_bullard.py` (183,623 + 1,365 rows, checksums verified). `IX_DailyArchive_Date`
+   was added afterwards to restore index parity.
+2. Repoint the **Power BI dashboard** to the new server — **still open.**
+3. Repoint whatever writes `DailyArchive` daily — **still open.** PRIME is still collecting, so
+   the O2 copy is a snapshot until that moves; `copy_bullard.py` is re-runnable for the catch-up.
 
-Until step 1 happens, `BullardBurnDown.vw_PLMIntegration` on PRIME reads a `PLM` schema that is no longer being written to — it goes stale at cutover, by design.
+`BullardBurnDown.vw_PLMIntegration` on PRIME reads a `PLM` schema that is no longer being written
+to, so it is stale by design. The `PBI` copy of that view resolves against `PLM` on O2 and returns
+the same 275 rows.
 
 ---
 

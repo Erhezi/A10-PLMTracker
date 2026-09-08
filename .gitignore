@@ -150,3 +150,5 @@ _ref/**
 
 # Ignore everything under _query_backup
 _query_backup/**
+# migration scratch
+_migration/sql/*.bak

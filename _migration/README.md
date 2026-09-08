@@ -91,6 +91,33 @@ or exposing on a health endpoint for the first few days after cutover.
 No model changes were needed: `app/__init__.py` binds `MetaData(schema="PLM")` and the schema name
 is `PLM` on both servers.
 
+### Code rollback point — `c981975`
+
+The state of `main` **before this branch was merged** is the rollback point for everything in this
+migration:
+
+```
+c981975  adding discontinued field to par table, add discontinued field to group.html export
+```
+
+It is tagged `pre-o2-cutover` so it stays findable no matter what `main` does next. That commit is
+the last version of the app with no migration code in the tree, still pointing at
+`MISCPrdAdhocDB` / `PRIME`.
+
+If the cutover has to be undone:
+
+```bash
+# preferred on a shared main — no force push
+git revert -m 1 <the "Merge branch 'migrateO2'" commit on main>
+
+# or, to inspect / redeploy the pre-migration tree
+git checkout pre-o2-cutover
+```
+
+Nothing has to be undone on the database side: PRIME was never written to, so it is still live and
+authoritative. `DB_TARGET=PRIME` (above) is the fast rollback and needs no git operation at all —
+going back to `c981975` is the fuller one, for when the code changes themselves are the suspect.
+
 ### A note on the URI format
 
 The URI is built with `odbc_connect` rather than putting the host in the URL, because

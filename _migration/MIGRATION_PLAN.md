@@ -262,6 +262,9 @@ Because `O2` is the default, the cutover required **no `.env` change and no `.en
 regeneration** — that file never held connection details. Rollback is a single variable:
 `DB_TARGET=PRIME`.
 
+**Code rollback point:** `c981975` — the tip of `main` before this branch merged, tagged
+`pre-o2-cutover`. See [README.md](README.md#code-rollback-point--c981975) for how to go back to it.
+
 Precedence: `DATABASE_URL` overrides everything; `DB_SERVER` / `DB_NAME` / `ODBC_DRIVER` /
 `DB_TRUSTED` override individual values of the selected target; otherwise the registry wins. An
 unknown `DB_TARGET` raises at import rather than silently falling back. `Config.describe_db()`

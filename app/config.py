@@ -1,11 +1,24 @@
 import os
+import warnings
 from pathlib import Path
 from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
+from .utility.env_secrets import load_env
+
 root_env = Path(__file__).resolve().parents[1] / ".env"
 if root_env.exists():
     load_dotenv(root_env)
+    # Secrets are stored as KEY_HASHED=enc::... (see app/utility/env_secrets.py);
+    # decrypt them and expose each under its plain name, e.g. CLIENT_SECRET.
+    # A missing/wrong passphrase only warns: the DB side still works, and
+    # first_time_setup.py must be importable on a machine without one yet.
+    # Config.validate() reports the missing secret when Graph is actually used.
+    try:
+        for _key, _value in load_env(str(root_env)).items():
+            os.environ.setdefault(_key, _value)
+    except RuntimeError as exc:
+        warnings.warn(f"Encrypted .env secrets not loaded: {exc}", RuntimeWarning)
 
 
 # ---------------------------------------------------------------
@@ -103,7 +116,13 @@ class Config:
     def validate(cls):
         missing = [k for k in ["TENANT_ID", "CLIENT_ID", "CLIENT_SECRET"] if not getattr(cls, k)]
         if missing:
-            raise ValueError(f"Missing required environment variables for Microsoft Graph: {', '.join(missing)}")
+            message = f"Missing required environment variables for Microsoft Graph: {', '.join(missing)}"
+            if "CLIENT_SECRET" in missing and os.getenv("CLIENT_SECRET_HASHED"):
+                message += (
+                    " (CLIENT_SECRET_HASHED is present but could not be decrypted - set "
+                    "E0_SECRET_PASSPHRASE for the account running the app, e.g. the IIS app pool)"
+                )
+            raise ValueError(message)
         
 class DevelopmentConfig(Config):
     DEBUG = True

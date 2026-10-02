@@ -206,6 +206,8 @@
                 <th id="inv-col-mfg-num-ri" data-field="manufacturer_number_ri" class="col-text">Mfg. Number (RI)</th>
                 <th id="inv-col-desc" data-field="item_description" class="col-desc">Item Description</th>
                 <th id="inv-col-desc-ri" data-field="item_description_ri" class="col-desc">Item Description (RI)</th>
+                <th id="inv-col-reference2" data-field="reference2" class="col-desc">Reference2</th>
+                <th id="inv-col-description2" data-field="description2" class="col-desc">Description2</th>
                 <th id="inv-col-action" data-field="action" class="col-text">Record Action</th>
                 <th id="inv-col-setup-action" data-field="setup_action" class="col-text">Setup Action</th>
                 <th id="inv-col-notes" data-field="notes" class="col-desc">Notes</th>
@@ -268,6 +270,8 @@
                 <th class="col-text column-filter-cell" id="inv-filter-mfg-num-ri" data-column-id="inv-col-mfg-num-ri"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-desc" data-column-id="inv-col-desc"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-desc-ri" data-column-id="inv-col-desc-ri"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-reference2" data-column-id="inv-col-reference2"></th>
+                <th class="col-desc column-filter-cell" id="inv-filter-description2" data-column-id="inv-col-description2"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-action" data-column-id="inv-col-action"></th>
                 <th class="col-text column-filter-cell" id="inv-filter-setup-action" data-column-id="inv-col-setup-action"></th>
                 <th class="col-desc column-filter-cell" id="inv-filter-notes" data-column-id="inv-col-notes"></th>
@@ -540,6 +544,7 @@
           </div>
         </div>
         <div id="export-column-picker" class="export-column-picker d-none">
+          <div class="alert alert-info small d-none mb-3" role="status" id="export-mode-switch-notice"></div>
           <div class="row g-3 align-items-start">
             <div class="col-lg-6">
               <div class="d-flex justify-content-between align-items-center mb-2">
@@ -732,6 +737,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportSelectedCount = exportModalEl ? exportModalEl.querySelector('#export-selected-count') : null;
   const exportCustomWarning = exportModalEl ? exportModalEl.querySelector('#export-custom-warning') : null;
   const exportErrorAlert = exportModalEl ? exportModalEl.querySelector('#export-error-alert') : null;
+  const exportModeSwitchNotice = exportModalEl ? exportModalEl.querySelector('#export-mode-switch-notice') : null;
   const exportDownloadBtn = document.getElementById('export-download-btn');
   const exportDownloadSpinner = exportDownloadBtn ? exportDownloadBtn.querySelector('.spinner-border') : null;
   let exportModalInstance = null;
@@ -884,13 +890,13 @@ document.addEventListener('DOMContentLoaded', () => {
       ],
     },
   };
-  const exportExtraColumns = {
+  // Columns that only exist in preset exports (values are set by the preset's
+  // server pipeline), so they are never offered in the self-defined picker.
+  const presetOnlyExportColumns = {
     inventory: [
       { field: 'recommended_auto_replenishment', label: 'AutomaticPurchaseOrder (True/False)' },
       { field: 'item_set', label: 'Item Set' },
-      { field: 'item_group_export', label: 'Item Group' },
-      { field: 'reference2', label: 'Reference2' },
-      { field: 'description2', label: 'Description2' },
+      { field: 'item_group_export', label: 'Item Group (Infor)' },
     ],
     par: [
       { field: 'item_set', label: 'Item Set' },
@@ -1346,9 +1352,11 @@ document.addEventListener('DOMContentLoaded', () => {
     'action', 'setup_action', 'notes',
     ...recommendedColumns,
   ];
+  // Hidden until the user turns them on; not part of the setup-mode toggle lists
+  const optInColumns = ['reference2', 'description2'];
   ['inventory', 'par'].forEach(tableKey => {
     const table = tableKey === 'inventory' ? inventoryTable : parTable;
-    setupColumns.forEach(field => {
+    [...setupColumns, ...optInColumns].forEach(field => {
       const th = table.querySelector(`th[data-field="${field}"]`);
       if(th && th.id){
         columnState[tableKey][th.id] = false;
@@ -1993,6 +2001,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="col-repl text-center">${fmt(r.manufacturer_number_ri)}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.item_description)}">${fmt(r.item_description)}</td>
           <td class="col-desc col-repl text-start" title="${fmt(r.item_description_ri)}">${fmt(r.item_description_ri)}</td>
+          <td class="col-desc col-src text-start" title="${fmt(r.reference2)}">${fmt(r.reference2)}</td>
+          <td class="col-desc col-src text-start" title="${fmt(r.description2)}">${fmt(r.description2)}</td>
           <td class="col-text text-center">${recordAction}</td>
           <td class="col-text text-center">${setupAction}</td>
           <td class="col-desc col-src text-start" title="${fmt(r.notes)}">${fmt(r.notes)}</td>
@@ -2424,13 +2434,53 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
     }
-    const extras = exportExtraColumns[tableKey] || [];
+    const extras = presetOnlyExportColumns[tableKey] || [];
     extras.forEach(extra => {
       if(!results.some(column => column.field === extra.field)){
-        results.push({ field: extra.field, label: extra.label, columnId: '' });
+        results.push({ field: extra.field, label: extra.label, columnId: '', presetOnly: true });
       }
     });
     return results;
+  }
+
+  function isPresetColumnMode(mode){
+    return customExportModes.has(mode) && mode !== 'custom';
+  }
+
+  function getPickableExportColumns(){
+    // Preset-only columns are offered only inside the preset that defines them
+    const presetFields = (exportPresetFields[exportState.tableKey] || {})[exportState.columnMode] || [];
+    return exportState.allColumns.filter(col => !col.presetOnly || presetFields.includes(col.field));
+  }
+
+  function clearModeSwitchNotice(){
+    if(exportModeSwitchNotice){
+      exportModeSwitchNotice.classList.add('d-none');
+      exportModeSwitchNotice.textContent = '';
+    }
+  }
+
+  // Presets are fixed system set-up templates: adding or removing a column
+  // turns the export into a self-defined selection.
+  function switchPresetToCustom(){
+    const presetRadio = exportColumnRadios.find(radio => radio.value === exportState.columnMode);
+    const presetLabel = presetRadio && presetRadio.labels && presetRadio.labels[0]
+      ? presetRadio.labels[0].textContent.trim()
+      : exportState.columnMode;
+    const droppedLabels = exportState.allColumns
+      .filter(col => col.presetOnly && exportState.selectedFields.includes(col.field))
+      .map(col => col.label);
+    setExportColumnMode('custom');
+    if(exportModeSwitchNotice){
+      let message = `You changed the columns of "${presetLabel}", so the export switched to Self-defined selection. `
+        + 'Preset formatting (template headers, fixed values and row rules) no longer applies.';
+      if(droppedLabels.length){
+        message += ` Removed preset-only columns: ${droppedLabels.join(', ')}.`;
+      }
+      message += ' Choose the preset again to restore it.';
+      exportModeSwitchNotice.textContent = message;
+      exportModeSwitchNotice.classList.remove('d-none');
+    }
   }
 
   function syncTableSpecificColumnModes(tableKey){
@@ -2482,9 +2532,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function refreshExportColumnLists(){
     if(!exportModalEl) return;
-    const columnMap = new Map(exportState.allColumns.map(col => [col.field, col]));
+    const pickableColumns = getPickableExportColumns();
+    const columnMap = new Map(pickableColumns.map(col => [col.field, col]));
+    // Also drops preset-only fields carried over when switching from a preset to self-defined
     exportState.selectedFields = exportState.selectedFields.filter(field => columnMap.has(field));
-    const availableFields = exportState.allColumns
+    const availableFields = pickableColumns
       .map(col => col.field)
       .filter(field => !exportState.selectedFields.includes(field))
       .sort((a, b) => a.localeCompare(b));
@@ -2517,6 +2569,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function moveFieldToSelected(field, index){
     if(!field) return;
+    // Reordering inside a preset keeps it; adding a new column does not
+    if(!exportState.selectedFields.includes(field) && isPresetColumnMode(exportState.columnMode)){
+      switchPresetToCustom();
+    }
     const existingIndex = exportState.selectedFields.indexOf(field);
     if(existingIndex !== -1){
       exportState.selectedFields.splice(existingIndex, 1);
@@ -2529,11 +2585,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function moveFieldToAvailable(field){
+    if(!exportState.selectedFields.includes(field)) return;
+    if(isPresetColumnMode(exportState.columnMode)){
+      switchPresetToCustom();
+    }
     const idx = exportState.selectedFields.indexOf(field);
     if(idx !== -1){
       exportState.selectedFields.splice(idx, 1);
-      refreshExportColumnLists();
     }
+    refreshExportColumnLists();
   }
 
   function clearExportErrors(){
@@ -2641,6 +2701,7 @@ document.addEventListener('DOMContentLoaded', () => {
     exportState.isBusy = false;
     exportDragData = null;
     clearExportErrors();
+    clearModeSwitchNotice();
     if(exportModalTitleEl){
       exportModalTitleEl.textContent = exportTableLabels[tableKey] || tableKey.toUpperCase();
     }
@@ -2822,6 +2883,7 @@ document.addEventListener('DOMContentLoaded', () => {
   exportColumnRadios.forEach(radio => {
     radio.addEventListener('change', () => {
       if(radio.checked){
+        clearModeSwitchNotice();
         setExportColumnMode(radio.value);
       }
     });

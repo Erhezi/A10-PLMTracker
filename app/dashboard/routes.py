@@ -13,6 +13,7 @@ from ..export import (
     COLUMN_MODE_REGISTRY,
     TABLE_CONFIGS,
     apply_pipeline,
+    assign_item_description_update,
     assign_setup_action,
     filter_export_columns,
     parse_column_selection,
@@ -396,6 +397,7 @@ def _filtered_inventory_rows(args, *, apply_filters: bool = True) -> list[dict]:
         all_rows = _apply_quantity_filter(all_rows, "current_qty_ri", args.get("current_qty_ri_filter"))
     for row in all_rows:
         assign_setup_action(row, table="inventory")
+        assign_item_description_update(row)
     return all_rows
 
 

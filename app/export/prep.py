@@ -505,6 +505,27 @@ def _format_item_reference(replacement_item: object, manufacturer_number: object
     return f"SEE ITEM NO {replacement_text} MFG NO {manufacturer_text}".strip()
 
 
+def derive_item_description_update(row: dict) -> tuple[str, str]:
+    """Return the (Reference2, Description2) values for the original item."""
+    stage = str(row.get("stage") or "").strip().lower()
+    replacement_text = str(row.get("replacement_item") or "").strip()
+    manufacturer_text = str(row.get("manufacturer_number_ri") or "").strip()
+
+    if "discontinued" in stage or not replacement_text:
+        return "DISCONTINUED", "DISCONTINUED"
+    if stage in {"tracking - item transition", "pending clinical readiness"}:
+        if replacement_text or manufacturer_text:
+            reference_text = _format_item_reference(replacement_text, manufacturer_text)
+            return reference_text, f"DISCONTINUED {reference_text}".strip()
+    return "", ""
+
+
+def assign_item_description_update(row: dict) -> None:
+    if not isinstance(row, dict):
+        return
+    row["reference2"], row["description2"] = derive_item_description_update(row)
+
+
 def prepare_inventory_item_description_update_original_rows(rows: list[Row]) -> list[Row]:
     if not rows:
         return []
@@ -521,24 +542,10 @@ def prepare_inventory_item_description_update_original_rows(rows: list[Row]) -> 
             continue
         seen_items.add(item_key)
 
-        stage_raw = row.get("stage")
-        stage = str(stage_raw or "").strip().lower()
-        replacement_text = str(row.get("replacement_item") or "").strip()
-        manufacturer_text = str(row.get("manufacturer_number_ri") or "").strip()
-        reference_text = _format_item_reference(replacement_text, manufacturer_text)
-        reference2 = ""
-        description2 = ""
-
-        is_discontinued = "discontinued" in stage or not replacement_text
-        if is_discontinued:
-            reference2 = 'DISCONTINUED'
-            description2 = 'DISCONTINUED'
-        elif stage in {"tracking - item transition", "pending clinical readiness"}:
-            if replacement_text or manufacturer_text:
-                reference2 = reference_text
-                description2 = f"DISCONTINUED {reference_text}".strip()
+        reference2, description2 = derive_item_description_update(row)
 
         prepared.append({
+            # Infor's item master ItemGroup (always "1" in infor.MDM_ITEMUOM), not the PLM item group
             "item_group_export": 1,
             "replacement_item": row.get("item"),
             "stock_uom": row.get("stock_uom"),

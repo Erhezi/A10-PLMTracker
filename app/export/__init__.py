@@ -10,6 +10,7 @@ from .modes import (
 )
 from .prep import (
     apply_pipeline,
+    assign_item_description_update,
     assign_setup_action,
     filter_export_columns,
     parse_column_selection,
@@ -24,6 +25,7 @@ __all__ = [
     "PAR_EXPORT_COLUMNS",
     "PAR_SETUP_COMBINED_EXPORT_COLUMNS",
     "apply_pipeline",
+    "assign_item_description_update",
     "assign_setup_action",
     "filter_export_columns",
     "parse_column_selection",

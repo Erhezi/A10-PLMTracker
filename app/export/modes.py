@@ -125,6 +125,8 @@ INVENTORY_EXPORT_COLUMNS: list[tuple[str, str]] = [
     ("Manufacturer Number (RI)", "manufacturer_number_ri"),
     ("Item Description", "item_description"),
     ("Item Description (RI)", "item_description_ri"),
+    ("Reference2", "reference2"),
+    ("Description2", "description2"),
     ("Record Action", "action"),
     ("Setup Action", "setup_action"),
     ("Notes", "notes"),

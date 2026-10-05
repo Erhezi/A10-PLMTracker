@@ -1806,6 +1806,31 @@ document.addEventListener('DOMContentLoaded', () => {
     return params;
   }
 
+  // Filter selections can exceed IIS's 2,048-byte query-string limit (e.g. every
+  // Par location), so filter-driven requests send their parameters as a JSON body.
+  function postFilterParams(path, params){
+    return appFetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.fromEntries(params)),
+    });
+  }
+
+  // The server answers these requests with {"error": "..."}; anything else (such as
+  // an IIS error page) is not shown to the user.
+  async function readErrorMessage(resp, fallback){
+    const contentType = resp.headers.get('Content-Type') || '';
+    if(contentType.includes('application/json')){
+      try {
+        const data = await resp.json();
+        if(data && data.error) return data.error;
+      } catch {
+        // fall through to the generic message
+      }
+    }
+    return `${fallback} (HTTP ${resp.status})`;
+  }
+
   function updatePager() {
     if(inventoryVisibleTotal <= 0){
       pager.style.display = 'none';
@@ -1846,7 +1871,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (kpiItems) kpiItems.textContent = '...';
       if (kpiReady) kpiReady.textContent = '...';
       const params = buildSharedQueryParams();
-  const resp = await appFetch(`/dashboard/api/stats?${params.toString()}`);
+      const resp = await postFilterParams('/dashboard/api/stats', params);
       
       if (!resp.ok) {
         throw new Error('Failed to fetch stats');
@@ -1877,13 +1902,11 @@ document.addEventListener('DOMContentLoaded', () => {
       params.set('page', page);
       params.set('per_page', perPage);
       appendColumnFilterParams(params, 'inventory');
-  const resp = await appFetch(`/dashboard/api/inventory?${params.toString()}`);
+      const resp = await postFilterParams('/dashboard/api/inventory', params);
       console.log('API response status:', resp.status, resp.statusText);
-      
+
       if(!resp.ok) {
-        const errorText = await resp.text();
-        console.error('API error response:', errorText);
-        throw new Error('HTTP '+resp.status + ': ' + errorText);
+        throw new Error(await readErrorMessage(resp, 'Failed to load inventory'));
       }
       
       const data = await resp.json();
@@ -2030,8 +2053,8 @@ document.addEventListener('DOMContentLoaded', () => {
       params.set('page', page);
       params.set('per_page', parPerPage);
       appendColumnFilterParams(params, 'par');
-  const resp = await appFetch(`/dashboard/api/par?${params.toString()}`);
-      if(!resp.ok) throw new Error('Failed par fetch');
+      const resp = await postFilterParams('/dashboard/api/par', params);
+      if(!resp.ok) throw new Error(await readErrorMessage(resp, 'Failed to load par locations'));
       const data = await resp.json();
       const rows = data.rows || [];
       const visibleRows = hideROnly ? rows.filter(r => !isROnlyLocation(r)) : rows;
@@ -2155,7 +2178,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateParPager();
     } catch(e){
       console.error('Failed loading par locations', e);
-      parCountEl.textContent = 'error';
+      parCountEl.textContent = 'error: ' + e.message;
     }
   }
 
@@ -2298,10 +2321,9 @@ document.addEventListener('DOMContentLoaded', () => {
       notifyBtn.setAttribute('aria-busy', 'true');
     }
     try {
-  const resp = await appFetch(`/dashboard/api/requesters?${params.toString()}`);
+      const resp = await postFilterParams('/dashboard/api/requesters', params);
       if(!resp.ok){
-        const message = await resp.text();
-        throw new Error(message || `Request failed (${resp.status})`);
+        throw new Error(await readErrorMessage(resp, 'Failed to load requesters'));
       }
       const data = await resp.json();
       notifyLastQueryKey = queryKey;
@@ -2830,15 +2852,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       params.set('column_mode', 'all');
     }
-  const resp = await appFetch(`/dashboard/export/${tableKey}?${params.toString()}`);
+    const resp = await postFilterParams(`/dashboard/export/${tableKey}`, params);
     if(!resp.ok){
-      let detail = '';
-      try {
-        detail = await resp.text();
-      } catch {
-        detail = '';
-      }
-      throw new Error(detail || `Export failed (${resp.status})`);
+      throw new Error(await readErrorMessage(resp, 'Export failed'));
     }
     const blob = await resp.blob();
     let filename = `${tableKey}-export.xlsx`;

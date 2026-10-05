@@ -8,6 +8,8 @@ from flask_login import login_required as _login_required
 from sqlalchemy import select, func
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 from sqlalchemy.sql.annotation import AnnotatedColumn
+from werkzeug.datastructures import MultiDict
+from werkzeug.exceptions import HTTPException
 from ..export import (
     CUSTOM_EXPORT_MODES,
     COLUMN_MODE_REGISTRY,
@@ -238,6 +240,48 @@ def _apply_tri_state_filter(rows, key: str, desired: str | None):
     if target not in TRI_STATE_VALUES:
         return rows
     return [row for row in rows if _normalize_tri_state(row.get(key)) == target]
+
+
+FILTERED_DATA_ENDPOINTS = {
+    "dashboard.api_inventory",
+    "dashboard.api_par",
+    "dashboard.api_requesters",
+    "dashboard.api_stats",
+    "dashboard.export_table",
+}
+
+
+def _request_params() -> MultiDict:
+    """Return request parameters from the query string, or from a JSON body on POST.
+
+    The dashboard POSTs its filters because long selections (e.g. every Par
+    location) exceed IIS's 2,048-byte query-string limit. Values are flattened
+    to the strings the query-string form uses, so both share one parsing path.
+    """
+    if request.method != "POST":
+        return request.args
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        abort(400, description="Expected a JSON object with the request parameters.")
+    params = MultiDict()
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            params[key] = "true" if value else "false"
+        elif isinstance(value, (list, tuple)):
+            params[key] = ",".join(str(item) for item in value)
+        else:
+            params[key] = str(value)
+    return params
+
+
+@bp.errorhandler(HTTPException)
+def _json_error_for_data_requests(error: HTTPException):
+    # The page fetches these endpoints and shows the message; HTML error pages are unreadable there.
+    if request.endpoint in FILTERED_DATA_ENDPOINTS:
+        return jsonify({"error": error.description}), error.code
+    return error
 
 
 def _parse_stage_values(args) -> list[str]:
@@ -481,26 +525,27 @@ def group_detail(group_id: int):
     return render_template("dashboard/group.html", group_id=group_id)
 
 
-@bp.route("/api/inventory")
+@bp.route("/api/inventory", methods=["GET", "POST"])
 @login_required
 def api_inventory():
+    args = _request_params()
     # Pagination params
     try:
-        page = int(request.args.get("page", 1))
+        page = int(args.get("page", 1))
     except ValueError:
         page = 1
     try:
-        per_page = int(request.args.get("per_page", 20))
+        per_page = int(args.get("per_page", 20))
     except ValueError:
         per_page = 20
     page = max(page, 1)
     per_page = max(min(per_page, 200), 1)
 
-    all_rows = _filtered_inventory_rows(request.args)
+    all_rows = _filtered_inventory_rows(args)
     annotated_rows = [(row, _is_r_only_location(row)) for row in all_rows]
     total = len(annotated_rows)
 
-    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    hide_r_only = (args.get("hide_r_only") or "").strip().lower() == "true"
     total_hidden = sum(1 for _, is_hidden in annotated_rows if is_hidden) if hide_r_only else 0
     total_visible = total - total_hidden if hide_r_only else total
 
@@ -642,7 +687,7 @@ def api_filter_options():
     })
 
 
-@bp.route("/api/par")
+@bp.route("/api/par", methods=["GET", "POST"])
 @login_required
 def api_par():
     """Par location data (Par Locations table).
@@ -650,23 +695,24 @@ def api_par():
     Similar filtering semantics as inventory endpoint but restricted to Par Location types.
     Weeks Reorder = ReorderPoint / weekly_burn (and we negate to present positive like inventory logic).
     """
+    args = _request_params()
     # Pagination
     try:
-        page = int(request.args.get("page", 1))
+        page = int(args.get("page", 1))
     except ValueError:
         page = 1
     try:
-        per_page = int(request.args.get("per_page", 100))
+        per_page = int(args.get("per_page", 100))
     except ValueError:
         per_page = 100
     page = max(page, 1)
     per_page = max(min(per_page, 200), 1)
 
-    all_rows = _filtered_par_rows(request.args)
+    all_rows = _filtered_par_rows(args)
     annotated_rows = [(row, _is_r_only_location(row)) for row in all_rows]
     total = len(annotated_rows)
 
-    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    hide_r_only = (args.get("hide_r_only") or "").strip().lower() == "true"
     total_hidden = sum(1 for _, is_hidden in annotated_rows if is_hidden) if hide_r_only else 0
     total_visible = total - total_hidden if hide_r_only else total
 
@@ -713,13 +759,14 @@ def api_par():
     })
 
 
-@bp.route("/api/requesters")
+@bp.route("/api/requesters", methods=["GET", "POST"])
 @login_required
 def api_requesters():
-    inventory_rows = _filtered_inventory_rows(request.args)
-    par_rows = _filtered_par_rows(request.args)
+    args = _request_params()
+    inventory_rows = _filtered_inventory_rows(args)
+    par_rows = _filtered_par_rows(args)
 
-    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    hide_r_only = (args.get("hide_r_only") or "").strip().lower() == "true"
     if hide_r_only:
         inventory_rows = [row for row in inventory_rows if not _is_r_only_location(row)]
         par_rows = [row for row in par_rows if not _is_r_only_location(row)]
@@ -781,7 +828,7 @@ def api_refresh_timestamp():
     })
 
 
-@bp.route("/api/stats")
+@bp.route("/api/stats", methods=["GET", "POST"])
 @login_required
 def api_stats():
     """Return KPI statistics based on applied filters.
@@ -791,8 +838,9 @@ def api_stats():
     - distinct_items: count of distinct items (including replacement_item)
     - distinct_locations: count of distinct locations (from both inventory and par)
     """
-    inventory_rows = _filtered_inventory_rows(request.args)
-    par_rows = _filtered_par_rows(request.args)
+    args = _request_params()
+    inventory_rows = _filtered_inventory_rows(args)
+    par_rows = _filtered_par_rows(args)
 
     # Collect distinct item groups (always based on the full dataset)
     groups_set = set()
@@ -817,7 +865,7 @@ def api_stats():
             items_set.add(row.get("replacement_item"))
 
     # Apply hide_r_only filter only when gathering location metrics
-    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    hide_r_only = (args.get("hide_r_only") or "").strip().lower() == "true"
     inventory_location_rows = inventory_rows
     par_location_rows = par_rows
     if hide_r_only:
@@ -842,11 +890,12 @@ def api_stats():
     })
 
 
-@bp.route("/export/<string:table_key>")
+@bp.route("/export/<string:table_key>", methods=["GET", "POST"])
 @login_required
 def export_table(table_key: str):
+    args = _request_params()
     table_key_normalized = table_key.lower()
-    row_scope = (request.args.get("row_scope") or "filtered").strip().lower()
+    row_scope = (args.get("row_scope") or "filtered").strip().lower()
     if row_scope not in {"all", "filtered"}:
         row_scope = "filtered"
     apply_filters = row_scope != "all"
@@ -856,22 +905,22 @@ def export_table(table_key: str):
         abort(404)
 
     if table_key_normalized == "inventory":
-        rows = _filtered_inventory_rows(request.args, apply_filters=apply_filters)
+        rows = _filtered_inventory_rows(args, apply_filters=apply_filters)
     elif table_key_normalized == "par":
-        rows = _filtered_par_rows(request.args, apply_filters=apply_filters)
+        rows = _filtered_par_rows(args, apply_filters=apply_filters)
     else:
         abort(404)
 
-    hide_r_only = (request.args.get("hide_r_only") or "").strip().lower() == "true"
+    hide_r_only = (args.get("hide_r_only") or "").strip().lower() == "true"
     if hide_r_only:
         rows = [row for row in rows if not _is_r_only_location(row)]
 
     if table_config.base_pipeline:
         rows = apply_pipeline(rows, table_config.base_pipeline)
 
-    column_mode = (request.args.get("column_mode") or "").strip().lower()
-    requested_fields = parse_column_selection(request.args.get("columns"))
-    legacy_visible_param = request.args.get("visible_columns")
+    column_mode = (args.get("column_mode") or "").strip().lower()
+    requested_fields = parse_column_selection(args.get("columns"))
+    legacy_visible_param = args.get("visible_columns")
     if not requested_fields and legacy_visible_param:
         requested_fields = parse_column_selection(legacy_visible_param)
         if not column_mode:

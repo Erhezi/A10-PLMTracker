@@ -1,11 +1,11 @@
--- Every permission in the app: one row per (user, module, role). Plan §4.1, P1;
+-- Roles inside each module: one row per (user, module, role). Plan §4.1, P1;
 -- unified access 2026-10-12. Run on O2, database PLM, BEFORE deploy #1. Safe to re-run.
 --
---   app       admin                                   manage users; see every module
 --   plm       viewer | editor                         at most one of the two
 --   fillkill  viewer, proposer (A), clinical (B), materials (C)
 --
--- Then run 03_unify_roles.sql, which moves today's users.user_role into this table.
+-- Admin is not a row here: it is the app-level role in users.user_role ('admin' or 'user').
+-- Then run 03_unify_roles.sql, which gives everyone the PLM role matching today's user_role.
 
 SET NOCOUNT ON;
 
@@ -22,8 +22,7 @@ BEGIN
         CONSTRAINT [FK_UserModuleRole_users] FOREIGN KEY ([user_id])
             REFERENCES [PLM].[users] ([user_id]) ON DELETE CASCADE,
         CONSTRAINT [CK_UserModuleRole_role] CHECK (
-               ([module] = 'app'      AND [role] = 'admin')
-            OR ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
+               ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
             OR ([module] = 'fillkill' AND [role] IN ('viewer', 'proposer', 'clinical', 'materials'))
         )
     );
@@ -78,19 +77,42 @@ BEGIN
     PRINT 'Added FK_UserModuleRole_users';
 END;
 
--- Allowed roles per module. Replaces the earlier Fill/Kill-only CHECK.
+-- Admin used to be kept here as module 'app' (an earlier 03_unify_roles.sql wrote those
+-- rows). It now lives in users.user_role, so move any such rows there before the CHECK.
+IF EXISTS (SELECT 1 FROM [PLM].[UserModuleRole] WHERE [module] = 'app')
+BEGIN
+    BEGIN TRANSACTION;
+    UPDATE u SET u.[user_role] = 'admin'
+    FROM [PLM].[users] AS u
+    WHERE u.[user_role] <> 'admin'
+      AND EXISTS (SELECT 1 FROM [PLM].[UserModuleRole] AS r
+                  WHERE r.[user_id] = u.[user_id] AND r.[module] = 'app' AND r.[role] = 'admin');
+    PRINT CONCAT('Admins newly set in users.user_role: ', @@ROWCOUNT);
+    DELETE FROM [PLM].[UserModuleRole] WHERE [module] = 'app';
+    PRINT CONCAT('Removed app-level rows from UserModuleRole: ', @@ROWCOUNT);
+    COMMIT TRANSACTION;
+END;
+
+-- Allowed roles per module. Replaces earlier versions: the Fill/Kill-only CHECK, and
+-- one that also allowed module 'app'.
 IF EXISTS (SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_fillkill_role')
 BEGIN
     ALTER TABLE [PLM].[UserModuleRole] DROP CONSTRAINT [CK_UserModuleRole_fillkill_role];
     PRINT 'Dropped CK_UserModuleRole_fillkill_role (replaced by CK_UserModuleRole_role)';
 END;
+IF EXISTS (SELECT 1 FROM sys.check_constraints
+           WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_role'
+             AND definition LIKE N'%''app''%')
+BEGIN
+    ALTER TABLE [PLM].[UserModuleRole] DROP CONSTRAINT [CK_UserModuleRole_role];
+    PRINT 'Dropped CK_UserModuleRole_role that allowed module app';
+END;
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
                WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_role')
 BEGIN
     ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [CK_UserModuleRole_role] CHECK (
-           ([module] = 'app'      AND [role] = 'admin')
-        OR ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
+           ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
         OR ([module] = 'fillkill' AND [role] IN ('viewer', 'proposer', 'clinical', 'materials'))
     );
     PRINT 'Added CK_UserModuleRole_role';

@@ -9,11 +9,13 @@ from conftest import login, make_user
 
 def fake_user(*, admin=False, plm=None, fillkill=(), authenticated=True):
     rows = [SimpleNamespace(module="fillkill", role=code) for code in fillkill]
-    if admin:
-        rows.append(SimpleNamespace(module="app", role="admin"))
     if plm:
         rows.append(SimpleNamespace(module="plm", role=plm))
-    return SimpleNamespace(is_authenticated=authenticated, module_roles=rows)
+    return SimpleNamespace(
+        is_authenticated=authenticated,
+        user_role="admin" if admin else "user",
+        module_roles=rows,
+    )
 
 
 FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities

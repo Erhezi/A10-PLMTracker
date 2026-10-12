@@ -1,5 +1,6 @@
 -- Checks for the app's access tables and the Fill/Kill database objects.
--- Read-only; run after every script run. Every row should say PASS.
+-- Read-only; run after every script run. Every row should say PASS, except
+-- 'users.user_role is admin or user', which says PENDING until 04 runs after the deploy.
 -- Deploy #2 checks are added when its scripts are written.
 
 SET NOCOUNT ON;
@@ -7,18 +8,8 @@ SET NOCOUNT ON;
 -- Deploy #1 -------------------------------------------------------------------
 
 WITH admins AS (
-    SELECT DISTINCT [user_id] FROM [PLM].[UserModuleRole] WHERE [module] = 'app' AND [role] = 'admin'
-),
-expected_legacy AS (
-    -- What users.user_role must say for the previous release to grant the same access.
-    SELECT u.[user_id], u.[user_role],
-           CASE
-               WHEN EXISTS (SELECT 1 FROM admins AS a WHERE a.[user_id] = u.[user_id]) THEN 'admin'
-               WHEN EXISTS (SELECT 1 FROM [PLM].[UserModuleRole] AS r
-                            WHERE r.[user_id] = u.[user_id] AND r.[module] = 'plm' AND r.[role] = 'editor') THEN 'user'
-               ELSE 'view-only'
-           END AS [expected]
-    FROM [PLM].[users] AS u
+    -- Admin is the app-level role in users.user_role.
+    SELECT [user_id] FROM [PLM].[users] WHERE [user_role] = 'admin'
 )
 SELECT 'schema FillKill exists' AS [check],
        CASE WHEN SCHEMA_ID(N'FillKill') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
@@ -35,11 +26,12 @@ SELECT 'deleting a user deletes their UserModuleRole rows',
              AND delete_referential_action_desc = N'CASCADE'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'UserModuleRole accepts only known roles for app, plm and fillkill',
+SELECT 'UserModuleRole accepts only known roles for plm and fillkill',
        CASE WHEN EXISTS (
            SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
-             AND definition LIKE '%admin%' AND definition LIKE '%editor%' AND definition LIKE '%clinical%'
+             AND definition LIKE '%editor%' AND definition LIKE '%clinical%'
+             AND definition NOT LIKE '%''app''%'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'a user holds at most one PLM role',
@@ -62,10 +54,20 @@ UNION ALL
 SELECT 'users.requested_modules exists',
        CASE WHEN COL_LENGTH(N'PLM.users', N'requested_modules') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'users.user_role matches module roles (rollback stays safe)',
+SELECT 'admin lives in users.user_role, not in UserModuleRole',
        CASE WHEN NOT EXISTS (
-           SELECT 1 FROM expected_legacy WHERE [user_role] <> [expected]
+           SELECT 1 FROM [PLM].[UserModuleRole] WHERE [module] = 'app'
        ) THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+-- 'view-only' stays until 04_after_deploy.sql runs, after the new release is live.
+SELECT 'users.user_role is admin or user',
+       CASE
+           WHEN NOT EXISTS (SELECT 1 FROM [PLM].[users] WHERE [user_role] NOT IN ('admin', 'user'))
+               THEN 'PASS'
+           WHEN NOT EXISTS (SELECT 1 FROM [PLM].[users] WHERE [user_role] NOT IN ('admin', 'user', 'view-only'))
+               THEN 'PENDING: run 04 after the deploy'
+           ELSE 'FAIL'
+       END
 UNION ALL
 SELECT 'every admin holds at least one Fill/Kill role',
        CASE WHEN NOT EXISTS (
@@ -86,11 +88,10 @@ SELECT 'no non-admin holds both B (clinical) and C (materials)',
 -- Who holds what, for a quick eyeball.
 SELECT u.[email],
        CASE WHEN u.[is_active] = 1 THEN 'active' ELSE 'pending/disabled' END AS [account],
-       MAX(CASE WHEN r.[module] = 'app' THEN 'yes' ELSE '' END) AS [admin],
+       u.[user_role] AS [app_role],
        MAX(CASE WHEN r.[module] = 'plm' THEN r.[role] ELSE '' END) AS [plm],
        STRING_AGG(CASE WHEN r.[module] = 'fillkill' THEN r.[role] END, ', ')
-           WITHIN GROUP (ORDER BY r.[role]) AS [fillkill],
-       u.[user_role] AS [legacy_user_role]
+           WITHIN GROUP (ORDER BY r.[role]) AS [fillkill]
 FROM [PLM].[users] AS u
 LEFT JOIN [PLM].[UserModuleRole] AS r ON r.[user_id] = u.[user_id]
 GROUP BY u.[email], u.[is_active], u.[user_role]

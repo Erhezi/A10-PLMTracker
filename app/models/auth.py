@@ -13,9 +13,8 @@ class User(db.Model, UserMixin):
     user_id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     name = db.Column(db.String(120))
-    # Legacy: no longer read. Permissions live in UserModuleRole; access.apply_access
-    # keeps this in step ('admin' / 'user' / 'view-only') so the previous release
-    # still works if it is redeployed. Drop once module roles have settled.
+    # App-level role: 'admin' (manage users, see every module) or 'user'.
+    # What someone can do inside a module lives in UserModuleRole.
     user_role = db.Column(db.String(50), nullable=False, server_default=text("'user'"), index=True)
     # Modules asked for at registration, e.g. "plm,fillkill". Grants nothing by itself.
     requested_modules = db.Column(db.String(100))
@@ -36,7 +35,7 @@ class User(db.Model, UserMixin):
     disabled_by = db.Column(db.String(255))
     disabled_at = db.Column(db.DateTime)
 
-    # Every permission: app admin, PLM role, Fill/Kill roles (see utility/access.py).
+    # Roles inside each module: PLM, Fill/Kill (see utility/access.py).
     module_roles = db.relationship(
         "UserModuleRole",
         cascade="all, delete-orphan",
@@ -57,14 +56,13 @@ class User(db.Model, UserMixin):
 
 
 ROLE_CHECK_SQL = (
-    "(module = 'app' AND role = 'admin')"
-    " OR (module = 'plm' AND role IN ('viewer', 'editor'))"
+    "(module = 'plm' AND role IN ('viewer', 'editor'))"
     " OR (module = 'fillkill' AND role IN ('viewer', 'proposer', 'clinical', 'materials'))"
 )
 
 
 class UserModuleRole(db.Model):
-    """One permission: a user's role in a module (app admin, PLM, Fill/Kill).
+    """One permission: a user's role in a module (PLM, Fill/Kill).
 
     db/fillkill/02_user_module_role.sql creates this table. The constraints are
     spelled out here with the same names, because the app's startup

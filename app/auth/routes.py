@@ -7,7 +7,7 @@ import string
 from datetime import datetime, timedelta, timezone
 from ..utility.msgraph import send_mail
 from ..utility import session_policy
-from ..utility.access import MODULES, legacy_user_role
+from ..utility.access import MODULES, USER
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -59,7 +59,7 @@ def register():
             name=name,
             is_active=False,
             requested_modules=",".join(requested) or None,
-            user_role=legacy_user_role(admin=False, plm_roles=()),
+            user_role=USER,
         )
         user.set_password(password)
         db.session.add(user)

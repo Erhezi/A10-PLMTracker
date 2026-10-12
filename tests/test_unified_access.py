@@ -1,4 +1,5 @@
-"""One account per person; roles per module (app admin, PLM, Fill/Kill), wired back into PLM."""
+"""One account per person: an app-level role (admin or user) plus roles per module
+(PLM, Fill/Kill), wired back into PLM."""
 
 import pytest
 
@@ -18,15 +19,18 @@ def test_validate_roles():
     assert access.validate_roles(admin=True, roles={FILLKILL: {"clinical", "materials"}}) is None
 
 
-@pytest.mark.parametrize("admin, plm_roles, expected", [
-    (True, {"editor"}, "admin"),
-    (True, set(), "admin"),
-    (False, {"editor"}, "user"),
-    (False, {"viewer"}, "view-only"),
-    (False, set(), "view-only"),
+@pytest.mark.parametrize("user_role, authenticated, expected", [
+    ("admin", True, True),
+    ("user", True, False),
+    ("view-only", True, False),  # left by the previous release until 04_after_deploy.sql
+    (None, True, False),
+    ("admin", False, False),
 ])
-def test_legacy_user_role_keeps_rollback_access(admin, plm_roles, expected):
-    assert access.legacy_user_role(admin=admin, plm_roles=plm_roles) == expected
+def test_admin_is_the_app_level_role(user_role, authenticated, expected):
+    from types import SimpleNamespace
+
+    user = SimpleNamespace(is_authenticated=authenticated, user_role=user_role, module_roles=[])
+    assert access.is_admin(user) is expected
 
 
 @pytest.mark.parametrize("endpoint, blueprint, method, expected", [
@@ -144,7 +148,7 @@ def test_registration_records_requested_modules_and_grants_nothing(sqlite_app):
         user = User.query.filter_by(email="new.person@example.org").one()
         assert user.requested_modules == "fillkill"
         assert user.module_roles == []
-        assert user.user_role == "view-only"
+        assert user.user_role == "user"
         assert not user.is_active
 
 
@@ -172,7 +176,7 @@ def state(app, email):
             "admin": access.is_admin(user),
             "plm": set(access.roles_in(user, PLM)),
             "fillkill": set(access.roles_in(user, FILLKILL)),
-            "legacy": user.user_role,
+            "app_role": user.user_role,
         }
 
 
@@ -186,22 +190,22 @@ def test_user_control_shows_a_row_per_user_with_every_module(sqlite_app, admin):
     assert '<option value="">No access</option>' in page
 
 
-def test_save_access_sets_every_module_and_the_legacy_role(sqlite_app, admin):
-    make_user(sqlite_app, "nurse@example.org", role=None)
+def test_save_access_sets_every_module(sqlite_app, admin):
+    make_user(sqlite_app, "nurse@example.org", role="view-only")  # as migrated: PLM viewer
     response = save_access(admin, "nurse@example.org", plm="viewer", fillkill=("proposer", "clinical"))
     assert "PLM Tracker: Viewer; Fill/Kill Management: A · Sub entry, B · Nursing" in response.get_data(as_text=True)
     assert state(sqlite_app, "nurse@example.org") == {
-        "admin": False, "plm": {"viewer"}, "fillkill": {"proposer", "clinical"}, "legacy": "view-only",
+        "admin": False, "plm": {"viewer"}, "fillkill": {"proposer", "clinical"}, "app_role": "user",
     }
 
     save_access(admin, "nurse@example.org", plm="editor", fillkill=())
     assert state(sqlite_app, "nurse@example.org") == {
-        "admin": False, "plm": {"editor"}, "fillkill": set(), "legacy": "user",
+        "admin": False, "plm": {"editor"}, "fillkill": set(), "app_role": "user",
     }
 
     save_access(admin, "nurse@example.org", plm="")
     assert state(sqlite_app, "nurse@example.org")["plm"] == set()
-    assert state(sqlite_app, "nurse@example.org")["legacy"] == "view-only"
+    assert state(sqlite_app, "nurse@example.org")["app_role"] == "user"
 
 
 def test_b_and_c_refused_unless_admin(sqlite_app, admin):
@@ -228,7 +232,7 @@ def test_promotion_grants_every_module_role(sqlite_app, admin):
     assert "New admins start with every module role" in response.get_data(as_text=True)
     assert state(sqlite_app, "new.admin@example.org") == {
         "admin": True, "plm": {"editor"},
-        "fillkill": {"viewer", "proposer", "clinical", "materials"}, "legacy": "admin",
+        "fillkill": {"viewer", "proposer", "clinical", "materials"}, "app_role": "admin",
     }
 
 
@@ -239,7 +243,7 @@ def test_demoting_an_admin_who_keeps_b_and_c_is_refused(sqlite_app, admin):
 
     save_access(admin, "old.admin@example.org", admin=False, plm="editor", fillkill=("clinical",))
     assert state(sqlite_app, "old.admin@example.org") == {
-        "admin": False, "plm": {"editor"}, "fillkill": {"clinical"}, "legacy": "user",
+        "admin": False, "plm": {"editor"}, "fillkill": {"clinical"}, "app_role": "user",
     }
 
 
@@ -251,7 +255,7 @@ def test_admins_cannot_remove_their_own_admin_access(sqlite_app, admin):
     # ...but can switch off their own module roles to test what others see.
     save_access(admin, "admin@example.org", admin=True, plm="viewer", fillkill=("viewer",))
     assert state(sqlite_app, "admin@example.org") == {
-        "admin": True, "plm": {"viewer"}, "fillkill": {"viewer"}, "legacy": "admin",
+        "admin": True, "plm": {"viewer"}, "fillkill": {"viewer"}, "app_role": "admin",
     }
 
 

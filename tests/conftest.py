@@ -60,12 +60,13 @@ def sqlite_app(sqlite_app_factory):
     return sqlite_app_factory()
 
 
-LEGACY_PRESETS = {
-    # today's user_role -> (app admin?, PLM role), as 03_unify_roles.sql migrates them
-    "admin": (True, "editor"),
-    "user": (False, "editor"),
-    "view-only": (False, "viewer"),
-    None: (False, None),
+ROLE_PRESETS = {
+    # today's user_role -> (user_role, PLM role), as on O2 after 03_unify_roles.sql
+    # ('view-only' stays until 04_after_deploy.sql)
+    "admin": ("admin", "editor"),
+    "user": ("user", "editor"),
+    "view-only": ("view-only", "viewer"),
+    None: ("user", None),
 }
 
 _UNSET = object()
@@ -75,14 +76,13 @@ def make_user(app, email, *, role="user", plm=_UNSET, fillkill=(), active=True, 
               requested=None):
     """Create a user with module roles.
 
-    ``role`` is a preset named after today's roles (see LEGACY_PRESETS); ``plm``
+    ``role`` is a preset named after today's roles (see ROLE_PRESETS); ``plm``
     overrides the PLM role (None = no PLM access); ``fillkill`` adds Fill/Kill roles.
     """
     from app import db
     from app.models.auth import User, UserModuleRole
-    from app.utility.access import legacy_user_role
 
-    admin, plm_role = LEGACY_PRESETS[role]
+    user_role, plm_role = ROLE_PRESETS[role]
     if plm is not _UNSET:
         plm_role = plm
 
@@ -92,11 +92,9 @@ def make_user(app, email, *, role="user", plm=_UNSET, fillkill=(), active=True, 
             name=email.split("@")[0],
             is_active=active,
             requested_modules=requested,
-            user_role=legacy_user_role(admin=admin, plm_roles={plm_role} if plm_role else ()),
+            user_role=user_role,
         )
         user.set_password(password)
-        if admin:
-            user.module_roles.append(UserModuleRole(module="app", role="admin"))
         if plm_role:
             user.module_roles.append(UserModuleRole(module="plm", role=plm_role))
         for code in fillkill:

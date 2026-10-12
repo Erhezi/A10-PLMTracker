@@ -36,8 +36,7 @@ def test_model_index_allows_one_plm_role_per_user():
 
 
 @pytest.mark.parametrize("module, role, allowed", [
-    ("app", "admin", True),
-    ("app", "viewer", False),
+    ("app", "admin", False),  # admin is users.user_role, not a module role
     ("plm", "editor", True),
     ("plm", "admin", False),
     ("fillkill", "materials", True),

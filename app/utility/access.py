@@ -1,16 +1,14 @@
 """Users, modules and roles for the whole app, plus the two-row navigation.
 
-An account (``PLM.users``) is registered and approved once. What someone can
-do is set per module in ``PLM.UserModuleRole``:
+An account (``PLM.users``) is registered and approved once. Its app-level
+role is ``users.user_role``: 'admin' (manage users; see every module) or
+'user'. What someone can do inside a module is set in ``PLM.UserModuleRole``:
 
-    app       admin                                     manage users; see every module
     plm       viewer | editor                           at most one of the two
     fillkill  viewer, proposer (A), clinical (B), materials (C)
 
-Routes and templates ask ``can(user, module, capability)`` instead of checking
-role codes. ``users.user_role`` is no longer read; ``apply_access`` keeps it
-in step (see ``legacy_user_role``) so the previous release still works if it
-has to be redeployed.
+Routes and templates ask ``can(user, module, capability)`` and ``is_admin(user)``
+instead of checking role codes.
 """
 
 from __future__ import annotations
@@ -21,11 +19,13 @@ from functools import wraps
 from flask import current_app, flash, jsonify, redirect, request, url_for
 from flask_login import current_user
 
-APP = "app"
 PLM = "plm"
 FILLKILL = "fillkill"
 
+# App-level roles (users.user_role). Accounts the previous release marked
+# 'view-only' count as 'user' until db/fillkill/04_after_deploy.sql renames them.
 ADMIN = "admin"
+USER = "user"
 
 PLM_VIEWER = "viewer"
 PLM_EDITOR = "editor"
@@ -96,7 +96,7 @@ def _authenticated(user) -> bool:
 
 
 def roles_in(user, module: str) -> frozenset[str]:
-    """Role codes the user holds in one module (``app`` included)."""
+    """Role codes the user holds in one module."""
     if not _authenticated(user):
         return frozenset()
     return frozenset(
@@ -105,7 +105,7 @@ def roles_in(user, module: str) -> frozenset[str]:
 
 
 def is_admin(user) -> bool:
-    return ADMIN in roles_in(user, APP)
+    return _authenticated(user) and getattr(user, "user_role", None) == ADMIN
 
 
 def can(user, module: str, capability: str) -> bool:
@@ -135,15 +135,6 @@ def validate_roles(*, admin: bool, roles: dict[str, set[str]]) -> str | None:
     if not admin and {ROLE_CLINICAL, ROLE_MATERIALS} <= fillkill:
         return BC_CONFLICT_MESSAGE
     return None
-
-
-def legacy_user_role(*, admin: bool, plm_roles) -> str:
-    """The users.user_role value the previous release understands."""
-    if admin:
-        return "admin"
-    if PLM_EDITOR in plm_roles:
-        return "user"
-    return "view-only"  # least access the old code can express
 
 
 def role_summary(user) -> str:
@@ -186,11 +177,10 @@ def _set_module_roles(user, module: str, wanted, granted_by: str) -> None:
 
 
 def apply_access(user, *, admin: bool, roles: dict[str, set[str]], granted_by: str) -> None:
-    """Set the user's admin flag and module roles, and keep users.user_role in step."""
-    _set_module_roles(user, APP, {ADMIN} if admin else set(), granted_by)
+    """Set the user's app-level role (admin or user) and their module roles."""
+    user.user_role = ADMIN if admin else USER
     for key, codes in roles.items():
         _set_module_roles(user, key, codes, granted_by)
-    user.user_role = legacy_user_role(admin=admin, plm_roles=roles_in(user, PLM))
 
 
 def full_access_roles() -> dict[str, set[str]]:

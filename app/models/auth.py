@@ -52,16 +52,30 @@ class User(db.Model, UserMixin):
 
 
 class UserModuleRole(db.Model):
-    """A user's role in a module other than PLM; created by db/fillkill/02_user_module_role.sql."""
+    """A user's role in a module other than PLM.
+
+    db/fillkill/02_user_module_role.sql creates this table. The constraints are
+    spelled out here with the same names, because the app's startup
+    (db.create_all) creates the table itself if it runs before that script.
+    """
 
     __tablename__ = "UserModuleRole"
-
-    user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("PLM.users.user_id", ondelete="CASCADE"),
-        primary_key=True,
+    __table_args__ = (
+        db.PrimaryKeyConstraint("user_id", "module", "role", name="PK_UserModuleRole"),
+        db.ForeignKeyConstraint(
+            ["user_id"], ["PLM.users.user_id"],
+            name="FK_UserModuleRole_users", ondelete="CASCADE",
+        ),
+        db.CheckConstraint(
+            "module <> 'fillkill' OR role IN ('viewer', 'proposer', 'clinical', 'materials')",
+            name="CK_UserModuleRole_fillkill_role",
+        ),
     )
-    module = db.Column(db.String(30), primary_key=True)
-    role = db.Column(db.String(30), primary_key=True)
+
+    user_id = db.Column(db.Integer, nullable=False)
+    module = db.Column(db.String(30), nullable=False)
+    role = db.Column(db.String(30), nullable=False)
     granted_by = db.Column(db.String(255))
-    granted_at = db.Column(db.DateTime, nullable=False, default=now_ny_naive)
+    granted_at = db.Column(
+        db.DateTime, nullable=False, default=now_ny_naive, server_default=db.func.current_timestamp()
+    )

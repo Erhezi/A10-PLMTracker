@@ -27,6 +27,84 @@ BEGIN
 END;
 GO
 
+-- Repair: if the app's startup (db.create_all) created the table before this
+-- script ran, its constraints have system-generated names and the CHECK and the
+-- default may be missing. Bring it to the same shape as a fresh CREATE above.
+DECLARE @table INT = OBJECT_ID(N'[PLM].[UserModuleRole]');
+DECLARE @name SYSNAME, @object NVARCHAR(300), @sql NVARCHAR(MAX);
+
+-- Primary key name.
+SET @name = NULL;
+SELECT @name = name FROM sys.key_constraints
+WHERE parent_object_id = @table AND type = 'PK' AND name <> N'PK_UserModuleRole';
+IF @name IS NOT NULL
+BEGIN
+    SET @object = N'PLM.' + QUOTENAME(@name);
+    EXEC sp_rename @object, N'PK_UserModuleRole', N'OBJECT';
+    PRINT CONCAT('Renamed primary key ', @name, ' -> PK_UserModuleRole');
+END;
+
+-- Foreign key to users: keep it if it cascades (just rename), otherwise replace it.
+SET @name = NULL;
+SELECT @name = name FROM sys.foreign_keys
+WHERE parent_object_id = @table
+  AND referenced_object_id = OBJECT_ID(N'[PLM].[users]')
+  AND name <> N'FK_UserModuleRole_users';
+IF @name IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.foreign_keys
+               WHERE parent_object_id = @table AND name = @name
+                 AND delete_referential_action_desc = N'CASCADE')
+    BEGIN
+        SET @object = N'PLM.' + QUOTENAME(@name);
+        EXEC sp_rename @object, N'FK_UserModuleRole_users', N'OBJECT';
+        PRINT CONCAT('Renamed foreign key ', @name, ' -> FK_UserModuleRole_users');
+    END
+    ELSE
+    BEGIN
+        SET @sql = N'ALTER TABLE [PLM].[UserModuleRole] DROP CONSTRAINT ' + QUOTENAME(@name) + N';';
+        EXEC sp_executesql @sql;
+        PRINT CONCAT('Dropped non-cascading foreign key ', @name);
+    END;
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys
+               WHERE parent_object_id = @table AND name = N'FK_UserModuleRole_users')
+BEGIN
+    ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [FK_UserModuleRole_users]
+        FOREIGN KEY ([user_id]) REFERENCES [PLM].[users] ([user_id]) ON DELETE CASCADE;
+    PRINT 'Added FK_UserModuleRole_users';
+END;
+
+-- Allowed Fill/Kill role values.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_fillkill_role')
+BEGIN
+    ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [CK_UserModuleRole_fillkill_role] CHECK (
+        [module] <> 'fillkill'
+        OR [role] IN ('viewer', 'proposer', 'clinical', 'materials')
+    );
+    PRINT 'Added CK_UserModuleRole_fillkill_role';
+END;
+
+-- Default for granted_at: rename a system-named one, or add it.
+SET @name = NULL;
+SELECT @name = dc.name FROM sys.default_constraints AS dc
+JOIN sys.columns AS c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+WHERE dc.parent_object_id = @table AND c.name = N'granted_at';
+IF @name IS NULL
+BEGIN
+    ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [DF_UserModuleRole_granted_at]
+        DEFAULT (GETDATE()) FOR [granted_at];
+    PRINT 'Added DF_UserModuleRole_granted_at';
+END
+ELSE IF @name <> N'DF_UserModuleRole_granted_at'
+BEGIN
+    SET @object = N'PLM.' + QUOTENAME(@name);
+    EXEC sp_rename @object, N'DF_UserModuleRole_granted_at', N'OBJECT';
+    PRINT CONCAT('Renamed default ', @name, ' -> DF_UserModuleRole_granted_at');
+END;
+GO
+
 -- Admins start with every Fill/Kill role (P1). Only admins with no Fill/Kill rows
 -- at all are seeded, so re-running never undoes a role an admin switched off.
 INSERT INTO [PLM].[UserModuleRole] ([user_id], [module], [role], [granted_by], [granted_at])

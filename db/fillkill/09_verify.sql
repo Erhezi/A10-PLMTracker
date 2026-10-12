@@ -11,11 +11,31 @@ UNION ALL
 SELECT 'table PLM.UserModuleRole exists',
        CASE WHEN OBJECT_ID(N'[PLM].[UserModuleRole]', N'U') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'UserModuleRole cascades on user delete',
+-- Checked by what the key does, whatever it is called.
+SELECT 'deleting a user deletes their UserModuleRole rows',
        CASE WHEN EXISTS (
            SELECT 1 FROM sys.foreign_keys
-           WHERE name = N'FK_UserModuleRole_users' AND delete_referential_action_desc = N'CASCADE'
+           WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
+             AND referenced_object_id = OBJECT_ID(N'[PLM].[users]')
+             AND delete_referential_action_desc = N'CASCADE'
        ) THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'UserModuleRole accepts only known Fill/Kill roles',
+       CASE WHEN EXISTS (
+           SELECT 1 FROM sys.check_constraints
+           WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
+             AND definition LIKE '%clinical%' AND definition LIKE '%materials%'
+       ) THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+-- Not system-generated names: if this fails, the app created the table before
+-- 02_user_module_role.sql ran; re-running 02 renames them.
+SELECT 'UserModuleRole constraints have their standard names',
+       CASE WHEN (
+           SELECT COUNT(*) FROM sys.objects
+           WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
+             AND name IN (N'PK_UserModuleRole', N'FK_UserModuleRole_users',
+                          N'CK_UserModuleRole_fillkill_role', N'DF_UserModuleRole_granted_at')
+       ) = 4 THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'every admin holds at least one Fill/Kill role',
        CASE WHEN NOT EXISTS (

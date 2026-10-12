@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Docs · Fill/Kill Management{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-3">
+  <header class="doc-hero card shadow-sm border-0 p-4">
+    <h1 class="h4 fw-semibold mb-1">Fill/Kill Management Docs</h1>
+    <p class="mb-0 text-muted">
+      How Medline's fill/kill report turns into substitute decisions and orders. The module is being
+      built; this page describes how it will work, and will grow with it.
+    </p>
+  </header>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">What it does</h2>
+    <p class="mb-2">
+      Medline sends a fill/kill report every hour from 8am to 11pm. Every order line Medline couldn't
+      fill completely, whether killed outright or only partly filled, is loaded into the module.
+    </p>
+    <p class="mb-0">
+      The main table rolls those lines up <strong>per Medline item</strong> for the dates and sites you
+      choose. For each item, the team records substitutes, nursing approves and picks which one to use,
+      and materials management records what was ordered.
+    </p>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-3">Who does what</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-2">
+        <thead class="table-light">
+          <tr><th scope="col">Role</th><th scope="col">Responsible for</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="text-nowrap">Viewer</td><td>Seeing everything in the module.</td></tr>
+          <tr><td class="text-nowrap">A · Sub entry</td><td>Adding substitutes to an item: vendor, vendor part number and comments.</td></tr>
+          <tr><td class="text-nowrap">B · Nursing</td><td>Setting each substitute to approve, wait or reject, and picking the approved one(s) to order.</td></tr>
+          <tr><td class="text-nowrap">C · Materials manager</td><td>Recording what was ordered against nursing's pick: quantity, UOM, vendor and comments.</td></tr>
+          <tr><td class="text-nowrap">Admin</td><td>Holds every role by default, and manages access in User Control.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small text-muted mb-0">
+      One person can hold A and B, or A and C. B and C stay with different people, so the person who
+      approves isn't the person who orders (admins excepted).
+    </p>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-3">How an item moves</h2>
+    <ol class="mb-0">
+      <li class="mb-2"><strong>Killed.</strong> The item appears in the main table with its total ordered, killed and filled quantities.</li>
+      <li class="mb-2"><strong>Substitutes added.</strong> Substitutes from Medline's backorder report appear automatically; anyone with role A adds others. Substitutes stay with the item, so the next time it's killed they're already there.</li>
+      <li class="mb-2"><strong>Nursing reviews.</strong> Each substitute is set to approve, wait or reject. Click a substitute to see every change, with who made it and when.</li>
+      <li class="mb-2"><strong>Nursing picks.</strong> Approved substitutes can be picked for ordering, usually one per item.</li>
+      <li><strong>Materials management orders.</strong> Clicking a pick records the order. An item can have more than one order, for example when one substitute can't cover the whole need.</li>
+    </ol>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-3">Medline's kill reasons</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr><th scope="col">Comment on the report</th><th scope="col">What it means</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Allocation limit has been reached</td><td>Medline is rationing the item.</td></tr>
+          <tr><td>MBO – ERD is <em>date</em></td><td>Manufacturer backorder, with an expected release date.</td></tr>
+          <tr><td>OUT OF STOCK – ETA is <em>date</em></td><td>Medline's warehouse is out, with an expected arrival date.</td></tr>
+          <tr><td>SPIKE MBO – Forecast x, Usage y</td><td>Ordered above forecast, during a manufacturer backorder.</td></tr>
+          <tr><td>NONSTOCK UOM – item stocked by CS/BX</td><td>Ordered in a unit Medline doesn't stock for this account.</td></tr>
+          <tr><td>NONSTOCK – needs a stock request</td><td>Not stocked on fill/kill accounts.</td></tr>
+          <tr><td>DISCONTINUED ITEM</td><td>No longer made.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">Good to know</h2>
+    <ul class="mb-0">
+      <li>Access is per module. If you can't see Fill/Kill Management in the top bar, ask an admin for a Fill/Kill role.</li>
+      <li>Every login ends at 2:30 AM. The next click takes you to the login page, then back to where you were.</li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

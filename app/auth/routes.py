@@ -125,9 +125,9 @@ def reset_password_request():
         # Send code via Microsoft Graph email
         send_mail(
             to_email=email,
-            subject="PLM Tracker Password Reset Instructions",
+            subject="Item Management Password Reset Instructions",
             body=(
-                "You (or someone using your email) requested to reset your PLM Tracker password.\n"
+                "You (or someone using your email) requested to reset your Item Management password.\n"
                 f"Use this verification code within 30 minutes: {code}\n\n"
                 "If you did not request a reset you can ignore this email."
             ),

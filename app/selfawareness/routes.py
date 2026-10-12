@@ -88,6 +88,11 @@ def index():
     )
 
 
+@bp.route("/fillkill")
+def fillkill():
+    return render_template("selfawareness/fillkill.html")
+
+
 @bp.route("/workflow-video")
 def workflow_video():
     return send_file(_resolve_ref_file(VIDEO_FILENAME), mimetype="video/mp4")

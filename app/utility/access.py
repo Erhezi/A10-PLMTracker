@@ -139,38 +139,75 @@ def _fillkill_pages(user):
     return [_page("Main", "fillkill.index")]
 
 
+DOCS_BLUEPRINT = "selfawareness"
+DOCS_ENDPOINTS = {"plm": "selfawareness.index", FILLKILL: "selfawareness.fillkill"}
+
+
+def _docs_pages():
+    return [
+        _page("PLM Tracker", DOCS_ENDPOINTS["plm"]),
+        _page("Fill/Kill Management", DOCS_ENDPOINTS[FILLKILL]),
+    ]
+
+
+PAGE_ROW_LABELS = {
+    "plm": "PLM Tracker pages",
+    FILLKILL: "Fill/Kill Management pages",
+    "docs": "Docs",
+}
+
+
 def build_nav(user):
-    """Navigation for the current request, or None when nobody is logged in."""
-    if not getattr(user, "is_authenticated", False):
-        return None
+    """Navigation for the current request.
+
+    ``modules`` is empty when nobody is logged in; the Docs page row and link
+    work either way, since the docs pages are public.
+    """
+    authenticated = bool(getattr(user, "is_authenticated", False))
 
     blueprint = request.blueprint
     if blueprint in PLM_BLUEPRINTS:
         active = "plm"
     elif blueprint == FILLKILL:
         active = FILLKILL
+    elif blueprint == DOCS_BLUEPRINT:
+        active = "docs"
     else:
         active = None
 
-    modules = [{
-        "key": "plm",
-        "label": "PLM Tracker",
-        "url": url_for("dashboard.index"),
-        "active": active == "plm",
-    }]
-    if can(user, "view"):
+    modules = []
+    if authenticated:
         modules.append({
-            "key": FILLKILL,
-            "label": "Fill/Kill Management",
-            "url": url_for("fillkill.index"),
-            "active": active == FILLKILL,
+            "key": "plm",
+            "label": "PLM Tracker",
+            "url": url_for("dashboard.index"),
+            "active": active == "plm",
         })
+        if can(user, "view"):
+            modules.append({
+                "key": FILLKILL,
+                "label": "Fill/Kill Management",
+                "url": url_for("fillkill.index"),
+                "active": active == FILLKILL,
+            })
 
-    if active == "plm":
+    if active == "plm" and authenticated:
         pages = _plm_pages(user)
-    elif active == FILLKILL:
+    elif active == FILLKILL and authenticated:
         pages = _fillkill_pages(user)
+    elif active == "docs":
+        pages = _docs_pages()
     else:
         pages = []
 
-    return {"modules": modules, "active": active, "pages": pages}
+    # The Docs link opens the docs of the module you're in.
+    in_fillkill = active == FILLKILL or request.endpoint == DOCS_ENDPOINTS[FILLKILL]
+    docs_url = url_for(DOCS_ENDPOINTS[FILLKILL] if in_fillkill else DOCS_ENDPOINTS["plm"])
+
+    return {
+        "modules": modules,
+        "active": active,
+        "pages": pages,
+        "page_row_label": PAGE_ROW_LABELS.get(active, ""),
+        "docs_url": docs_url,
+    }

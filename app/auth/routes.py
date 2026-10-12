@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from .. import db
 from ..models.auth import User
@@ -9,6 +9,27 @@ from ..utility.msgraph import send_mail
 from ..utility import session_policy
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
+
+# A correctly entered reset code lets this browser, and only for that email, set
+# a new password within this window. The update page trusts nothing else: before
+# this, anyone could open it with any email and set that account's password.
+RESET_VERIFIED_KEY = "reset_verified"
+RESET_VERIFIED_WINDOW = timedelta(minutes=15)
+
+
+def _mark_reset_verified(email: str) -> None:
+    session[RESET_VERIFIED_KEY] = {"email": email, "at": datetime.now().isoformat(timespec="seconds")}
+
+
+def _verified_reset_email() -> str | None:
+    data = session.get(RESET_VERIFIED_KEY) or {}
+    try:
+        verified_at = datetime.fromisoformat(data.get("at", ""))
+    except (TypeError, ValueError):
+        return None
+    if datetime.now() - verified_at > RESET_VERIFIED_WINDOW:
+        return None
+    return data.get("email") or None
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -126,16 +147,24 @@ def reset_password_verify():
             flash("Invalid or expired code.", "error")
             # return redirect(url_for("auth.reset_password_request"))
             return render_template("auth/reset_password_verify.html", email=email)
-        # Code is valid, proceed to set new password
-        return redirect(url_for("auth.reset_password_update", email=email))
+        # Code is valid: this browser may now set a new password for this email.
+        _mark_reset_verified(user.email)
+        return redirect(url_for("auth.reset_password_update"))
     return render_template("auth/reset_password_verify.html", email=email)
 
 @bp.route("/reset_password/update", methods=["GET", "POST"])
 def reset_password_update():
-    email = request.args.get("email", "")
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        flash("Invalid request.", "error")
+    # Only the email whose code this browser just verified; never the URL or form.
+    email = _verified_reset_email()
+    user = User.query.filter_by(email=email).first() if email else None
+    if (
+        not user
+        or not user.reset_code
+        or not user.reset_code_expiry
+        or user.reset_code_expiry < datetime.now()
+    ):
+        session.pop(RESET_VERIFIED_KEY, None)
+        flash("Please request a reset code and enter it before setting a new password.", "error")
         return redirect(url_for("auth.reset_password_request"))
     if request.method == "POST":
         password = request.form.get("password", "")
@@ -143,9 +172,10 @@ def reset_password_update():
             flash("Password required.", "error")
             return render_template("auth/reset_password_update.html", email=email)
         user.set_password(password)
-        user.reset_code = None
+        user.reset_code = None  # one use only
         user.reset_code_expiry = None
         db.session.commit()
+        session.pop(RESET_VERIFIED_KEY, None)
         flash("Password updated. Please log in.", "success")
         return redirect(url_for("auth.login"))
     return render_template("auth/reset_password_update.html", email=email)

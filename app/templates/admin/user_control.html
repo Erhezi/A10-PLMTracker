@@ -40,6 +40,7 @@
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Name <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Role <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable text-center align-middle" data-sort-type="text">Access <span class="sort-indicator"></span></th>
+                        <th scope="col" class="text-uppercase small fw-semibold">Fill/Kill Roles</th>
                         {% if current_user.user_role == 'admin' and current_user.is_active %}
                         <th scope="col" class="text-uppercase small fw-semibold text-center">Actions</th>
                         {% endif %}
@@ -52,6 +53,7 @@
                         <td class="small">{{ user.name or '' }}</td>
                         <td>
                             <form method="POST" action="{{ url_for('admin.update_user_role', user_email=user.email) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                                 <select class="form-select form-select-sm user-control-dropdown" name="user_role">
                                     <option value="admin" {% if user.user_role == 'admin' %}selected{% endif %}>Admin</option>
                                     <option value="user" {% if user.user_role == 'user' %}selected{% endif %}>User</option>
@@ -66,18 +68,41 @@
                             <span class="badge text-bg-warning text-dark" data-sort-value="pending">PENDING</span>
                             {% endif %}
                         </td>
+                        {% set held = fillkill_roles_by_user.get(user.user_id, ()) %}
+                        <td class="small fillkill-roles-cell" data-search-text="{% for code, label in fillkill_role_choices if code in held %}{{ label }} {% endfor %}">
+                            {% if current_user.user_role == 'admin' and current_user.is_active %}
+                            <form method="POST" action="{{ url_for('admin.update_fillkill_roles', user_email=user.email) }}" class="fillkill-roles-form" data-target-admin="{{ 'true' if user.user_role == 'admin' else 'false' }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    {% for code, label in fillkill_role_choices %}
+                                    <div class="form-check form-check-inline m-0">
+                                        <input class="form-check-input" type="checkbox" name="fillkill_roles" value="{{ code }}" id="fk-{{ user.user_id }}-{{ code }}" {% if code in held %}checked{% endif %}>
+                                        <label class="form-check-label text-nowrap" for="fk-{{ user.user_id }}-{{ code }}">{{ label }}</label>
+                                    </div>
+                                    {% endfor %}
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Save</button>
+                                </div>
+                                <div class="fillkill-role-warning text-danger mt-1 d-none">B and C can't both be held by a non-admin.</div>
+                            </form>
+                            {% else %}
+                            {% for code, label in fillkill_role_choices if code in held %}<span class="badge text-bg-light border me-1">{{ label }}</span>{% else %}<span class="text-muted">none</span>{% endfor %}
+                            {% endif %}
+                        </td>
                         {% if current_user.user_role == 'admin' and current_user.is_active %}
                         <td class="text-center">
                             <div class="d-inline-flex flex-wrap gap-2 justify-content-center">
                                 <button type="button" class="btn btn-primary btn-sm update-btn" onclick="this.closest('tr').querySelector('form').submit()">Update Role</button>
                                 {% if user.email != current_user.email %}
                                 <form method="POST" action="{{ url_for('admin.approve_user_access', user_email=user.email) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                                     <button type="submit" class="btn btn-success btn-sm" {% if user.is_active %}disabled{% endif %}>Approve Access</button>
                                 </form>
                                 <form method="POST" action="{{ url_for('admin.disable_user', user_email=user.email) }}" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                                     <button type="submit" class="btn btn-warning btn-sm" {% if not user.is_active %}disabled{% endif %}>Disable User</button>
                                 </form>
                                 <form method="POST" action="{{ url_for('admin.delete_user', user_email=user.email) }}" class="d-inline" onsubmit="return confirm('Are you sure you want to delete the user with email: {{ user.email }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                                     <button type="submit" class="btn btn-danger btn-sm delete-btn">Delete</button>
                                 </form>
                                 {% endif %}
@@ -136,8 +161,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const role = roleSelect ? roleSelect.value : '';
         const accessCell = row.cells[3];
         const access = accessCell ? accessCell.textContent || '' : '';
-        return [email, name, role, access].map(val => val.trim().toLowerCase()).join(' ');
+        const fillkillCell = row.querySelector('.fillkill-roles-cell');
+        const fillkill = fillkillCell ? fillkillCell.dataset.searchText || '' : '';
+        return [email, name, role, access, fillkill].map(val => val.trim().toLowerCase()).join(' ');
     }
+
+    // B (Nursing) + C (Materials manager) together is only allowed for admins;
+    // the server refuses it too, this just says so before saving.
+    document.querySelectorAll('.fillkill-roles-form').forEach(form => {
+        const warning = form.querySelector('.fillkill-role-warning');
+        const save = form.querySelector('button[type="submit"]');
+        const clinical = form.querySelector('input[value="clinical"]');
+        const materials = form.querySelector('input[value="materials"]');
+        const check = () => {
+            const clash = form.dataset.targetAdmin !== 'true' && clinical.checked && materials.checked;
+            warning.classList.toggle('d-none', !clash);
+            save.disabled = clash;
+        };
+        form.addEventListener('change', check);
+        check();
+    });
 
     function termMatches(text, term) {
         if (!term) return true;

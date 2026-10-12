@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import MetaData, text
 import os
 
@@ -11,6 +12,8 @@ metadata = MetaData(schema="PLM")
 db = SQLAlchemy(metadata=metadata)
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
+login_manager.login_message_category = "info"
+csrf = CSRFProtect()
 
 
 class PathPrefixMiddleware:
@@ -42,7 +45,8 @@ def _normalized_prefix(raw: str | None) -> str:
     return prefix if prefix else ""
 
 
-def create_app(env: str | None = None, url_prefix: str | None = None):
+def create_app(env: str | None = None, url_prefix: str | None = None, config_overrides: dict | None = None):
+    """Build the app. ``config_overrides`` is applied last; tests use it to swap the database."""
     env = env or os.getenv("FLASK_ENV", "development")
     url_prefix = _normalized_prefix(url_prefix or os.getenv("URL_PREFIX"))
 
@@ -58,13 +62,28 @@ def create_app(env: str | None = None, url_prefix: str | None = None):
     app.config.from_object(cfg_cls)
     if url_prefix:
         app.config["APPLICATION_ROOT"] = url_prefix
+    if config_overrides:
+        app.config.update(config_overrides)
 
     # Init extensions
     db.init_app(app)
     login_manager.init_app(app)
 
+    # The daily login reset must run before the CSRF check, so an expired login
+    # posting a stale form gets the "login expired" message, not a token error.
+    from .utility import session_policy
+    session_policy.init_app(app, login_manager)
+    csrf.init_app(app)
+
+    from .utility.access import build_nav
+
+    @app.context_processor
+    def inject_navigation():
+        from flask_login import current_user
+        return {"nav": build_nav(current_user)}
+
     # Import models so that db.create_all sees them
-    from .models.auth import User  # noqa: F401
+    from .models.auth import User, UserModuleRole  # noqa: F401
     from .models.relations import ItemLink  # noqa: F401
     from .models.inventory import Item, ContractItem  # noqa: F401
 
@@ -76,6 +95,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None):
     from .main.routes import bp as main_bp
     from .admin.routes import admin_bp
     from .selfawareness.routes import bp as selfawareness_bp
+    from .fillkill.routes import bp as fillkill_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(collector_bp)
@@ -84,6 +104,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None):
     app.register_blueprint(main_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(selfawareness_bp)
+    app.register_blueprint(fillkill_bp)
 
     if url_prefix:
         # WSGI middleware so IIS-hosted app sees the correct SCRIPT_NAME

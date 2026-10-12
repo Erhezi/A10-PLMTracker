@@ -1,10 +1,12 @@
 {% extends 'base.html' %}
-{% block title %}Login — PLM Tracker{% endblock %}
+{% block title %}Login — Item Management Assistant{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-md-5 col-lg-4">
     <h2 class="h4 mb-3 fw-semibold text-primary">Login</h2>
     <form method="post" class="card p-3 shadow-sm rounded-3 bg-white border-0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <input type="hidden" name="next" value="{{ request.args.get('next', '') }}" />
       <div class="mb-3">
         <label class="form-label small text-uppercase">Email</label>
         <input type="email" class="form-control" name="email" required autofocus />

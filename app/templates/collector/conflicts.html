@@ -54,6 +54,7 @@
 	</div>
 	<div class="col-lg-4">
 		<form method="post" action="{{ url_for('collector.purge_conflicts') }}" class="d-flex flex-column flex-lg-row align-items-lg-end gap-2 justify-content-lg-end">
+			<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 			<div>
 				<label for="purge-date" class="form-label small text-uppercase text-muted">Purge through</label>
 				<input id="purge-date" type="date" name="purge_date" class="form-control form-control-sm" min="{{ purge_min_date }}" max="{{ purge_max_date }}" value="{{ purge_max_date }}">
@@ -116,6 +117,7 @@
 				</td>
 				<td class="text-end">
 					<form method="post" action="{{ url_for('collector.delete_conflict', pkid=conflict.pkid) }}" class="d-inline">
+						<input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 						{% if selected_type %}
 							<input type="hidden" name="type" value="{{ selected_type }}">
 						{% endif %}

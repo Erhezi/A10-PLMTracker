@@ -31,6 +31,14 @@ class User(db.Model, UserMixin):
     disabled_by = db.Column(db.String(255))
     disabled_at = db.Column(db.DateTime)
 
+    # Roles in modules other than PLM (e.g. Fill/Kill); user_role stays the PLM role.
+    module_roles = db.relationship(
+        "UserModuleRole",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+
     # Flask-Login required attribute name is 'id' or 'get_id'; we map id property.
     @property
     def id(self):  # type: ignore[override]
@@ -41,3 +49,19 @@ class User(db.Model, UserMixin):
 
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.pw_hash, password)
+
+
+class UserModuleRole(db.Model):
+    """A user's role in a module other than PLM; created by db/fillkill/02_user_module_role.sql."""
+
+    __tablename__ = "UserModuleRole"
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("PLM.users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    module = db.Column(db.String(30), primary_key=True)
+    role = db.Column(db.String(30), primary_key=True)
+    granted_by = db.Column(db.String(255))
+    granted_at = db.Column(db.DateTime, nullable=False, default=now_ny_naive)

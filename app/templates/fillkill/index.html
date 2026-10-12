@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Fill/Kill Management — Item Management Assistant{% endblock %}
+
+{% block content %}
+<h1 class="h4 fw-semibold mb-3">Fill/Kill Management</h1>
+
+<div class="card shadow-sm border-0">
+  <div class="card-body">
+    <p class="mb-2">
+      This module tracks Medline's daily fill/kill report per Medline item: nursing reviews and picks
+      substitutes, and materials management records what was ordered.
+    </p>
+    <p class="text-muted small mb-3">
+      The main table, the subs library and the orders log are being built and will appear here in the
+      next release.
+    </p>
+
+    <div class="small">
+      <span class="text-muted">Your Fill/Kill roles:</span>
+      {% if roles %}
+        {% for role in roles %}<span class="badge text-bg-light border me-1">{{ role }}</span>{% endfor %}
+      {% else %}
+        <span>none</span>{% if admin %} <span class="text-muted">(as an admin you can still view this module)</span>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

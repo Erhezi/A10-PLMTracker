@@ -1,6 +1,24 @@
 body { font-feature-settings: "tnum"; }
 .navbar-brand { letter-spacing: .5px; }
 .navbar-brand .brand-logo { display: block; height: 30px; width: auto; }
+
+/* Two-row navigation: modules in the navbar, the active module's pages below it. */
+.module-nav .nav-link { font-weight: 600; border-bottom: 2px solid transparent; }
+.module-nav .nav-link.active { border-bottom-color: var(--plm-accent-pink); }
+.page-nav { background: #fff; border-bottom: 1px solid rgba(0, 0, 0, .08); }
+.page-nav .nav { flex-wrap: nowrap; overflow-x: auto; }
+.page-nav .nav-link {
+  color: var(--plm-accent-dark);
+  padding: .55rem .9rem;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.page-nav .nav-link:hover { color: var(--plm-accent); }
+.page-nav .nav-link.active {
+  color: var(--plm-accent);
+  border-bottom-color: var(--plm-accent);
+  font-weight: 600;
+}
 .stat-tile .fs-4 { font-variant-numeric: tabular-nums; }
 .toast-container { width: 320px; }
 .card { border-radius: .75rem; }

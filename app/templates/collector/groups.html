@@ -76,6 +76,7 @@
       {% set clear_disabled_reason = 'No rows with stage Deleted to clear.' %}
     {% endif %}
     <form id="clear-deleted-form" method="post" action="{{ url_for('collector.clear_deleted') }}" onsubmit="return confirm('Delete all rows with stage=Deleted? This cannot be undone.');" class="m-0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
       <button
         id="clear-deleted-btn"
         type="submit"
@@ -95,6 +96,7 @@
       {% set archive_disabled_reason = 'No rows with stage Tracking Completed to archive.' %}
     {% endif %}
     <form id="archive-completed-form" method="post" action="{{ url_for('collector.archive_completed') }}" onsubmit="return confirm('Archive all rows with stage=Tracking Completed? This removes them from the tracker.');" class="m-0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
       <button
         id="archive-completed-btn"
         type="submit"

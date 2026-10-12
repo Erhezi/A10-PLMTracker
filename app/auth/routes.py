@@ -6,6 +6,7 @@ import random
 import string
 from datetime import datetime, timedelta, timezone
 from ..utility.msgraph import send_mail
+from ..utility import session_policy
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -54,9 +55,15 @@ def login():
             )
             return redirect(url_for("auth.register_pending", email=email))
         login_user(user)
+        session_policy.mark_login()
         user.last_login_at = db.func.now()
         db.session.commit()
         flash("Logged in", "success")
+        next_path = session_policy.safe_next(
+            request.form.get("next") or request.args.get("next"), request.script_root
+        )
+        if next_path:
+            return redirect(request.script_root + next_path)
         return redirect(url_for("main.index"))
     return render_template("auth/login.html")
 
@@ -67,10 +74,11 @@ def register_pending():
     return render_template("auth/register_pending.html", email=email)
 
 
-@bp.route("/logout", methods=["POST"])  # POST to avoid CSRF (add token later)
+@bp.route("/logout", methods=["POST"])  # POST + CSRF token (CSRFProtect)
 @login_required
 def logout():
     logout_user()
+    session_policy.clear_login()
     flash("Logged out", "info")
     return redirect(url_for("auth.login"))
 

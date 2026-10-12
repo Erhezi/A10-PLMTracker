@@ -74,6 +74,17 @@ def build_mssql_uri(server, database, driver, trusted):
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
+    # -------------------------------------------
+    #            Login & request security
+    # -------------------------------------------
+    # Every login ends at this New York time each day (HH:MM, 24-hour); the next
+    # request goes to the login page. Empty disables it. See utility/session_policy.py.
+    LOGIN_RESET_TIME = os.getenv("LOGIN_RESET_TIME", "02:30")
+    # CSRF tokens live as long as the login instead of Flask-WTF's default 1 hour,
+    # so a page left open all day still submits; the daily reset bounds them.
+    WTF_CSRF_TIME_LIMIT = None
+    SESSION_COOKIE_SAMESITE = "Lax"
+
     DB_TARGET, _target = _resolve_target()
     # Per-value overrides still win, so a one-off host can be tried without
     # editing this file.

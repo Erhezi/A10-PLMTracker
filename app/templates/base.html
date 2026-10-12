@@ -91,7 +91,7 @@
         </ul>
         <ul class="navbar-nav ms-auto align-items-center">
           {% if current_user.is_authenticated %}
-          {% if current_user.user_role == 'admin' %}
+          {% if user_is_admin %}
           <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.user_control') }}">User Control</a></li>
           {% endif %}
           <li class="nav-item"><span class="navbar-text small me-2">{{ current_user.email }}</span></li>

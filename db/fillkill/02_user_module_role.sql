@@ -1,9 +1,11 @@
--- Per-module roles for shared users (plan §4.1, P1).
--- Run on O2, database PLM, BEFORE deploy #1. Safe to re-run.
+-- Every permission in the app: one row per (user, module, role). Plan §4.1, P1;
+-- unified access 2026-10-12. Run on O2, database PLM, BEFORE deploy #1. Safe to re-run.
 --
--- users.user_role keeps its PLM meaning; this table holds roles for other modules.
--- Fill/Kill roles: viewer, proposer (A - sub entry), clinical (B - nursing),
--- materials (C - materials manager).
+--   app       admin                                   manage users; see every module
+--   plm       viewer | editor                         at most one of the two
+--   fillkill  viewer, proposer (A), clinical (B), materials (C)
+--
+-- Then run 03_unify_roles.sql, which moves today's users.user_role into this table.
 
 SET NOCOUNT ON;
 
@@ -19,9 +21,10 @@ BEGIN
         CONSTRAINT [PK_UserModuleRole] PRIMARY KEY CLUSTERED ([user_id], [module], [role]),
         CONSTRAINT [FK_UserModuleRole_users] FOREIGN KEY ([user_id])
             REFERENCES [PLM].[users] ([user_id]) ON DELETE CASCADE,
-        CONSTRAINT [CK_UserModuleRole_fillkill_role] CHECK (
-            [module] <> 'fillkill'
-            OR [role] IN ('viewer', 'proposer', 'clinical', 'materials')
+        CONSTRAINT [CK_UserModuleRole_role] CHECK (
+               ([module] = 'app'      AND [role] = 'admin')
+            OR ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
+            OR ([module] = 'fillkill' AND [role] IN ('viewer', 'proposer', 'clinical', 'materials'))
         )
     );
 END;
@@ -75,15 +78,22 @@ BEGIN
     PRINT 'Added FK_UserModuleRole_users';
 END;
 
--- Allowed Fill/Kill role values.
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
-               WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_fillkill_role')
+-- Allowed roles per module. Replaces the earlier Fill/Kill-only CHECK.
+IF EXISTS (SELECT 1 FROM sys.check_constraints
+           WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_fillkill_role')
 BEGIN
-    ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [CK_UserModuleRole_fillkill_role] CHECK (
-        [module] <> 'fillkill'
-        OR [role] IN ('viewer', 'proposer', 'clinical', 'materials')
+    ALTER TABLE [PLM].[UserModuleRole] DROP CONSTRAINT [CK_UserModuleRole_fillkill_role];
+    PRINT 'Dropped CK_UserModuleRole_fillkill_role (replaced by CK_UserModuleRole_role)';
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_role')
+BEGIN
+    ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [CK_UserModuleRole_role] CHECK (
+           ([module] = 'app'      AND [role] = 'admin')
+        OR ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
+        OR ([module] = 'fillkill' AND [role] IN ('viewer', 'proposer', 'clinical', 'materials'))
     );
-    PRINT 'Added CK_UserModuleRole_fillkill_role';
+    PRINT 'Added CK_UserModuleRole_role';
 END;
 
 -- Default for granted_at: rename a system-named one, or add it.
@@ -102,6 +112,15 @@ BEGIN
     SET @object = N'PLM.' + QUOTENAME(@name);
     EXEC sp_rename @object, N'DF_UserModuleRole_granted_at', N'OBJECT';
     PRINT CONCAT('Renamed default ', @name, ' -> DF_UserModuleRole_granted_at');
+END;
+
+-- A user holds at most one PLM role (Viewer or Editor).
+IF NOT EXISTS (SELECT 1 FROM sys.indexes
+               WHERE object_id = @table AND name = N'UX_UserModuleRole_one_plm_role')
+BEGIN
+    CREATE UNIQUE INDEX [UX_UserModuleRole_one_plm_role]
+        ON [PLM].[UserModuleRole] ([user_id]) WHERE [module] = 'plm';
+    PRINT 'Added UX_UserModuleRole_one_plm_role';
 END;
 GO
 

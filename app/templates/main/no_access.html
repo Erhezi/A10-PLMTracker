@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}No access yet — Item Management{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <div class="card shadow-sm border-0 p-4">
+      <h1 class="h4 fw-semibold mb-2">No module access yet</h1>
+      <p class="mb-2">
+        Your account is active, but you don't have a role in any module yet. An admin gives access
+        per module in User Control.
+      </p>
+      {% if requested %}
+      <p class="mb-2 small">
+        You asked for: {% for label in requested %}<span class="badge text-bg-light border me-1">{{ label }}</span>{% endfor %}
+      </p>
+      {% endif %}
+      <p class="mb-0 small text-muted">
+        Once you have a role, reload this page. Meanwhile, the <a href="{{ nav.docs_url }}">Docs</a>
+        explain what each module does.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

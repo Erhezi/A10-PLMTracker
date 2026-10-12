@@ -13,7 +13,12 @@ class User(db.Model, UserMixin):
     user_id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     name = db.Column(db.String(120))
-    user_role = db.Column(db.String(50), nullable=False, server_default=text("'user'"), index=True)  # e.g., 'admin', 'user'
+    # Legacy: no longer read. Permissions live in UserModuleRole; access.apply_access
+    # keeps this in step ('admin' / 'user' / 'view-only') so the previous release
+    # still works if it is redeployed. Drop once module roles have settled.
+    user_role = db.Column(db.String(50), nullable=False, server_default=text("'user'"), index=True)
+    # Modules asked for at registration, e.g. "plm,fillkill". Grants nothing by itself.
+    requested_modules = db.Column(db.String(100))
     pw_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=False, server_default=text("0"))
     created_at = db.Column(db.DateTime(timezone=False), default=now_ny_naive, nullable=False)
@@ -31,7 +36,7 @@ class User(db.Model, UserMixin):
     disabled_by = db.Column(db.String(255))
     disabled_at = db.Column(db.DateTime)
 
-    # Roles in modules other than PLM (e.g. Fill/Kill); user_role stays the PLM role.
+    # Every permission: app admin, PLM role, Fill/Kill roles (see utility/access.py).
     module_roles = db.relationship(
         "UserModuleRole",
         cascade="all, delete-orphan",
@@ -51,8 +56,15 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.pw_hash, password)
 
 
+ROLE_CHECK_SQL = (
+    "(module = 'app' AND role = 'admin')"
+    " OR (module = 'plm' AND role IN ('viewer', 'editor'))"
+    " OR (module = 'fillkill' AND role IN ('viewer', 'proposer', 'clinical', 'materials'))"
+)
+
+
 class UserModuleRole(db.Model):
-    """A user's role in a module other than PLM.
+    """One permission: a user's role in a module (app admin, PLM, Fill/Kill).
 
     db/fillkill/02_user_module_role.sql creates this table. The constraints are
     spelled out here with the same names, because the app's startup
@@ -66,9 +78,11 @@ class UserModuleRole(db.Model):
             ["user_id"], ["PLM.users.user_id"],
             name="FK_UserModuleRole_users", ondelete="CASCADE",
         ),
-        db.CheckConstraint(
-            "module <> 'fillkill' OR role IN ('viewer', 'proposer', 'clinical', 'materials')",
-            name="CK_UserModuleRole_fillkill_role",
+        db.CheckConstraint(ROLE_CHECK_SQL, name="CK_UserModuleRole_role"),
+        # PLM roles are Viewer or Editor, never both.
+        db.Index(
+            "UX_UserModuleRole_one_plm_role", "user_id", unique=True,
+            mssql_where=text("module = 'plm'"), sqlite_where=text("module = 'plm'"),
         ),
     )
 

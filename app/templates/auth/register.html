@@ -14,6 +14,16 @@
         <label class="form-label small text-uppercase">Name (optional)</label>
         <input type="text" class="form-control" name="name" />
       </div>
+      <fieldset class="mb-3">
+        <legend class="form-label small text-uppercase">Modules you need</legend>
+        {% for key, module in modules.items() %}
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="modules" value="{{ key }}" id="module-{{ key }}" />
+          <label class="form-check-label" for="module-{{ key }}">{{ module.label }}</label>
+        </div>
+        {% endfor %}
+        <div class="form-text">An admin approves your account and grants access to each module.</div>
+      </fieldset>
       <div class="mb-3">
         <label class="form-label small text-uppercase">Password</label>
         <input type="password" class="form-control" name="password" required minlength="6" />

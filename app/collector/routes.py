@@ -26,6 +26,7 @@ from ..models.log import BurnRateRefreshJob
 from ..utility.item_group import BatchValidationError
 from ..utility.add_pairs import AddItemPairs
 from ..utility.stage_transition import StageTransitionHelper
+from ..utility.access import is_admin
 from .batch_service import (
     apply_stage,
     apply_wrike,
@@ -180,7 +181,7 @@ def groups():
 @bp.post('/groups/clear-deleted')
 @login_required
 def clear_deleted():
-    if current_user.user_role != 'admin':
+    if not is_admin(current_user):
         flash('Access denied: Only admins can clear deleted rows.', 'danger')
         return redirect(url_for('collector.groups'))
     # Move rows marked Deleted into the dedicated history table before removal
@@ -231,7 +232,7 @@ def clear_deleted():
 @bp.post('/groups/archive-completed')
 @login_required
 def archive_completed():
-    if current_user.user_role != 'admin':
+    if not is_admin(current_user):
         flash('Access denied: Only admins can archive completed rows.', 'danger')
         return redirect(url_for('collector.groups'))
     # Move Tracking Completed rows into the archive table, preserving history

@@ -12,16 +12,17 @@
   <h1 class="h3 fw-semibold mb-3">Admin User Control</h1>
   <p class="text-muted">
     Use this guide as your playbook for reviewing user accounts, approving access, and
-    keeping the PLM Tracker roster accurate. Each section walks through what you see in the
+    keeping the Item Management roster accurate. Each section walks through what you see in the
     User Control table, what to watch for, and how to explain the process to business partners.
   </p>
 
   <section id="access" class="mt-4">
     <h2 class="h4">Access control</h2>
     <ul>
-      <li><strong>For admins only.</strong> Only administrators can open the User Control page. If someone without admin rights tries to access it, they are routed back to the login screen with a reminder that the area is restricted.</li>
+      <li><strong>One account, access per module.</strong> People register once for Item Management. What they can do is set separately for each module (PLM Tracker, Fill/Kill Management) in their row.</li>
+      <li><strong>For admins only.</strong> Only administrators can open the User Control page. Anyone else who tries is sent back with a reminder that the area is restricted.</li>
       <li><strong>Active admins.</strong> An admin account must be active to make changes. If an admin is disabled, they cannot reactivate themselves until another admin restores their access.</li>
-      <li><strong>Graceful self-edits.</strong> When you adjust your own role or status, the system lets the current page finish loading so you are not bounced out mid-change. Use this to test permissions safely.</li>
+      <li><strong>Your own admin access.</strong> You can't remove your own admin access; another admin has to. To see what a role experiences, switch off your own module roles, save, and try the module.</li>
     </ul>
   </section>
 
@@ -42,9 +43,11 @@
         <div class="border rounded p-3 h-100">
           <h3 class="h6 text-uppercase text-muted">Roles</h3>
           <ul class="small mb-0">
-            <li><strong>Pick the right role.</strong> Choose between <em>Admin</em>, <em>User</em>, or <em>View-only</em> from the dropdown in each row. Save the change and the table confirms the new level immediately.</li>
-            <li><strong>What view-only sees.</strong> View-only accounts can open dashboards and reports but cannot make edits or see the collection workflows. Use this when someone just needs read access.</li>
-            <li><strong>Testing your own role.</strong> If you downgrade yourself to User or View-only, the page stays open so you can verify exactly what those roles experience before logging back in as an admin.</li>
+            <li><strong>Set the whole row, then save.</strong> Each row has an <em>Admin</em> box, a <em>PLM Tracker</em> role (No access, Viewer or Editor) and <em>Fill/Kill Management</em> roles. Press <em>Save access</em> to apply them together.</li>
+            <li><strong>PLM Viewer vs Editor.</strong> Viewers open Groups, Dashboard and Playground, and can filter and export. Editors also use Collect and Conflicts and can change data.</li>
+            <li><strong>Fill/Kill roles.</strong> Viewer, A (sub entry), B (nursing) and C (materials manager). One person can't hold both B and C unless they're an admin.</li>
+            <li><strong>Requested modules.</strong> The <em>Requested</em> column shows what someone asked for when they registered. It grants nothing until you set their roles and save.</li>
+            <li><strong>Admins.</strong> Admins can open every module and manage users. New admins start with every module role and can switch any off.</li>
           </ul>
         </div>
       </div>
@@ -57,7 +60,7 @@
       <li><strong>Filtering.</strong> Use the quick filter to narrow the list by name, email, or role. Separate multiple search terms with semicolons and add <code>*</code> as a wildcard when you only remember part of a word.</li>
       <li><strong>Sorting.</strong> Click any column header to sort by that value. Click again to flip between ascending or descending order. The table remembers which column you last sorted.</li>
       <li><strong>Row count.</strong> A counter above the table shows how many records match your current filters so you can confirm the list looks right before sharing it.</li>
-      <li><strong>Action buttons.</strong> Approve, disable, delete, and role-change buttons all prompt for confirmation to prevent accidental clicks. Nothing happens until you confirm.</li>
+      <li><strong>Action buttons.</strong> Save access, Approve and Disable take effect immediately; Delete asks you to confirm first.</li>
     </ul>
   </section>
 </div>

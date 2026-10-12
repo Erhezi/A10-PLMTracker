@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% set can_manage_cleanup = current_user.user_role == 'admin' %}
-{% set can_edit = current_user.user_role != 'view-only' %}
+{% set can_manage_cleanup = user_is_admin %}
+{% set can_edit = user_can('plm', 'edit') %}
 {% block title %}Groups — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">

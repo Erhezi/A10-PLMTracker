@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% block title %}User Control — Item Management{% endblock %}
 
 {% block content %}
 <h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">
   <span>
-    Admin User Control
+    User Control
     <a
       href="{{ url_for('admin.user_control_doc') }}"
       class="text-decoration-none text-accent-pink d-inline-flex align-items-center"
@@ -15,7 +16,10 @@
     </a>
   </span>
 </h1>
-<p class="text-muted small mb-4">Manage application access and roles for each user.</p>
+<p class="text-muted small mb-4">
+  One account per person; access is set per module. Changes in a row take effect when you press
+  <strong>Save access</strong>.
+</p>
 
 <div class="card shadow-sm border-0">
     <div class="card-body">
@@ -30,7 +34,7 @@
                     <div class="small text-muted user-filter-hint" id="user-filter-hint">Use ";" to search multiple terms. Use "*" as a wildcard.</div>
                 </div>
             </div>
-            <div class="small text-muted pt-2 pt-md-0 text-md-end ms-md-auto user-rows-count">Rows: <span id="user-table-visible-count">{{ users|length }}</span> / {{ users|length }}</div>
+            <div class="small text-muted pt-2 pt-md-0 text-md-end ms-md-auto user-rows-count">Rows: <span id="user-table-visible-count">{{ rows|length }}</span> / {{ rows|length }}</div>
         </div>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0 user-control-table">
@@ -38,29 +42,23 @@
                     <tr>
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Email <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Name <span class="sort-indicator"></span></th>
-                        <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Role <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable text-center align-middle" data-sort-type="text">Access <span class="sort-indicator"></span></th>
-                        <th scope="col" class="text-uppercase small fw-semibold">Fill/Kill Roles</th>
-                        {% if current_user.user_role == 'admin' and current_user.is_active %}
+                        <th scope="col" class="text-uppercase small fw-semibold">Requested</th>
+                        <th scope="col" class="text-uppercase small fw-semibold text-center">Admin</th>
+                        {% for module in modules.values() %}
+                        <th scope="col" class="text-uppercase small fw-semibold">{{ module.label }}</th>
+                        {% endfor %}
                         <th scope="col" class="text-uppercase small fw-semibold text-center">Actions</th>
-                        {% endif %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% for user in users %}
-                    <tr>
+                    {% for row in rows %}
+                    {% set user = row.user %}
+                    {% set form_id = 'access-' ~ user.user_id %}
+                    {% set is_self = user.user_id == current_user.user_id %}
+                    <tr data-search-text="{{ user.email }} {{ user.name or '' }} {{ 'active' if user.is_active else 'pending' }}{% if row.admin %} admin{% endif %}{% for key, module in modules.items() %}{% for code, label in module.roles if code in row.roles[key] %} {{ module.label }} {{ label }}{% endfor %}{% endfor %} {{ row.requested|join(' ') }}">
                         <td class="fw-semibold">{{ user.email }}</td>
                         <td class="small">{{ user.name or '' }}</td>
-                        <td>
-                            <form method="POST" action="{{ url_for('admin.update_user_role', user_email=user.email) }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                                <select class="form-select form-select-sm user-control-dropdown" name="user_role">
-                                    <option value="admin" {% if user.user_role == 'admin' %}selected{% endif %}>Admin</option>
-                                    <option value="user" {% if user.user_role == 'user' %}selected{% endif %}>User</option>
-                                    <option value="view-only" {% if user.user_role == 'view-only' %}selected{% endif %}>View-Only</option>
-                                </select>
-                            </form>
-                        </td>
                         <td class="fw-semibold text-uppercase small text-center align-middle" data-sort-value="{{ 'active' if user.is_active else 'pending' }}">
                             {% if user.is_active %}
                             <span class="badge text-bg-success" data-sort-value="active">ACTIVE</span>
@@ -68,31 +66,49 @@
                             <span class="badge text-bg-warning text-dark" data-sort-value="pending">PENDING</span>
                             {% endif %}
                         </td>
-                        {% set held = fillkill_roles_by_user.get(user.user_id, ()) %}
-                        <td class="small fillkill-roles-cell" data-search-text="{% for code, label in fillkill_role_choices if code in held %}{{ label }} {% endfor %}">
-                            {% if current_user.user_role == 'admin' and current_user.is_active %}
-                            <form method="POST" action="{{ url_for('admin.update_fillkill_roles', user_email=user.email) }}" class="fillkill-roles-form" data-target-admin="{{ 'true' if user.user_role == 'admin' else 'false' }}">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                                <div class="d-flex flex-wrap align-items-center gap-2">
-                                    {% for code, label in fillkill_role_choices %}
-                                    <div class="form-check form-check-inline m-0">
-                                        <input class="form-check-input" type="checkbox" name="fillkill_roles" value="{{ code }}" id="fk-{{ user.user_id }}-{{ code }}" {% if code in held %}checked{% endif %}>
-                                        <label class="form-check-label text-nowrap" for="fk-{{ user.user_id }}-{{ code }}">{{ label }}</label>
-                                    </div>
-                                    {% endfor %}
-                                    <button type="submit" class="btn btn-outline-primary btn-sm">Save</button>
-                                </div>
-                                <div class="fillkill-role-warning text-danger mt-1 d-none">B and C can't both be held by a non-admin.</div>
-                            </form>
+                        <td class="small">
+                            {% for label in row.requested %}<span class="badge text-bg-light border me-1">{{ label }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endfor %}
+                        </td>
+                        <td class="text-center">
+                            {% if is_self %}
+                            {# Admins can't remove their own admin access; another admin has to. #}
+                            <input class="form-check-input" type="checkbox" checked disabled aria-label="Admin (you)" title="You can't remove your own admin access">
+                            <input type="hidden" name="app_admin" value="on" form="{{ form_id }}">
                             {% else %}
-                            {% for code, label in fillkill_role_choices if code in held %}<span class="badge text-bg-light border me-1">{{ label }}</span>{% else %}<span class="text-muted">none</span>{% endfor %}
+                            <input class="form-check-input access-admin" type="checkbox" name="app_admin" value="on" form="{{ form_id }}" aria-label="Admin" {% if row.admin %}checked{% endif %}>
                             {% endif %}
                         </td>
-                        {% if current_user.user_role == 'admin' and current_user.is_active %}
+                        {% for key, module in modules.items() %}
+                        <td class="small">
+                            {% if module.single_role %}
+                            <select class="form-select form-select-sm user-control-dropdown" name="role_{{ key }}" form="{{ form_id }}" aria-label="{{ module.label }} role">
+                                <option value="">No access</option>
+                                {% for code, label in module.roles %}
+                                <option value="{{ code }}" {% if code in row.roles[key] %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            {% else %}
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for code, label in module.roles %}
+                                <div class="form-check form-check-inline m-0">
+                                    <input class="form-check-input" type="checkbox" name="role_{{ key }}" value="{{ code }}" form="{{ form_id }}" id="{{ key }}-{{ user.user_id }}-{{ code }}" {% if code in row.roles[key] %}checked{% endif %}>
+                                    <label class="form-check-label text-nowrap" for="{{ key }}-{{ user.user_id }}-{{ code }}">{{ label }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% if key == 'fillkill' %}
+                            <div class="access-bc-warning text-danger mt-1 d-none" data-form="{{ form_id }}">B and C can't both be held by a non-admin.</div>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                        {% endfor %}
                         <td class="text-center">
                             <div class="d-inline-flex flex-wrap gap-2 justify-content-center">
-                                <button type="button" class="btn btn-primary btn-sm update-btn" onclick="this.closest('tr').querySelector('form').submit()">Update Role</button>
-                                {% if user.email != current_user.email %}
+                                <form id="{{ form_id }}" method="POST" action="{{ url_for('admin.update_access', user_email=user.email) }}" class="d-inline access-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                                    <button type="submit" class="btn btn-primary btn-sm">Save access</button>
+                                </form>
+                                {% if not is_self %}
                                 <form method="POST" action="{{ url_for('admin.approve_user_access', user_email=user.email) }}" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                                     <button type="submit" class="btn btn-success btn-sm" {% if user.is_active %}disabled{% endif %}>Approve Access</button>
@@ -108,7 +124,6 @@
                                 {% endif %}
                             </div>
                         </td>
-                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -132,13 +147,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     rows.forEach((row, idx) => {
         row.dataset.originalIndex = String(idx);
-        row.dataset.searchText = buildSearchText(row);
-        row.querySelectorAll('select').forEach(selectEl => {
-            selectEl.addEventListener('change', () => {
-                row.dataset.searchText = buildSearchText(row);
-                applyFilter();
-            });
-        });
+        row.dataset.searchText = (row.dataset.searchText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    });
+
+    // B (Nursing) + C (Materials manager) together is only allowed for admins;
+    // the server refuses it too, this just says so before saving.
+    document.querySelectorAll('.access-form').forEach(form => {
+        const id = form.id;
+        const save = form.querySelector('button[type="submit"]');
+        const warning = document.querySelector(`.access-bc-warning[data-form="${id}"]`);
+        const field = selector => document.querySelector(`[form="${id}"]${selector}`);
+        const admin = field('[name="app_admin"]');
+        const clinical = field('[name="role_fillkill"][value="clinical"]');
+        const materials = field('[name="role_fillkill"][value="materials"]');
+        if (!warning || !clinical || !materials) return;
+        const check = () => {
+            const isAdmin = admin && (admin.type === 'hidden' || admin.checked);
+            const clash = !isAdmin && clinical.checked && materials.checked;
+            warning.classList.toggle('d-none', !clash);
+            save.disabled = clash;
+        };
+        document.querySelectorAll(`[form="${id}"]`).forEach(input => input.addEventListener('change', check));
+        check();
     });
 
     sortableHeaders.forEach((th, idx) => {
@@ -152,34 +182,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 sortBy(idx);
             }
         });
-    });
-
-    function buildSearchText(row) {
-        const email = row.cells[0] ? row.cells[0].textContent || '' : '';
-        const name = row.cells[1] ? row.cells[1].textContent || '' : '';
-        const roleSelect = row.querySelector('select[name="user_role"]');
-        const role = roleSelect ? roleSelect.value : '';
-        const accessCell = row.cells[3];
-        const access = accessCell ? accessCell.textContent || '' : '';
-        const fillkillCell = row.querySelector('.fillkill-roles-cell');
-        const fillkill = fillkillCell ? fillkillCell.dataset.searchText || '' : '';
-        return [email, name, role, access, fillkill].map(val => val.trim().toLowerCase()).join(' ');
-    }
-
-    // B (Nursing) + C (Materials manager) together is only allowed for admins;
-    // the server refuses it too, this just says so before saving.
-    document.querySelectorAll('.fillkill-roles-form').forEach(form => {
-        const warning = form.querySelector('.fillkill-role-warning');
-        const save = form.querySelector('button[type="submit"]');
-        const clinical = form.querySelector('input[value="clinical"]');
-        const materials = form.querySelector('input[value="materials"]');
-        const check = () => {
-            const clash = form.dataset.targetAdmin !== 'true' && clinical.checked && materials.checked;
-            warning.classList.toggle('d-none', !clash);
-            save.disabled = clash;
-        };
-        form.addEventListener('change', check);
-        check();
     });
 
     function termMatches(text, term) {
@@ -230,43 +232,45 @@ document.addEventListener('DOMContentLoaded', () => {
         visibleCountEl.textContent = String(visible);
     }
 
+    // Sortable columns are the first ones in the row, so a header's index is its cell's index.
     function getCellValue(row, index) {
         const cell = row.cells[index];
         if (!cell) return '';
         if (cell.dataset.sortValue) return cell.dataset.sortValue;
         const dataValue = cell.querySelector('[data-sort-value]');
         if (dataValue) return dataValue.dataset.sortValue || dataValue.textContent || '';
-        const select = cell.querySelector('select');
-        if (select) return select.value;
         return cell.textContent || '';
     }
 
-    function sortBy(index) {
-        const type = sortableHeaders[index] ? sortableHeaders[index].dataset.sortType || 'text' : 'text';
-        const nextDir = sortState.index === index && sortState.dir === 'asc' ? 'desc' : 'asc';
+    function sortRows(index, dir) {
         sortState.index = index;
-        sortState.dir = nextDir;
-        const factor = nextDir === 'asc' ? 1 : -1;
+        sortState.dir = dir;
+        const type = sortableHeaders[index] ? sortableHeaders[index].dataset.sortType || 'text' : 'text';
+        const factor = dir === 'asc' ? 1 : -1;
         const sorted = Array.from(tbody.rows).sort((a, b) => {
-            let valA = getCellValue(a, index).toString().trim().toLowerCase();
-            let valB = getCellValue(b, index).toString().trim().toLowerCase();
+            const valA = getCellValue(a, index).toString().trim().toLowerCase();
+            const valB = getCellValue(b, index).toString().trim().toLowerCase();
             if (type === 'text') {
                 const cmp = valA.localeCompare(valB, undefined, { sensitivity: 'base' });
                 if (cmp !== 0) return cmp * factor;
             }
-            const originalDiff = Number(a.dataset.originalIndex || 0) - Number(b.dataset.originalIndex || 0);
-            return originalDiff;
+            return Number(a.dataset.originalIndex || 0) - Number(b.dataset.originalIndex || 0);
         });
         sorted.forEach(row => tbody.appendChild(row));
         updateSortIndicators();
         updateVisibleCount();
     }
 
+    function sortBy(index) {
+        const nextDir = sortState.index === index && sortState.dir === 'asc' ? 'desc' : 'asc';
+        sortRows(index, nextDir);
+    }
+
     function updateSortIndicators() {
         sortableHeaders.forEach((th, idx) => {
             const indicator = th.querySelector('.sort-indicator');
             if (sortState.index === idx) {
-                const arrow = sortState.dir === 'asc' ? '\u2191' : '\u2193';
+                const arrow = sortState.dir === 'asc' ? '↑' : '↓';
                 if (indicator) indicator.textContent = arrow;
                 th.setAttribute('aria-sort', sortState.dir === 'asc' ? 'ascending' : 'descending');
             } else {
@@ -274,28 +278,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 th.setAttribute('aria-sort', 'none');
             }
         });
-    }
-
-    // initial sort helper: sorts by a given column index and direction without toggling
-    function initialSort(index, dir) {
-        if (index == null || index < 0) return;
-        sortState.index = index;
-        sortState.dir = dir === 'asc' ? 'asc' : 'desc';
-        const factor = sortState.dir === 'asc' ? 1 : -1;
-        const sorted = Array.from(tbody.rows).sort((a, b) => {
-            let valA = getCellValue(a, index).toString().trim().toLowerCase();
-            let valB = getCellValue(b, index).toString().trim().toLowerCase();
-            const type = sortableHeaders[index] ? sortableHeaders[index].dataset.sortType || 'text' : 'text';
-            if (type === 'text') {
-                const cmp = valA.localeCompare(valB, undefined, { sensitivity: 'base' });
-                if (cmp !== 0) return cmp * factor;
-            }
-            const originalDiff = Number(a.dataset.originalIndex || 0) - Number(b.dataset.originalIndex || 0);
-            return originalDiff;
-        });
-        sorted.forEach(row => tbody.appendChild(row));
-        updateSortIndicators();
-        updateVisibleCount();
     }
 
     if (filterInput) {
@@ -311,13 +293,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Find the index of the "Access" header dynamically so this works whether the Actions
-    // column exists or not. Default to column with leading text 'access'.
-    const allHeaders = Array.from(table.querySelectorAll('th'));
-    const accessIndex = allHeaders.findIndex(th => th.textContent && th.textContent.trim().toLowerCase().startsWith('access'));
-
-    // Apply initial descending sort on Access column (if found), then apply filter to update visible rows.
-    initialSort(accessIndex, 'desc');
+    // Pending accounts first: sort by the Access column, descending.
+    const accessIndex = sortableHeaders.findIndex(th => th.textContent && th.textContent.trim().toLowerCase().startsWith('access'));
+    if (accessIndex >= 0) sortRows(accessIndex, 'desc');
     applyFilter();
 });
 </script>

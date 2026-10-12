@@ -3,18 +3,21 @@ from types import SimpleNamespace
 import pytest
 
 from app.utility import access
-from conftest import csrf_from, login, make_user
+from app.utility.access import FILLKILL, MODULES, PLM
+from conftest import login, make_user
 
 
-def fake_user(role="user", fillkill=(), authenticated=True):
-    return SimpleNamespace(
-        is_authenticated=authenticated,
-        user_role=role,
-        module_roles=[SimpleNamespace(module="fillkill", role=code) for code in fillkill],
-    )
+def fake_user(*, admin=False, plm=None, fillkill=(), authenticated=True):
+    rows = [SimpleNamespace(module="fillkill", role=code) for code in fillkill]
+    if admin:
+        rows.append(SimpleNamespace(module="app", role="admin"))
+    if plm:
+        rows.append(SimpleNamespace(module="plm", role=plm))
+    return SimpleNamespace(is_authenticated=authenticated, module_roles=rows)
 
 
-# --- capabilities ------------------------------------------------------------
+FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
+
 
 @pytest.mark.parametrize("roles, expected", [
     (("viewer",), {"view"}),
@@ -24,42 +27,38 @@ def fake_user(role="user", fillkill=(), authenticated=True):
     (("proposer", "clinical"), {"view", "add_sub", "review"}),
     ((), set()),
 ])
-def test_capabilities_follow_roles(roles, expected):
+def test_fillkill_capabilities_follow_roles(roles, expected):
     user = fake_user(fillkill=roles)
-    granted = {cap for cap in access.CAPABILITIES if access.can(user, cap)}
+    granted = {cap for cap in FILLKILL_CAPABILITIES if access.can(user, FILLKILL, cap)}
     assert granted == expected
 
 
 def test_admin_can_always_view_but_acts_only_through_roles():
-    bare_admin = fake_user(role="admin")
-    assert access.can(bare_admin, "view")
-    assert not access.can(bare_admin, "review")
+    bare_admin = fake_user(admin=True)
+    assert access.can(bare_admin, FILLKILL, "view")
+    assert access.can(bare_admin, PLM, "view")
+    assert not access.can(bare_admin, FILLKILL, "review")
+    assert not access.can(bare_admin, PLM, "edit")
 
-    full_admin = fake_user(role="admin", fillkill=access.FILLKILL_ROLES)
-    assert all(access.can(full_admin, cap) for cap in access.CAPABILITIES)
+    full_admin = fake_user(admin=True, plm="editor", fillkill=MODULES[FILLKILL].role_codes)
+    assert all(access.can(full_admin, FILLKILL, cap) for cap in FILLKILL_CAPABILITIES)
+    assert access.can(full_admin, PLM, "edit")
 
-    without_c = fake_user(role="admin", fillkill=("viewer", "proposer", "clinical"))
-    assert not access.can(without_c, "order")
+    without_c = fake_user(admin=True, fillkill=("viewer", "proposer", "clinical"))
+    assert not access.can(without_c, FILLKILL, "order")
 
 
 def test_anonymous_user_can_do_nothing():
-    anonymous = fake_user(authenticated=False, fillkill=access.FILLKILL_ROLES)
-    assert not any(access.can(anonymous, cap) for cap in access.CAPABILITIES)
+    anonymous = fake_user(authenticated=False, admin=True, plm="editor", fillkill=("viewer",))
+    assert not access.is_admin(anonymous)
+    assert not access.can(anonymous, FILLKILL, "view")
+    assert not access.can(anonymous, PLM, "view")
 
 
 def test_unknown_capability_is_an_error():
     with pytest.raises(KeyError):
-        access.can(fake_user(fillkill=("viewer",)), "approve")
+        access.can(fake_user(fillkill=("viewer",)), FILLKILL, "approve")
 
-
-def test_b_and_c_together_only_for_admins():
-    assert access.role_conflict({"clinical", "materials"}, admin=False)
-    assert access.role_conflict({"clinical", "materials"}, admin=True) is None
-    assert access.role_conflict({"proposer", "clinical"}, admin=False) is None
-    assert access.role_conflict({"proposer", "materials"}, admin=False) is None
-
-
-# --- navigation and the module page -------------------------------------------
 
 def logged_in(app, email, **kwargs):
     make_user(app, email, **kwargs)
@@ -88,14 +87,14 @@ def test_viewer_sees_module_and_its_page_row(sqlite_app):
     assert "Viewer" in page
 
 
-def test_admin_without_roles_can_still_open_the_module(sqlite_app):
+def test_admin_without_fillkill_roles_can_still_open_the_module(sqlite_app):
     client = logged_in(sqlite_app, "admin@example.org", role="admin")
     response = client.get("/fillkill/")
     assert response.status_code == 200
     assert "as an admin you can still view this module" in response.get_data(as_text=True)
 
 
-def test_plm_page_row(sqlite_app):
+def test_plm_editor_page_row(sqlite_app):
     user = logged_in(sqlite_app, "user@example.org")
     page = user.get("/conflicts").get_data(as_text=True)
     for label in ("Collect", "Groups", "Conflicts", "Dashboard", "Playground"):
@@ -103,104 +102,19 @@ def test_plm_page_row(sqlite_app):
     assert 'aria-current="page">Conflicts</a>' in page
 
 
-def test_view_only_plm_page_row_hides_collect_and_conflicts(sqlite_app):
+def test_plm_viewer_page_row_hides_collect_and_conflicts(sqlite_app):
     with sqlite_app.test_request_context("/groups"):
-        nav = access.build_nav(fake_user(role="view-only"))
+        nav = access.build_nav(fake_user(plm="viewer"))
     assert nav["active"] == "plm"
     assert [page["label"] for page in nav["pages"]] == ["Groups", "Dashboard", "Playground"]
     assert [module["label"] for module in nav["modules"]] == ["PLM Tracker"]
 
 
-# --- User Control: Fill/Kill roles --------------------------------------------
-
-@pytest.fixture
-def admin(sqlite_app):
-    client = logged_in(sqlite_app, "admin@example.org", role="admin", fillkill=access.FILLKILL_ROLES)
-    return client
-
-
-def roles_of(app, email):
-    from app.models.auth import User
-    with app.app_context():
-        return access.fillkill_roles(User.query.filter_by(email=email).one())
-
-
-def post_form(client, path, data):
-    token = csrf_from(client.get("/admin/user-control").get_data(as_text=True))
-    return client.post(path, data={**data, "csrf_token": token}, follow_redirects=True)
-
-
-def test_user_control_shows_roles_and_saves_them(sqlite_app, admin):
-    make_user(sqlite_app, "nurse@example.org")
-    page = admin.get("/admin/user-control").get_data(as_text=True)
-    assert "Fill/Kill Roles" in page
-    assert 'name="fillkill_roles" value="clinical"' in page
-
-    response = post_form(admin, "/admin/update-fillkill-roles/nurse@example.org",
-                         {"fillkill_roles": ["proposer", "clinical"]})
-    assert "A · Sub entry, B · Nursing" in response.get_data(as_text=True)
-    assert roles_of(sqlite_app, "nurse@example.org") == {"proposer", "clinical"}
-
-    post_form(admin, "/admin/update-fillkill-roles/nurse@example.org", {"fillkill_roles": ["viewer"]})
-    assert roles_of(sqlite_app, "nurse@example.org") == {"viewer"}
-
-
-def test_b_and_c_refused_for_a_non_admin(sqlite_app, admin):
-    make_user(sqlite_app, "mm@example.org", fillkill=("materials",))
-    response = post_form(admin, "/admin/update-fillkill-roles/mm@example.org",
-                         {"fillkill_roles": ["clinical", "materials"]})
-    assert "not saved" in response.get_data(as_text=True)
-    assert roles_of(sqlite_app, "mm@example.org") == {"materials"}
-
-
-def test_b_and_c_allowed_for_an_admin(sqlite_app, admin):
-    make_user(sqlite_app, "admin2@example.org", role="admin")
-    post_form(admin, "/admin/update-fillkill-roles/admin2@example.org",
-              {"fillkill_roles": ["clinical", "materials"]})
-    assert roles_of(sqlite_app, "admin2@example.org") == {"clinical", "materials"}
-
-
-def test_unknown_role_refused(sqlite_app, admin):
-    make_user(sqlite_app, "x@example.org")
-    response = post_form(admin, "/admin/update-fillkill-roles/x@example.org", {"fillkill_roles": ["boss"]})
-    assert "Invalid Fill/Kill role" in response.get_data(as_text=True)
-    assert roles_of(sqlite_app, "x@example.org") == set()
-
-
-def test_promotion_grants_every_role(sqlite_app, admin):
-    make_user(sqlite_app, "new.admin@example.org", fillkill=("viewer",))
-    post_form(admin, "/admin/update-user-role/new.admin@example.org", {"user_role": "admin"})
-    assert roles_of(sqlite_app, "new.admin@example.org") == set(access.FILLKILL_ROLES)
-
-
-def test_demoting_an_admin_holding_b_and_c_is_refused_until_one_is_removed(sqlite_app, admin):
-    make_user(sqlite_app, "old.admin@example.org", role="admin", fillkill=access.FILLKILL_ROLES)
-    response = post_form(admin, "/admin/update-user-role/old.admin@example.org", {"user_role": "user"})
-    assert "Remove one of them" in response.get_data(as_text=True)
-
-    from app.models.auth import User
-    with sqlite_app.app_context():
-        assert User.query.filter_by(email="old.admin@example.org").one().user_role == "admin"
-
-    post_form(admin, "/admin/update-fillkill-roles/old.admin@example.org",
-              {"fillkill_roles": ["viewer", "proposer", "clinical"]})
-    post_form(admin, "/admin/update-user-role/old.admin@example.org", {"user_role": "user"})
-    with sqlite_app.app_context():
-        assert User.query.filter_by(email="old.admin@example.org").one().user_role == "user"
-
-
-def test_deleting_a_user_removes_their_roles(sqlite_app, admin):
-    make_user(sqlite_app, "gone@example.org", fillkill=("viewer", "proposer"))
-    post_form(admin, "/admin/delete-user/gone@example.org", {})
-
-    from app.models.auth import UserModuleRole
-    with sqlite_app.app_context():
-        assert UserModuleRole.query.count() == len(access.FILLKILL_ROLES)  # only the admin's remain
-
-
-def test_non_admin_cannot_change_roles_even_their_own(sqlite_app):
-    client = logged_in(sqlite_app, "self@example.org", fillkill=("viewer",))
-    token = csrf_from(client.get("/auth/register/pending").get_data(as_text=True))
-    client.post("/admin/update-fillkill-roles/self@example.org",
-                data={"fillkill_roles": ["clinical", "proposer"], "csrf_token": token})
-    assert roles_of(sqlite_app, "self@example.org") == {"viewer"}
+def test_module_row_lists_only_modules_you_can_open(sqlite_app):
+    with sqlite_app.test_request_context("/fillkill/"):
+        fillkill_only = access.build_nav(fake_user(fillkill=("viewer",)))
+        admin = access.build_nav(fake_user(admin=True))
+        nobody = access.build_nav(fake_user())
+    assert [m["key"] for m in fillkill_only["modules"]] == ["fillkill"]
+    assert [m["key"] for m in admin["modules"]] == ["plm", "fillkill"]
+    assert nobody["modules"] == []

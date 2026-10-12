@@ -60,14 +60,45 @@ def sqlite_app(sqlite_app_factory):
     return sqlite_app_factory()
 
 
-def make_user(app, email, *, role="user", fillkill=(), active=True, password="pw"):
-    """Create a user with a PLM role and optional Fill/Kill role codes."""
+LEGACY_PRESETS = {
+    # today's user_role -> (app admin?, PLM role), as 03_unify_roles.sql migrates them
+    "admin": (True, "editor"),
+    "user": (False, "editor"),
+    "view-only": (False, "viewer"),
+    None: (False, None),
+}
+
+_UNSET = object()
+
+
+def make_user(app, email, *, role="user", plm=_UNSET, fillkill=(), active=True, password="pw",
+              requested=None):
+    """Create a user with module roles.
+
+    ``role`` is a preset named after today's roles (see LEGACY_PRESETS); ``plm``
+    overrides the PLM role (None = no PLM access); ``fillkill`` adds Fill/Kill roles.
+    """
     from app import db
     from app.models.auth import User, UserModuleRole
+    from app.utility.access import legacy_user_role
+
+    admin, plm_role = LEGACY_PRESETS[role]
+    if plm is not _UNSET:
+        plm_role = plm
 
     with app.app_context():
-        user = User(email=email, name=email.split("@")[0], user_role=role, is_active=active)
+        user = User(
+            email=email,
+            name=email.split("@")[0],
+            is_active=active,
+            requested_modules=requested,
+            user_role=legacy_user_role(admin=admin, plm_roles={plm_role} if plm_role else ()),
+        )
         user.set_password(password)
+        if admin:
+            user.module_roles.append(UserModuleRole(module="app", role="admin"))
+        if plm_role:
+            user.module_roles.append(UserModuleRole(module="plm", role=plm_role))
         for code in fillkill:
             user.module_roles.append(UserModuleRole(module="fillkill", role=code))
         db.session.add(user)

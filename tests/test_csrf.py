@@ -17,7 +17,7 @@ def test_every_post_form_carries_the_csrf_token():
             forms.append(path.name)
             if "csrf_token()" not in match.group(1):
                 missing.append(f"{path.relative_to(TEMPLATES)}: {match.group(0)[:80]}")
-    assert len(forms) >= 15, f"expected at least 15 POST forms, found {len(forms)}"
+    assert len(forms) >= 14, f"expected at least 14 POST forms, found {len(forms)}"
     assert not missing, "POST forms without a csrf_token field:\n" + "\n".join(missing)
 
 

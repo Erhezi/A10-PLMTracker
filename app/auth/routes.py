@@ -7,6 +7,7 @@ import string
 from datetime import datetime, timedelta, timezone
 from ..utility.msgraph import send_mail
 from ..utility import session_policy
+from ..utility.access import MODULES, legacy_user_role
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -40,7 +41,7 @@ def register():
         name = request.form.get("name")
         if not email or not password:
             flash("Email and password required", "error")
-            return render_template("auth/register.html")
+            return render_template("auth/register.html", modules=MODULES)
         existing = User.query.filter_by(email=email).first()
         if existing:
             if not existing.is_active:
@@ -50,14 +51,22 @@ def register():
                 )
                 return redirect(url_for("auth.register_pending", email=email))
             flash("Email already registered", "error")
-            return render_template("auth/register.html")
-        user = User(email=email, name=name, is_active=False)
+            return render_template("auth/register.html", modules=MODULES)
+        # One account for the whole app; module access is granted by an admin.
+        requested = [key for key in request.form.getlist("modules") if key in MODULES]
+        user = User(
+            email=email,
+            name=name,
+            is_active=False,
+            requested_modules=",".join(requested) or None,
+            user_role=legacy_user_role(admin=False, plm_roles=()),
+        )
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
         flash("Registration received. Please wait for admin approval.", "info")
         return redirect(url_for("auth.register_pending", email=email))
-    return render_template("auth/register.html")
+    return render_template("auth/register.html", modules=MODULES)
 
 
 @bp.route("/login", methods=["GET", "POST"])

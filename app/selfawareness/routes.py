@@ -33,9 +33,9 @@ MANUAL_SUMMARY = [
     {
         "title": "Access & Roles",
         "body": (
-            "Registration happens at /auth/register and requires admin approval before login. "
-            "Roles determine navigation: admins manage users, analysts operate Collector and Dashboard, "
-            "and view-only users focus on analytics without editing powers."
+            "Register once for Item Management at /auth/register; an admin approves the account and "
+            "sets access per module. In PLM Tracker, Editors operate Collector and Dashboard, Viewers "
+            "focus on analytics without editing powers, and admins manage users."
         ),
     },
     {

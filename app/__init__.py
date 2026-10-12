@@ -75,12 +75,11 @@ def create_app(env: str | None = None, url_prefix: str | None = None, config_ove
     session_policy.init_app(app, login_manager)
     csrf.init_app(app)
 
-    from .utility.access import build_nav
-
-    @app.context_processor
-    def inject_navigation():
-        from flask_login import current_user
-        return {"nav": build_nav(current_user)}
+    # Module roles: PLM pages need a PLM role (changes need Editor), and
+    # templates get nav, user_can(module, capability) and user_is_admin.
+    from .utility.access import guard_plm_request, template_helpers
+    app.before_request(guard_plm_request)
+    app.context_processor(template_helpers)
 
     # Import models so that db.create_all sees them
     from .models.auth import User, UserModuleRole  # noqa: F401

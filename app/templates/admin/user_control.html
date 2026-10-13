@@ -97,13 +97,13 @@
                             <div class="d-flex flex-wrap gap-2">
                                 {% for code, label in module.roles %}
                                 <div class="form-check form-check-inline m-0">
-                                    <input class="form-check-input" type="checkbox" name="role_{{ key }}" value="{{ code }}" form="{{ form_id }}" id="{{ key }}-{{ user.user_id }}-{{ code }}" {% if code in row.roles[key] %}checked{% endif %}>
+                                    <input class="form-check-input" type="checkbox" name="role_{{ key }}" value="{{ code }}" form="{{ form_id }}" id="{{ key }}-{{ user.user_id }}-{{ code }}"{% if code in module.exclusive_roles %} data-exclusive="1"{% endif %} {% if code in row.roles[key] %}checked{% endif %}>
                                     <label class="form-check-label text-nowrap" for="{{ key }}-{{ user.user_id }}-{{ code }}">{{ label }}</label>
                                 </div>
                                 {% endfor %}
                             </div>
                             {% if key == 'fillkill' %}
-                            <div class="access-bc-warning text-danger mt-1 d-none" data-form="{{ form_id }}">B and C can't both be held by a non-admin.</div>
+                            <div class="access-conflict-warning text-danger mt-1 d-none" data-form="{{ form_id }}">Sub Approver and Materials Manager can't both be held by a non-admin.</div>
                             {% endif %}
                             {% endif %}
                         </td>
@@ -156,24 +156,38 @@ document.addEventListener('DOMContentLoaded', () => {
         row.dataset.searchText = (row.dataset.searchText || '').replace(/\s+/g, ' ').trim().toLowerCase();
     });
 
-    // B (Nursing) + C (Materials manager) together is only allowed for admins;
-    // the server refuses it too, this just says so before saving.
+    // The server enforces both rules below; this only keeps the row valid before saving.
     document.querySelectorAll('.access-form').forEach(form => {
         const id = form.id;
+        const inputs = Array.from(document.querySelectorAll(`[form="${id}"]`));
+
+        // A role marked data-exclusive (Fill/Kill Viewer) is held alone: ticking it
+        // clears the module's other roles, and ticking another role clears it.
+        inputs.filter(input => input.type === 'checkbox' && input.name.startsWith('role_')).forEach(input => {
+            input.addEventListener('change', () => {
+                if (!input.checked) return;
+                inputs
+                    .filter(other => other !== input && other.name === input.name && other.checked)
+                    .filter(other => input.dataset.exclusive || other.dataset.exclusive)
+                    .forEach(other => { other.checked = false; });
+            });
+        });
+
+        // Sub Approver + Materials Manager together is only allowed for admins.
         const save = form.querySelector('button[type="submit"]');
-        const warning = document.querySelector(`.access-bc-warning[data-form="${id}"]`);
-        const field = selector => document.querySelector(`[form="${id}"]${selector}`);
+        const warning = document.querySelector(`.access-conflict-warning[data-form="${id}"]`);
+        const field = selector => inputs.find(input => input.matches(selector));
         const admin = field('[name="app_admin"]');
-        const clinical = field('[name="role_fillkill"][value="clinical"]');
-        const materials = field('[name="role_fillkill"][value="materials"]');
-        if (!warning || !clinical || !materials) return;
+        const approver = field('[name="role_fillkill"][value="sub_approver"]');
+        const manager = field('[name="role_fillkill"][value="materials_manager"]');
+        if (!warning || !approver || !manager) return;
         const check = () => {
             const isAdmin = admin && (admin.type === 'hidden' || admin.checked);
-            const clash = !isAdmin && clinical.checked && materials.checked;
+            const clash = !isAdmin && approver.checked && manager.checked;
             warning.classList.toggle('d-none', !clash);
             save.disabled = clash;
         };
-        document.querySelectorAll(`[form="${id}"]`).forEach(input => input.addEventListener('change', check));
+        inputs.forEach(input => input.addEventListener('change', check));
         check();
     });
 

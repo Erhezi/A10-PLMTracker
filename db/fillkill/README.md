@@ -15,7 +15,7 @@ Access has two levels:
   | Module | Roles |
   |---|---|
   | `plm` | `viewer` or `editor` (one at most) |
-  | `fillkill` | `viewer`, `proposer`, `clinical`, `materials` |
+  | `fillkill` | `viewer` on its own, or any of `sub_finder`, `sub_approver`, `materials_manager` |
 
 **Before deploying the code.** The new code reads `users.requested_modules` and the module roles,
 so it won't log anyone in until these scripts have run.
@@ -23,7 +23,9 @@ so it won't log anyone in until these scripts have run.
 1. `01_schema.sql`: creates the empty `FillKill` schema (used from deploy #2).
 2. `02_user_module_role.sql`: creates `PLM.UserModuleRole`, or repairs one the app created by
    itself. If an earlier `03` stored admins in this table (module `app`), it moves them to
-   `users.user_role`. (An earlier version also gave admins every Fill/Kill role; on O2 those
+   `users.user_role`. It also renames the Fill/Kill roles from their first codes
+   (`proposer`, `clinical`, `materials`), and drops Fill/Kill Viewer from anyone who holds
+   another Fill/Kill role (the others can already view). (An earlier version also gave admins every Fill/Kill role; on O2 those
    roles are still there and can be changed in User Control.)
 3. `03_unify_roles.sql`: adds `users.requested_modules` and gives everyone the PLM role matching
    today's `users.user_role`, so everyone keeps their current access:

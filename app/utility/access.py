@@ -6,7 +6,7 @@ roles) or 'user'. Being an admin grants nothing inside a module: what anyone,
 admins included, can do there is set in ``PLM.UserModuleRole``:
 
     plm       viewer | editor                           at most one of the two
-    fillkill  viewer, proposer (A), clinical (B), materials (C)
+    fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager
 
 Routes and templates ask ``can(user, module, capability)`` and ``is_admin(user)``
 instead of checking role codes.
@@ -31,10 +31,10 @@ USER = "user"
 PLM_VIEWER = "viewer"
 PLM_EDITOR = "editor"
 
-ROLE_VIEWER = "viewer"
-ROLE_PROPOSER = "proposer"    # A - enters subs
-ROLE_CLINICAL = "clinical"    # B - nursing: sub status and picks
-ROLE_MATERIALS = "materials"  # C - materials manager: records orders
+ROLE_VIEWER = "viewer"                        # sees the module; held alone
+ROLE_SUB_FINDER = "sub_finder"                # enters subs
+ROLE_SUB_APPROVER = "sub_approver"            # sets sub status, picks subs to order
+ROLE_MATERIALS_MANAGER = "materials_manager"  # records orders; can also enter subs
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,7 @@ class Module:
     roles: tuple[tuple[str, str], ...]          # (code, label), in display order
     capabilities: dict[str, frozenset[str]] = field(default_factory=dict)
     single_role: bool = False                   # True: hold at most one role
+    exclusive_roles: frozenset[str] = frozenset()  # roles that can't be combined with others
 
     @property
     def role_codes(self) -> tuple[str, ...]:
@@ -69,22 +70,22 @@ MODULES = {
         label="Fill/Kill Management",
         roles=(
             (ROLE_VIEWER, "Viewer"),
-            (ROLE_PROPOSER, "A · Sub entry"),
-            (ROLE_CLINICAL, "B · Nursing"),
-            (ROLE_MATERIALS, "C · Materials manager"),
+            (ROLE_SUB_FINDER, "Sub Finder"),
+            (ROLE_SUB_APPROVER, "Sub Approver"),
+            (ROLE_MATERIALS_MANAGER, "Materials Manager"),
         ),
         capabilities={
-            "view": frozenset({ROLE_VIEWER, ROLE_PROPOSER, ROLE_CLINICAL, ROLE_MATERIALS}),
-            "add_sub": frozenset({ROLE_PROPOSER, ROLE_MATERIALS}),
-            "review": frozenset({ROLE_CLINICAL}),
-            "order": frozenset({ROLE_MATERIALS}),
+            "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
+            "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_MATERIALS_MANAGER}),
+            "review": frozenset({ROLE_SUB_APPROVER}),
+            "order": frozenset({ROLE_MATERIALS_MANAGER}),
         },
+        exclusive_roles=frozenset({ROLE_VIEWER}),  # the other roles can already view
     ),
 }
 
-BC_CONFLICT_MESSAGE = (
-    "B (Nursing) and C (Materials manager) can't be held by the same person, "
-    "except by admins."
+APPROVE_ORDER_CONFLICT_MESSAGE = (
+    "Sub Approver and Materials Manager can't be held by the same person, except by admins."
 )
 
 
@@ -130,9 +131,12 @@ def validate_roles(*, admin: bool, roles: dict[str, set[str]]) -> str | None:
             return f"Unknown {module.label} role: {', '.join(sorted(unknown))}."
         if module.single_role and len(codes) > 1:
             return f"Pick one {module.label} role."
+        for code in module.exclusive_roles & set(codes):
+            if len(codes) > 1:
+                return f"{module.label} {module.role_label(code)} can't be combined with other roles."
     fillkill = set(roles.get(FILLKILL, ()))
-    if not admin and {ROLE_CLINICAL, ROLE_MATERIALS} <= fillkill:
-        return BC_CONFLICT_MESSAGE
+    if not admin and {ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER} <= fillkill:
+        return APPROVE_ORDER_CONFLICT_MESSAGE
     return None
 
 

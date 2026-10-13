@@ -11,12 +11,19 @@ from conftest import csrf_from, login, make_user
 # --- the rules -------------------------------------------------------------
 
 def test_validate_roles():
-    assert access.validate_roles(admin=False, roles={PLM: {"editor"}, FILLKILL: {"proposer", "clinical"}}) is None
+    assert access.validate_roles(admin=False, roles={PLM: {"editor"}, FILLKILL: {"sub_finder", "sub_approver"}}) is None
     assert "Pick one PLM Tracker role" in access.validate_roles(admin=False, roles={PLM: {"viewer", "editor"}})
     assert "Unknown PLM Tracker role" in access.validate_roles(admin=False, roles={PLM: {"owner"}})
     assert "Unknown Fill/Kill" in access.validate_roles(admin=False, roles={FILLKILL: {"boss"}})
-    assert access.validate_roles(admin=False, roles={FILLKILL: {"clinical", "materials"}}) == access.BC_CONFLICT_MESSAGE
-    assert access.validate_roles(admin=True, roles={FILLKILL: {"clinical", "materials"}}) is None
+    assert access.validate_roles(admin=False, roles={FILLKILL: {"sub_approver", "materials_manager"}}) == access.APPROVE_ORDER_CONFLICT_MESSAGE
+    assert access.validate_roles(admin=True, roles={FILLKILL: {"sub_approver", "materials_manager"}}) is None
+
+
+@pytest.mark.parametrize("admin", [False, True])
+def test_fillkill_viewer_is_held_alone(admin):
+    assert access.validate_roles(admin=admin, roles={FILLKILL: {"viewer"}}) is None
+    problem = access.validate_roles(admin=admin, roles={FILLKILL: {"viewer", "sub_finder"}})
+    assert problem == "Fill/Kill Management Viewer can't be combined with other roles."
 
 
 @pytest.mark.parametrize("user_role, authenticated, expected", [
@@ -174,7 +181,7 @@ def test_registration_records_requested_modules_and_grants_nothing(sqlite_app):
 @pytest.fixture
 def admin(sqlite_app):
     return client_for(sqlite_app, "admin@example.org", role="admin",
-                      fillkill=("viewer", "proposer", "clinical", "materials"))
+                      fillkill=("sub_finder", "sub_approver", "materials_manager"))
 
 
 def save_access(client, email, *, admin=False, plm="", fillkill=()):
@@ -204,7 +211,8 @@ def test_user_control_shows_a_row_per_user_with_every_module(sqlite_app, admin):
         assert f">{heading}</th>" in page
     assert 'type="radio" name="role_plm" value=""' in page  # No access
     assert 'type="radio" name="role_plm" value="editor"' in page
-    assert 'type="checkbox" name="role_fillkill"' in page
+    assert 'type="checkbox" name="role_fillkill" value="viewer" form="access-2" id="fillkill-2-viewer" data-exclusive="1"' in page
+    assert 'value="sub_approver" form="access-2" id="fillkill-2-sub_approver" >' in page  # not exclusive
     assert "Save access" in page
     assert ">Requested</th>" not in page
     assert "Asked for: Fill/Kill Management" in page
@@ -212,10 +220,10 @@ def test_user_control_shows_a_row_per_user_with_every_module(sqlite_app, admin):
 
 def test_save_access_sets_every_module(sqlite_app, admin):
     make_user(sqlite_app, "nurse@example.org", role="view-only")  # as migrated: PLM viewer
-    response = save_access(admin, "nurse@example.org", plm="viewer", fillkill=("proposer", "clinical"))
-    assert "PLM Tracker: Viewer; Fill/Kill Management: A · Sub entry, B · Nursing" in response.get_data(as_text=True)
+    response = save_access(admin, "nurse@example.org", plm="viewer", fillkill=("sub_finder", "sub_approver"))
+    assert "PLM Tracker: Viewer; Fill/Kill Management: Sub Finder, Sub Approver" in response.get_data(as_text=True)
     assert state(sqlite_app, "nurse@example.org") == {
-        "admin": False, "plm": {"viewer"}, "fillkill": {"proposer", "clinical"}, "app_role": "user",
+        "admin": False, "plm": {"viewer"}, "fillkill": {"sub_finder", "sub_approver"}, "app_role": "user",
     }
 
     save_access(admin, "nurse@example.org", plm="editor", fillkill=())
@@ -229,14 +237,21 @@ def test_save_access_sets_every_module(sqlite_app, admin):
 
 
 def test_b_and_c_refused_unless_admin(sqlite_app, admin):
-    make_user(sqlite_app, "mm@example.org", fillkill=("materials",))
-    response = save_access(admin, "mm@example.org", plm="editor", fillkill=("clinical", "materials"))
+    make_user(sqlite_app, "mm@example.org", fillkill=("materials_manager",))
+    response = save_access(admin, "mm@example.org", plm="editor", fillkill=("sub_approver", "materials_manager"))
     assert "not saved" in response.get_data(as_text=True)
-    assert state(sqlite_app, "mm@example.org")["fillkill"] == {"materials"}
+    assert state(sqlite_app, "mm@example.org")["fillkill"] == {"materials_manager"}
 
     make_user(sqlite_app, "admin2@example.org", role="admin")
-    save_access(admin, "admin2@example.org", admin=True, plm="editor", fillkill=("clinical", "materials"))
-    assert state(sqlite_app, "admin2@example.org")["fillkill"] == {"clinical", "materials"}
+    save_access(admin, "admin2@example.org", admin=True, plm="editor", fillkill=("sub_approver", "materials_manager"))
+    assert state(sqlite_app, "admin2@example.org")["fillkill"] == {"sub_approver", "materials_manager"}
+
+
+def test_fillkill_viewer_with_another_role_refused(sqlite_app, admin):
+    make_user(sqlite_app, "watcher@example.org", fillkill=("viewer",))
+    response = save_access(admin, "watcher@example.org", plm="editor", fillkill=("viewer", "sub_finder"))
+    assert "Viewer can&#39;t be combined with other roles" in response.get_data(as_text=True)
+    assert state(sqlite_app, "watcher@example.org")["fillkill"] == {"viewer"}
 
 
 def test_unknown_plm_role_refused(sqlite_app, admin):
@@ -255,13 +270,13 @@ def test_promotion_keeps_the_module_roles_in_the_row(sqlite_app, admin):
 
 
 def test_demoting_an_admin_who_keeps_b_and_c_is_refused(sqlite_app, admin):
-    make_user(sqlite_app, "old.admin@example.org", role="admin", fillkill=("clinical", "materials"))
-    save_access(admin, "old.admin@example.org", admin=False, plm="editor", fillkill=("clinical", "materials"))
+    make_user(sqlite_app, "old.admin@example.org", role="admin", fillkill=("sub_approver", "materials_manager"))
+    save_access(admin, "old.admin@example.org", admin=False, plm="editor", fillkill=("sub_approver", "materials_manager"))
     assert state(sqlite_app, "old.admin@example.org")["admin"] is True
 
-    save_access(admin, "old.admin@example.org", admin=False, plm="editor", fillkill=("clinical",))
+    save_access(admin, "old.admin@example.org", admin=False, plm="editor", fillkill=("sub_approver",))
     assert state(sqlite_app, "old.admin@example.org") == {
-        "admin": False, "plm": {"editor"}, "fillkill": {"clinical"}, "app_role": "user",
+        "admin": False, "plm": {"editor"}, "fillkill": {"sub_approver"}, "app_role": "user",
     }
 
 
@@ -298,7 +313,7 @@ def test_approving_someone_without_roles_says_so(sqlite_app, admin):
 def test_deleting_a_user_removes_their_roles(sqlite_app, admin):
     from app.models.auth import UserModuleRole
 
-    make_user(sqlite_app, "gone@example.org", fillkill=("viewer", "proposer"))
+    make_user(sqlite_app, "gone@example.org", fillkill=("sub_finder", "sub_approver"))
     token = csrf_from(admin.get("/admin/user-control").get_data(as_text=True))
     admin.post("/admin/delete-user/gone@example.org", data={"csrf_token": token})
     with sqlite_app.app_context():

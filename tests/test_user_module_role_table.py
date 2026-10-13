@@ -39,7 +39,8 @@ def test_model_index_allows_one_plm_role_per_user():
     ("app", "admin", False),  # admin is users.user_role, not a module role
     ("plm", "editor", True),
     ("plm", "admin", False),
-    ("fillkill", "materials", True),
+    ("fillkill", "materials_manager", True),
+    ("fillkill", "clinical", False),  # first code for Sub Approver, renamed 2026-10-13
     ("fillkill", "boss", False),
     ("othermodule", "anything", False),
 ])

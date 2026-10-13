@@ -23,10 +23,10 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
 
 @pytest.mark.parametrize("roles, expected", [
     (("viewer",), {"view"}),
-    (("proposer",), {"view", "add_sub"}),
-    (("clinical",), {"view", "review"}),
-    (("materials",), {"view", "add_sub", "order"}),
-    (("proposer", "clinical"), {"view", "add_sub", "review"}),
+    (("sub_finder",), {"view", "add_sub"}),
+    (("sub_approver",), {"view", "review"}),
+    (("materials_manager",), {"view", "add_sub", "order"}),
+    (("sub_finder", "sub_approver"), {"view", "add_sub", "review"}),
     ((), set()),
 ])
 def test_fillkill_capabilities_follow_roles(roles, expected):
@@ -45,7 +45,7 @@ def test_admin_gets_nothing_inside_a_module_from_being_admin():
     assert all(access.can(full_admin, FILLKILL, cap) for cap in FILLKILL_CAPABILITIES)
     assert access.can(full_admin, PLM, "edit")
 
-    without_c = fake_user(admin=True, fillkill=("viewer", "proposer", "clinical"))
+    without_c = fake_user(admin=True, fillkill=("sub_finder", "sub_approver"))
     assert not access.can(without_c, FILLKILL, "order")
 
 

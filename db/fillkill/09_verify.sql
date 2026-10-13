@@ -30,7 +30,7 @@ SELECT 'UserModuleRole accepts only known roles for plm and fillkill',
        CASE WHEN EXISTS (
            SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
-             AND definition LIKE '%editor%' AND definition LIKE '%clinical%'
+             AND definition LIKE '%editor%' AND definition LIKE '%sub[_]approver%'
              AND definition NOT LIKE '%''app''%'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
@@ -68,12 +68,19 @@ SELECT 'users.user_role is admin or user',
                THEN 'PENDING: run 04 after the deploy'
            ELSE 'FAIL'
        END
-
 UNION ALL
-SELECT 'no non-admin holds both B (clinical) and C (materials)',
+SELECT 'Fill/Kill Viewer is never combined with another Fill/Kill role',
+       CASE WHEN NOT EXISTS (
+           SELECT 1 FROM [PLM].[UserModuleRole] AS v
+           WHERE v.[module] = 'fillkill' AND v.[role] = 'viewer'
+             AND EXISTS (SELECT 1 FROM [PLM].[UserModuleRole] AS o
+                         WHERE o.[user_id] = v.[user_id] AND o.[module] = 'fillkill' AND o.[role] <> 'viewer')
+       ) THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'no non-admin holds both Sub Approver and Materials Manager',
        CASE WHEN NOT EXISTS (
            SELECT 1 FROM [PLM].[UserModuleRole] AS r
-           WHERE r.[module] = 'fillkill' AND r.[role] IN ('clinical', 'materials')
+           WHERE r.[module] = 'fillkill' AND r.[role] IN ('sub_approver', 'materials_manager')
              AND r.[user_id] NOT IN (SELECT [user_id] FROM admins)
            GROUP BY r.[user_id]
            HAVING COUNT(DISTINCT r.[role]) = 2

@@ -1,5 +1,6 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, current_app, render_template, redirect, url_for, flash, request
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 from ..models.auth import User
 from ..models import now_ny_naive
 from ..utility.msgraph import send_mail
@@ -84,8 +85,18 @@ def update_access(user_email):
         flash(f"Access for {user.email} not saved: {problem}", 'danger')
         return redirect(url_for('admin.user_control'))
 
-    apply_access(user, admin=make_admin, roles=roles, granted_by=current_user.email)
-    db.session.commit()
+    try:
+        apply_access(user, admin=make_admin, roles=roles, granted_by=current_user.email)
+        db.session.commit()
+    except IntegrityError:
+        # The app checked these roles, so the database's own rules must be older than
+        # the app's: db/fillkill/02_user_module_role.sql hasn't been re-run.
+        db.session.rollback()
+        current_app.logger.exception("UserModuleRole refused access for %s", user_email)
+        flash(f"Access for {user_email} not saved: the database refused these roles. "
+              "Its role rules may be older than the app; re-run "
+              "db/fillkill/02_user_module_role.sql. Nothing was changed.", 'danger')
+        return redirect(url_for('admin.user_control'))
 
     flash(f"Access for {user.email}: {role_summary(user)}.", 'success')
     return redirect(url_for('admin.user_control'))

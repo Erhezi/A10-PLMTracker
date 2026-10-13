@@ -20,6 +20,10 @@ Access has two levels:
 **Before deploying the code.** The new code reads `users.requested_modules` and the module roles,
 so it won't log anyone in until these scripts have run.
 
+**Keep `02` in step with the code.** The table's CHECK lists the role codes the code uses. Whenever
+`02` changes, re-run it (and `09`) before running the new code against O2; otherwise saving roles
+in User Control is refused.
+
 1. `01_schema.sql`: creates the empty `FillKill` schema (used from deploy #2).
 2. `02_user_module_role.sql`: creates `PLM.UserModuleRole`, or repairs one the app created by
    itself. If an earlier `03` stored admins in this table (module `app`), it moves them to

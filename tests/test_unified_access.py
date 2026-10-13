@@ -254,6 +254,18 @@ def test_fillkill_viewer_with_another_role_refused(sqlite_app, admin):
     assert state(sqlite_app, "watcher@example.org")["fillkill"] == {"viewer"}
 
 
+def test_database_refusing_roles_is_reported_and_nothing_changes(sqlite_app, admin, monkeypatch):
+    # As on O2 when its role CHECK is older than the app: the app allows a role the table doesn't.
+    from app.admin import routes as admin_routes
+
+    make_user(sqlite_app, "x@example.org", fillkill=("sub_finder",))
+    monkeypatch.setattr(admin_routes, "validate_roles", lambda **kwargs: None)
+    response = save_access(admin, "x@example.org", plm="editor", fillkill=("not_in_the_check",))
+    assert response.status_code == 200
+    assert "the database refused these roles" in response.get_data(as_text=True)
+    assert state(sqlite_app, "x@example.org")["fillkill"] == {"sub_finder"}  # removal rolled back too
+
+
 def test_unknown_plm_role_refused(sqlite_app, admin):
     make_user(sqlite_app, "x@example.org")
     response = save_access(admin, "x@example.org", plm="owner")

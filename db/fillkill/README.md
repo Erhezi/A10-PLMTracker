@@ -8,7 +8,8 @@ The design is in `_ref/FillKill/fillkill_design.md`; the build plan is in
 
 Access has two levels:
 
-- **App level:** `users.user_role` is `admin` (manages users, can open every module) or `user`.
+- **App level:** `users.user_role` is `admin` (approves accounts, assigns module roles) or `user`.
+  Admin grants nothing inside a module; admins hold module roles like anyone else.
 - **Module level:** each role inside a module is a row in `PLM.UserModuleRole`:
 
   | Module | Roles |
@@ -21,8 +22,9 @@ so it won't log anyone in until these scripts have run.
 
 1. `01_schema.sql`: creates the empty `FillKill` schema (used from deploy #2).
 2. `02_user_module_role.sql`: creates `PLM.UserModuleRole`, or repairs one the app created by
-   itself, and gives admins every Fill/Kill role. If an earlier `03` stored admins in this table
-   (module `app`), it moves them to `users.user_role`.
+   itself. If an earlier `03` stored admins in this table (module `app`), it moves them to
+   `users.user_role`. (An earlier version also gave admins every Fill/Kill role; on O2 those
+   roles are still there and can be changed in User Control.)
 3. `03_unify_roles.sql`: adds `users.requested_modules` and gives everyone the PLM role matching
    today's `users.user_role`, so everyone keeps their current access:
 

@@ -4,7 +4,8 @@
 --   plm       viewer | editor                         at most one of the two
 --   fillkill  viewer, proposer (A), clinical (B), materials (C)
 --
--- Admin is not a row here: it is the app-level role in users.user_role ('admin' or 'user').
+-- Admin is not a row here: it is the app-level role in users.user_role ('admin' or 'user'),
+-- and grants nothing inside a module, so admins get no roles by default.
 -- Then run 03_unify_roles.sql, which gives everyone the PLM role matching today's user_role.
 
 SET NOCOUNT ON;
@@ -146,17 +147,3 @@ BEGIN
 END;
 GO
 
--- Admins start with every Fill/Kill role (P1). Only admins with no Fill/Kill rows
--- at all are seeded, so re-running never undoes a role an admin switched off.
-INSERT INTO [PLM].[UserModuleRole] ([user_id], [module], [role], [granted_by], [granted_at])
-SELECT u.[user_id], 'fillkill', r.[role], 'seed: 02_user_module_role.sql', GETDATE()
-FROM [PLM].[users] AS u
-CROSS JOIN (VALUES ('viewer'), ('proposer'), ('clinical'), ('materials')) AS r ([role])
-WHERE u.[user_role] = 'admin'
-  AND NOT EXISTS (
-      SELECT 1 FROM [PLM].[UserModuleRole] AS x
-      WHERE x.[user_id] = u.[user_id] AND x.[module] = 'fillkill'
-  );
-
-PRINT CONCAT('Seeded Fill/Kill roles: ', @@ROWCOUNT, ' row(s).');
-GO

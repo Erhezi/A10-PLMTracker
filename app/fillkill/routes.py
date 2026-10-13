@@ -7,7 +7,7 @@ deploy #2.
 from flask import Blueprint, render_template
 from flask_login import current_user, login_required
 
-from ..utility.access import FILLKILL, MODULES, is_admin, require_module, roles_in
+from ..utility.access import FILLKILL, MODULES, require_module, roles_in
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
@@ -19,4 +19,4 @@ def index():
     module = MODULES[FILLKILL]
     held = roles_in(current_user, FILLKILL)
     roles = [label for code, label in module.roles if code in held]
-    return render_template("fillkill/index.html", roles=roles, admin=is_admin(current_user))
+    return render_template("fillkill/index.html", roles=roles)

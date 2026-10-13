@@ -1,8 +1,9 @@
 """Users, modules and roles for the whole app, plus the two-row navigation.
 
 An account (``PLM.users``) is registered and approved once. Its app-level
-role is ``users.user_role``: 'admin' (manage users; see every module) or
-'user'. What someone can do inside a module is set in ``PLM.UserModuleRole``:
+role is ``users.user_role``: 'admin' (approves accounts and assigns module
+roles) or 'user'. Being an admin grants nothing inside a module: what anyone,
+admins included, can do there is set in ``PLM.UserModuleRole``:
 
     plm       viewer | editor                           at most one of the two
     fillkill  viewer, proposer (A), clinical (B), materials (C)
@@ -109,12 +110,10 @@ def is_admin(user) -> bool:
 
 
 def can(user, module: str, capability: str) -> bool:
-    """Whether the user may do ``capability`` in ``module``. Admins can always view."""
+    """Whether the user's roles in ``module`` allow ``capability``. Admin plays no part."""
     allowed = MODULES[module].capabilities[capability]  # KeyError on a typo, on purpose
     if not _authenticated(user):
         return False
-    if capability == "view" and is_admin(user):
-        return True
     return bool(roles_in(user, module) & allowed)
 
 
@@ -183,11 +182,6 @@ def apply_access(user, *, admin: bool, roles: dict[str, set[str]], granted_by: s
         _set_module_roles(user, key, codes, granted_by)
 
 
-def full_access_roles() -> dict[str, set[str]]:
-    """What a new admin starts with: every module's top roles."""
-    return {PLM: {PLM_EDITOR}, FILLKILL: set(MODULES[FILLKILL].role_codes)}
-
-
 # ---------------------------------------------------------------------------
 # Guards
 # ---------------------------------------------------------------------------
@@ -236,16 +230,15 @@ def require_module(module: str, capability: str):
 
 
 # PLM is guarded per request rather than per route: its views predate module roles.
+# Clearing deleted rows and archiving completed ones need Editor here, and the
+# views also require an admin.
 PLM_BLUEPRINTS = {"collector", "dashboard", "playground"}
 PLM_EDITOR_PAGES = {"collector.collect", "collector.conflicts"}   # editor-only even to look at
 PLM_READ_ONLY_POSTS = {"collector.batch_export_wrike_item_numbers"}  # POST, but only reads
-PLM_ADMIN_ENDPOINTS = {"collector.clear_deleted", "collector.archive_completed"}  # checked in the view
 
 
-def plm_capability_for(endpoint: str | None, blueprint: str | None, method: str) -> str | None:
-    """The PLM capability a request needs, or None when the view checks it itself."""
-    if endpoint in PLM_ADMIN_ENDPOINTS:
-        return None
+def plm_capability_for(endpoint: str | None, blueprint: str | None, method: str) -> str:
+    """The PLM capability a request needs."""
     if endpoint in PLM_EDITOR_PAGES:
         return "edit"
     if blueprint == "collector" and method not in ("GET", "HEAD", "OPTIONS"):
@@ -260,8 +253,10 @@ def guard_plm_request():
     if not current_user.is_authenticated:
         return current_app.login_manager.unauthorized()
     capability = plm_capability_for(request.endpoint, request.blueprint, request.method)
-    if capability is None or can(current_user, PLM, capability):
+    if can(current_user, PLM, capability):
         return None
+    if not can(current_user, PLM, "view"):
+        capability = "view"  # no PLM role at all: say so, not "you're a Viewer"
     return deny(DENIED_MESSAGES[(PLM, capability)])
 
 

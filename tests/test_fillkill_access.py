@@ -35,12 +35,11 @@ def test_fillkill_capabilities_follow_roles(roles, expected):
     assert granted == expected
 
 
-def test_admin_can_always_view_but_acts_only_through_roles():
+def test_admin_gets_nothing_inside_a_module_from_being_admin():
     bare_admin = fake_user(admin=True)
-    assert access.can(bare_admin, FILLKILL, "view")
-    assert access.can(bare_admin, PLM, "view")
-    assert not access.can(bare_admin, FILLKILL, "review")
-    assert not access.can(bare_admin, PLM, "edit")
+    assert access.is_admin(bare_admin)
+    for module, capabilities in ((FILLKILL, FILLKILL_CAPABILITIES), (PLM, MODULES[PLM].capabilities)):
+        assert not any(access.can(bare_admin, module, cap) for cap in capabilities)
 
     full_admin = fake_user(admin=True, plm="editor", fillkill=MODULES[FILLKILL].role_codes)
     assert all(access.can(full_admin, FILLKILL, cap) for cap in FILLKILL_CAPABILITIES)
@@ -89,11 +88,12 @@ def test_viewer_sees_module_and_its_page_row(sqlite_app):
     assert "Viewer" in page
 
 
-def test_admin_without_fillkill_roles_can_still_open_the_module(sqlite_app):
-    client = logged_in(sqlite_app, "admin@example.org", role="admin")
+def test_admin_without_fillkill_roles_is_turned_away_like_anyone(sqlite_app):
+    client = logged_in(sqlite_app, "admin@example.org", role="admin")  # PLM editor, no Fill/Kill
     response = client.get("/fillkill/")
-    assert response.status_code == 200
-    assert "as an admin you can still view this module" in response.get_data(as_text=True)
+    assert response.status_code == 302
+    page = client.get(response.headers["Location"], follow_redirects=True).get_data(as_text=True)
+    assert "Ask an admin for a Fill/Kill role" in page
 
 
 def test_plm_editor_page_row(sqlite_app):
@@ -115,8 +115,8 @@ def test_plm_viewer_page_row_hides_collect_and_conflicts(sqlite_app):
 def test_module_row_lists_only_modules_you_can_open(sqlite_app):
     with sqlite_app.test_request_context("/fillkill/"):
         fillkill_only = access.build_nav(fake_user(fillkill=("viewer",)))
-        admin = access.build_nav(fake_user(admin=True))
+        admin = access.build_nav(fake_user(admin=True, plm="viewer"))
         nobody = access.build_nav(fake_user())
     assert [m["key"] for m in fillkill_only["modules"]] == ["fillkill"]
-    assert [m["key"] for m in admin["modules"]] == ["plm", "fillkill"]
+    assert [m["key"] for m in admin["modules"]] == ["plm"]  # admin adds no modules
     assert nobody["modules"] == []

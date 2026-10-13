@@ -17,8 +17,9 @@
   </span>
 </h1>
 <p class="text-muted small mb-4">
-  One account per person; access is set per module. Changes in a row take effect when you press
-  <strong>Save access</strong>.
+  One account per person; access is set per module. <strong>Admin</strong> lets someone approve
+  accounts and assign roles here; inside each module, admins have only the roles ticked in their
+  row, like everyone else. Changes in a row take effect when you press <strong>Save access</strong>.
 </p>
 
 <div class="card shadow-sm border-0">
@@ -43,8 +44,7 @@
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Email <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Name <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable text-center align-middle" data-sort-type="text">Access <span class="sort-indicator"></span></th>
-                        <th scope="col" class="text-uppercase small fw-semibold">Requested</th>
-                        <th scope="col" class="text-uppercase small fw-semibold text-center">Admin</th>
+                        <th scope="col" class="text-uppercase small fw-semibold text-center" title="Can approve accounts and assign module roles">Admin</th>
                         {% for module in modules.values() %}
                         <th scope="col" class="text-uppercase small fw-semibold">{{ module.label }}</th>
                         {% endfor %}
@@ -57,7 +57,13 @@
                     {% set form_id = 'access-' ~ user.user_id %}
                     {% set is_self = user.user_id == current_user.user_id %}
                     <tr data-search-text="{{ user.email }} {{ user.name or '' }} {{ 'active' if user.is_active else 'pending' }}{% if row.admin %} admin{% endif %}{% for key, module in modules.items() %}{% for code, label in module.roles if code in row.roles[key] %} {{ module.label }} {{ label }}{% endfor %}{% endfor %} {{ row.requested|join(' ') }}">
-                        <td class="fw-semibold">{{ user.email }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ user.email }}</div>
+                            {% if row.requested %}
+                            {# Ticked on the registration form; grants nothing until roles are saved. #}
+                            <div class="small text-muted">Asked for: {{ row.requested|join(', ') }}</div>
+                            {% endif %}
+                        </td>
                         <td class="small">{{ user.name or '' }}</td>
                         <td class="fw-semibold text-uppercase small text-center align-middle" data-sort-value="{{ 'active' if user.is_active else 'pending' }}">
                             {% if user.is_active %}
@@ -65,9 +71,6 @@
                             {% else %}
                             <span class="badge text-bg-warning text-dark" data-sort-value="pending">PENDING</span>
                             {% endif %}
-                        </td>
-                        <td class="small">
-                            {% for label in row.requested %}<span class="badge text-bg-light border me-1">{{ label }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endfor %}
                         </td>
                         <td class="text-center">
                             {% if is_self %}
@@ -81,12 +84,15 @@
                         {% for key, module in modules.items() %}
                         <td class="small">
                             {% if module.single_role %}
-                            <select class="form-select form-select-sm user-control-dropdown" name="role_{{ key }}" form="{{ form_id }}" aria-label="{{ module.label }} role">
-                                <option value="">No access</option>
-                                {% for code, label in module.roles %}
-                                <option value="{{ code }}" {% if code in row.roles[key] %}selected{% endif %}>{{ label }}</option>
+                            {# One choice: radios grouped per row by name + form owner. #}
+                            <div class="d-flex flex-wrap gap-2" role="radiogroup" aria-label="{{ module.label }} role">
+                                {% for code, label in [('', 'No access')] + module.roles|list %}
+                                <div class="form-check form-check-inline m-0">
+                                    <input class="form-check-input" type="radio" name="role_{{ key }}" value="{{ code }}" form="{{ form_id }}" id="{{ key }}-{{ user.user_id }}-{{ code or 'none' }}" {% if (code and code in row.roles[key]) or (not code and not row.roles[key]) %}checked{% endif %}>
+                                    <label class="form-check-label text-nowrap" for="{{ key }}-{{ user.user_id }}-{{ code or 'none' }}">{{ label }}</label>
+                                </div>
                                 {% endfor %}
-                            </select>
+                            </div>
                             {% else %}
                             <div class="d-flex flex-wrap gap-2">
                                 {% for code, label in module.roles %}

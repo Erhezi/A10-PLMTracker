@@ -44,7 +44,7 @@ def test_admin_is_the_app_level_role(user_role, authenticated, expected):
     ("collector.batch_update_stage", "collector", "POST", "edit"),
     ("collector.api_delete_item_link", "collector", "DELETE", "edit"),
     ("collector.batch_export_wrike_item_numbers", "collector", "POST", "view"),
-    ("collector.clear_deleted", "collector", "POST", None),       # admin, checked in the view
+    ("collector.clear_deleted", "collector", "POST", "edit"),     # the view also requires admin
     ("playground.index", "playground", "GET", "view"),
 ])
 def test_plm_capability_needed_per_request(endpoint, blueprint, method, expected):
@@ -93,10 +93,16 @@ def test_user_without_plm_role_cannot_open_plm(sqlite_app):
     assert post_json(client, "/groups/batch/stage", {}).status_code == 403
 
 
-def test_admin_with_plm_switched_off_can_look_but_not_change(sqlite_app):
-    admin = client_for(sqlite_app, "admin@example.org", role="admin", plm=None)
-    assert admin.get("/dashboard/").status_code == 200
-    assert post_json(admin, "/groups/batch/stage", {}).status_code == 403
+def test_admin_obeys_their_plm_role(sqlite_app):
+    viewer = client_for(sqlite_app, "admin.viewer@example.org", role="admin", plm="viewer")
+    assert viewer.get("/dashboard/").status_code == 200
+    assert post_json(viewer, "/groups/batch/stage", {}).status_code == 403
+
+    none = client_for(sqlite_app, "admin.none@example.org", role="admin", plm=None)
+    assert none.get("/dashboard/").status_code == 302
+    denied = post_json(none, "/groups/batch/stage", {})
+    assert denied.status_code == 403
+    assert "don't have access to PLM Tracker" in denied.get_json()["message"]
 
 
 def test_cleanup_actions_stay_admin_only(sqlite_app):
@@ -110,6 +116,12 @@ def test_cleanup_actions_stay_admin_only(sqlite_app):
     response = admin.post("/groups/clear-deleted", data={"csrf_token": token}, follow_redirects=True)
     assert "No rows with stage Deleted to remove" in response.get_data(as_text=True)
 
+    # ...with the PLM Editor role: an admin who is a PLM Viewer can't.
+    admin_viewer = client_for(sqlite_app, "admin.viewer@example.org", role="admin", plm="viewer")
+    token = csrf_from(admin_viewer.get("/auth/register/pending").get_data(as_text=True))
+    response = admin_viewer.post("/groups/clear-deleted", data={"csrf_token": token}, follow_redirects=True)
+    assert "Your PLM Tracker role is Viewer" in response.get_data(as_text=True)
+
 
 # --- landing -------------------------------------------------------------------
 
@@ -119,6 +131,11 @@ def test_landing_goes_to_the_first_module_you_can_open(sqlite_app):
 
     fk = client_for(sqlite_app, "fk@example.org", plm=None, fillkill=("viewer",))
     assert fk.get("/").headers["Location"].endswith("/fillkill/")
+
+
+def test_admin_without_any_module_lands_in_user_control(sqlite_app):
+    admin = client_for(sqlite_app, "admin@example.org", role="admin", plm=None)
+    assert admin.get("/").headers["Location"].endswith("/admin/user-control")
 
 
 def test_landing_without_any_module_explains(sqlite_app):
@@ -183,11 +200,14 @@ def state(app, email):
 def test_user_control_shows_a_row_per_user_with_every_module(sqlite_app, admin):
     make_user(sqlite_app, "nurse@example.org", role=None, requested="fillkill", active=False)
     page = admin.get("/admin/user-control").get_data(as_text=True)
-    for heading in ("Requested", "Admin", "PLM Tracker", "Fill/Kill Management"):
+    for heading in ("Admin", "PLM Tracker", "Fill/Kill Management"):
         assert f">{heading}</th>" in page
-    assert 'name="role_plm"' in page and 'name="role_fillkill"' in page
+    assert 'type="radio" name="role_plm" value=""' in page  # No access
+    assert 'type="radio" name="role_plm" value="editor"' in page
+    assert 'type="checkbox" name="role_fillkill"' in page
     assert "Save access" in page
-    assert '<option value="">No access</option>' in page
+    assert ">Requested</th>" not in page
+    assert "Asked for: Fill/Kill Management" in page
 
 
 def test_save_access_sets_every_module(sqlite_app, admin):
@@ -226,13 +246,11 @@ def test_unknown_plm_role_refused(sqlite_app, admin):
     assert state(sqlite_app, "x@example.org")["plm"] == {"editor"}
 
 
-def test_promotion_grants_every_module_role(sqlite_app, admin):
+def test_promotion_keeps_the_module_roles_in_the_row(sqlite_app, admin):
     make_user(sqlite_app, "new.admin@example.org", role="view-only")
-    response = save_access(admin, "new.admin@example.org", admin=True, plm="viewer")
-    assert "New admins start with every module role" in response.get_data(as_text=True)
+    save_access(admin, "new.admin@example.org", admin=True, plm="viewer")
     assert state(sqlite_app, "new.admin@example.org") == {
-        "admin": True, "plm": {"editor"},
-        "fillkill": {"viewer", "proposer", "clinical", "materials"}, "app_role": "admin",
+        "admin": True, "plm": {"viewer"}, "fillkill": set(), "app_role": "admin",
     }
 
 

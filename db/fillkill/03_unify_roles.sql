@@ -2,7 +2,7 @@
 -- Run on O2, database PLM, AFTER 02_user_module_role.sql and BEFORE deploy #1.
 --
 -- Everyone keeps exactly the access they have today:
---   user_role 'admin'     -> stays admin + PLM editor   (Fill/Kill roles already seeded by 02)
+--   user_role 'admin'     -> stays admin + PLM editor
 --   user_role 'user'      -> PLM editor
 --   user_role 'view-only' -> PLM viewer
 --

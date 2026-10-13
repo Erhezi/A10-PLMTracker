@@ -68,13 +68,7 @@ SELECT 'users.user_role is admin or user',
                THEN 'PENDING: run 04 after the deploy'
            ELSE 'FAIL'
        END
-UNION ALL
-SELECT 'every admin holds at least one Fill/Kill role',
-       CASE WHEN NOT EXISTS (
-           SELECT 1 FROM admins AS a
-           WHERE NOT EXISTS (SELECT 1 FROM [PLM].[UserModuleRole] AS r
-                             WHERE r.[user_id] = a.[user_id] AND r.[module] = 'fillkill')
-       ) THEN 'PASS' ELSE 'FAIL' END
+
 UNION ALL
 SELECT 'no non-admin holds both B (clinical) and C (materials)',
        CASE WHEN NOT EXISTS (

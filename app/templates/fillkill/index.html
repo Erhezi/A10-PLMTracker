@@ -17,11 +17,7 @@
 
     <div class="small">
       <span class="text-muted">Your Fill/Kill roles:</span>
-      {% if roles %}
-        {% for role in roles %}<span class="badge text-bg-light border me-1">{{ role }}</span>{% endfor %}
-      {% else %}
-        <span>none</span>{% if admin %} <span class="text-muted">(as an admin you can still view this module)</span>{% endif %}
-      {% endif %}
+      {% for role in roles %}<span class="badge text-bg-light border me-1">{{ role }}</span>{% endfor %}
     </div>
   </div>
 </div>

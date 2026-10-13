@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
-{% set can_manage_cleanup = user_is_admin %}
 {% set can_edit = user_can('plm', 'edit') %}
+{% set can_manage_cleanup = user_is_admin and can_edit %}
 {% block title %}Groups — PLM Tracker{% endblock %}
 {% block content %}
 <h1 class="h4 fw-semibold mb-3 d-flex align-items-center flex-wrap gap-2">
@@ -71,7 +71,7 @@
     <div class="small text-muted flex-shrink-0 d-none" id="selected-count-container">Selected: <span id="selected-count">0</span></div>
     {% set clear_disabled_reason = None %}
     {% if not can_manage_cleanup %}
-      {% set clear_disabled_reason = 'Only admins can clear deleted rows.' %}
+      {% set clear_disabled_reason = 'Only admins with the PLM Editor role can clear deleted rows.' %}
     {% elif count_deleted == 0 %}
       {% set clear_disabled_reason = 'No rows with stage Deleted to clear.' %}
     {% endif %}
@@ -83,7 +83,7 @@
         class="btn btn-sm btn-outline-danger"
         data-can-manage="{{ 1 if can_manage_cleanup else 0 }}"
         data-empty-title="No rows with stage Deleted to clear."
-        data-locked-title="Only admins can clear deleted rows."
+        data-locked-title="Only admins with the PLM Editor role can clear deleted rows."
         {% if clear_disabled_reason %}disabled title="{{ clear_disabled_reason }}"{% endif %}
       >
         Clear Deleted (<span id="clear-deleted-count">{{ count_deleted }}</span>)
@@ -91,7 +91,7 @@
     </form>
     {% set archive_disabled_reason = None %}
     {% if not can_manage_cleanup %}
-      {% set archive_disabled_reason = 'Only admins can archive completed rows.' %}
+      {% set archive_disabled_reason = 'Only admins with the PLM Editor role can archive completed rows.' %}
     {% elif count_completed == 0 %}
       {% set archive_disabled_reason = 'No rows with stage Tracking Completed to archive.' %}
     {% endif %}
@@ -103,7 +103,7 @@
         class="btn btn-sm btn-outline-secondary"
         data-can-manage="{{ 1 if can_manage_cleanup else 0 }}"
         data-empty-title="No rows with stage Tracking Completed to archive."
-        data-locked-title="Only admins can archive completed rows."
+        data-locked-title="Only admins with the PLM Editor role can archive completed rows."
         {% if archive_disabled_reason %}disabled title="{{ archive_disabled_reason }}"{% endif %}
       >
         Archive Completed (<span id="archive-completed-count">{{ count_completed }}</span>)

@@ -8,7 +8,6 @@ from ..utility.access import (
     MODULES,
     PLM,
     apply_access,
-    full_access_roles,
     is_admin,
     role_summary,
     roles_in,
@@ -63,7 +62,10 @@ def user_control():
 @admin_bp.route('/update-access/<string:user_email>', methods=['POST'])
 @login_required
 def update_access(user_email):
-    """Save one user's admin flag and module roles (one row of User Control)."""
+    """Save one user's admin flag and module roles (one row of User Control).
+
+    Admin only lets someone manage accounts; their module roles are whatever the row says.
+    """
     user = User.query.filter_by(email=user_email).first_or_404()
     was_admin = is_admin(user)
     make_admin = request.form.get('app_admin') == 'on'
@@ -77,10 +79,6 @@ def update_access(user_email):
         PLM: {plm_role} if plm_role else set(),
         FILLKILL: set(request.form.getlist('role_fillkill')),
     }
-    promoted = make_admin and not was_admin
-    if promoted:
-        roles = full_access_roles()  # new admins start with every module role
-
     problem = validate_roles(admin=make_admin, roles=roles)
     if problem:
         flash(f"Access for {user.email} not saved: {problem}", 'danger')
@@ -89,10 +87,7 @@ def update_access(user_email):
     apply_access(user, admin=make_admin, roles=roles, granted_by=current_user.email)
     db.session.commit()
 
-    message = f"Access for {user.email}: {role_summary(user)}."
-    if promoted:
-        message += " New admins start with every module role; switch any off and save again."
-    flash(message, 'success')
+    flash(f"Access for {user.email}: {role_summary(user)}.", 'success')
     return redirect(url_for('admin.user_control'))
 
 

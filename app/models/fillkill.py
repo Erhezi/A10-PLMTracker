@@ -56,7 +56,7 @@ class Sub(db.Model):
     update_dt = db.Column(db.DateTime, nullable=False, default=now_ny_naive)
 
     def label(self) -> str:
-        return f"{self.vendor} {self.vendor_part}"
+        return f"{self.vendor_part} ({self.vendor})"
 
 
 class SubOrder(db.Model):

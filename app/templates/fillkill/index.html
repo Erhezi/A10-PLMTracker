@@ -1,25 +1,147 @@
 {% extends "base.html" %}
 {% block title %}Fill/Kill Management — Item Management{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.css" />
+{% endblock %}
+
 {% block content %}
-<h1 class="h4 fw-semibold mb-3">Fill/Kill Management</h1>
+{# The one operating page for every role (design §5, plan v2 §5.2). Everything below the
+   controls is drawn by static/js/fillkill.js from the JSON API; the server checks every action. #}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
+  <h1 class="h4 fw-semibold mb-0">Fill/Kill Management</h1>
+  <span class="small text-muted">
+    Your roles:
+    {% for role in roles %}<span class="badge text-bg-light border ms-1">{{ role }}</span>{% endfor %}
+  </span>
+  <span class="ms-auto small" id="fk-data-as-of" aria-live="polite"></span>
+</div>
 
-<div class="card shadow-sm border-0">
+<div class="card shadow-sm border-0 mb-3">
   <div class="card-body">
-    <p class="mb-2">
-      This module tracks Medline's daily fill/kill report per Medline item: Sub Finders record
-      substitutes, a Sub Approver reviews and picks them, and a Materials Manager records what was
-      ordered.
-    </p>
-    <p class="text-muted small mb-3">
-      The main table, the subs library and the orders log are being built and will appear here in the
-      next release.
-    </p>
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-lg-5">
+        <span class="form-label small text-muted d-block mb-1" id="fk-dates-label">Order dates</span>
+        <div id="fk-date-slider" class="fk-date-slider mb-2" aria-labelledby="fk-dates-label"></div>
+        <div class="d-flex gap-2 align-items-center">
+          <input type="date" id="fk-start" class="form-control form-control-sm" aria-label="First order date" />
+          <span class="small text-muted">to</span>
+          <input type="date" id="fk-end" class="form-control form-control-sm" aria-label="Last order date" />
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <span class="form-label small text-muted d-block mb-1">Sites</span>
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+                  id="fk-sites-button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            All sites
+          </button>
+          <div class="dropdown-menu p-2 fk-sites-menu" id="fk-sites" aria-labelledby="fk-sites-button"></div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-4">
+        <label for="fk-search" class="form-label small text-muted mb-1">Find an item</label>
+        <input type="search" id="fk-search" class="form-control form-control-sm"
+               placeholder="Medline item, description, customer item" autocomplete="off" />
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3" id="fk-needs" role="group" aria-label="Needs filter"></div>
+  </div>
+</div>
 
-    <div class="small">
-      <span class="text-muted">Your Fill/Kill roles:</span>
-      {% for role in roles %}<span class="badge text-bg-light border me-1">{{ role }}</span>{% endfor %}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 fk-main">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">Medline Item<div class="fw-normal small text-muted">Vendor Part</div></th>
+            <th scope="col">Item Description</th>
+            <th scope="col">Customer Item<div class="fw-normal small text-muted">Infor Item</div></th>
+            <th scope="col" class="text-end">Total Ordered</th>
+            <th scope="col" class="text-end">Total Killed</th>
+            <th scope="col" class="text-end">Total Filled</th>
+            <th scope="col" class="text-end">PO Lines</th>
+            <th scope="col">Latest Reason</th>
+            <th scope="col">Subs Status</th>
+            <th scope="col">Approver's Pick</th>
+            <th scope="col">Ordering</th>
+          </tr>
+        </thead>
+        <tbody id="fk-rows">
+          <tr><td colspan="11" class="text-muted small p-3">Loading…</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
+
+<ul class="nav nav-tabs" id="fk-tabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="fk-tab-subs" data-bs-toggle="tab" data-bs-target="#fk-pane-subs"
+            type="button" role="tab" aria-controls="fk-pane-subs" aria-selected="true">All subs</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="fk-tab-orders" data-bs-toggle="tab" data-bs-target="#fk-pane-orders"
+            type="button" role="tab" aria-controls="fk-pane-orders" aria-selected="false">Orders in these dates</button>
+  </li>
+</ul>
+<div class="tab-content card shadow-sm border-0 border-top-0 rounded-top-0 mb-4">
+  <div class="tab-pane fade show active card-body" id="fk-pane-subs" role="tabpanel" aria-labelledby="fk-tab-subs">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <select class="form-select form-select-sm w-auto" id="fk-lib-status" aria-label="Status">
+        <option value="">Any status</option>
+      </select>
+      <select class="form-select form-select-sm w-auto" id="fk-lib-source" aria-label="Source">
+        <option value="">Any source</option>
+        <option value="manual">Entered by a Sub Finder</option>
+        <option value="medline_pbo">Medline PBO</option>
+      </select>
+      <input type="search" class="form-control form-control-sm w-auto flex-grow-1" id="fk-lib-q"
+             placeholder="Item, vendor, vendor part, description" aria-label="Search subs" />
+    </div>
+    <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light"><tr>
+        <th scope="col">Medline Item</th><th scope="col">Vendor</th><th scope="col">Vendor Part</th>
+        <th scope="col">Description</th><th scope="col">Status</th><th scope="col">Entered By</th>
+        <th scope="col">Updated</th><th scope="col">Latest Comment</th>
+      </tr></thead>
+      <tbody id="fk-lib-rows"></tbody>
+    </table></div>
+  </div>
+  <div class="tab-pane fade card-body" id="fk-pane-orders" role="tabpanel" aria-labelledby="fk-tab-orders">
+    <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light"><tr>
+        <th scope="col">Ordered</th><th scope="col">Medline Item</th><th scope="col">Sub</th>
+        <th scope="col" class="text-end">Quantity</th><th scope="col">Vendor</th><th scope="col">Ordered By</th>
+        <th scope="col">Latest Comment</th>
+      </tr></thead>
+      <tbody id="fk-orders-rows"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<div class="offcanvas offcanvas-end fk-panel" tabindex="-1" id="fk-panel" aria-labelledby="fk-panel-title">
+  <div class="offcanvas-header border-bottom align-items-start">
+    <div class="me-3">
+      <h2 class="h5 mb-0" id="fk-panel-title"></h2>
+      <div class="small text-muted" id="fk-panel-subtitle"></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body" id="fk-panel-body"></div>
+</div>
+
+<div class="modal fade" id="fk-modal" tabindex="-1" aria-hidden="true" aria-labelledby="fk-modal-title">
+  <div class="modal-dialog">
+    <form class="modal-content" id="fk-modal-form" novalidate></form>
+  </div>
+</div>
+
+<script id="fk-config" type="application/json">{{ config|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.js"></script>
+<script src="{{ url_for('static', filename='js/fillkill.js') }}"></script>
 {% endblock %}

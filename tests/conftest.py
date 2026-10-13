@@ -1,8 +1,16 @@
 import re
+import sqlite3
 import sys
+from datetime import date, datetime, time
 from pathlib import Path
 
 import pytest
+
+# Dates and times as ISO text in SQLite, as the Fill/Kill queries compare them (Python 3.12+ no
+# longer adapts them by default).
+sqlite3.register_adapter(date, lambda d: d.isoformat())
+sqlite3.register_adapter(datetime, lambda d: d.isoformat(sep=" "))
+sqlite3.register_adapter(time, lambda t: t.isoformat())
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -41,6 +49,7 @@ def sqlite_app_factory():
             },
             "ENABLE_BURN_RATE_REFRESH": False,
         })
+        create_fillkill_views(app)
         built.append(app)
         return app
 
@@ -58,6 +67,55 @@ def sqlite_app_factory():
 @pytest.fixture
 def sqlite_app(sqlite_app_factory):
     return sqlite_app_factory()
+
+
+# The Fill/Kill views exist only on SQL Server (db/fillkill/10-13). On SQLite, tables with the same
+# names and columns stand in for them, so the module's SQL runs unchanged.
+FILLKILL_VIEWS = {
+    "vw_MedlineFillKillQtyAgg": [
+        "Order Date", "Sold-To", "Sold-To Name", "Medline Item", "UM", "Customer Item #", "Mfr. Item #",
+        "Manufacturer Name", "Total Ordered Qty", "Total Filled Qty", "Total Killed Qty", "Total PO Line Count",
+    ],
+    "vw_MedlineFillKillItemCollection": [
+        "Medline Item", "UM", "Customer Item #", "Mfr. Item #", "Manufacturer Name", "Item.UOMConversion",
+        "VendorItem.UOMConversion", "UOM_QOE_VARS", "Medline.Sub", "Medline.ParentItem", "SUB_VARS",
+        "Item Description", "Infor Item", "INFOR_ITEM_VARS", "Infor Item Consistency",
+    ],
+    "vw_MedlineFillKill": [
+        "Sold-To", "Sold-To Name", "Ship-To", "Ship-To Name", "Order Date", "Order Time", "Sales Order #",
+        "Order Line #", "Item", "Customer Item #", "Order Qty", "UM", "Filled Qty", "PO", "POLine",
+        "Internal Order Comments from SAP (Z106)", "Reason", "Reason Date", "Is Test",
+    ],
+    "vw_FillKillLastLoad": ["last_success", "last_line_update"],
+    "vw_ContractLineSearch": [
+        "vendor_id", "vendor_name", "vendor_item", "vendor_item_stripped", "manufacturer_number",
+        "manufacturer_number_stripped", "description", "uom", "qoe", "infor_item", "item_type", "contract",
+        "contract_name", "base_cost",
+    ],
+}
+
+
+def create_fillkill_views(app):
+    from app import db
+
+    with app.app_context():
+        with db.engine.begin() as conn:
+            for name, columns in FILLKILL_VIEWS.items():
+                cols = ", ".join(f'"{c}"' for c in columns)
+                conn.exec_driver_sql(f'CREATE TABLE IF NOT EXISTS "FillKill"."{name}" ({cols})')
+
+
+def add_view_rows(app, name, rows):
+    """Insert rows (dicts keyed by column name) into a stand-in view table."""
+    from app import db
+
+    with app.app_context():
+        with db.engine.begin() as conn:
+            for row in rows:
+                cols = ", ".join(f'"{c}"' for c in row)
+                marks = ", ".join("?" for _ in row)
+                conn.exec_driver_sql(f'INSERT INTO "FillKill"."{name}" ({cols}) VALUES ({marks})',
+                                     tuple(row.values()))
 
 
 ROLE_PRESETS = {

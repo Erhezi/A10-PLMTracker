@@ -3,6 +3,7 @@
 --
 -- FillKill.vw_MedlineFillKill is the one place the module reads kill lines from: Medline's table
 -- in SCSFileIngestor (written only by the A13 ingestion), plus FillKill.TestFillKillLine.
+-- FillKill.vw_FillKillLastLoad says how fresh they are, for the app's "data as of".
 --
 -- Test copies, for trying the module with more than one site: for each of the latest 3 order
 -- dates in Medline's data, the last 10 lines of the day (by order time) are copied with Sold-To
@@ -91,19 +92,47 @@ GO
 
 CREATE OR ALTER VIEW [FillKill].[vw_MedlineFillKill] AS
 -- Every kill line the module shows: Medline's, plus the test copies until go-live.
-SELECT [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
-       [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
-       [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
-       [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
-       [create stamp], [update stamp],
-       CAST(0 AS BIT) AS [Is Test]
-FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill]
-UNION ALL
-SELECT [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
-       [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
-       [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
-       [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
-       [create stamp], [update stamp],
-       CAST(1 AS BIT) AS [Is Test]
-FROM [FillKill].[TestFillKillLine];
+--   Reason       category of Medline's comment, checked in this order (a comment can match more
+--                than one word; e.g. "SPIKE - Allocation limit..." counts as ALLOCATION)
+--   Reason Date  the first mm/dd/yyyy date in the comment (the ERD or ETA), if any
+SELECT l.*,
+       CASE
+           WHEN NULLIF(LTRIM(c.[comment]), '') IS NULL THEN NULL
+           WHEN c.[comment] LIKE '%NONSTOCK UOM%' THEN 'NONSTOCK_UOM'
+           WHEN c.[comment] LIKE '%NONSTOCK%'     THEN 'NONSTOCK'
+           WHEN c.[comment] LIKE '%DISCONTINUED%' THEN 'DISCONTINUED'
+           WHEN c.[comment] LIKE '%Allocation%'   THEN 'ALLOCATION'
+           WHEN c.[comment] LIKE '%SPIKE%'        THEN 'SPIKE'
+           WHEN c.[comment] LIKE '%MBO%'          THEN 'MBO'
+           WHEN c.[comment] LIKE '%OUT OF STOCK%' THEN 'OUT_OF_STOCK'
+           ELSE 'OTHER'
+       END AS [Reason],
+       TRY_CONVERT(DATE, SUBSTRING(c.[comment],
+           NULLIF(PATINDEX('%[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]%', c.[comment]), 0), 10), 101) AS [Reason Date]
+FROM (
+    SELECT [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
+           [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
+           [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
+           [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
+           [create stamp], [update stamp],
+           CAST(0 AS BIT) AS [Is Test]
+    FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill]
+    UNION ALL
+    SELECT [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
+           [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
+           [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
+           [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
+           [create stamp], [update stamp],
+           CAST(1 AS BIT) AS [Is Test]
+    FROM [FillKill].[TestFillKillLine]
+) AS l
+CROSS APPLY (SELECT l.[Internal Order Comments from SAP (Z106)] AS [comment]) AS c;
+GO
+
+CREATE OR ALTER VIEW [FillKill].[vw_FillKillLastLoad] AS
+-- One row: the last successful A13 run ("Medline Fill-Kill" in ETLHealth), and the newest line
+-- update, which stands in until the hourly runs are logged (the backfill doesn't log).
+SELECT (SELECT MAX([LastRunTime]) FROM [SCSFileIngestor].[MedlineReport].[ETLHealth]
+        WHERE [ProcessName] = 'Medline Fill-Kill' AND [TaskStatus] = 'SUCCESS') AS [last_success],
+       (SELECT MAX([update stamp]) FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill]) AS [last_line_update];
 GO

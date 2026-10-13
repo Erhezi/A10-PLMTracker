@@ -6,8 +6,8 @@
   <header class="doc-hero card shadow-sm border-0 p-4">
     <h1 class="h4 fw-semibold mb-1">Fill/Kill Management Docs</h1>
     <p class="mb-0 text-muted">
-      How Medline's fill/kill report turns into substitute decisions and orders. The module is being
-      built; this page describes how it will work, and will grow with it.
+      How Medline's fill/kill report turns into substitute decisions and orders, and where to do each
+      step.
     </p>
   </header>
 
@@ -48,13 +48,32 @@
   </section>
 
   <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-3">The pages</h2>
+    <p class="mb-2"><strong>Main</strong> is where everyone works. Everyone sees the same page; the buttons
+      you get follow your roles.</p>
+    <ul class="mb-3">
+      <li class="mb-1"><strong>Choose what to look at:</strong> slide or type the order dates (it opens on the latest
+        day), pick sites, and type part of an item number or description.</li>
+      <li class="mb-1"><strong>Needs filter:</strong> <em>Needs subs</em> (no live substitute), <em>Needs review</em>
+        (one is pending review), <em>Needs pick</em> (approved but nothing picked), <em>Needs order</em> (picked, no
+        order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
+      <li class="mb-1"><strong>Click an item</strong> (its Medline item or customer item) to open its panel: its
+        substitutes, the kill lines behind it, everything picked or reviewed before, and every order.</li>
+      <li class="mb-1"><strong>Below the table:</strong> every substitute on file (the reference library), and the
+        orders recorded in the chosen dates.</li>
+    </ul>
+    <p class="mb-0"><strong>Dashboard</strong> shows trends for the chosen dates and sites: kill lines by reason and
+      by site, the most killed items, how substitutes are being reviewed, and which were rejected.</p>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
     <h2 class="h5 fw-semibold mb-3">How an item moves</h2>
     <ol class="mb-0">
       <li class="mb-2"><strong>Killed.</strong> The item appears in the main table with its total ordered, killed and filled quantities.</li>
-      <li class="mb-2"><strong>Substitutes added.</strong> Substitutes from Medline's backorder report appear automatically; a Sub Finder adds others. Substitutes stay with the item, so the next time it's killed they're already there.</li>
+      <li class="mb-2"><strong>Substitutes added.</strong> Substitutes from Medline's backorder report appear automatically; a Sub Finder adds others, searching Infor's active contracts to fill in the vendor, part number, UOM and QOE. Substitutes stay with the item, so the next time it's killed they're already there.</li>
       <li class="mb-2"><strong>Reviewed.</strong> New substitutes are pending review until a Sub Approver sets them to approve, hold or reject. Click a substitute to see every change, with who made it and when.</li>
-      <li class="mb-2"><strong>Picked.</strong> The Sub Approver picks approved substitutes for ordering, usually one per item.</li>
-      <li><strong>Ordered.</strong> A Materials Manager clicks a pick to record the order. An item can have more than one order, for example when one substitute can't cover the whole need.</li>
+      <li class="mb-2"><strong>Picked.</strong> The Sub Approver picks approved substitutes for ordering, usually one per item. A pick stays until it's unpicked or the substitute is no longer approved.</li>
+      <li><strong>Ordered.</strong> A Materials Manager clicks a pick to record the order. An item can have more than one order, for example when one substitute can't cover the whole need. Orders can be corrected, or voided with a reason; both are kept in the order's history.</li>
     </ol>
   </section>
 
@@ -82,6 +101,9 @@
     <h2 class="h5 fw-semibold mb-2">Good to know</h2>
     <ul class="mb-0">
       <li>Access is per module. If you can't see Fill/Kill Management in the top bar, ask an admin for a Fill/Kill role.</li>
+      <li>An item shows <em>Ordered</em> when an order's date falls inside the dates you chose.</li>
+      <li>Comments are added, never overwritten, and show who wrote them and when.</li>
+      <li>If someone changed a substitute while you had it open, you'll see who changed it and be asked to reload.</li>
       <li>Every login ends at 2:30 AM. The next click takes you to the login page, then back to where you were.</li>
     </ul>
   </section>

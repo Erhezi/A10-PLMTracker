@@ -651,14 +651,27 @@
   const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
   const modalForm = $('fk-modal-form');
   let modalSubmit = null;
-  let modalOpen = false;  // fully shown; Bootstrap ignores hide() while the modal is still fading in
-  modalEl.addEventListener('shown.bs.modal', () => { modalOpen = true; });
-  modalEl.addEventListener('hidden.bs.modal', () => { modalOpen = false; });
+  // Bootstrap ignores show() while the modal fades out and hide() while it fades in, so a quick
+  // "save, then open the next form" would be lost. Track the fade and wait for it to finish.
+  let modalPhase = 'hidden';  // hidden | showing | shown | hiding
+  modalEl.addEventListener('show.bs.modal', () => { modalPhase = 'showing'; });
+  modalEl.addEventListener('shown.bs.modal', () => { modalPhase = 'shown'; });
+  modalEl.addEventListener('hide.bs.modal', () => { modalPhase = 'hiding'; });
+  modalEl.addEventListener('hidden.bs.modal', () => { modalPhase = 'hidden'; });
+
+  function whenModal(phase, action) {
+    if (modalPhase === phase) action();
+    else modalEl.addEventListener(`${phase}.bs.modal`, action, { once: true });
+  }
+
+  function openModal() {
+    if (!modal || modalPhase === 'shown' || modalPhase === 'showing') return;
+    whenModal('hidden', () => modal.show());
+  }
 
   function hideModal() {
-    if (!modal) return;
-    if (modalOpen) modal.hide();
-    else modalEl.addEventListener('shown.bs.modal', () => modal.hide(), { once: true });
+    if (!modal || modalPhase === 'hidden' || modalPhase === 'hiding') return;
+    whenModal('shown', () => modal.hide());
   }
 
   function showModal(title, fields, submitLabel, onSubmit) {
@@ -669,7 +682,7 @@
       <div class="modal-footer"><button type="button" class="btn btn-sm btn-link" data-bs-dismiss="modal">Cancel</button>
         <button type="submit" class="btn btn-sm btn-primary">${submitLabel}</button></div>`;
     modalSubmit = onSubmit;
-    if (modal) modal.show();
+    openModal();
   }
 
   modalForm.addEventListener('submit', async (event) => {

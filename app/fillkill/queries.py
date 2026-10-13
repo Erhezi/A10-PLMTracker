@@ -375,3 +375,30 @@ def item_exists(medline_item: str) -> bool:
         {"item": medline_item},
     )[0]
     return bool(row["found"])
+
+
+# --- the Dashboard ---------------------------------------------------------------------------
+
+def lines_by_day(scope: Scope, by: str) -> list[dict]:
+    """Kill lines per order date and reason (by='reason') or site (by='site')."""
+    column = {"reason": "[Reason]", "site": "[Sold-To Name]"}[by]
+    where, params, binds = scope.where("[Order Date]", "[Sold-To]")
+    return _rows(
+        f"""SELECT [Order Date] AS day, {column} AS series, COUNT(*) AS lines
+            FROM {LINES} WHERE {where}
+            GROUP BY [Order Date], {column} ORDER BY [Order Date]""",
+        params, binds,
+    )
+
+
+def all_subs() -> list[dict]:
+    return [sub_dict(s) for s in db.session.execute(select(Sub)).scalars()]
+
+
+def sub_history(actions) -> list[dict]:
+    """Every History row about subs with one of these actions, oldest first."""
+    rows = db.session.execute(
+        select(History).where(History.entity == "sub", History.action.in_(tuple(actions)))
+        .order_by(History.acted_at, History.history_id)
+    ).scalars().all()
+    return [_history_dict(row, {}) for row in rows]

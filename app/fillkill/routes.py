@@ -14,13 +14,14 @@ from flask_login import current_user, login_required
 
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, require_module, roles_in
-from . import queries, rollup, services
+from . import dashboard, queries, rollup, services
 from ..models.fillkill import SUB_STATUSES
 from .rules import STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
 STALE_AFTER = timedelta(minutes=90)
+DASHBOARD_DAYS = 30  # the Dashboard opens on the last 30 days of data
 FEED_HOURS = (8, 23)  # the hourly feed runs 8am-11pm; outside that, old data is expected
 
 
@@ -55,12 +56,19 @@ def _parse_date(value, default):
         raise RuleError(f"Dates must look like 2026-10-13, not '{value}'.") from None
 
 
-def scope_from_request() -> queries.Scope:
-    """Dates from ?start&end (default: the latest order date, P4); sites from ?sites=a,b."""
-    _, last = queries.date_bounds()
-    default = last or now_ny_naive().date()
-    start = _parse_date(request.args.get("start"), default)
-    end = _parse_date(request.args.get("end"), default)
+def default_dates(days: int = 1) -> tuple[date, date]:
+    """The latest ``days`` order dates in the data, ending on the latest one (P4)."""
+    first, last = queries.date_bounds()
+    last = last or now_ny_naive().date()
+    start = last - timedelta(days=days - 1)
+    return (max(start, first) if first else start), last
+
+
+def scope_from_request(days: int = 1) -> queries.Scope:
+    """Dates from ?start&end (default: the latest ``days`` of data); sites from ?sites=a,b."""
+    default_start, default_end = default_dates(days)
+    start = _parse_date(request.args.get("start"), default_start)
+    end = _parse_date(request.args.get("end"), default_end)
     if start > end:
         start, end = end, start
     raw = ",".join(request.args.getlist("sites"))
@@ -131,6 +139,22 @@ def index():
     )
 
 
+@bp.route("/dashboard")
+@login_required
+@require_module(FILLKILL, "view")
+def dashboard_page():
+    first, last = queries.date_bounds()
+    start, end = default_dates(DASHBOARD_DAYS)
+    config = {
+        "bounds": {"first": first, "last": last},
+        "default": {"start": start, "end": end},
+        "sites": queries.sites(),
+        "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
+        "api": {"dashboard": url_for("fillkill.api_dashboard"), "main": url_for("fillkill.index")},
+    }
+    return render_template("fillkill/dashboard.html", config=plain(config))
+
+
 # --- reads --------------------------------------------------------------------------------
 
 @bp.get("/api/main")
@@ -190,6 +214,13 @@ def api_subs():
 def api_orders():
     scope = scope_from_request()
     return ok({"orders": queries.orders_log(scope)})
+
+
+@bp.get("/api/dashboard")
+@login_required
+@require_module(FILLKILL, "view")
+def api_dashboard():
+    return ok(dashboard.build(scope_from_request(DASHBOARD_DAYS)))
 
 
 @bp.get("/api/contract-lines")

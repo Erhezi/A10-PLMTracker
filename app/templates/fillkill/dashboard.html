@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Fill/Kill Dashboard — Item Management{% endblock %}
+
+{% block content %}
+{# Trends for the chosen dates and sites (plan v2 §5.4). Read-only for every Fill/Kill role;
+   drawn by static/js/fillkill-dashboard.js from /fillkill/api/dashboard. #}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
+  <h1 class="h4 fw-semibold mb-0">Fill/Kill Dashboard</h1>
+  <span class="small text-muted" id="fk-dash-range"></span>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-body d-flex flex-wrap gap-3 align-items-end">
+    <div>
+      <span class="form-label small text-muted d-block mb-1">Order dates</span>
+      <div class="d-flex gap-2 align-items-center">
+        <input type="date" id="fk-dash-start" class="form-control form-control-sm" aria-label="First order date" />
+        <span class="small text-muted">to</span>
+        <input type="date" id="fk-dash-end" class="form-control form-control-sm" aria-label="Last order date" />
+      </div>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges">
+      <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="all">All</button>
+    </div>
+    <div>
+      <span class="form-label small text-muted d-block mb-1">Sites</span>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="fk-dash-sites-button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">All sites</button>
+        <div class="dropdown-menu p-2 fk-sites-menu" id="fk-dash-sites" aria-labelledby="fk-dash-sites-button"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="fk-dash-error"></div>
+
+<div class="row g-3 mb-3" id="fk-dash-headline"></div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-xl-8">
+    <div class="card shadow-sm border-0 h-100"><div class="card-body">
+      <h2 class="h6 fw-semibold">Kill lines per day, by reason</h2>
+      <div class="fk-chart"><canvas id="fk-chart-reason" aria-label="Kill lines per day by reason" role="img"></canvas></div>
+    </div></div>
+  </div>
+  <div class="col-12 col-xl-4">
+    <div class="card shadow-sm border-0 h-100"><div class="card-body">
+      <h2 class="h6 fw-semibold">Subs by status <span class="small text-muted fw-normal">(all subs)</span></h2>
+      <div class="fk-chart"><canvas id="fk-chart-status" aria-label="Subs by status" role="img"></canvas></div>
+    </div></div>
+  </div>
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm border-0 h-100"><div class="card-body">
+      <h2 class="h6 fw-semibold">Kill lines per day, by site</h2>
+      <div class="fk-chart"><canvas id="fk-chart-site" aria-label="Kill lines per day by site" role="img"></canvas></div>
+    </div></div>
+  </div>
+  <div class="col-12 col-xl-6">
+    <div class="card shadow-sm border-0 h-100"><div class="card-body">
+      <h2 class="h6 fw-semibold">Subs added per week, by source</h2>
+      <div class="fk-chart"><canvas id="fk-chart-new-subs" aria-label="Subs added per week by source" role="img"></canvas></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-xl-7">
+    <div class="card shadow-sm border-0 h-100"><div class="card-body">
+      <h2 class="h6 fw-semibold">Most killed items</h2>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr>
+          <th scope="col">Medline Item</th><th scope="col">Description</th><th scope="col" class="text-end">Lines</th>
+          <th scope="col" class="text-end">Killed</th><th scope="col">Subs</th><th scope="col">Ordering</th>
+        </tr></thead>
+        <tbody id="fk-dash-top"></tbody>
+      </table></div>
+    </div></div>
+  </div>
+  <div class="col-12 col-xl-5">
+    <div class="card shadow-sm border-0 h-100"><div class="card-body">
+      <h2 class="h6 fw-semibold">Rejected subs, by vendor <span class="small text-muted fw-normal">(all subs)</span></h2>
+      <div id="fk-dash-rejected"></div>
+    </div></div>
+  </div>
+</div>
+
+<script id="fk-config" type="application/json">{{ config|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/fillkill-dashboard.js') }}"></script>
+{% endblock %}

@@ -1276,3 +1276,4 @@ tbody td.col-repl { background: #f5fbff; }
 .fk-main .fk-desc { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fk-panel.offcanvas-end { width: min(44rem, 100vw); }
 .fk-timeline li { line-height: 1.35; }
+.fk-chart { position: relative; height: 16rem; }

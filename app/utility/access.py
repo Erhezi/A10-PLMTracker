@@ -32,9 +32,9 @@ PLM_VIEWER = "viewer"
 PLM_EDITOR = "editor"
 
 ROLE_VIEWER = "viewer"                        # sees the module; held alone
-ROLE_SUB_FINDER = "sub_finder"                # enters subs
-ROLE_SUB_APPROVER = "sub_approver"            # sets sub status, picks subs to order
-ROLE_MATERIALS_MANAGER = "materials_manager"  # records orders; can also enter subs
+ROLE_SUB_FINDER = "sub_finder"                # enters subs (alone: kept for a future AI finder)
+ROLE_SUB_APPROVER = "sub_approver"            # sets sub status, picks subs, comments on subs
+ROLE_MATERIALS_MANAGER = "materials_manager"  # records orders, comments on orders
 
 
 @dataclass(frozen=True)
@@ -76,7 +76,7 @@ MODULES = {
         ),
         capabilities={
             "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
-            "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_MATERIALS_MANAGER}),
+            "add_sub": frozenset({ROLE_SUB_FINDER}),
             "review": frozenset({ROLE_SUB_APPROVER}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
         },

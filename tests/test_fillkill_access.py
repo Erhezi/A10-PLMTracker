@@ -25,7 +25,8 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
     (("viewer",), {"view"}),
     (("sub_finder",), {"view", "add_sub"}),
     (("sub_approver",), {"view", "review"}),
-    (("materials_manager",), {"view", "add_sub", "order"}),
+    (("materials_manager",), {"view", "order"}),  # adding subs is Sub Finder's (design 9.7)
+    (("sub_finder", "materials_manager"), {"view", "add_sub", "order"}),
     (("sub_finder", "sub_approver"), {"view", "add_sub", "review"}),
     ((), set()),
 ])

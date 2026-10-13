@@ -1,7 +1,7 @@
 -- Checks for the app's access tables and the Fill/Kill database objects.
 -- Read-only; run after every script run. Every row should say PASS, except
--- 'users.user_role is admin or user', which says PENDING until 04 runs after the deploy.
--- Deploy #2 checks are added when its scripts are written.
+-- 'users.user_role is admin or user', which says PENDING until 04 runs after the deploy, and
+-- the kill-line checks (last result set), which say FAIL until 10 and 11 have run.
 
 SET NOCOUNT ON;
 
@@ -97,3 +97,25 @@ FROM [PLM].[users] AS u
 LEFT JOIN [PLM].[UserModuleRole] AS r ON r.[user_id] = u.[user_id]
 GROUP BY u.[email], u.[is_active], u.[user_role]
 ORDER BY u.[email];
+
+-- Kill lines (10, 11) ------------------------------------------------------------
+
+SELECT 'view FillKill.vw_MedlineFillKill exists' AS [check],
+       CASE WHEN OBJECT_ID(N'[FillKill].[vw_MedlineFillKill]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
+UNION ALL
+-- They must read kill lines through vw_MedlineFillKill, not Medline's table directly.
+SELECT 'item and quantity views read FillKill.vw_MedlineFillKill',
+       CASE WHEN (
+           SELECT COUNT(*) FROM sys.sql_modules
+           WHERE object_id IN (OBJECT_ID(N'[FillKill].[vw_MedlineFillKillItemCollection]'),
+                               OBJECT_ID(N'[FillKill].[vw_MedlineFillKillQtyAgg]'))
+             AND CHARINDEX('vw_MedlineFillKill]', definition) > 0
+             AND CHARINDEX('MedlineFillKill].[MedlineFillKill]', definition) = 0
+             AND CHARINDEX('MedlineFillKill.MedlineFillKill', definition) = 0
+       ) = 2 THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+-- Not a pass/fail: test copies under 'test site'. Empty the table at go-live.
+SELECT 'test lines in FillKill.TestFillKillLine (empty at go-live)',
+       CONCAT('INFO: ', ISNULL((SELECT SUM(p.[rows]) FROM sys.partitions AS p
+                                WHERE p.[object_id] = OBJECT_ID(N'[FillKill].[TestFillKillLine]')
+                                  AND p.[index_id] IN (0, 1)), 0), ' line(s)');

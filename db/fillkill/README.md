@@ -75,6 +75,23 @@ the previous release reads. Leave the new tables and column in place.
 from its models (`db.create_all`). That is how `UserModuleRole` first appeared with system-generated
 constraint names, which `02` now repairs.
 
+## Kill lines and test data (no app deploy needed)
+
+Run any time, in order. Both are safe to re-run.
+
+1. `10_kill_lines.sql`:
+   - creates `FillKill.vw_MedlineFillKill`, the one view the module reads kill lines from. It
+     combines Medline's table in `SCSFileIngestor` with `FillKill.TestFillKillLine`, and adds an
+     `Is Test` column.
+   - loads test copies: for each of the latest 3 order dates, the last 10 lines of the day, under
+     Sold-To `test site` and with `TEST` in front of the Sales Order #. Re-running reloads them.
+2. `11_item_qty_views.sql`: `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`,
+   copied from O2 with one change: they read `vw_MedlineFillKill` instead of Medline's table, so
+   the test site shows up. If you change either view on O2, change it here too.
+3. `09_verify.sql`: the last result set checks both, and counts the test lines.
+
+**At go-live:** `TRUNCATE TABLE [FillKill].[TestFillKillLine];`
+
 ## Deploy #2
 
 Scripts are written once the design's open questions (§9) are answered; see plan v2.

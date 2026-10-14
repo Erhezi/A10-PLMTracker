@@ -32,8 +32,7 @@ ITEM_FIELDS = {
     "mfr_item": "Mfr. Item #",
     "item_qoe": "Item.UOMConversion",
     "vendor_item_qoe": "VendorItem.UOMConversion",
-    "infor_description": "Item.Description",                # the Infor item's, for reference
-    "long_description": "Item.LongDescription",
+    "long_description": "Item.LongDescription",            # the Infor item's, spelled out
     "infor_active": "Item.Active",
     "commodity_code": "CommodityCode",
     "commodity_description": "CommodityCode.Description",

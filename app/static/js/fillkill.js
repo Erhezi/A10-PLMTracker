@@ -244,14 +244,19 @@
   }
 
   // Every word must appear in one of these (commodity code and its description are searchable
-  // but not shown in the table).
-  const SEARCHED = ['customer_item', 'medline_item', 'description', 'infor_item', 'infor_description',
+  // but not shown in the table). Item numbers also match without their dashes, spaces, dots and
+  // slashes, so "BD930" finds B-D930299Z.
+  const SEARCHED = ['customer_item', 'medline_item', 'description', 'infor_item', 'long_description',
     'commodity_code', 'commodity_description'];
+  const ITEM_NUMBERS = ['customer_item', 'medline_item', 'infor_item'];
+  const compact = (value) => String(value || '').toLowerCase().replace(/[\s\-./]/g, '');
 
   function matchesSearch(row) {
     if (!state.search) return true;
-    const text = SEARCHED.map((key) => String(row[key] || '').toLowerCase()).join(' ');  // a word has no spaces, so it can't match across two fields
-    return state.search.split(/\s+/).every((word) => text.includes(word));
+    // Joined with spaces: a word has none, so it can't match across two fields.
+    const text = SEARCHED.map((key) => String(row[key] || '').toLowerCase()).join(' ');
+    const numbers = ITEM_NUMBERS.map((key) => compact(row[key])).join(' ');
+    return state.search.split(/\s+/).every((word) => text.includes(word) || (compact(word) && numbers.includes(compact(word))));
   }
 
   function subsStatusCell(row) {
@@ -294,8 +299,8 @@
       const varies = row.varies.length ? ` <span class="badge text-bg-light border" title="Medline's lines or Infor disagree on: ${esc(row.varies.join(', '))}">varies</span>` : '';
       const inactive = row.infor_active && row.infor_active !== 'Yes'
         ? ' <span class="badge text-bg-secondary" title="The Infor item is not active">Inactive</span>' : '';
-      const inforDesc = row.infor_description
-        ? `<div class="text-truncate small text-muted" title="Infor: ${esc(row.infor_description)}">${esc(row.infor_description)}</div>` : '';
+      const inforDesc = row.long_description
+        ? `<div class="text-truncate small text-muted" title="Infor: ${esc(row.long_description)}">${esc(row.long_description)}</div>` : '';
       return `<tr>
         <td><button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(row.medline_item)}">${esc(row.customer_item || '—')}</button>${flag}${inactive}${infor}</td>
         <td><button type="button" class="btn btn-link p-0" data-open="${esc(row.medline_item)}">${esc(row.medline_item)}</button>${varies}</td>
@@ -380,7 +385,6 @@
     const rows = [
       ['Infor item', [d.infor_item || d.customer_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : '']
         .filter(Boolean).join(' · ')],
-      ['Infor description', d.infor_description],
       ['Long description', d.long_description],
       ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
       ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],

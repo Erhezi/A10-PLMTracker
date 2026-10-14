@@ -255,3 +255,12 @@ def test_contract_search_for_sub_finders(app, viewer, finder_approver):
     assert [r["vendor_item"] for r in data["lines"]] == ["88885"]
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="glove 7.5%")
     assert data["lines"] == []
+
+
+def test_library_search_ignores_dashes_spaces_dots_and_slashes(app, viewer, finder_approver):
+    post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor": "Owens", "vendor_part": "OM-12.5/A"})
+    for q in ("om125a", "OM-12.5", "om 12", "mds2585"):
+        _, data = get(viewer, "/fillkill/api/subs", q=q)
+        assert [s["vendor_part"] for s in data["subs"]] == ["OM-12.5/A"], q
+    _, data = get(viewer, "/fillkill/api/subs", q="om13")
+    assert data["subs"] == []

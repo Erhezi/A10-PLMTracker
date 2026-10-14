@@ -110,7 +110,8 @@ def test_infor_details_are_carried_for_the_panel_and_search():
         "Medline Item": "MDS2585H", "Item.Description": "GLOVE EXM MED", "Item.LongDescription": "GLOVE EXAM MEDIUM",
         "Item.Active": "Yes", "CommodityCode": "4213-22-03", "CommodityCode.Description": "MEDICAL EXAM GLOVES",
     }])["MDS2585H"]
-    assert (details["infor_description"], details["long_description"], details["infor_active"],
+    assert (details["long_description"], details["infor_active"],
             details["commodity_code"], details["commodity_description"]) == (
-        "GLOVE EXM MED", "GLOVE EXAM MEDIUM", "Yes", "4213-22-03", "MEDICAL EXAM GLOVES",
+        "GLOVE EXAM MEDIUM", "Yes", "4213-22-03", "MEDICAL EXAM GLOVES",
     )
+    assert "infor_description" not in details  # Infor's short description isn't used

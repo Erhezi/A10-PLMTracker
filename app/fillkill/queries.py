@@ -284,6 +284,23 @@ def history(entity: str, entity_id: int) -> list[dict]:
 
 # --- the tables under the main table -----------------------------------------------------
 
+PUNCTUATION = ("-", " ", ".", "/")
+
+
+def _compact(text: str) -> str:
+    text = (text or "").strip().lower()
+    for ch in PUNCTUATION:
+        text = text.replace(ch, "")
+    return text
+
+
+def _compact_column(column):
+    expression = func.lower(column)
+    for ch in PUNCTUATION:
+        expression = func.replace(expression, ch, "")
+    return expression
+
+
 def subs_library(*, status: str | None = None, source: str | None = None, q: str | None = None) -> list[dict]:
     """Every sub across all items (the reference library), newest change first."""
     query = select(Sub)
@@ -293,10 +310,15 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
         query = query.where(Sub.source == source)
     if q:
         like = f"%{q.strip().lower()}%"
-        query = query.where(or_(
+        conditions = [
             func.lower(Sub.medline_item).like(like), func.lower(Sub.vendor).like(like),
             func.lower(Sub.vendor_part).like(like), func.lower(func.coalesce(Sub.description, "")).like(like),
-        ))
+        ]
+        bare = _compact(q)
+        if bare:  # item numbers also match without dashes, spaces, dots and slashes ("bd930")
+            conditions += [_compact_column(Sub.medline_item).like(f"%{bare}%"),
+                           _compact_column(Sub.vendor_part).like(f"%{bare}%")]
+        query = query.where(or_(*conditions))
     subs = db.session.execute(
         query.order_by(Sub.update_dt.desc(), Sub.sub_id.desc()).limit(LIBRARY_LIMIT)
     ).scalars().all()

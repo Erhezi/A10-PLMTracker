@@ -90,8 +90,9 @@ Run any time, in order. Both are safe to re-run.
        JLCSFTP22A5SH (EA) for 111848, with a different reason; J-J2015 (CA) and J-J2015Z (BX)
        beside J-J2015H (EA) for 101494.
      - **Customer item that isn't the Infor item** (hand-made, 9/30): DYNJAA04 under customer item
-       1296-DYNJAA04 (Infor's contract-only number; no Infor item), and B-D930299H under itself
-       (Infor item 100091, found by manufacturer part 930299).
+       1296-DYNJAA04 (Infor's contract-only number; no Infor item); B-D930299H under itself
+       (Infor item 100091, found by manufacturer part 930299); and B-D367344 under 198765, a number
+       not in Infor (Infor item 102205, by vendor item).
 
      Re-running deletes and reloads them all.
 2. `11_item_qty_views.sql`: `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`,

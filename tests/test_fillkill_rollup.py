@@ -165,25 +165,33 @@ def test_one_row_per_infor_item_with_its_packagings_added_up_in_eaches():
 
 def test_customer_item_that_isnt_the_infor_item_is_flagged():
     rows = rollup.build_main_rows(
-        qty_rows=[qty("B-D930299H", "EA", 30, 15), qty("B-D930299Z", "BX", 21, 0), qty("DYNJAA04", "CA", 5, 2)],
+        qty_rows=[qty("B-D930299H", "EA", 30, 15), qty("B-D930299Z", "BX", 21, 0), qty("DYNJAA04", "CA", 5, 2),
+                  qty("B-D367344", "CA", 3, 0)],
         item_rows=[
             {"Medline Item": "B-D930299H", "UM": "EA", "Customer Item #": "B-D930299H", "Infor Item": "100091",
              "Infor Item Match": "manufacturer part", "Infor Item Consistency": 0},
             {"Medline Item": "B-D930299Z", "UM": "BX", "Customer Item #": "100091", "Infor Item": "100091",
              "Infor Item Match": "vendor item", "Infor Item Consistency": 1},
             {"Medline Item": "DYNJAA04", "UM": "CA", "Customer Item #": "1296-DYNJAA04", "Infor Item Consistency": 0},
+            # A number, but not this item's: Medline's vendor item says 102205.
+            {"Medline Item": "B-D367344", "UM": "CA", "Customer Item #": "198765", "Infor Item": "102205",
+             "Infor Item Match": "vendor item", "Infor Item Consistency": 0, "Item.UOMConversion": 200},
         ],
         subs=[], orders=[], reasons={},
         family_rows=[{"Medline Item": "B-D930299H", "UM": "EA", "Infor Item": "100091"},
-                     {"Medline Item": "B-D930299Z", "UM": "BX", "Infor Item": "100091"}],
+                     {"Medline Item": "B-D930299Z", "UM": "BX", "Infor Item": "100091"},
+                     {"Medline Item": "B-D367344", "UM": "CA", "Infor Item": "102205"}],
     )
     assert [(r["key"], r["medline_items"]) for r in rows] == [
-        ("100091", ["B-D930299H", "B-D930299Z"]), ("M:DYNJAA04", ["DYNJAA04"]),
+        ("100091", ["B-D930299H", "B-D930299Z"]), ("102205", ["B-D367344"]), ("M:DYNJAA04", ["DYNJAA04"]),
     ]
-    applicator, gas_line = rows
+    applicator, blood_set, gas_line = rows
     assert [(p["medline_item"], p["customer_item"], p["consistent"], p["infor_match"]) for p in applicator["packagings"]] == [
         ("B-D930299H", "B-D930299H", False, "manufacturer part"), ("B-D930299Z", "100091", True, "vendor item"),
     ]
+    [blood_pack] = blood_set["packagings"]
+    assert (blood_pack["customer_item"], blood_pack["consistent"], blood_pack["infor_match"]) == ("198765", False, "vendor item")
+    assert blood_set["quantities_each"]["killed"] == 600.0  # 3 CA of 200
     assert gas_line["infor_item"] is None and gas_line["packagings"][0]["consistent"] is False
     assert gas_line["customer_items"] == ["1296-DYNJAA04"]
 

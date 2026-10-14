@@ -82,6 +82,8 @@ DECLARE @customer_dynjaa04 VARCHAR(300) = 'Customer item is not an Infor item: 1
 DECLARE @customer_bd930299h VARCHAR(300) = 'Customer item is the Medline item itself (B-D930299H). It isn''t a '
     + 'Medline vendor item in Infor; manufacturer part 930299 finds Infor item 100091 (B-D930299 CA, '
     + 'B-D930299Z BX).';
+DECLARE @customer_bd367344 VARCHAR(300) = 'Customer item is a number, but not the Infor item: 198765 isn''t in '
+    + 'Infor''s item master, while Medline vendor item B-D367344 is Infor item 102205 (CA = 200 EA).';
 
 BEGIN TRANSACTION;
 
@@ -146,8 +148,8 @@ CROSS APPLY (
 
 PRINT CONCAT('Test lines loaded (many Medline items to one Infor item): ', @@ROWCOUNT);
 
--- Hand-made lines whose customer item isn't an Infor item number. Everything Medline would send is
--- given here; ship-to, plant and buyer copy the latest real line.
+-- Hand-made lines whose customer item isn't the Infor item. Everything Medline would send is given
+-- here (no PO for B-D367344); ship-to, plant and buyer copy the latest real line.
 INSERT INTO [FillKill].[TestFillKillLine] (
     [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
     [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
@@ -158,17 +160,20 @@ INSERT INTO [FillKill].[TestFillKillLine] (
 SELECT 'test site', 'test site', t.[Ship-To], t.[Ship-To Name], t.[Ship-To Name 2], v.[order_date], '12:30:00',
        v.[po], v.[po_line], v.[sales_order], '000010', v.[item], v.[description], v.[customer_item],
        v.[customer_item], v.[mfr_item], v.[manufacturer], v.[qty], v.[um], v.[filled], t.[Plant],
-       t.[Buyer Name], 'Allocation limit has been reached', v.[po], CAST(v.[po_line] AS INT),
+       t.[Buyer Name], v.[comment], v.[po], CAST(v.[po_line] AS INT),
        'hand-made test line (10_kill_lines.sql)', GETDATE(), GETDATE(), v.[purpose]
 FROM (VALUES
     ('TEST-DYNJAA04-0930',  CAST('2026-09-30' AS DATE), 'DYNJAA04',   '1296-DYNJAA04',
      'LINE GAS SMPL M TO M LL CNCT 10FT .06MM LF', 'DYNJAA04', 'MEDLINE', '2400134117', '1', 'CA', 5, 2,
-     @customer_dynjaa04),
+     'Allocation limit has been reached', @customer_dynjaa04),
     ('TEST-BD930299H-0930', CAST('2026-09-30' AS DATE), 'B-D930299H', 'B-D930299H',
      'Skin Prep Swabs: ChloraPrep FREPP Applicator, Clear, with St', '930299', 'BD', '2624108620', '27', 'EA', 30, 15,
-     @customer_bd930299h)
+     'Allocation limit has been reached', @customer_bd930299h),
+    ('TEST-BD367344-0930',  CAST('2026-09-30' AS DATE), 'B-D367344',  '198765',
+     'MBO-SET,BLOOD COLL,21G X .75",VACUTAINER', '367344', 'BD', NULL, NULL, 'CA', 3, 0,
+     'MBO - ERD is 11/30/2026', @customer_bd367344)
 ) AS v ([sales_order], [order_date], [item], [customer_item], [description], [mfr_item], [manufacturer], [po],
-        [po_line], [um], [qty], [filled], [purpose])
+        [po_line], [um], [qty], [filled], [comment], [purpose])
 CROSS APPLY (
     SELECT TOP (1) m.*
     FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m

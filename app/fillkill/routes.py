@@ -167,7 +167,6 @@ def api_main():
     return ok({
         "scope": {"start": scope.start, "end": scope.end, "sites": scope.sites},
         "rows": rows,
-        "groups": rollup.infor_groups(rows),
         "counts": rollup.needs_counts(rows),
         "data": data_as_of(),
         "pbo_added": added,
@@ -181,11 +180,7 @@ def api_item():
     medline_item = (request.args.get("item") or "").strip()
     if not medline_item:
         raise RuleError("Which item?")
-    scope = scope_from_request()
-    panel = queries.item_panel(medline_item, scope)
-    panel["details"] = rollup.merge_item_details(panel.pop("item_rows")).get(medline_item, {})
-    panel["latest_reason"] = queries.latest_reasons(scope, medline_item).get(medline_item)
-    return ok(panel)
+    return ok(queries.item_panel(medline_item, scope_from_request()))
 
 
 @bp.get("/api/history/<entity>/<int:entity_id>")

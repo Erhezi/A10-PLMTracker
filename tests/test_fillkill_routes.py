@@ -117,28 +117,33 @@ def test_a_user_without_a_fillkill_role_is_turned_away(app):
 
 # --- the main table ----------------------------------------------------------------------
 
-def test_main_sums_per_item_and_uom_over_the_dates_and_sites(viewer):
+def test_main_has_one_row_per_infor_item_summed_over_the_dates_and_sites(viewer):
     status, data = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     assert status == 200
-    rows = {row["medline_item"]: row for row in data["rows"]}
-    assert rows["DYND70294BH"]["quantities"] == [{"uom": "EA", "ordered": 30, "filled": 0, "killed": 30, "each": None}]
-    assert rows["DYND70294BH"]["lines"] == 6
-    assert rows["DYND70294BH"]["latest_reason"]["reason"] == "MBO"  # 11:35 at White Plains beats 10:00 at the test site
-    assert [q["uom"] for q in rows["MDS2585H"]["quantities"]] == ["BX", "CS"]  # never added across UOMs
-    assert rows["MDS2585H"]["commodity_description"] == "MEDICAL EXAM OR NON SURGICAL PROCEDURE GLOVES"
-    assert [r["customer_item"] for r in data["rows"]] == ["100339", "108176"]  # sorted by customer item
-    assert rows["MDS2585H"]["infor_consistent"] is False
+    assert [r["infor_item"] for r in data["rows"]] == ["100339", "999999"]  # sorted by Infor item
+    rows = {row["medline_items"][0]: row for row in data["rows"]}
+    cup, glove = rows["DYND70294BH"], rows["MDS2585H"]
+    [cup_pack] = cup["packagings"]
+    assert cup_pack["quantities"] == [{"uom": "EA", "ordered": 30, "filled": 0, "killed": 30, "each": None}]
+    assert cup["lines"] == 6
+    assert cup["latest_reason"]["reason"] == "MBO"  # 11:35 at White Plains beats 10:00 at the test site
+    [glove_pack] = glove["packagings"]
+    assert [q["uom"] for q in glove_pack["quantities"]] == ["BX", "CS"]  # never added across UOMs
+    assert glove["commodity_description"] == "MEDICAL EXAM OR NON SURGICAL PROCEDURE GLOVES"
+    # Medline's customer item (108176) isn't the Infor item (999999): flagged beside the Medline item.
+    assert (glove_pack["customer_item"], glove_pack["consistent"]) == ("108176", False)
+    assert cup_pack["consistent"] is True
     assert data["counts"]["needs_subs"] == 2
 
 
 def test_main_filters_by_site_and_defaults_to_the_latest_date(viewer):
     _, data = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30", sites=TEST)
-    assert [(r["medline_item"], r["lines"]) for r in data["rows"]] == [("DYND70294BH", 1)]
+    assert [(r["medline_items"], r["lines"]) for r in data["rows"]] == [(["DYND70294BH"], 1)]
     assert data["rows"][0]["latest_reason"]["reason"] == "OUT_OF_STOCK"
 
     _, data = get(viewer, "/fillkill/api/main")
     assert data["scope"]["start"] == data["scope"]["end"] == "2026-09-30"
-    assert [r["medline_item"] for r in data["rows"]] == ["DYND70294BH"]
+    assert [r["medline_items"] for r in data["rows"]] == [["DYND70294BH"]]
 
 
 def test_bad_dates_are_refused(viewer):
@@ -158,7 +163,7 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
     assert data["sub"]["status"] == "pending_review"
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
-    row = next(r for r in main["rows"] if r["medline_item"] == "DYND70294BH")
+    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert row["needs"] == ["needs_review"]
 
     assert post(finder_approver, f"/fillkill/api/subs/{sub_id}/status",
@@ -172,16 +177,18 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
     assert (data["order"]["uom"], data["order"]["qoe"], data["order"]["vendor"]) == ("BX", 100, "Cardinal Health")
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
-    row = next(r for r in main["rows"] if r["medline_item"] == "DYND70294BH")
+    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert (row["ordering_status"], row["needs"]) == ("ordered", ["ordered"])
     assert [p["vendor_part"] for p in row["picks"]] == ["88885"]
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-29")
-    row = next(r for r in main["rows"] if r["medline_item"] == "DYND70294BH")
+    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert row["ordering_status"] == "no order"  # ordered on 9/30, outside these dates (S4)
 
     _, panel = get(viewer, "/fillkill/api/item", item="DYND70294BH", start="2026-09-28", end="2026-09-30")
-    assert [s["latest_comment"]["comment"] for s in panel["subs"]] == ["Same cup"]
+    assert panel["infor_item"] == "100339"
+    assert [p["medline_item"] for p in panel["packagings"]] == ["DYND70294BH"]
+    assert [s["latest_comment"]["comment"] for p in panel["packagings"] for s in p["subs"]] == ["Same cup"]
     assert [h["action"] for h in panel["pick_history"]] == ["pick", "status", "created"]
     assert len(panel["orders"]) == 1 and len(panel["lines"]) == 3
     assert [l["test_purpose"] for l in panel["lines"] if l["is_test"]] == ["Sites: a real line copied under a second site."]
@@ -268,32 +275,44 @@ def test_library_search_ignores_dashes_spaces_dots_and_slashes(app, viewer, find
     assert data["subs"] == []
 
 
-def test_other_packagings_of_one_infor_item(app, viewer, finder_approver):
-    # MDS2585HX: another Medline item (case pack) of the same Infor item, 108176, as MDS2585H.
+def test_packagings_of_one_infor_item_share_a_row_and_see_each_others_subs(app, viewer, finder_approver):
+    # MDS2585HX (case) and MDS2585HZ: other Medline items of Infor item 999999, like MDS2585H.
+    # MDS2585HZ was killed only on 9/20, outside the dates below.
     add_view_rows(app, "vw_MedlineFillKillItemCollection", [
-        {"Medline Item": "MDS2585HX", "UM": "CS", "Customer Item #": "108176", "Item Description": "GLOVE CASE",
-         "Item.UOMConversion": 1000},
+        {"Medline Item": "MDS2585HX", "UM": "CS", "Customer Item #": "108176", "Infor Item": "999999",
+         "Item Description": "GLOVE CASE", "Item.UOMConversion": 1000},
+        {"Medline Item": "MDS2585HZ", "UM": "EA", "Customer Item #": "999999", "Infor Item": "999999",
+         "Item Description": "GLOVE EACH", "Item.UOMConversion": 1},
     ])
-    add_view_rows(app, "vw_MedlineFillKillQtyAgg", [qty(29, WP, "MDS2585HX", "CS", 1, 0, 1)])
+    add_view_rows(app, "vw_MedlineFillKillQtyAgg", [qty(29, WP, "MDS2585HX", "CS", 1, 0, 1),
+                                                    qty(20, WP, "MDS2585HZ", "EA", 9, 0, 1)])
 
     _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor": "Cardinal", "vendor_part": "88885"})
     post(finder_approver, f"/fillkill/api/subs/{data['sub']['sub_id']}/status", {"status": "approved"})
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585HZ", "vendor": "Owens", "vendor_part": "OM-9"})
+    post(finder_approver, f"/fillkill/api/subs/{data['sub']['sub_id']}/status", {"status": "approved"})
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
-    rows = {r["medline_item"]: r for r in main["rows"]}
-    assert [s["vendor_part"] for s in rows["MDS2585HX"]["approved_other_packagings"]] == ["88885"]
-    assert rows["MDS2585H"]["approved_other_packagings"] == []
-    assert main["groups"]["108176"]["medline_items"] == ["MDS2585H", "MDS2585HX"]
+    glove = next(r for r in main["rows"] if r["infor_item"] == "999999")
+    assert glove["medline_items"] == ["MDS2585H", "MDS2585HX"]  # killed in the range; HZ isn't
+    assert glove["subs_status"]["approved"] == 1  # the one on MDS2585H
+    # Approved on MDS2585HZ, a packaging not killed in these dates: signalled.
+    assert [(a["medline_item"], a["vendor_part"]) for a in glove["approved_other_packagings"]] == [("MDS2585HZ", "OM-9")]
 
     _, panel = get(viewer, "/fillkill/api/item", item="MDS2585HX", start="2026-09-28", end="2026-09-30")
-    assert panel["siblings"] == [{"medline_item": "MDS2585H", "um": "BX"}]  # its UOM in the item view
-    [other] = panel["other_packaging_subs"]
-    assert (other["vendor_part"], other["status"], other["approved_by"]) == ("88885", "approved", "nurse@example.org")
+    assert panel["infor_item"] == "999999"
+    packs = {p["medline_item"]: p for p in panel["packagings"]}
+    assert [p["medline_item"] for p in panel["packagings"]] == ["MDS2585H", "MDS2585HX", "MDS2585HZ"]  # killed first
+    assert (packs["MDS2585HZ"]["killed_in_range"], packs["MDS2585HX"]["killed_in_range"]) == (False, True)
+    assert [(o["vendor_part"], o["status"], o["approved_by"]) for o in packs["MDS2585HX"]["other_subs"]] == [
+        ("88885", "approved", "nurse@example.org"), ("OM-9", "approved", "nurse@example.org"),
+    ]
 
-    # Added here too: it starts pending review, flagged as approved on MDS2585H.
+    # Added for MDS2585HX too: it starts pending review, flagged as approved on MDS2585H.
     post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585HX", "vendor": "Cardinal", "vendor_part": "88885"})
-    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585HX", start="2026-09-28", end="2026-09-30")
-    [here] = panel["subs"]
+    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-28", end="2026-09-30")
+    packs = {p["medline_item"]: p for p in panel["packagings"]}
+    [here] = packs["MDS2585HX"]["subs"]
     assert here["status"] == "pending_review"
     assert [o["medline_item"] for o in here["approved_elsewhere"]] == ["MDS2585H"]
-    assert panel["other_packaging_subs"] == []
+    assert [o["vendor_part"] for o in packs["MDS2585HX"]["other_subs"]] == ["OM-9"]

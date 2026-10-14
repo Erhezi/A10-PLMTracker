@@ -89,11 +89,16 @@ Run any time, in order. Both are safe to re-run.
      - **Many Medline items to one Infor item** (hand-made, 9/28-9/30): JLCSFTP22A5S (BX) beside
        JLCSFTP22A5SH (EA) for 111848, with a different reason; J-J2015 (CA) and J-J2015Z (BX)
        beside J-J2015H (EA) for 101494.
+     - **Customer item that isn't the Infor item** (hand-made, 9/30): DYNJAA04 under customer item
+       1296-DYNJAA04 (Infor's contract-only number; no Infor item), and B-D930299H under itself
+       (Infor item 100091, found by manufacturer part 930299).
 
      Re-running deletes and reloads them all.
 2. `11_item_qty_views.sql`: `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`,
-   copied from O2 with one change: they read `vw_MedlineFillKill` instead of Medline's table, so
-   the test site shows up. If you change either view on O2, change it here too.
+   copied from O2 with two changes: they read `vw_MedlineFillKill` instead of Medline's table, so
+   the test site shows up; and a Medline item that isn't an Infor vendor item gets its
+   `[Infor Item]` from `MDM_ITEM` by manufacturer part, when exactly one active item has it
+   (`[Infor Item Match]` says which). If you change either view on O2, change it here too.
 3. `09_verify.sql`: the last result set checks both, and counts the test lines.
 
 **At go-live:** `TRUNCATE TABLE [FillKill].[TestFillKillLine];`

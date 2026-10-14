@@ -130,11 +130,16 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fk-dash-top').innerHTML = rows.length ? rows.map((row) => {
       const subs = Object.entries(row.subs_status).filter(([, n]) => n)
         .map(([s, n]) => `<span class="badge" style="background:${STATUS_COLOR[s]}">${esc(statusLabels[s])} ${n}</span>`).join(' ');
+      // Several packagings: their kills added up in eaches, when Infor converts every UOM.
+      const killed = row.packagings.length > 1 && row.quantities_each
+        ? `${Number(row.quantities_each.killed).toLocaleString()} EA`
+        : row.packagings.flatMap((p) => p.quantities).map((q) => `${q.killed} ${esc(q.uom)}`).join('<br>');
       return `<tr>
-        <td><a href="${esc(config.api.main)}" class="fw-semibold">${esc(row.medline_item)}</a></td>
+        <td><a href="${esc(config.api.main)}" class="fw-semibold">${esc(row.infor_item || row.medline_items[0])}</a>
+          <div class="small text-muted">${row.infor_item ? esc(row.medline_items.join(', ')) : 'Not in Infor'}</div></td>
         <td class="small">${esc(row.description)}</td>
         <td class="text-end">${row.lines}</td>
-        <td class="text-end small">${row.quantities.map((q) => `${q.killed} ${esc(q.uom)}`).join('<br>')}</td>
+        <td class="text-end small">${killed}</td>
         <td>${subs || '<span class="small text-muted">No subs</span>'}</td>
         <td>${row.ordering_status === 'ordered' ? '<span class="badge text-bg-success">Ordered</span>' : '<span class="badge text-bg-light border">No order</span>'}</td>
       </tr>`;

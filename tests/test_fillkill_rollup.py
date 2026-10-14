@@ -65,7 +65,7 @@ def test_needs_flags(counts, has_pick, ordered, expected):
     assert rollup.needs_flags(counts, has_pick=has_pick, ordered=ordered) == expected
 
 
-def test_main_rows():
+def test_main_rows_without_infor_items_stand_alone():
     rows = rollup.build_main_rows(
         qty_rows=[qty("A", "BX", 10, 0, lines=3), qty("B", "EA", 4, 0, lines=1), qty("C", "EA", 1, 0, lines=3)],
         item_rows=[{"Medline Item": "A", "Item Description": "GLOVE", "Infor Item Consistency": 1}],
@@ -74,9 +74,13 @@ def test_main_rows():
         orders=[{"medline_item": "A", "order_id": 9}],
         reasons={"A": {"comment": "MBO - ERD is 11/30/2026", "reason": "MBO", "reason_date": "2026-11-30"}},
     )
-    assert [row["medline_item"] for row in rows] == ["A", "B", "C"]  # no customer items: by Medline item
+    # No Infor item for any of them: each is its own row, by Medline item.
+    assert [(row["key"], row["infor_item"], row["medline_items"]) for row in rows] == [
+        ("M:A", None, ["A"]), ("M:B", None, ["B"]), ("M:C", None, ["C"]),
+    ]
     a, b, c = rows
-    assert a["description"] == "GLOVE" and a["infor_consistent"] is True
+    assert a["description"] == "GLOVE"
+    assert a["packagings"][0]["consistent"] is False  # no Infor item: flagged
     assert a["subs_status"] == {"approved": 1, "hold": 0, "pending_review": 0, "rejected": 1}
     assert [p["sub_id"] for p in a["picks"]] == [1]
     assert (a["ordering_status"], a["orders_in_range"], a["needs"]) == ("ordered", 1, ["ordered"])
@@ -86,22 +90,22 @@ def test_main_rows():
     assert rollup.needs_counts(rows) == {
         "all": 3, "needs_subs": 1, "needs_review": 1, "needs_pick": 0, "needs_order": 0, "ordered": 1,
     }
-    assert [r["medline_item"] for r in rollup.most_killed(rows, 2)] == ["A", "C"]  # 3 lines each; A killed more
+    assert [r["key"] for r in rollup.most_killed(rows, 2)] == ["M:A", "M:C"]  # 3 lines each; A killed more
 
 
-def test_rows_sort_by_customer_item_then_medline_item_then_description():
+def test_rows_sort_by_infor_item_then_medline_item_then_description():
     rows = rollup.build_main_rows(
         qty_rows=[qty("M3", "EA", 1, 0, lines=9), qty("M1", "EA", 1, 0), qty("M2", "EA", 1, 0), qty("M0", "EA", 1, 0)],
         item_rows=[
-            {"Medline Item": "M1", "Customer Item #": "200000", "Item Description": "B"},
-            {"Medline Item": "M2", "Customer Item #": "100000", "Item Description": "Z"},
-            {"Medline Item": "M3", "Customer Item #": "100000", "Item Description": "A"},
-            # M0 has no customer item: last
+            {"Medline Item": "M1", "Infor Item": "200000", "Item Description": "B"},
+            {"Medline Item": "M2", "Infor Item": "100000", "Item Description": "Z"},
+            {"Medline Item": "M3", "Infor Item": "300000", "Item Description": "A"},
+            # M0 has no Infor item: last
         ],
         subs=[], orders=[], reasons={},
     )
-    assert [(r["customer_item"], r["medline_item"]) for r in rows] == [
-        ("100000", "M2"), ("100000", "M3"), ("200000", "M1"), (None, "M0"),
+    assert [(r["infor_item"], r["medline_items"]) for r in rows] == [
+        ("100000", ["M2"]), ("200000", ["M1"]), ("300000", ["M3"]), (None, ["M0"]),
     ]
 
 
@@ -120,14 +124,16 @@ def test_infor_details_are_carried_for_the_panel_and_search():
 # --- one Infor item, several Medline items (other packagings) --------------------------------
 
 FAMILY = [
-    {"Medline Item": "JLC-EA", "UM": "EA", "Customer Item #": "111848"},
-    {"Medline Item": "JLC-BX", "UM": "BX", "Customer Item #": "111848"},
-    {"Medline Item": "OTHER", "UM": "EA", "Customer Item #": "999999"},
+    {"Medline Item": "JLC-EA", "UM": "EA", "Customer Item #": "111848", "Infor Item": "111848"},
+    {"Medline Item": "JLC-BX", "UM": "BX", "Customer Item #": "111848", "Infor Item": "111848"},
+    {"Medline Item": "OTHER", "UM": "EA", "Customer Item #": "999999", "Infor Item": "999999"},
 ]
 ITEM_ROWS = [
-    {"Medline Item": "JLC-EA", "UM": "EA", "Customer Item #": "111848", "Item.UOMConversion": 1},
-    {"Medline Item": "JLC-BX", "UM": "BX", "Customer Item #": "111848", "Item.UOMConversion": 20},
-    {"Medline Item": "OTHER", "UM": "EA", "Customer Item #": "999999"},  # no Infor conversion
+    {"Medline Item": "JLC-EA", "UM": "EA", "Customer Item #": "111848", "Infor Item": "111848",
+     "Item.UOMConversion": 1, "Item.LongDescription": "CUFF BLOOD PRESSURE PEDIATRIC"},
+    {"Medline Item": "JLC-BX", "UM": "BX", "Customer Item #": "111848", "Infor Item": "111848",
+     "Item.UOMConversion": 20, "Item.LongDescription": "CUFF BLOOD PRESSURE PEDIATRIC"},
+    {"Medline Item": "OTHER", "UM": "EA", "Customer Item #": "999999", "Infor Item": "999999"},  # no conversion
 ]
 
 
@@ -135,23 +141,54 @@ def family_sub(sub_id, item, status, part="CARD-1", vendor="Cardinal"):
     return {**sub(sub_id, item, status), "vendor": vendor, "vendor_part": part}
 
 
-def test_infor_item_groups_add_packagings_up_in_eaches():
+def test_one_row_per_infor_item_with_its_packagings_added_up_in_eaches():
     rows = rollup.build_main_rows(
         qty_rows=[qty("JLC-EA", "EA", 186, 0, lines=9), qty("JLC-BX", "BX", 15, 0, lines=3), qty("OTHER", "EA", 4, 0)],
-        item_rows=ITEM_ROWS, subs=[], orders=[{"medline_item": "JLC-BX"}], reasons={}, family_rows=FAMILY,
+        item_rows=ITEM_ROWS, subs=[family_sub(1, "JLC-BX", "approved")], orders=[{"medline_item": "JLC-BX"}],
+        reasons={"JLC-EA": {"reason": "NONSTOCK_UOM", "order_date": "2026-09-30", "order_time": "08:55:26"},
+                 "JLC-BX": {"reason": "MBO", "order_date": "2026-09-30", "order_time": "12:00:00"}},
+        family_rows=FAMILY,
     )
-    assert [(r["medline_item"], r["quantities"][0]["each"]) for r in rows] == [
-        ("JLC-BX", 20.0), ("JLC-EA", 1.0), ("OTHER", None),
+    assert [(r["infor_item"], r["medline_items"]) for r in rows] == [
+        ("111848", ["JLC-BX", "JLC-EA"]), ("999999", ["OTHER"]),
     ]
-    groups = rollup.infor_groups(rows)
-    assert groups["111848"] == {
-        "customer_item": "111848", "medline_items": ["JLC-BX", "JLC-EA"], "lines": 12, "complete": True,
-        "ordered_each": 486.0, "killed_each": 486.0, "filled_each": 0.0, "ordered": True,
-    }
-    assert groups["999999"]["complete"] is False  # no conversion: eaches leave it out
+    cuff, other = rows
+    assert [(p["medline_item"], p["quantities"][0]["each"], p["latest_reason"]["reason"]) for p in cuff["packagings"]] == [
+        ("JLC-BX", 20.0, "MBO"), ("JLC-EA", 1.0, "NONSTOCK_UOM"),  # each packaging keeps its own reason
+    ]
+    assert cuff["quantities_each"] == {"ordered": 486.0, "killed": 486.0, "filled": 0.0}
+    assert cuff["lines"] == 12 and cuff["latest_reason"]["reason"] == "MBO"  # the later line
+    assert cuff["long_description"] == "CUFF BLOOD PRESSURE PEDIATRIC"
+    assert cuff["subs_status"]["approved"] == 1 and cuff["ordering_status"] == "ordered"  # either packaging counts
+    assert other["quantities_each"] is None  # no conversion: no eaches total
 
 
-def test_a_sub_approved_on_another_packaging_is_signalled():
+def test_customer_item_that_isnt_the_infor_item_is_flagged():
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("B-D930299H", "EA", 30, 15), qty("B-D930299Z", "BX", 21, 0), qty("DYNJAA04", "CA", 5, 2)],
+        item_rows=[
+            {"Medline Item": "B-D930299H", "UM": "EA", "Customer Item #": "B-D930299H", "Infor Item": "100091",
+             "Infor Item Match": "manufacturer part", "Infor Item Consistency": 0},
+            {"Medline Item": "B-D930299Z", "UM": "BX", "Customer Item #": "100091", "Infor Item": "100091",
+             "Infor Item Match": "vendor item", "Infor Item Consistency": 1},
+            {"Medline Item": "DYNJAA04", "UM": "CA", "Customer Item #": "1296-DYNJAA04", "Infor Item Consistency": 0},
+        ],
+        subs=[], orders=[], reasons={},
+        family_rows=[{"Medline Item": "B-D930299H", "UM": "EA", "Infor Item": "100091"},
+                     {"Medline Item": "B-D930299Z", "UM": "BX", "Infor Item": "100091"}],
+    )
+    assert [(r["key"], r["medline_items"]) for r in rows] == [
+        ("100091", ["B-D930299H", "B-D930299Z"]), ("M:DYNJAA04", ["DYNJAA04"]),
+    ]
+    applicator, gas_line = rows
+    assert [(p["medline_item"], p["customer_item"], p["consistent"], p["infor_match"]) for p in applicator["packagings"]] == [
+        ("B-D930299H", "B-D930299H", False, "manufacturer part"), ("B-D930299Z", "100091", True, "vendor item"),
+    ]
+    assert gas_line["infor_item"] is None and gas_line["packagings"][0]["consistent"] is False
+    assert gas_line["customer_items"] == ["1296-DYNJAA04"]
+
+
+def test_a_sub_approved_on_a_packaging_not_killed_in_the_range_is_signalled():
     rows = rollup.build_main_rows(
         qty_rows=[qty("JLC-BX", "BX", 15, 0)],  # only the BX packaging is killed in the range
         item_rows=ITEM_ROWS,

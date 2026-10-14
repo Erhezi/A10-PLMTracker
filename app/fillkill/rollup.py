@@ -1,15 +1,20 @@
 """Main-table assembly (plan v2 §5.2, design §5). Pure: works on rows the queries return.
 
+The main table has one row per **Infor item** (Materials Managers' choice, 2026-10-14). Its Medline
+items are its **packagings**, listed inside the row; a Medline item Infor can't place stands alone.
+Subs, picks and orders still belong to a Medline item.
+
 Inputs, all plain dicts:
-  qty_rows   vw_MedlineFillKillQtyAgg rows already filtered to the dates and sites:
-             medline_item, um, ordered, filled, killed, lines (any granularity)
-  item_rows  vw_MedlineFillKillItemCollection rows; an item can have several (risk, plan §9)
-  subs       the items' subs: sub_id, medline_item, vendor, vendor_part, status, is_picked, uom, qoe
-  orders     the items' non-voided orders with ordered_dt inside the range: medline_item, ...
-  reasons    {medline_item: {comment, reason, reason_date}}: the latest comment in the range
-  family_rows  item-view rows (Medline Item, UM, Customer Item #) of every Medline item sharing a
-             customer (Infor) item with an item in the range: its other packagings. ``subs`` then
-             also holds their subs.
+  qty_rows     vw_MedlineFillKillQtyAgg rows already filtered to the dates and sites:
+               medline_item, um, ordered, filled, killed, lines (any granularity)
+  item_rows    vw_MedlineFillKillItemCollection rows of the Medline items in the range
+  subs         subs of those Medline items and of their Infor items' other Medline items:
+               sub_id, medline_item, vendor, vendor_part, status, is_picked, uom, qoe
+  orders       non-voided orders with ordered_dt inside the range, for the same Medline items
+  reasons      {medline_item: {comment, reason, reason_date, order_date, order_time}}: the latest
+               comment in the range
+  family_rows  item-view rows (Medline Item, UM, Customer Item #, Infor Item) of every Medline item
+               Medline has killed under the Infor items in the range
 """
 
 from __future__ import annotations
@@ -26,11 +31,12 @@ NEEDS_LABELS = {
 }
 STATUS_ORDER = ("approved", "hold", "pending_review", "rejected")
 
-# Item-view columns the main table shows, and what they're called in a row.
+# Item-view columns, and what they're called here.
 ITEM_FIELDS = {
     "description": "Item Description",                      # Medline's, from the latest kill line
-    "customer_item": "Customer Item #",
-    "infor_item": "Infor Item",
+    "customer_item": "Customer Item #",                     # Medline's; not always an Infor item
+    "infor_item": "Infor Item",                             # Infor's, by vendor item or manufacturer part
+    "infor_match": "Infor Item Match",
     "manufacturer": "Manufacturer Name",
     "mfr_item": "Mfr. Item #",
     "item_qoe": "Item.UOMConversion",
@@ -40,6 +46,8 @@ ITEM_FIELDS = {
     "commodity_code": "CommodityCode",
     "commodity_description": "CommodityCode.Description",
 }
+# Fields that describe the Infor item, so the same for all its packagings.
+INFOR_FIELDS = ("long_description", "infor_active", "commodity_code", "commodity_description")
 
 
 def _number(value) -> int:
@@ -47,7 +55,7 @@ def _number(value) -> int:
 
 
 def sum_quantities(qty_rows) -> dict[str, dict]:
-    """Per item: quantities per UOM (never added across UOMs) and the line count."""
+    """Per Medline item: quantities per UOM (never added across UOMs) and the line count."""
     by_item: dict[str, dict] = {}
     for row in qty_rows:
         item = by_item.setdefault(row["medline_item"], {"by_uom": {}, "lines": 0})
@@ -62,8 +70,9 @@ def sum_quantities(qty_rows) -> dict[str, dict]:
 
 
 def merge_item_details(item_rows) -> dict[str, dict]:
-    """One details dict per item. A field whose rows disagree lists every value, and its name is
-    added to ``varies``. ``infor_consistent`` is False if any row says the Infor item differs."""
+    """One details dict per Medline item. A field whose rows disagree lists every value, and its
+    name is added to ``varies``. ``infor_consistent`` is False if any row says Medline's customer item
+    isn't the Infor item (or Infor has none)."""
     values: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     consistent: dict[str, bool] = {}
     for row in item_rows:
@@ -116,10 +125,10 @@ def _text_key(value) -> tuple:
 
 
 def sort_key(row) -> tuple:
-    """Customer Item, then Medline Item, then Item Description, then the other columns."""
+    """Infor Item, then Medline Item, then Item Description, then the other columns."""
     return (
-        _text_key(row["customer_item"]), _text_key(row["medline_item"]), _text_key(row["description"]),
-        -row["lines"], -sum(q["killed"] for q in row["quantities"]),
+        _text_key(row["infor_item"]), _text_key(row["medline_items"][0]), _text_key(row["description"]),
+        -row["lines"],
     )
 
 
@@ -129,7 +138,7 @@ def _sub_key(sub) -> tuple[str, str]:
 
 
 def each_factors(item_rows) -> dict[tuple[str, str], float]:
-    """Eaches per unit, per (Medline item, UOM), from Infor's UOM conversion of the customer item."""
+    """Eaches per unit, per (Medline item, UOM), from Infor's UOM conversion of the Infor item."""
     factors = {}
     for row in item_rows:
         value = row.get("Item.UOMConversion")
@@ -139,29 +148,30 @@ def each_factors(item_rows) -> dict[tuple[str, str], float]:
 
 
 def families(family_rows) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
-    """(Medline item -> customer item, customer item -> {Medline item: its UOMs})."""
-    customer_of: dict[str, str] = {}
+    """(Medline item -> Infor item, Infor item -> {Medline item: its UOMs})."""
+    infor_of: dict[str, str] = {}
     members: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     for row in family_rows:
-        item, customer = row["Medline Item"], row.get("Customer Item #")
-        if not customer:
+        item, infor = row["Medline Item"], row.get("Infor Item")
+        if not infor:
             continue
-        customer_of[item] = customer
+        infor_of[item] = infor
         uom = row.get("UM") or ""
-        if uom not in members[customer][item]:
-            members[customer][item].append(uom)
-    return customer_of, {c: {i: "/".join(sorted(u)) for i, u in m.items()} for c, m in members.items()}
+        if uom not in members[infor][item]:
+            members[infor][item].append(uom)
+    return infor_of, {i: {m: "/".join(sorted(u)) for m, u in ms.items()} for i, ms in members.items()}
 
 
-def approved_on_other_packagings(item, subs_by_item, customer_of, members) -> list[dict]:
-    """Subs approved on another Medline item of the same Infor item and not approved here (1, 2026-10-14)."""
-    customer = customer_of.get(item)
-    if not customer:
+def approved_on_other_packagings(item, subs_by_item, infor_of, members, *, skip=()) -> list[dict]:
+    """Subs approved on another Medline item of the same Infor item and not approved here
+    (signal, 2026-10-14). Medline items in ``skip`` aren't looked at."""
+    infor = infor_of.get(item)
+    if not infor:
         return []
     approved_here = {_sub_key(s) for s in subs_by_item.get(item, []) if s["status"] == "approved"}
     found, seen = [], set()
-    for sibling, uom in sorted(members.get(customer, {}).items()):
-        if sibling == item:
+    for sibling, uom in sorted(members.get(infor, {}).items()):
+        if sibling == item or sibling in skip:
             continue
         for s in subs_by_item.get(sibling, []):
             key = _sub_key(s)
@@ -173,10 +183,10 @@ def approved_on_other_packagings(item, subs_by_item, customer_of, members) -> li
 
 
 def sibling_signals(subs_here, sibling_subs, sibling_uoms) -> tuple[list[dict], list[dict]]:
-    """For the item panel.
+    """For one packaging in the item panel.
 
-    Returns the item's subs, each with ``approved_elsewhere`` (the same vendor part approved on
-    another packaging), and the other packagings' subs that aren't on this item yet, approved first.
+    Returns its subs, each with ``approved_elsewhere`` (the same vendor part approved on another
+    packaging), and the other packagings' subs that aren't on it yet, approved first.
     """
     by_key: dict[tuple, list] = defaultdict(list)
     for s in sibling_subs:
@@ -194,36 +204,41 @@ def sibling_signals(subs_here, sibling_subs, sibling_uoms) -> tuple[list[dict], 
     return annotated, others
 
 
-def infor_groups(rows) -> dict[str, dict]:
-    """Per customer (Infor) item in the range: its Medline items and their combined quantities in
-    eaches. ``complete`` is False when a UOM has no Infor conversion, so the eaches leave it out."""
-    groups: dict[str, dict] = {}
-    for row in rows:
-        customer = row.get("customer_item")
-        if not customer:
-            continue
-        group = groups.setdefault(customer, {
-            "customer_item": customer, "medline_items": [], "lines": 0, "complete": True,
-            "ordered_each": 0.0, "killed_each": 0.0, "filled_each": 0.0, "ordered": False,
-        })
-        group["medline_items"].append(row["medline_item"])
-        group["lines"] += row["lines"]
-        group["ordered"] = group["ordered"] or row["ordering_status"] == "ordered"
-        for q in row["quantities"]:
-            if q.get("each") is None:
-                group["complete"] = False
-                continue
-            for key in ("ordered", "killed", "filled"):
-                group[f"{key}_each"] += q[key] * q["each"]
-    return groups
+def latest_of(reasons):
+    """The latest of several packagings' latest reasons."""
+    found = [r for r in reasons if r]
+    if not found:
+        return None
+    return max(found, key=lambda r: (str(r.get("order_date") or ""), str(r.get("order_time") or "")))
+
+
+def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> dict:
+    for q in qty["by_uom"]:
+        q["each"] = factors.get((item, q["uom"]))
+    return {
+        "medline_item": item,
+        "customer_item": info["customer_item"],
+        "infor_match": info["infor_match"],
+        # Medline's customer item is the Infor item: no warning beside the Medline item.
+        "consistent": bool(infor) and info["customer_item"] == infor,
+        "description": info["description"],
+        "varies": info["varies"],
+        "quantities": qty["by_uom"],
+        "lines": qty["lines"],
+        "latest_reason": reason,
+        "subs_status": subs_status(item_subs),
+        "picks": [s for s in item_subs if s.get("is_picked")],
+        "orders_in_range": orders,
+    }
 
 
 def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) -> list[dict]:
-    """One row per Medline item killed in the range, sorted by ``sort_key``."""
+    """One row per Infor item killed in the range (a Medline item without one is its own row),
+    sorted by ``sort_key``. Each row lists its packagings: its Medline items killed in the range."""
     quantities = sum_quantities(qty_rows)
     details = merge_item_details(item_rows)
     factors = each_factors(item_rows)
-    customer_of, members = families(family_rows)
+    infor_of, members = families(family_rows)
     subs_by_item: dict[str, list] = defaultdict(list)
     for sub in subs:
         subs_by_item[sub["medline_item"]].append(sub)
@@ -231,27 +246,56 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
     for order in orders:
         orders_by_item[order["medline_item"]] += 1
 
-    rows = []
+    blank = {key: None for key in ITEM_FIELDS} | {"varies": [], "infor_consistent": None}
+    infos: dict[str, dict] = {}
+    groups: dict[str, list] = defaultdict(list)
     for item, qty in quantities.items():
-        for q in qty["by_uom"]:
-            q["each"] = factors.get((item, q["uom"]))
-        item_subs = subs_by_item.get(item, [])
-        counts = subs_status(item_subs)
-        picks = [sub for sub in item_subs if sub.get("is_picked")]
-        ordered = orders_by_item.get(item, 0) > 0
+        info = blank | details.get(item, {})
+        infos[item] = info
+        infor = infor_of.get(item) or (None if "infor_item" in info["varies"] else info["infor_item"])
+        groups[infor or f"M:{item}"].append(_packaging(
+            item, qty, info, factors, subs_by_item.get(item, []), reasons.get(item),
+            orders_by_item.get(item, 0), infor,
+        ))
+
+    rows = []
+    for key, packagings in groups.items():
+        packagings.sort(key=lambda p: _text_key(p["medline_item"]))
+        infor = None if key.startswith("M:") else key
+        info = infos[packagings[0]["medline_item"]]
+        here = {p["medline_item"] for p in packagings}
+        row_subs = [s for p in packagings for s in subs_by_item.get(p["medline_item"], [])]
+        counts = subs_status(row_subs)
+        picks = [s for p in packagings for s in p["picks"]]
+        ordered = any(p["orders_in_range"] for p in packagings)
+        quantities_ = [q for p in packagings for q in p["quantities"]]
+        # Approved on a packaging of this Infor item not killed in the range, and on none here.
+        approved_here = {_sub_key(s) for s in row_subs if s["status"] == "approved"}
+        elsewhere = {}
+        for p in packagings:
+            for found in approved_on_other_packagings(p["medline_item"], subs_by_item, infor_of, members, skip=here):
+                if _sub_key(found) not in approved_here:
+                    elsewhere[(found["medline_item"], found["sub_id"])] = found
         rows.append({
-            "medline_item": item,
-            **{key: None for key in ITEM_FIELDS},
-            "varies": [],
-            "infor_consistent": None,
-            **details.get(item, {}),
-            "quantities": qty["by_uom"],
-            "lines": qty["lines"],
-            "latest_reason": reasons.get(item),
+            "key": key,
+            "infor_item": infor,
+            "medline_items": [p["medline_item"] for p in packagings],
+            "customer_items": sorted({p["customer_item"] for p in packagings if p["customer_item"]}),
+            "packagings": packagings,
+            "description": packagings[0]["description"],
+            **{field: (info[field] if infor else None) for field in INFOR_FIELDS},
+            "manufacturer": info["manufacturer"],
+            "mfr_item": info["mfr_item"],
+            "lines": sum(p["lines"] for p in packagings),
+            # In eaches, by Infor's UOM conversion; None when a UOM has none.
+            "quantities_each": {
+                k: sum(q[k] * q["each"] for q in quantities_) for k in ("ordered", "killed", "filled")
+            } if all(q["each"] is not None for q in quantities_) else None,
+            "latest_reason": latest_of(p["latest_reason"] for p in packagings),
             "subs_status": counts,
             "picks": picks,
-            "approved_other_packagings": approved_on_other_packagings(item, subs_by_item, customer_of, members),
-            "orders_in_range": orders_by_item.get(item, 0),
+            "approved_other_packagings": list(elsewhere.values()),
+            "orders_in_range": sum(p["orders_in_range"] for p in packagings),
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered),
         })
@@ -259,9 +303,16 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
     return rows
 
 
+def killed_total(row) -> float:
+    """For ranking: killed eaches when known, otherwise the killed quantities as they are."""
+    if row.get("quantities_each"):
+        return row["quantities_each"]["killed"]
+    return float(sum(q["killed"] for p in row["packagings"] for q in p["quantities"]))
+
+
 def most_killed(rows, limit: int) -> list[dict]:
-    """The items with the most kill lines (then the most killed quantity)."""
-    return sorted(rows, key=lambda r: (-r["lines"], -sum(q["killed"] for q in r["quantities"]), r["medline_item"]))[:limit]
+    """The items with the most kill lines (then the most killed)."""
+    return sorted(rows, key=lambda r: (-r["lines"], -killed_total(r), r["medline_items"][0]))[:limit]
 
 
 def needs_counts(rows) -> dict[str, int]:

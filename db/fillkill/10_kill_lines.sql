@@ -12,6 +12,10 @@
 --   - Many Medline items to one Infor item (hand-made): other Medline items of Infor items 111848
 --     and 101494, in other UOMs, on 9/28-9/30. They copy a real line of the same Infor item and
 --     change the Medline item, UOM, quantity and (for 111848) the comment; PO is left empty.
+--   - Customer item isn't the Infor item (hand-made, 9/30): DYNJAA04 under customer item
+--     1296-DYNJAA04 (an Infor contract-only number), and B-D930299H under itself (Infor item
+--     100091, found by manufacturer part). Given in full; ship-to, plant and buyer copy the
+--     latest real line.
 -- Re-running deletes and reloads them all.
 --
 -- At go-live, remove them:  TRUNCATE TABLE [FillKill].[TestFillKillLine];
@@ -72,6 +76,12 @@ DECLARE @many_111848 VARCHAR(300) = 'Many Medline items to one Infor item: JLCSF
     + 'on JLCSFTP22A5SH.';
 DECLARE @many_101494 VARCHAR(300) = 'Many Medline items to one Infor item: J-J2015 (CA) and J-J2015Z (BX) '
     + 'beside J-J2015H (EA), all 101494, in three UOMs.';
+DECLARE @customer_dynjaa04 VARCHAR(300) = 'Customer item is not an Infor item: 1296-DYNJAA04 is Infor''s '
+    + 'contract-only (Special) number, manufacturer code 1296 + Medline item. No item master record, so '
+    + 'it stands alone, flagged.';
+DECLARE @customer_bd930299h VARCHAR(300) = 'Customer item is the Medline item itself (B-D930299H). It isn''t a '
+    + 'Medline vendor item in Infor; manufacturer part 930299 finds Infor item 100091 (B-D930299 CA, '
+    + 'B-D930299Z BX).';
 
 BEGIN TRANSACTION;
 
@@ -135,6 +145,37 @@ CROSS APPLY (
 ) AS t;
 
 PRINT CONCAT('Test lines loaded (many Medline items to one Infor item): ', @@ROWCOUNT);
+
+-- Hand-made lines whose customer item isn't an Infor item number. Everything Medline would send is
+-- given here; ship-to, plant and buyer copy the latest real line.
+INSERT INTO [FillKill].[TestFillKillLine] (
+    [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
+    [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
+    [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
+    [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
+    [create stamp], [update stamp], [Test Purpose]
+)
+SELECT 'test site', 'test site', t.[Ship-To], t.[Ship-To Name], t.[Ship-To Name 2], v.[order_date], '12:30:00',
+       v.[po], v.[po_line], v.[sales_order], '000010', v.[item], v.[description], v.[customer_item],
+       v.[customer_item], v.[mfr_item], v.[manufacturer], v.[qty], v.[um], v.[filled], t.[Plant],
+       t.[Buyer Name], 'Allocation limit has been reached', v.[po], CAST(v.[po_line] AS INT),
+       'hand-made test line (10_kill_lines.sql)', GETDATE(), GETDATE(), v.[purpose]
+FROM (VALUES
+    ('TEST-DYNJAA04-0930',  CAST('2026-09-30' AS DATE), 'DYNJAA04',   '1296-DYNJAA04',
+     'LINE GAS SMPL M TO M LL CNCT 10FT .06MM LF', 'DYNJAA04', 'MEDLINE', '2400134117', '1', 'CA', 5, 2,
+     @customer_dynjaa04),
+    ('TEST-BD930299H-0930', CAST('2026-09-30' AS DATE), 'B-D930299H', 'B-D930299H',
+     'Skin Prep Swabs: ChloraPrep FREPP Applicator, Clear, with St', '930299', 'BD', '2624108620', '27', 'EA', 30, 15,
+     @customer_bd930299h)
+) AS v ([sales_order], [order_date], [item], [customer_item], [description], [mfr_item], [manufacturer], [po],
+        [po_line], [um], [qty], [filled], [purpose])
+CROSS APPLY (
+    SELECT TOP (1) m.*
+    FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m
+    ORDER BY m.[Order Date] DESC, m.[Order Time] DESC
+) AS t;
+
+PRINT CONCAT('Test lines loaded (customer item not the Infor item): ', @@ROWCOUNT);
 
 COMMIT TRANSACTION;
 GO

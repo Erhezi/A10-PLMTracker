@@ -3,8 +3,11 @@
 -- Run on O2, database PLM, after 10_kill_lines.sql. Safe to re-run.
 --
 -- Written on O2 by the module owner; copied here (last on 2026-10-14) so they are versioned with the
--- app. The only change from O2 is the source: FillKill.vw_MedlineFillKill instead of
--- SCSFileIngestor.MedlineFillKill.MedlineFillKill. If you change a view on O2, change it here too.
+-- app. Changes from O2: the source is FillKill.vw_MedlineFillKill instead of
+-- SCSFileIngestor.MedlineFillKill.MedlineFillKill; and (2026-10-14) the Infor item is also found by
+-- manufacturer part when Medline's item isn't a Medline vendor item in Infor (CTE m), and the UOM
+-- conversion is read for that Infor item rather than for Medline's customer item, which isn't always
+-- an Infor item (e.g. 1296-DYNJAA04). If you change a view on O2, change it here too.
 --
 --   vw_MedlineFillKillItemCollection  one row per Medline item (and UM): description, Infor UOM
 --                                     conversions, Medline PBO sub, Infor item cross-check, and the
@@ -57,20 +60,26 @@ with a as( --item in scope
  select Item, Active as [Item.Active], [Description] as [Item.Description], [Description3] as [Item.LongDescription],
  CommodityCode, [CommodityCode.CcDescription] as [CommodityCode.Description]
  from PLMPreprocessorShared.infor.MDM_ITEM
+ ),
+ m as( -- fallback when the Medline item isn't a Medline vendor item: the one active Infor item with
+       -- the same manufacturer part (dashes and spaces ignored); MFR_ITEM_VARS > 1 means no match
+ select *, count(1) over (partition by MfrPart order by (select null)) as MFR_ITEM_VARS
+ from(
+ select distinct replace(replace(ManufacturerNumber, '-', ''), ' ', '') as MfrPart, Item
+ from PLMPreprocessorShared.infor.MDM_ITEM
+ where Active = 'Yes' and ManufacturerNumber <> '') [t]
  )
 
- select a.*, b.UOMConversion as [Item.UOMConversion], 
- c.DerivedUOMConversion as [VendorItem.UOMConversion], 
- c.UOM_QOE_VARS, 
+ select a.*, b.UOMConversion as [Item.UOMConversion],
+ c.DerivedUOMConversion as [VendorItem.UOMConversion],
+ c.UOM_QOE_VARS,
  d.[Substitute Material Number] as [Medline.Sub], d.[Parent Item] as [Medline.ParentItem], d.SUB_VARS,
- e.[Item Description], 
- f.Item as [Infor Item], f.INFOR_ITEM_VARS,
- iif(f.Item = a.[Customer Item #], 1,0) as [Infor Item Consistency],
+ e.[Item Description],
+ coalesce(f.Item, m.Item) as [Infor Item], coalesce(f.INFOR_ITEM_VARS, m.MFR_ITEM_VARS) as INFOR_ITEM_VARS,
+ case when f.Item is not null then 'vendor item' when m.Item is not null then 'manufacturer part' end as [Infor Item Match],
+ iif(coalesce(f.Item, m.Item) = a.[Customer Item #], 1,0) as [Infor Item Consistency],
  g.[Item.Active], g.[Item.Description], g.[Item.LongDescription], g.[CommodityCode], g.[CommodityCode.Description]
  from a
- left join b
- on a.[Customer Item #] = b.Item
- and a.UM = b.UOM
  left join c
  on a.[Medline Item] = c.VendorItem
  left join d
@@ -80,20 +89,26 @@ with a as( --item in scope
  on a.[Medline Item] = e.[Medline Item]
  left join f
  on a.[Medline Item] = f.VendorItem
+ left join m
+ on f.Item is null and m.MFR_ITEM_VARS = 1
+ and m.MfrPart = replace(replace(a.[Mfr. Item #], '-', ''), ' ', '')
+ left join b
+ on coalesce(f.Item, m.Item, a.[Customer Item #]) = b.Item
+ and a.UM = b.UOM
  left join g
- on f.Item = g.Item
+ on coalesce(f.Item, m.Item) = g.Item
 GO
 
 CREATE OR ALTER VIEW [FillKill].[vw_MedlineFillKillQtyAgg] as
 
-select [Order Date], [Sold-To], [Sold-To Name], 
+select [Order Date], [Sold-To], [Sold-To Name],
 [Medline Item], UM, [Customer Item #], [Mfr. Item #], [Manufacturer Name],
 [Total Ordered Qty], [Total Filled Qty], ([Total Ordered Qty] - [Total Filled Qty]) [Total Killed Qty],
 [Total PO Line Count]
 from(
-select [Order Date], [Sold-To], [Sold-To Name], 
+select [Order Date], [Sold-To], [Sold-To Name],
 Item as [Medline Item], UM, [Customer Item #], [Mfr. Item #], [Manufacturer Name],
-sum([Order Qty]) [Total Ordered Qty], sum([Filled Qty]) [Total Filled Qty], 
+sum([Order Qty]) [Total Ordered Qty], sum([Filled Qty]) [Total Filled Qty],
 count(1) as [Total PO Line Count]
 from [FillKill].[vw_MedlineFillKill]
 Group by [Order Date], [Sold-To], [Sold-To Name], Item,

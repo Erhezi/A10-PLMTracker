@@ -122,16 +122,19 @@ def item_rows(scope: Scope) -> list[dict]:
     return _rows(f"SELECT * FROM {ITEMS} WHERE [Medline Item] IN ({items_sql})", params, binds)
 
 
-def latest_reasons(scope: Scope, medline_item: str | None = None) -> dict[str, dict]:
-    """Per item, the latest Medline comment on a line inside the scope."""
+def latest_reasons(scope: Scope, items=None) -> dict[str, dict]:
+    """Per Medline item, the latest Medline comment on a line inside the scope, with that line's
+    date and time. ``items`` limits it to those Medline items."""
     where, params, binds = scope.where("[Order Date]", "[Sold-To]")
-    if medline_item is not None:
-        where += " AND [Item] = :item"
-        params["item"] = medline_item
+    if items is not None:
+        where += " AND [Item] IN :items"
+        params["items"] = sorted(set(items)) or [""]
+        binds.append(bindparam("items", expanding=True))
     rows = _rows(
-        f"""SELECT medline_item, comment, reason, reason_date FROM (
+        f"""SELECT medline_item, comment, reason, reason_date, order_date, order_time FROM (
                 SELECT [Item] AS medline_item, [Internal Order Comments from SAP (Z106)] AS comment,
                        [Reason] AS reason, [Reason Date] AS reason_date,
+                       [Order Date] AS order_date, [Order Time] AS order_time,
                        ROW_NUMBER() OVER (PARTITION BY [Item]
                                           ORDER BY [Order Date] DESC, [Order Time] DESC,
                                                    [Sales Order #] DESC, [Order Line #] DESC) AS rk
@@ -174,28 +177,30 @@ def orders_in_range(scope: Scope, items=None) -> list[dict]:
     return [order_dict(order) for order in db.session.execute(query).scalars()]
 
 
-def family_rows(customer_items) -> list[dict]:
-    """Every Medline item (and UOM) Medline has killed under these customer (Infor) items: one Infor
-    item's packagings. Read from the item view, so only Medline items that have been killed."""
-    customer_items = sorted({c for c in customer_items if c})
+def family_rows(infor_items) -> list[dict]:
+    """Every Medline item (and UOM) Medline has killed under these Infor items: their packagings.
+    Read from the item view, so only Medline items that have been killed, and matched to an Infor
+    item there (by vendor item or manufacturer part). Medline's customer item isn't used: it isn't
+    always an Infor item number."""
+    infor_items = sorted({i for i in infor_items if i})
     rows = []
-    for start in range(0, len(customer_items), 1000):
-        chunk = customer_items[start:start + 1000]
+    for start in range(0, len(infor_items), 1000):
+        chunk = infor_items[start:start + 1000]
         rows += _rows(
-            f"""SELECT DISTINCT [Medline Item], [UM], [Customer Item #] FROM {ITEMS}
-                WHERE [Customer Item #] IN :customers""",
-            {"customers": chunk}, [bindparam("customers", expanding=True)],
+            f"""SELECT DISTINCT [Medline Item], [UM], [Customer Item #], [Infor Item] FROM {ITEMS}
+                WHERE [Infor Item] IN :infor""",
+            {"infor": chunk}, [bindparam("infor", expanding=True)],
         )
     return rows
 
 
 def main_table_inputs(scope: Scope) -> dict:
-    """Everything rollup.build_main_rows needs for the scope, including the subs of the items'
-    other packagings (Medline items of the same Infor item), for their "approved" signal."""
+    """Everything rollup.build_main_rows needs for the scope, including the subs of the Infor
+    items' other packagings, for their "approved" signal."""
     qty = qty_rows(scope)
     items = {row["medline_item"] for row in qty}
     details = item_rows(scope)
-    family = family_rows(row.get("Customer Item #") for row in details)
+    family = family_rows(row.get("Infor Item") for row in details)
     return {
         "qty_rows": qty,
         "item_rows": details,
@@ -239,6 +244,7 @@ def order_dict(order: SubOrder) -> dict:
 def _history_dict(row: History, labels: dict[int, str]) -> dict:
     return {
         "history_id": row.history_id, "entity": row.entity, "entity_id": row.entity_id,
+        "medline_item": row.medline_item,
         "label": labels.get(row.entity_id), "action": row.action, "field": row.field,
         "from_value": row.from_value, "to_value": row.to_value, "comment": row.comment,
         "actor": row.actor, "acted_at": row.acted_at,
@@ -246,66 +252,104 @@ def _history_dict(row: History, labels: dict[int, str]) -> dict:
 
 
 def item_panel(medline_item: str, scope: Scope) -> dict:
-    """Subs, the kill lines in scope, the pick history and the order history of one item."""
+    """The Infor item ``medline_item`` belongs to: every packaging (Medline item) Medline has killed
+    under it, with their subs, kill lines in the scope, pick history and orders. A Medline item
+    Infor can't place is shown on its own."""
+    own = _rows(f"SELECT * FROM {ITEMS} WHERE [Medline Item] = :item", {"item": medline_item})
+    infor_items = {row.get("Infor Item") for row in own if row.get("Infor Item")}
+    infor = next(iter(infor_items)) if len(infor_items) == 1 else None
+    uoms: dict[str, list] = {medline_item: [row.get("UM") or "" for row in own]}
+    for row in family_rows([infor] if infor else []):
+        uoms.setdefault(row["Medline Item"], []).append(row.get("UM") or "")
+    uoms = {item: "/".join(sorted(set(u))) for item, u in uoms.items()}
+    members = sorted(uoms)
+
+    item_view_rows = _rows(
+        f"SELECT * FROM {ITEMS} WHERE [Medline Item] IN :members",
+        {"members": members}, [bindparam("members", expanding=True)],
+    )
+    details = rollup.merge_item_details(item_view_rows)
+
     subs = db.session.execute(
-        select(Sub).where(Sub.medline_item == medline_item).order_by(Sub.create_dt, Sub.sub_id)
+        select(Sub).where(Sub.medline_item.in_(members)).order_by(Sub.create_dt, Sub.sub_id)
     ).scalars().all()
     comments = _latest_comments("sub", [s.sub_id for s in subs])
-    sub_list = [{**sub_dict(s), "latest_comment": comments.get(s.sub_id)} for s in subs]
+    approvals = _latest_approvals([s.sub_id for s in subs])
+    all_subs = [{**sub_dict(s), "latest_comment": comments.get(s.sub_id), **approvals.get(s.sub_id, {})}
+                for s in subs]
     sub_labels = {s.sub_id: s.label() for s in subs}
 
-    picks = db.session.execute(
-        select(History).where(
-            History.medline_item == medline_item, History.entity == "sub",
-            History.action.in_(("created", "status", "pick", "unpick")),
-        ).order_by(History.acted_at.desc(), History.history_id.desc())
-    ).scalars().all()
-
-    orders = db.session.execute(
-        select(SubOrder).where(SubOrder.medline_item == medline_item)
-        .order_by(SubOrder.ordered_dt.desc(), SubOrder.order_id.desc())
-    ).scalars().all()
-    order_comments = _latest_comments("order", [o.order_id for o in orders])
-
     where, params, binds = scope.where("[Order Date]", "[Sold-To]")
-    params["item"] = medline_item
+    params["members"] = members
+    binds.append(bindparam("members", expanding=True))
     lines = _rows(
-        f"""SELECT [Order Date] AS order_date, [Order Time] AS order_time, [Sold-To Name] AS site,
-                   [Ship-To Name] AS department, [PO] AS po, [POLine] AS po_line,
+        f"""SELECT [Item] AS medline_item, [Order Date] AS order_date, [Order Time] AS order_time,
+                   [Sold-To Name] AS site, [Ship-To Name] AS department, [PO] AS po, [POLine] AS po_line,
                    [Order Qty] AS ordered, [Filled Qty] AS filled, [UM] AS um,
                    [Internal Order Comments from SAP (Z106)] AS comment, [Reason] AS reason,
                    [Reason Date] AS reason_date, [Is Test] AS is_test, [Test Purpose] AS test_purpose
-            FROM {LINES} WHERE [Item] = :item AND {where}
+            FROM {LINES} WHERE [Item] IN :members AND {where}
             ORDER BY [Order Date] DESC, [Order Time] DESC""",
         params, binds,
     )
     for line in lines:
         line["killed"] = (line["ordered"] or 0) - (line["filled"] or 0)
+    # Killed in the range by the main table's own source, the quantity view.
+    q_where, q_params, q_binds = scope.where("[Order Date]", "[Sold-To]")
+    q_params["members"] = members
+    q_binds.append(bindparam("members", expanding=True))
+    killed = {row["item"] for row in _rows(
+        f"SELECT DISTINCT [Medline Item] AS item FROM {QTY} WHERE [Medline Item] IN :members AND {q_where}",
+        q_params, q_binds,
+    )}
 
-    items_sql = f"SELECT * FROM {ITEMS} WHERE [Medline Item] = :item"
-    item_view_rows = _rows(items_sql, {"item": medline_item})
+    packagings = []
+    for item in members:
+        info = details.get(item, {})
+        here = [s for s in all_subs if s["medline_item"] == item]
+        others = [s for s in all_subs if s["medline_item"] != item]
+        annotated, other_subs = rollup.sibling_signals(here, others, uoms)
+        packagings.append({
+            "medline_item": item,
+            "um": uoms[item],
+            "customer_item": info.get("customer_item"),
+            "infor_match": info.get("infor_match"),
+            "consistent": bool(infor) and info.get("customer_item") == infor,
+            "description": info.get("description"),
+            "killed_in_range": item in killed,
+            "subs": annotated,
+            "other_subs": other_subs,
+        })
+    # Killed in the range first, then the Infor item's other packagings.
+    packagings.sort(key=lambda p: (not p["killed_in_range"], p["medline_item"]))
 
-    # The same Infor item's other packagings, and their subs (signal 1, 2026-10-14).
-    family = family_rows(row.get("Customer Item #") for row in item_view_rows)
-    sibling_uoms: dict[str, list] = {}
-    for row in family:
-        if row["Medline Item"] != medline_item:
-            sibling_uoms.setdefault(row["Medline Item"], []).append(row.get("UM") or "")
-    sibling_uoms = {item: "/".join(sorted(u)) for item, u in sibling_uoms.items()}
-    sibling_subs = subs_for_items(sibling_uoms)
-    approvals = _latest_approvals([s["sub_id"] for s in sibling_subs])
-    sibling_subs = [{**s, **approvals.get(s["sub_id"], {})} for s in sibling_subs]
-    sub_list, other_packagings = rollup.sibling_signals(sub_list, sibling_subs, sibling_uoms)
+    picks = db.session.execute(
+        select(History).where(
+            History.medline_item.in_(members), History.entity == "sub",
+            History.action.in_(("created", "status", "pick", "unpick")),
+        ).order_by(History.acted_at.desc(), History.history_id.desc())
+    ).scalars().all()
+    orders = db.session.execute(
+        select(SubOrder).where(SubOrder.medline_item.in_(members))
+        .order_by(SubOrder.ordered_dt.desc(), SubOrder.order_id.desc())
+    ).scalars().all()
+    order_comments = _latest_comments("order", [o.order_id for o in orders])
 
+    first = details.get(medline_item) or next(iter(details.values()), {})
     return {
+        "infor_item": infor,
         "medline_item": medline_item,
-        "item_rows": item_view_rows,
-        "siblings": [{"medline_item": item, "um": um} for item, um in sorted(sibling_uoms.items())],
-        "other_packaging_subs": other_packagings,
-        "subs": sub_list,
+        "details": {
+            "infor_item": infor,
+            **{field: (first.get(field) if infor else None) for field in rollup.INFOR_FIELDS},
+            "manufacturer": first.get("manufacturer"), "mfr_item": first.get("mfr_item"),
+            "description": first.get("description"),
+        },
+        "packagings": packagings,
         "lines": lines,
         "pick_history": [_history_dict(row, sub_labels) for row in picks],
         "orders": [{**order_dict(o), "latest_comment": order_comments.get(o.order_id)} for o in orders],
+        "latest_reason": rollup.latest_of(latest_reasons(scope, members).values()),
     }
 
 

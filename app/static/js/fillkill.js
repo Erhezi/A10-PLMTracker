@@ -23,7 +23,6 @@
     panelItem: null,
     panelTab: 'subs',
     panelData: null,
-    groups: {},
   };
 
   // --- small helpers ----------------------------------------------------------------
@@ -224,14 +223,13 @@
       const data = await getJSON(api.main, scopeParams());
       if (ticket !== mainRequest) return;  // a newer request is on its way
       state.rows = data.rows;
-      state.groups = data.groups || {};
       state.counts = data.counts;
       renderDataAsOf(data.data);
       renderNeeds();
       renderRows();
     } catch (error) {
       if (ticket !== mainRequest) return;
-      $('fk-rows').innerHTML = `<tr><td colspan="11" class="p-3">${alertBox(error.message)}</td></tr>`;
+      setRows(`<tbody><tr><td colspan="11" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
     }
   }
 
@@ -245,32 +243,43 @@
       : `<span class="text-muted">${what} ${esc(when)}</span>`;
   }
 
-  // Every word must appear in one of these (commodity code and its description are searchable
-  // but not shown in the table). Item numbers also match without their dashes, spaces, dots and
-  // slashes, so "BD930" finds B-D930299Z.
-  const SEARCHED = ['customer_item', 'medline_item', 'description', 'infor_item', 'long_description',
-    'commodity_code', 'commodity_description'];
-  const ITEM_NUMBERS = ['customer_item', 'medline_item', 'infor_item'];
+  // Every word must appear in the Infor item's fields or in one of its packagings' (the commodity
+  // code and its description are searchable but not shown in the table). Item numbers also match
+  // without their dashes, spaces, dots and slashes, so "BD930" finds B-D930299Z.
+  const ROW_SEARCHED = ['infor_item', 'description', 'long_description', 'commodity_code', 'commodity_description'];
+  const PACKAGING_SEARCHED = ['medline_item', 'customer_item', 'description'];
   const compact = (value) => String(value || '').toLowerCase().replace(/[\s\-./]/g, '');
+
+  function searchText(row) {
+    if (!row.searchText) {
+      const values = ROW_SEARCHED.map((key) => row[key])
+        .concat(...row.packagings.map((p) => PACKAGING_SEARCHED.map((key) => p[key])));
+      const numbers = [row.infor_item].concat(...row.packagings.map((p) => [p.medline_item, p.customer_item]));
+      // Joined with spaces: a word has none, so it can't match across two fields.
+      row.searchText = {
+        text: values.map((value) => String(value || '').toLowerCase()).join(' '),
+        numbers: numbers.map(compact).join(' '),
+      };
+    }
+    return row.searchText;
+  }
 
   function matchesSearch(row) {
     if (!state.search) return true;
-    // Joined with spaces: a word has none, so it can't match across two fields.
-    const text = SEARCHED.map((key) => String(row[key] || '').toLowerCase()).join(' ');
-    const numbers = ITEM_NUMBERS.map((key) => compact(row[key])).join(' ');
+    const { text, numbers } = searchText(row);
     return state.search.split(/\s+/).every((word) => text.includes(word) || (compact(word) && numbers.includes(compact(word))));
   }
 
-  function subsStatusCell(row) {
-    const parts = STATUS_ORDER.filter((s) => row.subs_status[s])
-      .map((s) => `${statusBadge(s)} <span class="small">${row.subs_status[s]}</span>`);
-    const own = parts.length ? `<div class="d-flex flex-wrap gap-1 align-items-center">${parts.join(' ')}</div>`
+  function subsStatusCell(counts) {
+    const parts = STATUS_ORDER.filter((s) => counts[s])
+      .map((s) => `${statusBadge(s)} <span class="small">${counts[s]}</span>`);
+    return parts.length ? `<div class="d-flex flex-wrap gap-1 align-items-center">${parts.join(' ')}</div>`
       : '<span class="text-muted small">No subs</span>';
-    return own + otherPackagingNote(row.approved_other_packagings);
   }
 
-  // Subs approved for another Medline item of the same Infor item (another packaging): nursing
-  // still approves them here, but knows the product was already judged (design §5, 2026-10-14).
+  // Subs approved for another Medline item of the same Infor item (another packaging) not killed
+  // in these dates: nursing still approves them here, but knows the product was already judged
+  // (design §5, 2026-10-14).
   function otherPackagingNote(approved) {
     if (!approved || !approved.length) return '';
     const items = [...new Set(approved.map((a) => `${a.medline_item}${a.um ? ` (${a.um})` : ''}`))];
@@ -279,13 +288,13 @@
       ${approved.length} approved for other packaging: ${esc(items.join(', '))}</div>`;
   }
 
-  function picksCell(row) {
-    if (!row.picks.length) return '<span class="text-muted small">—</span>';
-    return row.picks.map((pick) => {
+  function picksCell(picks) {
+    if (!picks.length) return '<span class="text-muted small">—</span>';
+    return picks.map((pick) => {
       const label = `${esc(pick.vendor_part)} <span class="text-muted">· ${esc(pick.vendor)}</span>`;
       return can.order
         ? `<button type="button" class="btn btn-sm btn-outline-primary py-0 mb-1 text-start" data-order-sub="${pick.sub_id}"
-             data-item="${esc(row.medline_item)}" title="Record an order for this pick">${label}</button>`
+             data-item="${esc(pick.medline_item)}" title="Record an order for this pick">${label}</button>`
         : `<div class="small">${label}</div>`;
     }).join('');
   }
@@ -297,66 +306,95 @@
       + `${esc(REASON_LABEL[reason.reason] || reason.reason)}</span>${date}</div>`;
   }
 
+  // Medline's customer item isn't always the Infor item: it can be the Medline item itself, or
+  // Infor's contract-only number (manufacturer code + Medline item). A warning beside the Medline item.
+  function customerFlag(p, infor) {
+    if (p.consistent) return '';
+    const customer = p.customer_item || '(blank)';
+    const why = infor
+      ? `Medline's customer item ${customer} isn't the Infor item ${infor}`
+        + (p.infor_match === 'manufacturer part' ? ', which was found by the manufacturer part' : '')
+      : `Medline's customer item ${customer} isn't an Infor item, and no Infor item was found by vendor item or manufacturer part`;
+    return `<sup class="fk-flag" title="${esc(why)}"><i class="bi bi-exclamation-triangle-fill text-warning" role="img"
+      aria-label="${esc(why)}"></i></sup>`;
+  }
+
+  function packagingCell(p, infor) {
+    const varies = p.varies.length ? ` <span class="badge text-bg-light border" title="Medline's lines or Infor disagree on: ${esc(p.varies.join(', '))}">varies</span>` : '';
+    const customer = p.consistent ? '' : `<div class="small text-muted">Customer item ${esc(p.customer_item || '—')}</div>`;
+    return `<button type="button" class="btn btn-link p-0" data-open="${esc(p.medline_item)}">${esc(p.medline_item)}</button>`
+      + `${customerFlag(p, infor)}${varies}${customer}`;
+  }
+
   function renderRows() {
     const rows = state.rows.filter((row) => (state.needs === 'all' || row.needs.includes(state.needs)) && matchesSearch(row));
     if (!rows.length) {
       const why = state.rows.length ? 'No item matches these filters.' : 'No kill lines for these dates and sites.';
-      $('fk-rows').innerHTML = `<tr><td colspan="11" class="text-muted small p-3">${why}</td></tr>`;
+      setRows(`<tbody><tr><td colspan="11" class="text-muted small p-3">${why}</td></tr></tbody>`);
       return;
     }
-    let lastGroup = null;
-    $('fk-rows').innerHTML = rows.map((row) => {
-      const header = groupHeader(row.customer_item, lastGroup);
-      lastGroup = row.customer_item;
-      return header + itemRow(row);
-    }).join('');
+    setRows(rows.map(itemRows).join(''));
   }
 
-  // One Infor item killed under several Medline items (packagings): a header row with their
-  // combined quantities in eaches, from Infor's UOM conversion.
-  function groupHeader(customer, previous) {
-    const group = customer ? state.groups[customer] : null;
-    if (!group || group.medline_items.length < 2 || customer === previous) return '';
-    const each = (value) => (group.complete ? `${fmtNumber(value)} <span class="text-muted small">EA</span>`
-      : '<span class="text-muted" title="A UOM has no Infor conversion, so they can\'t be added up">—</span>');
-    return `<tr class="table-light fk-group">
-      <td class="fw-semibold">${esc(customer)}</td>
-      <td colspan="2" class="small text-muted">${group.medline_items.length} Medline items (packagings) of this Infor item:
-        ${esc(group.medline_items.join(', '))}. Combined in eaches.</td>
-      <td class="text-end">${each(group.ordered_each)}</td>
-      <td class="text-end fw-semibold">${each(group.killed_each)}</td>
-      <td class="text-end">${each(group.filled_each)}</td>
-      <td class="text-end">${fmtNumber(group.lines)}</td>
-      <td colspan="4"></td>
-    </tr>`;
+  // Each Infor item is a <tbody> of its own, so its packagings highlight together.
+  const mainTable = $('fk-main');
+
+  function setRows(html) {
+    mainTable.querySelectorAll(':scope > tbody').forEach((body) => body.remove());
+    mainTable.tHead.insertAdjacentHTML('afterend', html);
   }
 
-  function itemRow(row) {
-    const flag = row.infor_consistent === false
-      ? ` <i class="bi bi-exclamation-triangle-fill text-warning" title="Differs from Infor, or not found in Infor's vendor items"></i>` : '';
-    const infor = row.infor_item && row.infor_item !== row.customer_item
-      ? `<div class="small text-muted">${esc(row.infor_item)}</div>` : '';
-    const varies = row.varies.length ? ` <span class="badge text-bg-light border" title="Medline's lines or Infor disagree on: ${esc(row.varies.join(', '))}">varies</span>` : '';
+  // One <tr> per packaging (Medline item); with several, a last <tr> adds them up in eaches.
+  function itemRows(row) {
+    const packs = row.packagings;
+    const many = packs.length > 1;
+    const span = many ? ` rowspan="${packs.length + 1}"` : '';
     const inactive = row.infor_active && row.infor_active !== 'Yes'
       ? ' <span class="badge text-bg-secondary" title="The Infor item is not active">Inactive</span>' : '';
+    const infor = row.infor_item
+      ? `<button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(packs[0].medline_item)}">${esc(row.infor_item)}</button>${inactive}`
+      : '<span class="text-muted small" title="No Infor item found for this Medline item, by vendor item or manufacturer part">Not in Infor</span>';
+    const count = many ? `<div class="small text-muted">${packs.length} packagings</div>` : '';
     const inforDesc = row.long_description
       ? `<div class="text-truncate small text-muted" title="Infor: ${esc(row.long_description)}">${esc(row.long_description)}</div>` : '';
-    return `<tr>
-      <td><button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(row.medline_item)}">${esc(row.customer_item || '—')}</button>${flag}${inactive}${infor}</td>
-      <td><button type="button" class="btn btn-link p-0" data-open="${esc(row.medline_item)}">${esc(row.medline_item)}</button>${varies}</td>
-      <td class="fk-desc"><div class="text-truncate" title="${esc(row.description)}">${esc(row.description)}</div>${inforDesc}</td>
-      <td class="text-end">${qtyLines(row.quantities, 'ordered')}</td>
-      <td class="text-end fw-semibold">${qtyLines(row.quantities, 'killed')}</td>
-      <td class="text-end">${qtyLines(row.quantities, 'filled')}</td>
+    const ordering = row.ordering_status === 'ordered'
+      ? '<span class="badge text-bg-success">Ordered</span>' : '<span class="badge text-bg-light border">No order</span>';
+    const note = otherPackagingNote(row.approved_other_packagings);
+    const trs = packs.map((p, i) => `<tr>
+      ${i ? '' : `<td${span}>${infor}${count}</td>`}
+      <td>${packagingCell(p, row.infor_item)}</td>
+      ${i ? '' : `<td class="fk-desc"${span}><div class="text-truncate" title="${esc(row.description)}">${esc(row.description)}</div>${inforDesc}</td>`}
+      <td class="text-end">${qtyLines(p.quantities, 'ordered')}</td>
+      <td class="text-end fw-semibold">${qtyLines(p.quantities, 'killed')}</td>
+      <td class="text-end">${qtyLines(p.quantities, 'filled')}</td>
+      <td class="text-end">${fmtNumber(p.lines)}</td>
+      <td>${reasonCell(p.latest_reason)}</td>
+      <td role="button" data-open="${esc(p.medline_item)}">${subsStatusCell(p.subs_status)}${many ? '' : note}</td>
+      <td>${picksCell(p.picks)}</td>
+      ${i ? '' : `<td${span}>${ordering}</td>`}
+    </tr>`);
+    if (many) trs.push(totalRow(row, note));
+    return `<tbody class="fk-item">${trs.join('')}</tbody>`;
+  }
+
+  // The packagings added up in eaches, by Infor's UOM conversion.
+  function totalRow(row, note) {
+    const each = (key) => (row.quantities_each
+      ? `${fmtNumber(row.quantities_each[key])} <span class="text-muted small">EA</span>`
+      : '<span class="text-muted" title="A UOM has no Infor conversion, so the packagings can\'t be added up">—</span>');
+    return `<tr class="fk-total">
+      <td class="small text-muted">All packagings, in eaches</td>
+      <td class="text-end">${each('ordered')}</td>
+      <td class="text-end fw-semibold">${each('killed')}</td>
+      <td class="text-end">${each('filled')}</td>
       <td class="text-end">${fmtNumber(row.lines)}</td>
-      <td>${reasonCell(row.latest_reason)}</td>
-      <td role="button" data-open="${esc(row.medline_item)}">${subsStatusCell(row)}</td>
-      <td>${picksCell(row)}</td>
-      <td>${row.ordering_status === 'ordered' ? '<span class="badge text-bg-success">Ordered</span>' : '<span class="badge text-bg-light border">No order</span>'}</td>
+      <td></td>
+      <td>${note}</td>
+      <td></td>
     </tr>`;
   }
 
-  $('fk-rows').addEventListener('click', (event) => {
+  mainTable.addEventListener('click', (event) => {
     const orderButton = event.target.closest('[data-order-sub]');
     if (orderButton) {
       openOrderForm(Number(orderButton.dataset.orderSub), orderButton.dataset.item);
@@ -398,14 +436,13 @@
     const data = state.panelData;
     const d = data.details || {};
     const reason = data.latest_reason;
-    $('fk-panel-subtitle').innerHTML = [
-      esc(d.description || ''),
-      d.customer_item ? `Customer item ${esc(d.customer_item)}` : '',
-      reason ? esc(reason.comment) : '',
-    ].filter(Boolean).join(' · ');
+    $('fk-panel-title').textContent = data.infor_item ? `Infor item ${data.infor_item}` : data.medline_item;
+    $('fk-panel-subtitle').innerHTML = [esc(d.description || ''), reason ? esc(reason.comment) : '']
+      .filter(Boolean).join(' · ');
 
+    const subs = data.packagings.reduce((n, p) => n + p.subs.length, 0);
     const tabs = [
-      ['subs', `Subs <span class="badge text-bg-light">${data.subs.length}</span>`],
+      ['subs', `Subs <span class="badge text-bg-light">${subs}</span>`],
       ['lines', `Kill lines <span class="badge text-bg-light">${data.lines.length}</span>`],
       ['picks', 'Pick history'],
       ['orders', `Orders <span class="badge text-bg-light">${data.orders.length}</span>`],
@@ -413,6 +450,7 @@
     $('fk-panel-body').innerHTML = `
       ${message ? alertBox(message.text, message.kind) : ''}
       ${itemDetails(d)}
+      ${packagingList(data)}
       <ul class="nav nav-pills nav-fill small mb-3" role="tablist">
         ${tabs.map(([key, label]) => `<li class="nav-item"><button type="button" class="nav-link py-1 ${state.panelTab === key ? 'active' : ''}"
             data-panel-tab="${key}">${label}</button></li>`).join('')}
@@ -422,53 +460,78 @@
 
   function itemDetails(d) {
     const rows = [
-      ['Infor item', [d.infor_item || d.customer_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : '']
-        .filter(Boolean).join(' · ')],
+      ['Infor item', d.infor_item
+        ? [d.infor_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : ''].filter(Boolean).join(' · ')
+        : 'Not found by vendor item or manufacturer part'],
       ['Long description', d.long_description],
       ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
       ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],
     ].filter(([, value]) => value);
-    if (!rows.length) return '';
     return `<dl class="row small bg-light border rounded py-2 mx-0 mb-3">${rows.map(([label, value]) => `
       <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
   }
 
+  // The Infor item's Medline items (packagings): those killed in these dates first, then any other
+  // Medline has killed under it. Medline's customer item is noted where it isn't the Infor item.
+  function packagingList(data) {
+    const packs = data.packagings;
+    return `<div class="small mb-3"><div class="text-muted mb-1">${packs.length > 1 ? `${packs.length} packagings (Medline items)` : 'Medline item'}</div>
+      <ul class="list-unstyled mb-0">${packs.map((p) => {
+        const notes = [
+          esc(p.um),
+          p.consistent ? '' : `customer item ${esc(p.customer_item || '—')}`,
+          p.infor_match === 'manufacturer part' ? 'Infor item found by manufacturer part' : '',
+          p.killed_in_range ? '' : 'not killed in these dates',
+        ].filter(Boolean).join(' · ');
+        return `<li class="mb-1"><span class="${p.medline_item === data.medline_item ? 'fw-semibold' : ''}">${esc(p.medline_item)}</span>${customerFlag(p, data.infor_item)}
+          <span class="text-muted">${notes}</span>
+          ${p.description ? `<div class="text-muted text-truncate">${esc(p.description)}</div>` : ''}</li>`;
+      }).join('')}</ul></div>`;
+  }
+
   function renderPanelTab(tab) {
     const data = state.panelData;
-    if (tab === 'lines') return linesTab(data.lines);
-    if (tab === 'picks') return picksTab(data.pick_history);
-    if (tab === 'orders') return ordersTab(data.orders);
-    return subsTab(data.subs);
+    const many = data.packagings.length > 1;
+    if (tab === 'lines') return linesTab(data.lines, many);
+    if (tab === 'picks') return picksTab(data.pick_history, many);
+    if (tab === 'orders') return ordersTab(data.orders, many);
+    return subsTab(data);
   }
+
+  const panelSubs = () => (state.panelData ? state.panelData.packagings.flatMap((p) => p.subs) : []);
 
   // Subs ----
 
-  function subsTab(subs) {
+  // Subs belong to a Medline item: with several packagings, one section each.
+  function subsTab(data) {
+    const packs = data.packagings;
+    const many = packs.length > 1;
     const add = can.add_sub ? `
       <div class="mb-3">
         <button type="button" class="btn btn-sm btn-primary" data-act="show-add"><i class="bi bi-plus-lg"></i> Add sub</button>
-        <div id="fk-add-sub" class="d-none mt-2">${addSubForm()}</div>
+        <div id="fk-add-sub" class="d-none mt-2">${addSubForm(packs)}</div>
       </div>` : '';
-    const own = subs.length ? subs.map(subCard).join('') : '<p class="text-muted small">No subs yet for this item.</p>';
-    return add + own + otherPackagingSubs();
+    return add + packs.map((p) => {
+      const head = many ? `<h3 class="h6 fw-semibold mt-3 mb-2">${esc(p.medline_item)}${customerFlag(p, data.infor_item)}
+          <span class="fw-normal small text-muted">${esc(p.um)}${p.killed_in_range ? '' : ' · not killed in these dates'}</span></h3>` : '';
+      const own = p.subs.length ? p.subs.map(subCard).join('')
+        : `<p class="text-muted small mb-2">No subs yet for ${many ? esc(p.medline_item) : 'this item'}.</p>`;
+      return head + own + otherSubs(p);
+    }).join('');
   }
 
-  function otherPackagingSubs() {
-    const data = state.panelData;
-    const others = data.other_packaging_subs || [];
-    if (!others.length) return '';
-    const customer = (data.details && data.details.customer_item) || '';
-    return `<h3 class="h6 fw-semibold mt-3 mb-1">Subs on other packagings of ${esc(customer)}</h3>
-      <p class="small text-muted mb-2">Reviewed for another Medline item of the same Infor item. Add one to this item
-        to review and pick it here.</p>
-      <ul class="list-group list-group-flush small mb-2">${others.map((o) => `
+  // Subs on the Infor item's other packagings, not on this one yet.
+  function otherSubs(p) {
+    if (!p.other_subs.length) return '';
+    return `<div class="small text-muted mb-1">On other packagings, not on ${esc(p.medline_item)} yet. Add one to review and pick it here:</div>
+      <ul class="list-group list-group-flush small mb-2">${p.other_subs.map((o) => `
         <li class="list-group-item px-0 d-flex flex-wrap gap-2 align-items-center">
           <span class="fw-semibold">${esc(o.vendor_part)}</span><span class="text-muted">${esc(o.vendor)}</span>
           ${statusBadge(o.status)}
           <span class="text-muted">on ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}${o.approved_by
             ? `, approved by ${esc(o.approved_by)} ${fmtDateTime(o.approved_at)}` : ''}</span>
           ${can.add_sub ? `<button type="button" class="btn btn-sm btn-outline-primary ms-auto py-0" data-act="copy-sub"
-              data-sub="${o.sub_id}">Add to this item</button>` : ''}
+              data-sub="${o.sub_id}" data-item="${esc(p.medline_item)}">Add to ${esc(p.medline_item)}</button>` : ''}
         </li>`).join('')}</ul>`;
   }
 
@@ -495,7 +558,8 @@
       }
     }
     if (can.order && sub.is_picked) {
-      actions.push(`<button type="button" class="btn btn-sm btn-primary" data-act="order" data-sub="${sub.sub_id}">Record order</button>`);
+      actions.push(`<button type="button" class="btn btn-sm btn-primary" data-act="order" data-sub="${sub.sub_id}"
+        data-item="${esc(sub.medline_item)}">Record order</button>`);
     }
     if (can.add_sub) {
       actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Edit</button>`);
@@ -527,14 +591,20 @@
     </div>`;
   }
 
-  function addSubForm() {
+  function addSubForm(packs) {
+    // Several packagings: which Medline item the sub is for (the one clicked, unless changed).
+    const target = packs.length > 1 ? `
+          <div class="col-12"><label class="form-label small mb-0" for="fk-add-item">For Medline item *</label>
+            <select class="form-select form-select-sm" id="fk-add-item" name="medline_item">${packs.map((p) => `
+              <option value="${esc(p.medline_item)}" ${p.medline_item === state.panelItem ? 'selected' : ''}>${esc(p.medline_item)} (${esc(p.um)})</option>`).join('')}
+            </select></div>` : '';
     return `
       <div class="border rounded p-2 bg-light">
         <label class="form-label small mb-1" for="fk-contract-q">Search Infor's active contracts</label>
         <input type="search" class="form-control form-control-sm mb-2" id="fk-contract-q" autocomplete="off"
                placeholder="Vendor item, manufacturer number, or description words">
         <div id="fk-contract-results" class="small mb-2"></div>
-        <form id="fk-add-form" class="row g-2" novalidate>
+        <form id="fk-add-form" class="row g-2" novalidate>${target}
           <div class="col-6"><label class="form-label small mb-0" for="fk-add-vendor">Vendor *</label>
             <input class="form-control form-control-sm" id="fk-add-vendor" name="vendor" maxlength="255" required></div>
           <div class="col-6"><label class="form-label small mb-0" for="fk-add-part">Vendor part *</label>
@@ -584,12 +654,13 @@
 
   // Kill lines, pick history, orders ----
 
-  function linesTab(lines) {
+  function linesTab(lines, many) {
     if (!lines.length) return '<p class="text-muted small">No kill lines for these dates and sites.</p>';
     return `<div class="table-responsive"><table class="table table-sm small align-middle">
-      <thead class="table-light"><tr><th>Ordered</th><th>Site · Dept</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
+      <thead class="table-light"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Site · Dept</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
       <tbody>${lines.map((l) => `<tr>
         <td class="text-nowrap">${fmtDate(l.order_date)} ${esc(String(l.order_time || '').slice(0, 5))}</td>
+        ${many ? `<td class="text-nowrap">${esc(l.medline_item)}</td>` : ''}
         <td>${esc(l.site)}${l.is_test ? ` <span class="badge text-bg-warning" title="${esc(l.test_purpose || 'Test line')}">test</span>` : ''}<div class="text-muted">${esc(l.department)}</div>
             ${l.test_purpose ? `<div class="text-muted fst-italic">${esc(l.test_purpose)}</div>` : ''}</td>
         <td class="text-nowrap">${esc(l.po)}${l.po_line != null ? `-${esc(l.po_line)}` : ''}</td>
@@ -613,19 +684,20 @@
     }
   }
 
-  function timeline(entries, withLabel) {
+  function timeline(entries, withLabel, withItem) {
     if (!entries.length) return '<p class="text-muted small">Nothing yet.</p>';
     return `<ul class="list-unstyled small mb-0 fk-timeline">${entries.map((h) => `
       <li class="mb-1"><span class="text-muted text-nowrap">${fmtDateTime(h.acted_at)}</span> ·
-        ${esc(h.actor)}${withLabel && h.label ? ` · <span class="fw-semibold">${esc(h.label)}</span>` : ''} · ${describe(h)}</li>`).join('')}</ul>`;
+        ${esc(h.actor)}${withLabel && h.label ? ` · <span class="fw-semibold">${esc(h.label)}</span>` : ''}${withItem && h.medline_item
+          ? ` <span class="text-muted">on ${esc(h.medline_item)}</span>` : ''} · ${describe(h)}</li>`).join('')}</ul>`;
   }
 
-  function picksTab(history) {
-    return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for this item, newest first.</p>
-      ${timeline(history, true)}`;
+  function picksTab(history, many) {
+    return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for this item${many ? ' and its other packagings' : ''}, newest first.</p>
+      ${timeline(history, true, many)}`;
   }
 
-  function ordersTab(orders) {
+  function ordersTab(orders, many) {
     if (!orders.length) return '<p class="text-muted small">No orders recorded for this item.</p>';
     return orders.map((o) => {
       const actions = [];
@@ -642,7 +714,7 @@
       return `<div class="card mb-2 ${o.voided_at ? 'opacity-75' : ''}"><div class="card-body p-2 small">
         <div class="d-flex flex-wrap gap-2 align-items-center">
           <span class="fw-semibold ${o.voided_at ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)} ${esc(o.uom)}${o.qoe ? ` (QOE ${fmtNumber(o.qoe)})` : ''}</span>
-          <span>${esc(o.sub_label)}</span><span class="text-muted">from ${esc(o.vendor)}</span>
+          <span>${esc(o.sub_label)}</span><span class="text-muted">from ${esc(o.vendor)}${many ? ` for ${esc(o.medline_item)}` : ''}</span>
           ${o.voided_at ? `<span class="badge text-bg-secondary">Voided</span>` : ''}
         </div>
         <div class="text-muted">Ordered ${fmtDateTime(o.ordered_dt)} by ${esc(o.ordered_by)}${o.voided_at ? ` · voided by ${esc(o.voided_by)}: ${esc(o.void_reason)}` : ''}</div>
@@ -692,18 +764,20 @@
       await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Picked.' : 'Unpicked.');
       return;
     }
-    if (what === 'order') { openOrderForm(subId, state.panelItem); return; }
+    if (what === 'order') { openOrderForm(subId, button.dataset.item); return; }
     if (what === 'copy-sub') {
-      const o = (state.panelData.other_packaging_subs || []).find((x) => x.sub_id === subId);
+      const target = button.dataset.item;
+      const pack = state.panelData.packagings.find((p) => p.medline_item === target);
+      const o = pack && pack.other_subs.find((x) => x.sub_id === subId);
       if (!o) return;
       await act(api.addSub, {
-        medline_item: state.panelItem, vendor: o.vendor, vendor_part: o.vendor_part, description: o.description || '',
+        medline_item: target, vendor: o.vendor, vendor_part: o.vendor_part, description: o.description || '',
         uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
         comment: `Added from ${o.medline_item}${o.um ? ` (${o.um})` : ''}, where it is ${config.statusLabels[o.status]}.`,
-      }, 'Sub added from the other packaging. It is pending review here.');
+      }, `Sub added to ${target} from the other packaging. It is pending review there.`);
       return;
     }
-    if (what === 'edit-sub') { openSubEditForm(state.panelData.subs.find((s) => s.sub_id === subId)); return; }
+    if (what === 'edit-sub') { openSubEditForm(panelSubs().find((s) => s.sub_id === subId)); return; }
     if (what === 'edit-order') { openOrderEditForm(state.panelData.orders.find((o) => o.order_id === Number(button.dataset.order))); return; }
     if (what === 'void-order') { openVoidForm(Number(button.dataset.order)); return; }
     if (what === 'history') {
@@ -735,7 +809,7 @@
     event.preventDefault();
     if (form.id === 'fk-add-form') {
       const payload = Object.fromEntries(new FormData(form).entries());
-      payload.medline_item = state.panelItem;
+      payload.medline_item = payload.medline_item || state.panelItem;  // the packaging chosen, if several
       await act(api.addSub, payload, 'Sub added. It is pending review.');
       return;
     }
@@ -808,28 +882,26 @@
     return d.toISOString().slice(0, 16);
   }
 
-  async function findSub(subId, item) {
-    if (state.panelData && state.panelItem === item) {
-      const sub = state.panelData.subs.find((s) => s.sub_id === subId);
-      if (sub) return sub;
-    }
-    const row = state.rows.find((r) => r.medline_item === item);
-    return row ? row.picks.find((p) => p.sub_id === subId) : null;
+  // A pick from the panel (any packaging) or from the main table.
+  function findSub(subId) {
+    return panelSubs().concat(...state.rows.map((row) => row.picks)).find((s) => s.sub_id === subId) || null;
   }
 
-  async function openOrderForm(subId, item) {
-    const sub = await findSub(subId, item);
+  function openOrderForm(subId, item) {
+    const sub = findSub(subId);
     if (!sub) return;
-    const row = state.rows.find((r) => r.medline_item === item);
-    const killed = row && row.quantities.length === 1 ? row.quantities[0].killed : '';
-    const group = row && row.customer_item ? state.groups[row.customer_item] : null;
-    const combined = group && group.medline_items.length > 1 && group.complete
-      ? `<div class="col-12 small text-muted">All ${group.medline_items.length} packagings of ${esc(row.customer_item)} killed
-          ${fmtNumber(group.killed_each)} EA in these dates${sub.qoe ? ` (${fmtNumber(group.killed_each / sub.qoe)} ×
+    const medline = sub.medline_item || item;
+    const row = state.rows.find((r) => r.medline_items.includes(medline));
+    const pack = row ? row.packagings.find((p) => p.medline_item === medline) : null;
+    const killed = pack && pack.quantities.length === 1 ? pack.quantities[0].killed : '';
+    // Materials Managers may order for the whole Infor item: its packagings added up in eaches.
+    const combined = row && row.packagings.length > 1 && row.quantities_each
+      ? `<div class="col-12 small text-muted">All ${row.packagings.length} packagings of Infor item ${esc(row.infor_item)} killed
+          ${fmtNumber(row.quantities_each.killed)} EA in these dates${sub.qoe ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} ×
           ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
-    showModal(`Record an order · ${esc(item)}`, `
+    showModal(`Record an order · ${esc(medline)}`, `
       <div class="col-12 small text-muted">Pick: <span class="fw-semibold">${esc(sub.vendor_part)}</span> · ${esc(sub.vendor)}
-        ${killed ? ` · killed in these dates: ${fmtNumber(killed)} ${esc(row.quantities[0].uom)}` : ''}</div>${combined}
+        ${killed ? ` · ${esc(medline)} killed in these dates: ${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}` : ''}</div>${combined}
       ${field('quantity', 'Quantity *', killed, 'type="number" min="1" step="1" required', 4)}
       ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 4)}
       ${field('qoe', 'QOE', sub.qoe != null ? fmtNumber(sub.qoe).replace(/,/g, '') : '', 'inputmode="decimal"', 4)}

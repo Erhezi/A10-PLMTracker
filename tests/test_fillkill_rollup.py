@@ -115,3 +115,69 @@ def test_infor_details_are_carried_for_the_panel_and_search():
         "GLOVE EXAM MEDIUM", "Yes", "4213-22-03", "MEDICAL EXAM GLOVES",
     )
     assert "infor_description" not in details  # Infor's short description isn't used
+
+
+# --- one Infor item, several Medline items (other packagings) --------------------------------
+
+FAMILY = [
+    {"Medline Item": "JLC-EA", "UM": "EA", "Customer Item #": "111848"},
+    {"Medline Item": "JLC-BX", "UM": "BX", "Customer Item #": "111848"},
+    {"Medline Item": "OTHER", "UM": "EA", "Customer Item #": "999999"},
+]
+ITEM_ROWS = [
+    {"Medline Item": "JLC-EA", "UM": "EA", "Customer Item #": "111848", "Item.UOMConversion": 1},
+    {"Medline Item": "JLC-BX", "UM": "BX", "Customer Item #": "111848", "Item.UOMConversion": 20},
+    {"Medline Item": "OTHER", "UM": "EA", "Customer Item #": "999999"},  # no Infor conversion
+]
+
+
+def family_sub(sub_id, item, status, part="CARD-1", vendor="Cardinal"):
+    return {**sub(sub_id, item, status), "vendor": vendor, "vendor_part": part}
+
+
+def test_infor_item_groups_add_packagings_up_in_eaches():
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("JLC-EA", "EA", 186, 0, lines=9), qty("JLC-BX", "BX", 15, 0, lines=3), qty("OTHER", "EA", 4, 0)],
+        item_rows=ITEM_ROWS, subs=[], orders=[{"medline_item": "JLC-BX"}], reasons={}, family_rows=FAMILY,
+    )
+    assert [(r["medline_item"], r["quantities"][0]["each"]) for r in rows] == [
+        ("JLC-BX", 20.0), ("JLC-EA", 1.0), ("OTHER", None),
+    ]
+    groups = rollup.infor_groups(rows)
+    assert groups["111848"] == {
+        "customer_item": "111848", "medline_items": ["JLC-BX", "JLC-EA"], "lines": 12, "complete": True,
+        "ordered_each": 486.0, "killed_each": 486.0, "filled_each": 0.0, "ordered": True,
+    }
+    assert groups["999999"]["complete"] is False  # no conversion: eaches leave it out
+
+
+def test_a_sub_approved_on_another_packaging_is_signalled():
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("JLC-BX", "BX", 15, 0)],  # only the BX packaging is killed in the range
+        item_rows=ITEM_ROWS,
+        subs=[family_sub(1, "JLC-EA", "approved"),                    # approved on the EA packaging
+              family_sub(2, "JLC-EA", "rejected", part="CARD-2"),     # rejected there: no signal
+              family_sub(3, "JLC-BX", "pending_review", part="card-1", vendor="CARDINAL")],  # same sub, here
+        orders=[], reasons={}, family_rows=FAMILY,
+    )
+    [row] = rows
+    assert row["approved_other_packagings"] == [
+        {"medline_item": "JLC-EA", "um": "EA", "vendor": "Cardinal", "vendor_part": "CARD-1", "sub_id": 1},
+    ]
+    assert row["needs"] == ["needs_review"]  # still needs its own review here
+
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("JLC-BX", "BX", 15, 0)], item_rows=ITEM_ROWS,
+        subs=[family_sub(1, "JLC-EA", "approved"), family_sub(3, "JLC-BX", "approved")],
+        orders=[], reasons={}, family_rows=FAMILY,
+    )
+    assert rows[0]["approved_other_packagings"] == []  # approved here too: nothing to flag
+
+
+def test_panel_signals_for_this_items_subs_and_the_other_packagings_subs():
+    here = [family_sub(3, "JLC-BX", "pending_review"), family_sub(4, "JLC-BX", "approved", part="OWN-1")]
+    siblings = [family_sub(1, "JLC-EA", "approved"), family_sub(2, "JLC-EA", "hold", part="CARD-2"),
+                family_sub(5, "JLC-EA", "approved", part="CARD-3")]
+    annotated, others = rollup.sibling_signals(here, siblings, {"JLC-EA": "EA"})
+    assert [(s["sub_id"], [o["sub_id"] for o in s["approved_elsewhere"]]) for s in annotated] == [(3, [1]), (4, [])]
+    assert [(o["sub_id"], o["status"], o["um"]) for o in others] == [(5, "approved", "EA"), (2, "hold", "EA")]

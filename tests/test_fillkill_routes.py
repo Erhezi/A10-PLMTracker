@@ -121,7 +121,7 @@ def test_main_sums_per_item_and_uom_over_the_dates_and_sites(viewer):
     status, data = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     assert status == 200
     rows = {row["medline_item"]: row for row in data["rows"]}
-    assert rows["DYND70294BH"]["quantities"] == [{"uom": "EA", "ordered": 30, "filled": 0, "killed": 30}]
+    assert rows["DYND70294BH"]["quantities"] == [{"uom": "EA", "ordered": 30, "filled": 0, "killed": 30, "each": None}]
     assert rows["DYND70294BH"]["lines"] == 6
     assert rows["DYND70294BH"]["latest_reason"]["reason"] == "MBO"  # 11:35 at White Plains beats 10:00 at the test site
     assert [q["uom"] for q in rows["MDS2585H"]["quantities"]] == ["BX", "CS"]  # never added across UOMs
@@ -266,3 +266,34 @@ def test_library_search_ignores_dashes_spaces_dots_and_slashes(app, viewer, find
         assert [s["vendor_part"] for s in data["subs"]] == ["OM-12.5/A"], q
     _, data = get(viewer, "/fillkill/api/subs", q="om13")
     assert data["subs"] == []
+
+
+def test_other_packagings_of_one_infor_item(app, viewer, finder_approver):
+    # MDS2585HX: another Medline item (case pack) of the same Infor item, 108176, as MDS2585H.
+    add_view_rows(app, "vw_MedlineFillKillItemCollection", [
+        {"Medline Item": "MDS2585HX", "UM": "CS", "Customer Item #": "108176", "Item Description": "GLOVE CASE",
+         "Item.UOMConversion": 1000},
+    ])
+    add_view_rows(app, "vw_MedlineFillKillQtyAgg", [qty(29, WP, "MDS2585HX", "CS", 1, 0, 1)])
+
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor": "Cardinal", "vendor_part": "88885"})
+    post(finder_approver, f"/fillkill/api/subs/{data['sub']['sub_id']}/status", {"status": "approved"})
+
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    rows = {r["medline_item"]: r for r in main["rows"]}
+    assert [s["vendor_part"] for s in rows["MDS2585HX"]["approved_other_packagings"]] == ["88885"]
+    assert rows["MDS2585H"]["approved_other_packagings"] == []
+    assert main["groups"]["108176"]["medline_items"] == ["MDS2585H", "MDS2585HX"]
+
+    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585HX", start="2026-09-28", end="2026-09-30")
+    assert panel["siblings"] == [{"medline_item": "MDS2585H", "um": "BX"}]  # its UOM in the item view
+    [other] = panel["other_packaging_subs"]
+    assert (other["vendor_part"], other["status"], other["approved_by"]) == ("88885", "approved", "nurse@example.org")
+
+    # Added here too: it starts pending review, flagged as approved on MDS2585H.
+    post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585HX", "vendor": "Cardinal", "vendor_part": "88885"})
+    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585HX", start="2026-09-28", end="2026-09-30")
+    [here] = panel["subs"]
+    assert here["status"] == "pending_review"
+    assert [o["medline_item"] for o in here["approved_elsewhere"]] == ["MDS2585H"]
+    assert panel["other_packaging_subs"] == []

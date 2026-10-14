@@ -167,6 +167,7 @@ def api_main():
     return ok({
         "scope": {"start": scope.start, "end": scope.end, "sites": scope.sites},
         "rows": rows,
+        "groups": rollup.infor_groups(rows),
         "counts": rollup.needs_counts(rows),
         "data": data_as_of(),
         "pbo_added": added,

@@ -15,6 +15,7 @@ from sqlalchemy import and_, bindparam, func, or_, select, text
 
 from .. import db
 from ..models.fillkill import History, Sub, SubOrder
+from . import rollup
 
 log = logging.getLogger(__name__)
 
@@ -173,16 +174,35 @@ def orders_in_range(scope: Scope, items=None) -> list[dict]:
     return [order_dict(order) for order in db.session.execute(query).scalars()]
 
 
+def family_rows(customer_items) -> list[dict]:
+    """Every Medline item (and UOM) Medline has killed under these customer (Infor) items: one Infor
+    item's packagings. Read from the item view, so only Medline items that have been killed."""
+    customer_items = sorted({c for c in customer_items if c})
+    rows = []
+    for start in range(0, len(customer_items), 1000):
+        chunk = customer_items[start:start + 1000]
+        rows += _rows(
+            f"""SELECT DISTINCT [Medline Item], [UM], [Customer Item #] FROM {ITEMS}
+                WHERE [Customer Item #] IN :customers""",
+            {"customers": chunk}, [bindparam("customers", expanding=True)],
+        )
+    return rows
+
+
 def main_table_inputs(scope: Scope) -> dict:
-    """Everything rollup.build_main_rows needs for the scope."""
+    """Everything rollup.build_main_rows needs for the scope, including the subs of the items'
+    other packagings (Medline items of the same Infor item), for their "approved" signal."""
     qty = qty_rows(scope)
     items = {row["medline_item"] for row in qty}
+    details = item_rows(scope)
+    family = family_rows(row.get("Customer Item #") for row in details)
     return {
         "qty_rows": qty,
-        "item_rows": item_rows(scope),
-        "subs": subs_for_items(items),
+        "item_rows": details,
+        "subs": subs_for_items(items | {row["Medline Item"] for row in family}),
         "orders": orders_in_range(scope, items),
         "reasons": latest_reasons(scope),
+        "family_rows": family,
     }
 
 
@@ -263,14 +283,43 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
         line["killed"] = (line["ordered"] or 0) - (line["filled"] or 0)
 
     items_sql = f"SELECT * FROM {ITEMS} WHERE [Medline Item] = :item"
+    item_view_rows = _rows(items_sql, {"item": medline_item})
+
+    # The same Infor item's other packagings, and their subs (signal 1, 2026-10-14).
+    family = family_rows(row.get("Customer Item #") for row in item_view_rows)
+    sibling_uoms: dict[str, list] = {}
+    for row in family:
+        if row["Medline Item"] != medline_item:
+            sibling_uoms.setdefault(row["Medline Item"], []).append(row.get("UM") or "")
+    sibling_uoms = {item: "/".join(sorted(u)) for item, u in sibling_uoms.items()}
+    sibling_subs = subs_for_items(sibling_uoms)
+    approvals = _latest_approvals([s["sub_id"] for s in sibling_subs])
+    sibling_subs = [{**s, **approvals.get(s["sub_id"], {})} for s in sibling_subs]
+    sub_list, other_packagings = rollup.sibling_signals(sub_list, sibling_subs, sibling_uoms)
+
     return {
         "medline_item": medline_item,
-        "item_rows": _rows(items_sql, {"item": medline_item}),
+        "item_rows": item_view_rows,
+        "siblings": [{"medline_item": item, "um": um} for item, um in sorted(sibling_uoms.items())],
+        "other_packaging_subs": other_packagings,
         "subs": sub_list,
         "lines": lines,
         "pick_history": [_history_dict(row, sub_labels) for row in picks],
         "orders": [{**order_dict(o), "latest_comment": order_comments.get(o.order_id)} for o in orders],
     }
+
+
+def _latest_approvals(sub_ids) -> dict[int, dict]:
+    """Per sub: who last approved it and when."""
+    sub_ids = list(sub_ids)
+    if not sub_ids:
+        return {}
+    rows = db.session.execute(
+        select(History).where(History.entity == "sub", History.entity_id.in_(sub_ids),
+                              History.action == "status", History.to_value == "approved")
+        .order_by(History.acted_at, History.history_id)
+    ).scalars().all()
+    return {row.entity_id: {"approved_by": row.actor, "approved_at": row.acted_at} for row in rows}
 
 
 def history(entity: str, entity_id: int) -> list[dict]:

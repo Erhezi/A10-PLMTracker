@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fk-dash-top').innerHTML = rows.length ? rows.map((row) => {
       const subs = Object.entries(row.subs_status).filter(([, n]) => n)
         .map(([s, n]) => `<span class="badge" style="background:${STATUS_COLOR[s]}">${esc(statusLabels[s])} ${n}</span>`).join(' ');
-      // Several packagings: their kills added up in eaches, when Infor converts every UOM.
+      // Several UOMs: their kills added up in eaches, when Infor converts every one.
       const killed = row.packagings.length > 1 && row.quantities_each
         ? `${Number(row.quantities_each.killed).toLocaleString()} EA`
         : row.packagings.flatMap((p) => p.quantities).map((q) => `${q.killed} ${esc(q.uom)}`).join('<br>');

@@ -52,16 +52,17 @@
     <p class="mb-2"><strong>Main</strong> is where everyone works. Everyone sees the same page; the buttons
       you get follow your roles.</p>
     <ul class="mb-3">
-      <li class="mb-1"><strong>One row per Infor item.</strong> Its Medline items (packagings, such as each and box)
-        are listed inside the row, each with its own quantities, reason, substitutes and pick. A Medline item Infor
-        can't place has a row of its own, marked <em>Not in Infor</em>.</li>
+      <li class="mb-1"><strong>One row per Infor item.</strong> Its Medline items, one per UOM (such as each and box),
+        are listed inside the row, each with its QOE (eaches per unit, from Infor), quantities, reason, substitutes
+        and pick. A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
+        <em>Not in Infor</em>.</li>
       <li class="mb-1"><strong>Choose what to look at:</strong> slide or type the order dates (it opens on the latest
         day), pick sites, and type part of an item number or description.</li>
       <li class="mb-1"><strong>Needs filter:</strong> <em>Needs subs</em> (no live substitute), <em>Needs review</em>
         (one is pending review), <em>Needs pick</em> (approved but nothing picked), <em>Needs order</em> (picked, no
         order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
       <li class="mb-1"><strong>Click an item</strong> (its Infor item or a Medline item) to open its panel: the
-        Infor item's details, its packagings, their substitutes, the kill lines behind them, everything picked or
+        Infor item's details, its UOMs, their substitutes, the kill lines behind them, everything picked or
         reviewed before, and every order.</li>
       <li class="mb-1"><strong>Below the table:</strong> every substitute on file (the reference library), and the
         orders recorded in the chosen dates.</li>
@@ -106,15 +107,14 @@
     <ul class="mb-0">
       <li>Access is per module. If you can't see Fill/Kill Management in the top bar, ask an admin for a Fill/Kill role.</li>
       <li>An item shows <em>Ordered</em> when an order's date falls inside the dates you chose.</li>
-      <li><strong>Packagings.</strong> One Infor item can be killed under several Medline items, for example by the
+      <li><strong>UOMs.</strong> One Infor item can be killed under several Medline items, for example by the
         each and by the box. They share the Infor item's row, with a last line that adds them up in eaches. A
-        substitute approved for one packaging is flagged on the others; add it there from the item panel and
-        approve it to use it.</li>
+        substitute approved for one UOM is flagged on the others; add it there from the item panel and approve it
+        to use it.</li>
       <li><strong>The <i class="bi bi-exclamation-triangle-fill text-warning"></i> beside a Medline item</strong> means
-        Medline's customer item isn't the Infor item. Medline sometimes sends the Medline item itself, or Infor's
-        contract-only number (a 4-digit manufacturer code and the Medline item, like 1296-DYNJAA04). The Infor item
-        is then found by Medline's manufacturer part number, if Infor has exactly one item for it; if not, the
-        Medline item has a row of its own. Point at the mark to see both numbers.</li>
+        Medline's customer item isn't the Infor item; point at it to see what Medline listed. The Infor item always
+        comes from Infor's Medline vendor items, never from the customer item, which can be the Medline item
+        itself or a contract-only number like 1296-DYNJAA04.</li>
       <li>Comments are added, never overwritten, and show who wrote them and when.</li>
       <li>If someone changed a substitute while you had it open, you'll see who changed it and be asked to reload.</li>
       <li>Every login ends at 2:30 AM. The next click takes you to the login page, then back to where you were.</li>

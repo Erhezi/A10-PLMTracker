@@ -13,9 +13,9 @@
 --     and 101494, in other UOMs, on 9/28-9/30. They copy a real line of the same Infor item and
 --     change the Medline item, UOM, quantity and (for 111848) the comment; PO is left empty.
 --   - Customer item isn't the Infor item (hand-made, 9/30): DYNJAA04 under customer item
---     1296-DYNJAA04 (an Infor contract-only number), and B-D930299H under itself (Infor item
---     100091, found by manufacturer part). Given in full; ship-to, plant and buyer copy the
---     latest real line.
+--     1296-DYNJAA04 (an Infor contract-only number), B-D930299H under itself (not a Medline vendor
+--     item in Infor), and B-D367344 under 198765 (not in Infor; the vendor item is 102205). Given
+--     in full; ship-to, plant and buyer copy the latest real line.
 -- Re-running deletes and reloads them all.
 --
 -- At go-live, remove them:  TRUNCATE TABLE [FillKill].[TestFillKillLine];
@@ -79,9 +79,9 @@ DECLARE @many_101494 VARCHAR(300) = 'Many Medline items to one Infor item: J-J20
 DECLARE @customer_dynjaa04 VARCHAR(300) = 'Customer item is not an Infor item: 1296-DYNJAA04 is Infor''s '
     + 'contract-only (Special) number, manufacturer code 1296 + Medline item. No item master record, so '
     + 'it stands alone, flagged.';
-DECLARE @customer_bd930299h VARCHAR(300) = 'Customer item is the Medline item itself (B-D930299H). It isn''t a '
-    + 'Medline vendor item in Infor; manufacturer part 930299 finds Infor item 100091 (B-D930299 CA, '
-    + 'B-D930299Z BX).';
+DECLARE @customer_bd930299h VARCHAR(300) = 'Customer item is the Medline item itself (B-D930299H), which '
+    + 'isn''t a Medline vendor item in Infor (Infor item 100091 has B-D930299 CA and B-D930299Z BX). No '
+    + 'Infor item, so it stands alone, flagged.';
 DECLARE @customer_bd367344 VARCHAR(300) = 'Customer item is a number, but not the Infor item: 198765 isn''t in '
     + 'Infor''s item master, while Medline vendor item B-D367344 is Infor item 102205 (CA = 200 EA).';
 

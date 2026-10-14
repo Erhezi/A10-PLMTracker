@@ -35,8 +35,7 @@ STATUS_ORDER = ("approved", "hold", "pending_review", "rejected")
 ITEM_FIELDS = {
     "description": "Item Description",                      # Medline's, from the latest kill line
     "customer_item": "Customer Item #",                     # Medline's; not always an Infor item
-    "infor_item": "Infor Item",                             # Infor's, by vendor item or manufacturer part
-    "infor_match": "Infor Item Match",
+    "infor_item": "Infor Item",                             # Infor's, by Medline vendor item
     "manufacturer": "Manufacturer Name",
     "mfr_item": "Mfr. Item #",
     "item_qoe": "Item.UOMConversion",
@@ -218,7 +217,6 @@ def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> di
     return {
         "medline_item": item,
         "customer_item": info["customer_item"],
-        "infor_match": info["infor_match"],
         # Medline's customer item is the Infor item: no warning beside the Medline item.
         "consistent": bool(infor) and info["customer_item"] == infor,
         "description": info["description"],

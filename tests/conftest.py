@@ -79,7 +79,7 @@ FILLKILL_VIEWS = {
     "vw_MedlineFillKillItemCollection": [
         "Medline Item", "UM", "Customer Item #", "Mfr. Item #", "Manufacturer Name", "Item.UOMConversion",
         "VendorItem.UOMConversion", "UOM_QOE_VARS", "Medline.Sub", "Medline.ParentItem", "SUB_VARS",
-        "Item Description", "Infor Item", "INFOR_ITEM_VARS", "Infor Item Consistency", "Infor Item Match", "Item.Active",
+        "Item Description", "Infor Item", "INFOR_ITEM_VARS", "Infor Item Consistency", "Item.Active",
         "Item.Description", "Item.LongDescription", "CommodityCode", "CommodityCode.Description",
     ],
     "vw_MedlineFillKill": [

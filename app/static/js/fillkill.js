@@ -229,7 +229,7 @@
       renderRows();
     } catch (error) {
       if (ticket !== mainRequest) return;
-      setRows(`<tbody><tr><td colspan="11" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
+      setRows(`<tbody><tr><td colspan="12" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
     }
   }
 
@@ -277,7 +277,7 @@
       : '<span class="text-muted small">No subs</span>';
   }
 
-  // Subs approved for another Medline item of the same Infor item (another packaging) not killed
+  // Subs approved for another Medline item of the same Infor item (another UOM) not killed
   // in these dates: nursing still approves them here, but knows the product was already judged
   // (design §5, 2026-10-14).
   function otherPackagingNote(approved) {
@@ -285,7 +285,7 @@
     const items = [...new Set(approved.map((a) => `${a.medline_item}${a.um ? ` (${a.um})` : ''}`))];
     const subs = approved.map((a) => `${a.vendor_part} · ${a.vendor} on ${a.medline_item}`).join('\n');
     return `<div class="small text-success mt-1" title="${esc(subs)}"><i class="bi bi-box-seam"></i>
-      ${approved.length} approved for other packaging: ${esc(items.join(', '))}</div>`;
+      ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
   }
 
   function picksCell(picks) {
@@ -306,37 +306,38 @@
       + `${esc(REASON_LABEL[reason.reason] || reason.reason)}</span>${date}</div>`;
   }
 
-  // Medline's customer item isn't always the Infor item: it can be the Medline item itself, or
-  // Infor's contract-only number (manufacturer code + Medline item). A warning beside the Medline item.
-  function customerFlag(p, infor) {
+  // Medline's customer item isn't always the Infor item (it can be the Medline item itself, or
+  // 1296-<Medline item>): a warning beside the Medline item, naming Medline's customer item on hover.
+  function customerFlag(p) {
     if (p.consistent) return '';
-    const customer = p.customer_item || '(blank)';
-    const why = infor
-      ? `Medline's customer item ${customer} isn't the Infor item ${infor}`
-        + (p.infor_match === 'manufacturer part' ? ', which was found by the manufacturer part' : '')
-      : `Medline's customer item ${customer} isn't an Infor item, and no Infor item was found by vendor item or manufacturer part`;
-    return `<sup class="fk-flag" title="${esc(why)}"><i class="bi bi-exclamation-triangle-fill text-warning" role="img"
-      aria-label="${esc(why)}"></i></sup>`;
+    const text = `Medline Customer Item listed as ${p.customer_item || '(blank)'}`;
+    return `<sup class="fk-flag" title="${esc(text)}"><i class="bi bi-exclamation-triangle-fill text-warning" role="img"
+      aria-label="${esc(text)}"></i></sup>`;
   }
 
-  function packagingCell(p, infor) {
+  function packagingCell(p) {
     const varies = p.varies.length ? ` <span class="badge text-bg-light border" title="Medline's lines or Infor disagree on: ${esc(p.varies.join(', '))}">varies</span>` : '';
-    const customer = p.consistent ? '' : `<div class="small text-muted">Customer item ${esc(p.customer_item || '—')}</div>`;
     return `<button type="button" class="btn btn-link p-0" data-open="${esc(p.medline_item)}">${esc(p.medline_item)}</button>`
-      + `${customerFlag(p, infor)}${varies}${customer}`;
+      + `${customerFlag(p)}${varies}`;
+  }
+
+  // Eaches per unit, from Infor's UOM conversion for the Infor item: one per UOM line.
+  function qoeLines(quantities) {
+    return quantities.map((q) => `<div>${q.each != null ? fmtNumber(q.each)
+      : '<span class="text-muted" title="Infor has no conversion for this UOM of the Infor item">—</span>'}</div>`).join('');
   }
 
   function renderRows() {
     const rows = state.rows.filter((row) => (state.needs === 'all' || row.needs.includes(state.needs)) && matchesSearch(row));
     if (!rows.length) {
       const why = state.rows.length ? 'No item matches these filters.' : 'No kill lines for these dates and sites.';
-      setRows(`<tbody><tr><td colspan="11" class="text-muted small p-3">${why}</td></tr></tbody>`);
+      setRows(`<tbody><tr><td colspan="12" class="text-muted small p-3">${why}</td></tr></tbody>`);
       return;
     }
     setRows(rows.map(itemRows).join(''));
   }
 
-  // Each Infor item is a <tbody> of its own, so its packagings highlight together.
+  // Each Infor item is a <tbody> of its own, so its UOMs highlight together.
   const mainTable = $('fk-main');
 
   function setRows(html) {
@@ -344,7 +345,7 @@
     mainTable.tHead.insertAdjacentHTML('afterend', html);
   }
 
-  // One <tr> per packaging (Medline item); with several, a last <tr> adds them up in eaches.
+  // One <tr> per Medline item (UOM); with several, a last <tr> adds them up in eaches.
   function itemRows(row) {
     const packs = row.packagings;
     const many = packs.length > 1;
@@ -353,8 +354,8 @@
       ? ' <span class="badge text-bg-secondary" title="The Infor item is not active">Inactive</span>' : '';
     const infor = row.infor_item
       ? `<button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(packs[0].medline_item)}">${esc(row.infor_item)}</button>${inactive}`
-      : '<span class="text-muted small" title="No Infor item found for this Medline item, by vendor item or manufacturer part">Not in Infor</span>';
-    const count = many ? `<div class="small text-muted">${packs.length} packagings</div>` : '';
+      : '<span class="text-muted small" title="Not a Medline vendor item in Infor">Not in Infor</span>';
+    const count = many ? `<div class="small text-muted">${packs.length} UOMs</div>` : '';
     const inforDesc = row.long_description
       ? `<div class="text-truncate small text-muted" title="Infor: ${esc(row.long_description)}">${esc(row.long_description)}</div>` : '';
     const ordering = row.ordering_status === 'ordered'
@@ -362,8 +363,9 @@
     const note = otherPackagingNote(row.approved_other_packagings);
     const trs = packs.map((p, i) => `<tr>
       ${i ? '' : `<td${span}>${infor}${count}</td>`}
-      <td>${packagingCell(p, row.infor_item)}</td>
+      <td>${packagingCell(p)}</td>
       ${i ? '' : `<td class="fk-desc"${span}><div class="text-truncate" title="${esc(row.description)}">${esc(row.description)}</div>${inforDesc}</td>`}
+      <td class="text-end">${qoeLines(p.quantities)}</td>
       <td class="text-end">${qtyLines(p.quantities, 'ordered')}</td>
       <td class="text-end fw-semibold">${qtyLines(p.quantities, 'killed')}</td>
       <td class="text-end">${qtyLines(p.quantities, 'filled')}</td>
@@ -377,13 +379,14 @@
     return `<tbody class="fk-item">${trs.join('')}</tbody>`;
   }
 
-  // The packagings added up in eaches, by Infor's UOM conversion.
+  // The UOMs added up in eaches, by Infor's UOM conversion.
   function totalRow(row, note) {
     const each = (key) => (row.quantities_each
       ? `${fmtNumber(row.quantities_each[key])} <span class="text-muted small">EA</span>`
-      : '<span class="text-muted" title="A UOM has no Infor conversion, so the packagings can\'t be added up">—</span>');
+      : '<span class="text-muted" title="A UOM has no Infor conversion, so they can\'t be added up">—</span>');
     return `<tr class="fk-total">
-      <td class="small text-muted">All packagings, in eaches</td>
+      <td class="small text-muted">All UOMs, in EA</td>
+      <td></td>
       <td class="text-end">${each('ordered')}</td>
       <td class="text-end fw-semibold">${each('killed')}</td>
       <td class="text-end">${each('filled')}</td>
@@ -462,7 +465,7 @@
     const rows = [
       ['Infor item', d.infor_item
         ? [d.infor_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : ''].filter(Boolean).join(' · ')
-        : 'Not found by vendor item or manufacturer part'],
+        : 'None: not a Medline vendor item in Infor'],
       ['Long description', d.long_description],
       ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
       ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],
@@ -471,19 +474,18 @@
       <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
   }
 
-  // The Infor item's Medline items (packagings): those killed in these dates first, then any other
-  // Medline has killed under it. Medline's customer item is noted where it isn't the Infor item.
+  // The Infor item's Medline items, one per UOM: those killed in these dates first, then any other
+  // Medline has killed under it.
   function packagingList(data) {
     const packs = data.packagings;
-    return `<div class="small mb-3"><div class="text-muted mb-1">${packs.length > 1 ? `${packs.length} packagings (Medline items)` : 'Medline item'}</div>
+    return `<div class="small mb-3"><div class="text-muted mb-1">${packs.length > 1 ? `${packs.length} UOMs (Medline items)` : 'Medline item'}</div>
       <ul class="list-unstyled mb-0">${packs.map((p) => {
         const notes = [
           esc(p.um),
-          p.consistent ? '' : `customer item ${esc(p.customer_item || '—')}`,
-          p.infor_match === 'manufacturer part' ? 'Infor item found by manufacturer part' : '',
+          p.qoe != null ? `QOE ${fmtNumber(p.qoe)}` : '',
           p.killed_in_range ? '' : 'not killed in these dates',
         ].filter(Boolean).join(' · ');
-        return `<li class="mb-1"><span class="${p.medline_item === data.medline_item ? 'fw-semibold' : ''}">${esc(p.medline_item)}</span>${customerFlag(p, data.infor_item)}
+        return `<li class="mb-1"><span class="${p.medline_item === data.medline_item ? 'fw-semibold' : ''}">${esc(p.medline_item)}</span>${customerFlag(p)}
           <span class="text-muted">${notes}</span>
           ${p.description ? `<div class="text-muted text-truncate">${esc(p.description)}</div>` : ''}</li>`;
       }).join('')}</ul></div>`;
@@ -502,7 +504,7 @@
 
   // Subs ----
 
-  // Subs belong to a Medline item: with several packagings, one section each.
+  // Subs belong to a Medline item: with several UOMs, one section each.
   function subsTab(data) {
     const packs = data.packagings;
     const many = packs.length > 1;
@@ -512,7 +514,7 @@
         <div id="fk-add-sub" class="d-none mt-2">${addSubForm(packs)}</div>
       </div>` : '';
     return add + packs.map((p) => {
-      const head = many ? `<h3 class="h6 fw-semibold mt-3 mb-2">${esc(p.medline_item)}${customerFlag(p, data.infor_item)}
+      const head = many ? `<h3 class="h6 fw-semibold mt-3 mb-2">${esc(p.medline_item)}${customerFlag(p)}
           <span class="fw-normal small text-muted">${esc(p.um)}${p.killed_in_range ? '' : ' · not killed in these dates'}</span></h3>` : '';
       const own = p.subs.length ? p.subs.map(subCard).join('')
         : `<p class="text-muted small mb-2">No subs yet for ${many ? esc(p.medline_item) : 'this item'}.</p>`;
@@ -520,10 +522,10 @@
     }).join('');
   }
 
-  // Subs on the Infor item's other packagings, not on this one yet.
+  // Subs on the Infor item's other UOMs, not on this one yet.
   function otherSubs(p) {
     if (!p.other_subs.length) return '';
-    return `<div class="small text-muted mb-1">On other packagings, not on ${esc(p.medline_item)} yet. Add one to review and pick it here:</div>
+    return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review and pick it here:</div>
       <ul class="list-group list-group-flush small mb-2">${p.other_subs.map((o) => `
         <li class="list-group-item px-0 d-flex flex-wrap gap-2 align-items-center">
           <span class="fw-semibold">${esc(o.vendor_part)}</span><span class="text-muted">${esc(o.vendor)}</span>
@@ -592,7 +594,7 @@
   }
 
   function addSubForm(packs) {
-    // Several packagings: which Medline item the sub is for (the one clicked, unless changed).
+    // Several UOMs: which Medline item the sub is for (the one clicked, unless changed).
     const target = packs.length > 1 ? `
           <div class="col-12"><label class="form-label small mb-0" for="fk-add-item">For Medline item *</label>
             <select class="form-select form-select-sm" id="fk-add-item" name="medline_item">${packs.map((p) => `
@@ -693,7 +695,7 @@
   }
 
   function picksTab(history, many) {
-    return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for this item${many ? ' and its other packagings' : ''}, newest first.</p>
+    return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for this item${many ? ' and its other UOMs' : ''}, newest first.</p>
       ${timeline(history, true, many)}`;
   }
 
@@ -774,7 +776,7 @@
         medline_item: target, vendor: o.vendor, vendor_part: o.vendor_part, description: o.description || '',
         uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
         comment: `Added from ${o.medline_item}${o.um ? ` (${o.um})` : ''}, where it is ${config.statusLabels[o.status]}.`,
-      }, `Sub added to ${target} from the other packaging. It is pending review there.`);
+      }, `Sub added to ${target} from the other UOM. It is pending review there.`);
       return;
     }
     if (what === 'edit-sub') { openSubEditForm(panelSubs().find((s) => s.sub_id === subId)); return; }
@@ -809,7 +811,7 @@
     event.preventDefault();
     if (form.id === 'fk-add-form') {
       const payload = Object.fromEntries(new FormData(form).entries());
-      payload.medline_item = payload.medline_item || state.panelItem;  // the packaging chosen, if several
+      payload.medline_item = payload.medline_item || state.panelItem;  // the UOM chosen, if several
       await act(api.addSub, payload, 'Sub added. It is pending review.');
       return;
     }
@@ -882,7 +884,7 @@
     return d.toISOString().slice(0, 16);
   }
 
-  // A pick from the panel (any packaging) or from the main table.
+  // A pick from the panel (any UOM) or from the main table.
   function findSub(subId) {
     return panelSubs().concat(...state.rows.map((row) => row.picks)).find((s) => s.sub_id === subId) || null;
   }
@@ -894,9 +896,9 @@
     const row = state.rows.find((r) => r.medline_items.includes(medline));
     const pack = row ? row.packagings.find((p) => p.medline_item === medline) : null;
     const killed = pack && pack.quantities.length === 1 ? pack.quantities[0].killed : '';
-    // Materials Managers may order for the whole Infor item: its packagings added up in eaches.
+    // Materials Managers may order for the whole Infor item: its UOMs added up in eaches.
     const combined = row && row.packagings.length > 1 && row.quantities_each
-      ? `<div class="col-12 small text-muted">All ${row.packagings.length} packagings of Infor item ${esc(row.infor_item)} killed
+      ? `<div class="col-12 small text-muted">All ${row.packagings.length} UOMs of Infor item ${esc(row.infor_item)} killed
           ${fmtNumber(row.quantities_each.killed)} EA in these dates${sub.qoe ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} ×
           ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
     showModal(`Record an order · ${esc(medline)}`, `

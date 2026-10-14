@@ -180,8 +180,8 @@ def orders_in_range(scope: Scope, items=None) -> list[dict]:
 def family_rows(infor_items) -> list[dict]:
     """Every Medline item (and UOM) Medline has killed under these Infor items: their packagings.
     Read from the item view, so only Medline items that have been killed, and matched to an Infor
-    item there (by vendor item or manufacturer part). Medline's customer item isn't used: it isn't
-    always an Infor item number."""
+    item there (by Medline vendor item). Medline's customer item isn't used: it isn't always an
+    Infor item number."""
     infor_items = sorted({i for i in infor_items if i})
     rows = []
     for start in range(0, len(infor_items), 1000):
@@ -312,8 +312,8 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
         packagings.append({
             "medline_item": item,
             "um": uoms[item],
+            "qoe": info.get("item_qoe"),  # eaches per UOM, from Infor's conversion for the Infor item
             "customer_item": info.get("customer_item"),
-            "infor_match": info.get("infor_match"),
             "consistent": bool(infor) and info.get("customer_item") == infor,
             "description": info.get("description"),
             "killed_in_range": item in killed,

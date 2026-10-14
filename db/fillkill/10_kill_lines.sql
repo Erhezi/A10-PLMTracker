@@ -5,10 +5,14 @@
 -- in SCSFileIngestor (written only by the A13 ingestion), plus FillKill.TestFillKillLine.
 -- FillKill.vw_FillKillLastLoad says how fresh they are, for the app's "data as of".
 --
--- Test copies, for trying the module with more than one site: for each of the latest 3 order
--- dates in Medline's data, the last 10 lines of the day (by order time) are copied with Sold-To
--- and Sold-To Name set to 'test site', and 'TEST' in front of the Sales Order # so a copy never
--- clashes with a real line. Everything else (item, quantities, comment, PO) is as Medline sent it.
+-- Test lines, all under Sold-To 'test site', with 'TEST' at the start of the Sales Order # so they
+-- never clash with a real line. [Test Purpose] says why each line is there:
+--   - Sites: for each of the latest 3 order dates in Medline's data, the last 10 lines of the day
+--     (by order time), copied as Medline sent them (item, quantities, comment, PO).
+--   - Many Medline items to one Infor item (hand-made): other Medline items of Infor items 111848
+--     and 101494, in other UOMs, on 9/28-9/30. They copy a real line of the same Infor item and
+--     change the Medline item, UOM, quantity and (for 111848) the comment; PO is left empty.
+-- Re-running deletes and reloads them all.
 --
 -- At go-live, remove them:  TRUNCATE TABLE [FillKill].[TestFillKillLine];
 
@@ -46,13 +50,28 @@ BEGIN
         [source file]                             VARCHAR(260)  NULL,
         [create stamp]                            DATETIME      NOT NULL,
         [update stamp]                            DATETIME      NOT NULL,
+        [Test Purpose]                            VARCHAR(300)  NULL,  -- why the line is here
         CONSTRAINT [PK_TestFillKillLine] PRIMARY KEY CLUSTERED ([Sales Order #], [Order Line #])
     );
     PRINT 'Created FillKill.TestFillKillLine';
 END;
 GO
 
+IF COL_LENGTH(N'FillKill.TestFillKillLine', N'Test Purpose') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[TestFillKillLine] ADD [Test Purpose] VARCHAR(300) NULL;
+    PRINT 'Added TestFillKillLine.[Test Purpose]';
+END;
+GO
+
 DECLARE @days INT = 3, @lines_per_day INT = 10;
+DECLARE @sites VARCHAR(300) = 'Sites: a real line copied under a second site, to test combining sites '
+    + '(site filter, per-site and all-site totals).';
+DECLARE @many_111848 VARCHAR(300) = 'Many Medline items to one Infor item: JLCSFTP22A5S (BX) beside '
+    + 'JLCSFTP22A5SH (EA), both 111848. Also different reasons on one Infor item: MBO here, NONSTOCK UOM '
+    + 'on JLCSFTP22A5SH.';
+DECLARE @many_101494 VARCHAR(300) = 'Many Medline items to one Infor item: J-J2015 (CA) and J-J2015Z (BX) '
+    + 'beside J-J2015H (EA), all 101494, in three UOMs.';
 
 BEGIN TRANSACTION;
 
@@ -75,23 +94,54 @@ INSERT INTO [FillKill].[TestFillKillLine] (
     [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
     [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
     [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
-    [create stamp], [update stamp]
+    [create stamp], [update stamp], [Test Purpose]
 )
 SELECT 'test site', 'test site', [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
        [PO #], [PO Line], 'TEST' + [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
        [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
        [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
-       GETDATE(), GETDATE()
+       GETDATE(), GETDATE(), @sites
 FROM ranked
 WHERE [rk] <= @lines_per_day;
 
-PRINT CONCAT('Test lines loaded: ', @@ROWCOUNT);
+PRINT CONCAT('Test lines loaded (sites): ', @@ROWCOUNT);
+
+-- Hand-made lines: each copies the latest real line of the same Infor item (customer item) and
+-- changes what's listed here. A NULL comment keeps the real line's comment.
+INSERT INTO [FillKill].[TestFillKillLine] (
+    [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
+    [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
+    [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
+    [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
+    [create stamp], [update stamp], [Test Purpose]
+)
+SELECT 'test site', 'test site', t.[Ship-To], t.[Ship-To Name], t.[Ship-To Name 2], v.[order_date], '12:00:00',
+       NULL, NULL, v.[sales_order], '000010', v.[item], t.[Item Description], v.[item],
+       t.[Customer Item #], t.[Mfr. Item #], t.[Manufacturer Name], v.[qty], v.[um], 0, t.[Plant],
+       t.[Buyer Name], COALESCE(v.[comment], t.[Internal Order Comments from SAP (Z106)]), NULL, NULL,
+       'hand-made test line (10_kill_lines.sql)', GETDATE(), GETDATE(), v.[purpose]
+FROM (VALUES
+    ('TEST-111848-0928', CAST('2026-09-28' AS DATE), 'JLCSFTP22A5S', 'BX', 5,  'MBO - ERD is 11/10/2026', '111848', @many_111848),
+    ('TEST-111848-0929', CAST('2026-09-29' AS DATE), 'JLCSFTP22A5S', 'BX', 5,  'MBO - ERD is 11/10/2026', '111848', @many_111848),
+    ('TEST-111848-0930', CAST('2026-09-30' AS DATE), 'JLCSFTP22A5S', 'BX', 5,  'MBO - ERD is 11/10/2026', '111848', @many_111848),
+    ('TEST-101494-0930', CAST('2026-09-30' AS DATE), 'J-J2015',      'CA', 10, NULL,                      '101494', @many_101494),
+    ('TEST-101494-0929', CAST('2026-09-29' AS DATE), 'J-J2015Z',     'BX', 4,  NULL,                      '101494', @many_101494)
+) AS v ([sales_order], [order_date], [item], [um], [qty], [comment], [customer_item], [purpose])
+CROSS APPLY (
+    SELECT TOP (1) m.*
+    FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m
+    WHERE m.[Customer Item #] = v.[customer_item]
+    ORDER BY m.[Order Date] DESC, m.[Order Time] DESC
+) AS t;
+
+PRINT CONCAT('Test lines loaded (many Medline items to one Infor item): ', @@ROWCOUNT);
 
 COMMIT TRANSACTION;
 GO
 
 CREATE OR ALTER VIEW [FillKill].[vw_MedlineFillKill] AS
--- Every kill line the module shows: Medline's, plus the test copies until go-live.
+-- Every kill line the module shows: Medline's, plus the test lines until go-live.
+--   Test Purpose why a test line is there (NULL on Medline's lines)
 --   Reason       category of Medline's comment, checked in this order (a comment can match more
 --                than one word; e.g. "SPIKE - Allocation limit..." counts as ALLOCATION)
 --   Reason Date  the first mm/dd/yyyy date in the comment (the ERD or ETA), if any
@@ -115,7 +165,7 @@ FROM (
            [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
            [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
            [create stamp], [update stamp],
-           CAST(0 AS BIT) AS [Is Test]
+           CAST(0 AS BIT) AS [Is Test], CAST(NULL AS VARCHAR(300)) AS [Test Purpose]
     FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill]
     UNION ALL
     SELECT [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
@@ -123,7 +173,7 @@ FROM (
            [Customer Item #], [Mfr. Item #], [Manufacturer Name], [Order Qty], [UM], [Filled Qty], [Plant],
            [Buyer Name], [Internal Order Comments from SAP (Z106)], [PO], [POLine], [source file],
            [create stamp], [update stamp],
-           CAST(1 AS BIT) AS [Is Test]
+           CAST(1 AS BIT) AS [Is Test], [Test Purpose]
     FROM [FillKill].[TestFillKillLine]
 ) AS l
 CROSS APPLY (SELECT l.[Internal Order Comments from SAP (Z106)] AS [comment]) AS c;

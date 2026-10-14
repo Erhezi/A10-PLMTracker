@@ -85,7 +85,7 @@ FILLKILL_VIEWS = {
     "vw_MedlineFillKill": [
         "Sold-To", "Sold-To Name", "Ship-To", "Ship-To Name", "Order Date", "Order Time", "Sales Order #",
         "Order Line #", "Item", "Customer Item #", "Order Qty", "UM", "Filled Qty", "PO", "POLine",
-        "Internal Order Comments from SAP (Z106)", "Reason", "Reason Date", "Is Test",
+        "Internal Order Comments from SAP (Z106)", "Reason", "Reason Date", "Is Test", "Test Purpose",
     ],
     "vw_FillKillLastLoad": ["last_success", "last_line_update"],
     "vw_ContractLineSearch": [

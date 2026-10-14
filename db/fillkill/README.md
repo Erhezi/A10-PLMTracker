@@ -83,8 +83,14 @@ Run any time, in order. Both are safe to re-run.
    - creates `FillKill.vw_MedlineFillKill`, the one view the module reads kill lines from. It
      combines Medline's table in `SCSFileIngestor` with `FillKill.TestFillKillLine`, and adds an
      `Is Test` column.
-   - loads test copies: for each of the latest 3 order dates, the last 10 lines of the day, under
-     Sold-To `test site` and with `TEST` in front of the Sales Order #. Re-running reloads them.
+   - loads test lines under Sold-To `test site` (Sales Order # starting `TEST`). Each says why it's
+     there in `[Test Purpose]`, which the item panel shows:
+     - **Sites:** for each of the latest 3 order dates, the last 10 lines of the day, copied.
+     - **Many Medline items to one Infor item** (hand-made, 9/28-9/30): JLCSFTP22A5S (BX) beside
+       JLCSFTP22A5SH (EA) for 111848, with a different reason; J-J2015 (CA) and J-J2015Z (BX)
+       beside J-J2015H (EA) for 101494.
+
+     Re-running deletes and reloads them all.
 2. `11_item_qty_views.sql`: `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`,
    copied from O2 with one change: they read `vw_MedlineFillKill` instead of Medline's table, so
    the test site shows up. If you change either view on O2, change it here too.

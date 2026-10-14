@@ -49,7 +49,8 @@ def app(sqlite_app):
     add_view_rows(sqlite_app, "vw_MedlineFillKill", [
         line(28, "09:00:00", WP, "DYND70294BH", 5, "MBO - ERD is 11/18/2026", "MBO", "2026-11-18", so="1"),
         line(30, "11:35:29", WP, "DYND70294BH", 5, "MBO - ERD is 11/30/2026", "MBO", "2026-11-30", so="2"),
-        line(30, "10:00:00", TEST, "DYND70294BH", 5, "OUT OF STOCK - ETA is 10/02/2026", "OUT_OF_STOCK", "2026-10-02", so="TEST3"),
+        {**line(30, "10:00:00", TEST, "DYND70294BH", 5, "OUT OF STOCK - ETA is 10/02/2026", "OUT_OF_STOCK", "2026-10-02",
+                so="TEST3"), "Test Purpose": "Sites: a real line copied under a second site."},
         line(29, "08:00:00", WP, "MDS2585H", 4, "Allocation limit has been reached", "ALLOCATION", so="4"),
     ])
     add_view_rows(sqlite_app, "vw_ContractLineSearch", [
@@ -183,6 +184,7 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
     assert [s["latest_comment"]["comment"] for s in panel["subs"]] == ["Same cup"]
     assert [h["action"] for h in panel["pick_history"]] == ["pick", "status", "created"]
     assert len(panel["orders"]) == 1 and len(panel["lines"]) == 3
+    assert [l["test_purpose"] for l in panel["lines"] if l["is_test"]] == ["Sites: a real line copied under a second site."]
     assert panel["details"]["description"] == "CUP,DENTURE"
 
     _, history = get(viewer, f"/fillkill/api/history/sub/{sub_id}")

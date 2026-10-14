@@ -254,7 +254,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
                    [Ship-To Name] AS department, [PO] AS po, [POLine] AS po_line,
                    [Order Qty] AS ordered, [Filled Qty] AS filled, [UM] AS um,
                    [Internal Order Comments from SAP (Z106)] AS comment, [Reason] AS reason,
-                   [Reason Date] AS reason_date, [Is Test] AS is_test
+                   [Reason Date] AS reason_date, [Is Test] AS is_test, [Test Purpose] AS test_purpose
             FROM {LINES} WHERE [Item] = :item AND {where}
             ORDER BY [Order Date] DESC, [Order Time] DESC""",
         params, binds,

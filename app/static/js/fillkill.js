@@ -243,10 +243,15 @@
       : `<span class="text-muted">${what} ${esc(when)}</span>`;
   }
 
+  // Every word must appear in one of these (commodity code and its description are searchable
+  // but not shown in the table).
+  const SEARCHED = ['customer_item', 'medline_item', 'description', 'infor_item', 'infor_description',
+    'commodity_code', 'commodity_description'];
+
   function matchesSearch(row) {
     if (!state.search) return true;
-    return [row.medline_item, row.description, row.customer_item, row.infor_item]
-      .some((value) => String(value || '').toLowerCase().includes(state.search));
+    const text = SEARCHED.map((key) => String(row[key] || '').toLowerCase()).join(' ');  // a word has no spaces, so it can't match across two fields
+    return state.search.split(/\s+/).every((word) => text.includes(word));
   }
 
   function subsStatusCell(row) {
@@ -287,10 +292,14 @@
       const infor = row.infor_item && row.infor_item !== row.customer_item
         ? `<div class="small text-muted">${esc(row.infor_item)}</div>` : '';
       const varies = row.varies.length ? ` <span class="badge text-bg-light border" title="Medline's lines or Infor disagree on: ${esc(row.varies.join(', '))}">varies</span>` : '';
+      const inactive = row.infor_active && row.infor_active !== 'Yes'
+        ? ' <span class="badge text-bg-secondary" title="The Infor item is not active">Inactive</span>' : '';
+      const inforDesc = row.infor_description
+        ? `<div class="text-truncate small text-muted" title="Infor: ${esc(row.infor_description)}">${esc(row.infor_description)}</div>` : '';
       return `<tr>
-        <td><button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(row.medline_item)}">${esc(row.medline_item)}</button>${varies}</td>
-        <td class="fk-desc" title="${esc(row.description)}">${esc(row.description)}</td>
-        <td><button type="button" class="btn btn-link p-0" data-open="${esc(row.medline_item)}">${esc(row.customer_item || '—')}</button>${flag}${infor}</td>
+        <td><button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(row.medline_item)}">${esc(row.customer_item || '—')}</button>${flag}${inactive}${infor}</td>
+        <td><button type="button" class="btn btn-link p-0" data-open="${esc(row.medline_item)}">${esc(row.medline_item)}</button>${varies}</td>
+        <td class="fk-desc"><div class="text-truncate" title="${esc(row.description)}">${esc(row.description)}</div>${inforDesc}</td>
         <td class="text-end">${qtyLines(row.quantities, 'ordered')}</td>
         <td class="text-end fw-semibold">${qtyLines(row.quantities, 'killed')}</td>
         <td class="text-end">${qtyLines(row.quantities, 'filled')}</td>
@@ -359,11 +368,26 @@
     ];
     $('fk-panel-body').innerHTML = `
       ${message ? alertBox(message.text, message.kind) : ''}
+      ${itemDetails(d)}
       <ul class="nav nav-pills nav-fill small mb-3" role="tablist">
         ${tabs.map(([key, label]) => `<li class="nav-item"><button type="button" class="nav-link py-1 ${state.panelTab === key ? 'active' : ''}"
             data-panel-tab="${key}">${label}</button></li>`).join('')}
       </ul>
       <div id="fk-panel-content">${renderPanelTab(state.panelTab)}</div>`;
+  }
+
+  function itemDetails(d) {
+    const rows = [
+      ['Infor item', [d.infor_item || d.customer_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : '']
+        .filter(Boolean).join(' · ')],
+      ['Infor description', d.infor_description],
+      ['Long description', d.long_description],
+      ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
+      ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],
+    ].filter(([, value]) => value);
+    if (!rows.length) return '';
+    return `<dl class="row small bg-light border rounded py-2 mx-0 mb-3">${rows.map(([label, value]) => `
+      <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
   }
 
   function renderPanelTab(tab) {

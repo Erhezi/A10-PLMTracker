@@ -25,13 +25,18 @@ STATUS_ORDER = ("approved", "hold", "pending_review", "rejected")
 
 # Item-view columns the main table shows, and what they're called in a row.
 ITEM_FIELDS = {
-    "description": "Item Description",
+    "description": "Item Description",                      # Medline's, from the latest kill line
     "customer_item": "Customer Item #",
     "infor_item": "Infor Item",
     "manufacturer": "Manufacturer Name",
     "mfr_item": "Mfr. Item #",
     "item_qoe": "Item.UOMConversion",
     "vendor_item_qoe": "VendorItem.UOMConversion",
+    "infor_description": "Item.Description",                # the Infor item's, for reference
+    "long_description": "Item.LongDescription",
+    "infor_active": "Item.Active",
+    "commodity_code": "CommodityCode",
+    "commodity_description": "CommodityCode.Description",
 }
 
 
@@ -103,8 +108,21 @@ def needs_flags(counts: dict[str, int], *, has_pick: bool, ordered: bool) -> lis
     return flags
 
 
+def _text_key(value) -> tuple:
+    """Sort key for text columns: blanks last, then case-insensitive."""
+    return (value in (None, ""), str(value or "").lower())
+
+
+def sort_key(row) -> tuple:
+    """Customer Item, then Medline Item, then Item Description, then the other columns."""
+    return (
+        _text_key(row["customer_item"]), _text_key(row["medline_item"]), _text_key(row["description"]),
+        -row["lines"], -sum(q["killed"] for q in row["quantities"]),
+    )
+
+
 def build_main_rows(qty_rows, item_rows, subs, orders, reasons) -> list[dict]:
-    """One row per Medline item killed in the range, most kill lines first."""
+    """One row per Medline item killed in the range, sorted by ``sort_key``."""
     quantities = sum_quantities(qty_rows)
     details = merge_item_details(item_rows)
     subs_by_item: dict[str, list] = defaultdict(list)
@@ -135,8 +153,13 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons) -> list[dict]:
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered),
         })
-    rows.sort(key=lambda row: (-row["lines"], -sum(q["killed"] for q in row["quantities"]), row["medline_item"]))
+    rows.sort(key=sort_key)
     return rows
+
+
+def most_killed(rows, limit: int) -> list[dict]:
+    """The items with the most kill lines (then the most killed quantity)."""
+    return sorted(rows, key=lambda r: (-r["lines"], -sum(q["killed"] for q in r["quantities"]), r["medline_item"]))[:limit]
 
 
 def needs_counts(rows) -> dict[str, int]:

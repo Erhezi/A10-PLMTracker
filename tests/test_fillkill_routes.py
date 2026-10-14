@@ -42,7 +42,9 @@ def app(sqlite_app):
         {"Medline Item": "DYND70294BH", "UM": "EA", "Customer Item #": "100339", "Item Description": "CUP,DENTURE",
          "Infor Item": "100339", "Infor Item Consistency": 1},
         {"Medline Item": "MDS2585H", "UM": "BX", "Customer Item #": "108176", "Item Description": "GLOVE",
-         "Infor Item": "999999", "Infor Item Consistency": 0},
+         "Infor Item": "999999", "Infor Item Consistency": 0, "Item.Active": "Yes",
+         "Item.Description": "GLOVE EXM MED LF", "Item.LongDescription": "GLOVE EXAM MEDIUM LATEX FREE",
+         "CommodityCode": "4213-22-03", "CommodityCode.Description": "MEDICAL EXAM OR NON SURGICAL PROCEDURE GLOVES"},
     ])
     add_view_rows(sqlite_app, "vw_MedlineFillKill", [
         line(28, "09:00:00", WP, "DYND70294BH", 5, "MBO - ERD is 11/18/2026", "MBO", "2026-11-18", so="1"),
@@ -122,6 +124,8 @@ def test_main_sums_per_item_and_uom_over_the_dates_and_sites(viewer):
     assert rows["DYND70294BH"]["lines"] == 6
     assert rows["DYND70294BH"]["latest_reason"]["reason"] == "MBO"  # 11:35 at White Plains beats 10:00 at the test site
     assert [q["uom"] for q in rows["MDS2585H"]["quantities"]] == ["BX", "CS"]  # never added across UOMs
+    assert rows["MDS2585H"]["commodity_description"] == "MEDICAL EXAM OR NON SURGICAL PROCEDURE GLOVES"
+    assert [r["customer_item"] for r in data["rows"]] == ["100339", "108176"]  # sorted by customer item
     assert rows["MDS2585H"]["infor_consistent"] is False
     assert data["counts"]["needs_subs"] == 2
 

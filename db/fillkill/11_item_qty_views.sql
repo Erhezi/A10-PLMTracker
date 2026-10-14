@@ -2,12 +2,13 @@
 -- FillKill.vw_MedlineFillKill (10_kill_lines.sql) so the test copies show up too.
 -- Run on O2, database PLM, after 10_kill_lines.sql. Safe to re-run.
 --
--- Written on O2 by the module owner; copied here on 2026-10-13 so they are versioned with the
+-- Written on O2 by the module owner; copied here (last on 2026-10-14) so they are versioned with the
 -- app. The only change from O2 is the source: FillKill.vw_MedlineFillKill instead of
 -- SCSFileIngestor.MedlineFillKill.MedlineFillKill. If you change a view on O2, change it here too.
 --
 --   vw_MedlineFillKillItemCollection  one row per Medline item (and UM): description, Infor UOM
---                                     conversions, Medline PBO sub, Infor item cross-check
+--                                     conversions, Medline PBO sub, Infor item cross-check, and the
+--                                     Infor item's active status, descriptions and commodity code
 --   vw_MedlineFillKillQtyAgg          per order date x Sold-To x Medline item: ordered, filled,
 --                                     killed quantities and PO line count
 
@@ -51,15 +52,21 @@ with a as( --item in scope
  select distinct VendorItem, Item
  from PLMPreprocessorShared.infor.MDM_VENDORITEM
  where VendorName like '%Medline%' and Active = 'Yes') [t]
+ ),
+ g as( -- item properties
+ select Item, Active as [Item.Active], [Description] as [Item.Description], [Description3] as [Item.LongDescription],
+ CommodityCode, [CommodityCode.CcDescription] as [CommodityCode.Description]
+ from PLMPreprocessorShared.infor.MDM_ITEM
  )
 
  select a.*, b.UOMConversion as [Item.UOMConversion], 
  c.DerivedUOMConversion as [VendorItem.UOMConversion], 
  c.UOM_QOE_VARS, 
  d.[Substitute Material Number] as [Medline.Sub], d.[Parent Item] as [Medline.ParentItem], d.SUB_VARS,
- e.[Item Description],
+ e.[Item Description], 
  f.Item as [Infor Item], f.INFOR_ITEM_VARS,
- iif(f.Item = a.[Customer Item #], 1,0) as [Infor Item Consistency]
+ iif(f.Item = a.[Customer Item #], 1,0) as [Infor Item Consistency],
+ g.[Item.Active], g.[Item.Description], g.[Item.LongDescription], g.[CommodityCode], g.[CommodityCode.Description]
  from a
  left join b
  on a.[Customer Item #] = b.Item
@@ -73,6 +80,8 @@ with a as( --item in scope
  on a.[Medline Item] = e.[Medline Item]
  left join f
  on a.[Medline Item] = f.VendorItem
+ left join g
+ on f.Item = g.Item
 GO
 
 CREATE OR ALTER VIEW [FillKill].[vw_MedlineFillKillQtyAgg] as

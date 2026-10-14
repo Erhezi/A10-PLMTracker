@@ -107,7 +107,7 @@ all are safe to re-run.
 5. `09_verify.sql`: the kill-line and workflow result sets should say `PASS`.
 
 **Read access for the app's account** (plan v2 §3): `SCSFileIngestor` (`MedlineFillKill`,
-`ETLHealth`, `MedlineSubCollection`) and `PLMPreprocessorShared.infor` (`MDM_ITEMUOM`,
+`ETLHealth`, `MedlineSubCollection`) and `PLMPreprocessorShared.infor` (`MDM_ITEM`, `MDM_ITEMUOM`,
 `CONTRACTLINE`, `MDM_VENDORITEM`). A view in PLM doesn't carry permissions into another database.
 
 **Go-live:** `TRUNCATE TABLE [FillKill].[TestFillKillLine];`. Subs and orders entered during UAT

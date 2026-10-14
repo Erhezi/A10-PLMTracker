@@ -1273,7 +1273,7 @@ tbody td.col-repl { background: #f5fbff; }
 .fk-date-slider .noUi-connect { background: var(--bs-primary); }
 .fk-sites-menu { min-width: 16rem; max-height: 18rem; overflow-y: auto; }
 .fk-main td { vertical-align: top; }
-.fk-main .fk-desc { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fk-main .fk-desc { max-width: 22rem; }
 .fk-panel.offcanvas-end { width: min(44rem, 100vw); }
 .fk-timeline li { line-height: 1.35; }
 .fk-chart { position: relative; height: 16rem; }

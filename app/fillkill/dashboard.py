@@ -134,7 +134,7 @@ def build(scope: queries.Scope) -> dict:
         "headline": headline(rows, subs, hours, scope.start, scope.end),
         "by_reason": series_by_day(queries.lines_by_day(scope, "reason"), scope.start, scope.end),
         "by_site": series_by_day(queries.lines_by_day(scope, "site"), scope.start, scope.end),
-        "top_items": rows[:TOP_ITEMS],
+        "top_items": rollup.most_killed(rows, TOP_ITEMS),
         "subs_by_status": status_counts,
         "new_subs": weekly_new_subs(subs, scope.start, scope.end),
         "rejected": rejected_groups(subs, history),

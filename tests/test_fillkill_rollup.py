@@ -74,8 +74,8 @@ def test_main_rows():
         orders=[{"medline_item": "A", "order_id": 9}],
         reasons={"A": {"comment": "MBO - ERD is 11/30/2026", "reason": "MBO", "reason_date": "2026-11-30"}},
     )
-    assert [row["medline_item"] for row in rows] == ["A", "C", "B"]  # most lines, then killed qty
-    a, c, b = rows
+    assert [row["medline_item"] for row in rows] == ["A", "B", "C"]  # no customer items: by Medline item
+    a, b, c = rows
     assert a["description"] == "GLOVE" and a["infor_consistent"] is True
     assert a["subs_status"] == {"approved": 1, "hold": 0, "pending_review": 0, "rejected": 1}
     assert [p["sub_id"] for p in a["picks"]] == [1]
@@ -86,3 +86,31 @@ def test_main_rows():
     assert rollup.needs_counts(rows) == {
         "all": 3, "needs_subs": 1, "needs_review": 1, "needs_pick": 0, "needs_order": 0, "ordered": 1,
     }
+    assert [r["medline_item"] for r in rollup.most_killed(rows, 2)] == ["A", "C"]  # 3 lines each; A killed more
+
+
+def test_rows_sort_by_customer_item_then_medline_item_then_description():
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("M3", "EA", 1, 0, lines=9), qty("M1", "EA", 1, 0), qty("M2", "EA", 1, 0), qty("M0", "EA", 1, 0)],
+        item_rows=[
+            {"Medline Item": "M1", "Customer Item #": "200000", "Item Description": "B"},
+            {"Medline Item": "M2", "Customer Item #": "100000", "Item Description": "Z"},
+            {"Medline Item": "M3", "Customer Item #": "100000", "Item Description": "A"},
+            # M0 has no customer item: last
+        ],
+        subs=[], orders=[], reasons={},
+    )
+    assert [(r["customer_item"], r["medline_item"]) for r in rows] == [
+        ("100000", "M2"), ("100000", "M3"), ("200000", "M1"), (None, "M0"),
+    ]
+
+
+def test_infor_details_are_carried_for_the_panel_and_search():
+    details = rollup.merge_item_details([{
+        "Medline Item": "MDS2585H", "Item.Description": "GLOVE EXM MED", "Item.LongDescription": "GLOVE EXAM MEDIUM",
+        "Item.Active": "Yes", "CommodityCode": "4213-22-03", "CommodityCode.Description": "MEDICAL EXAM GLOVES",
+    }])["MDS2585H"]
+    assert (details["infor_description"], details["long_description"], details["infor_active"],
+            details["commodity_code"], details["commodity_description"]) == (
+        "GLOVE EXM MED", "GLOVE EXAM MEDIUM", "Yes", "4213-22-03", "MEDICAL EXAM GLOVES",
+    )

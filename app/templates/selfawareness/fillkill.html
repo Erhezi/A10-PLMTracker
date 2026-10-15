@@ -33,7 +33,7 @@
         </thead>
         <tbody>
           <tr><td class="text-nowrap">Viewer</td><td>Seeing everything in the module.</td></tr>
-          <tr><td class="text-nowrap">Sub Finder</td><td>Adding substitutes to an item: vendor ID, vendor part number and comments.</td></tr>
+          <tr><td class="text-nowrap">Sub Finder</td><td>Adding substitutes to an item: vendor, vendor part number, Infor's vendor ID when known, and comments.</td></tr>
           <tr><td class="text-nowrap">Sub Approver</td><td>Setting each substitute to approve, hold or reject, picking the approved one(s) to order, and adding comments to substitutes.</td></tr>
           <tr><td class="text-nowrap">Materials Manager</td><td>Recording what was ordered against the Approver's Pick (quantity, UOM, QOE, vendor), and adding comments to orders.</td></tr>
           <tr><td class="text-nowrap">Admin</td><td>Assigns these roles in User Control. Inside the module, admins have only the roles they hold, like everyone else.</td></tr>
@@ -77,7 +77,7 @@
     <h2 class="h5 fw-semibold mb-3">How an item moves</h2>
     <ol class="mb-0">
       <li class="mb-2"><strong>Killed.</strong> The item appears in the main table with its total ordered, killed and filled quantities.</li>
-      <li class="mb-2"><strong>Substitutes added.</strong> Substitutes from Medline's backorder report appear automatically; a Sub Finder adds others, searching Infor's active contracts to fill in the vendor, part number, UOM and QOE. The vendor is Infor's vendor ID (like 1000931); its name comes from Infor and shows beside it. Substitutes stay with the item, so the next time it's killed they're already there.</li>
+      <li class="mb-2"><strong>Substitutes added.</strong> Substitutes from Medline's backorder report appear automatically; a Sub Finder adds others, searching Infor's active contracts to fill in the vendor, part number, UOM and QOE. Vendor name and vendor part are required. Picking a contract line also fills in Infor's vendor ID; typed by hand it's optional, and it fills in the vendor's name from Infor. Substitutes stay with the item, so the next time it's killed they're already there.</li>
       <li class="mb-2"><strong>Reviewed.</strong> New substitutes are pending review until a Sub Approver sets them to approve, hold or reject. Click a substitute to see every change, with who made it and when.</li>
       <li class="mb-2"><strong>Picked.</strong> The Sub Approver picks approved substitutes for ordering, usually one per item. A pick stays until it's unpicked or the substitute is no longer approved.</li>
       <li><strong>Ordered.</strong> A Materials Manager clicks a pick to record the order. An item can have more than one order, for example when one substitute can't cover the whole need. Orders can be corrected, or voided with a reason; both are kept in the order's history.</li>

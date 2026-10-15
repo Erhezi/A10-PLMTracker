@@ -83,8 +83,7 @@ def weekly_new_subs(subs, start: date, end: date) -> dict:
 
 
 def rejected_groups(subs, history) -> list[dict]:
-    """Subs rejected now, grouped by vendor (most first), with who rejected each, when, and comments.
-    Groups are named by the vendor's name (its ID when the name is missing)."""
+    """Subs rejected now, grouped by vendor (most first), with who rejected each, when, and comments."""
     rejected_by: dict[int, dict] = {}
     comments: dict[int, list] = defaultdict(list)
     for row in history:
@@ -97,7 +96,7 @@ def rejected_groups(subs, history) -> list[dict]:
         if sub["status"] != "rejected":
             continue
         who = rejected_by.get(sub["sub_id"], {})
-        groups[sub.get("vendor_name") or sub["vendor"]].append({
+        groups[sub["vendor"]].append({
             "sub_id": sub["sub_id"], "medline_item": sub["medline_item"], "vendor_part": sub["vendor_part"],
             "rejected_by": who.get("actor"), "rejected_at": who.get("acted_at"), "comments": comments.get(sub["sub_id"], []),
         })

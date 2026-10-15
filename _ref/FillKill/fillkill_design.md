@@ -315,7 +315,8 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 
 | Field | Notes |
 |---|---|
-| Vendor | Infor's vendor ID (e.g. 1000931; digits only). Its **Vendor Name** comes from Infor's vendor master (`vw_Vendor`), shown beside the ID as it's typed and stored with the sub (`vendor_name`); an ID Infor doesn't know is refused (2026-10-15). Medline PBO subs use Medline's vendor ID 1000931. |
+| Vendor | the vendor's **name**, required. Picking a contract line fills it with Infor's name |
+| Vendor ID | Infor's vendor ID (e.g. 1000931), **optional** (2026-10-15): filled in when the Sub Finder picks a contract line. Typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO subs get 1000931 (MEDLINE INDUSTRIES INC). Fixed after the first review, like vendor and vendor part |
 | Vendor Part | the vendor's part number; searchable, and what future LLM sub-finding will use |
 | Description | optional; pre-filled for PBO subs from contract data when found (9.4) |
 | Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |

@@ -78,12 +78,10 @@ def _ensure_unique(medline_item: str, vendor: str, vendor_part: str, *, except_i
         )
 
 
-def _vendor_name(vendor_id: str) -> str:
-    """The vendor's name in Infor's vendor master. An ID Infor doesn't know is refused."""
-    found = queries.vendor(vendor_id)
-    if found is None:
-        raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list.")
-    return found["vendor_name"]
+def _check_vendor_id(vendor_id: str | None) -> None:
+    """A vendor ID, when given, must be one Infor knows."""
+    if vendor_id and queries.vendor(vendor_id) is None:
+        raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list. Fix it or leave it empty.")
 
 
 def _commit():
@@ -112,10 +110,10 @@ def add_sub(data: dict, actor: str, *, source: str = "manual") -> Sub:
 
     def action():
         _ensure_unique(clean["medline_item"], clean["vendor"], clean["vendor_part"])
-        vendor_name = _vendor_name(clean["vendor"])
+        _check_vendor_id(clean["vendor_id"])
         now = now_ny_naive()
         sub = Sub(
-            medline_item=clean["medline_item"], vendor=clean["vendor"], vendor_name=vendor_name,
+            medline_item=clean["medline_item"], vendor=clean["vendor"], vendor_id=clean["vendor_id"],
             vendor_part=clean["vendor_part"],
             description=clean["description"], uom=clean["uom"], qoe=clean["qoe"],
             status="pending_review", is_picked=False, source=source, entered_by=actor,
@@ -138,8 +136,8 @@ def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
         if "vendor" in changes or "vendor_part" in changes:
             _ensure_unique(sub.medline_item, changes.get("vendor", sub.vendor),
                            changes.get("vendor_part", sub.vendor_part), except_id=sub.sub_id)
-        if "vendor" in changes:  # a new vendor ID: its name from Infor
-            sub.vendor_name = _vendor_name(changes["vendor"])
+        if changes.get("vendor_id"):
+            _check_vendor_id(changes["vendor_id"])
         now = now_ny_naive()
         for name, value in changes.items():
             _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,

@@ -4,7 +4,7 @@
 --
 -- The app calls it each time the main table loads. It is set-based and idempotent, and never
 -- touches an existing sub. A sub it adds:
---   vendor = Medline's vendor ID (@medline_vendor, with its name from vw_Vendor),
+--   vendor = Medline's name in Infor and vendor ID 1000931 (@medline_vendor),
 --   vendor part = the substitute number, status 'pending_review',
 --   source 'medline_pbo', entered by 'Medline'; description, UOM and QOE from Medline's
 --   contract line for that part when its lines agree on one UOM and QOE.
@@ -21,10 +21,11 @@ BEGIN
 
     DECLARE @now DATETIME = GETDATE();
     DECLARE @added TABLE ([sub_id] INT, [medline_item] VARCHAR(50));
-    -- MEDLINE INDUSTRIES INC; the same in 12 (which moved the older PBO subs to it).
+    -- MEDLINE INDUSTRIES INC; the same in 12 (which gave the older PBO subs this ID).
     DECLARE @medline_vendor VARCHAR(20) = '1000931';
-    DECLARE @medline_name VARCHAR(255) = (SELECT TOP (1) [vendor_name] FROM [FillKill].[vw_Vendor]
-                                          WHERE [vendor_id] = @medline_vendor);
+    DECLARE @medline_name VARCHAR(255) = COALESCE(
+        (SELECT TOP (1) [vendor_name] FROM [FillKill].[vw_Vendor] WHERE [vendor_id] = @medline_vendor),
+        'MEDLINE INDUSTRIES INC');
 
     BEGIN TRANSACTION;
 
@@ -50,7 +51,8 @@ BEGIN
         FROM pbo AS p
         WHERE NOT EXISTS (
             SELECT 1 FROM [FillKill].[Sub] AS s
-            WHERE s.[medline_item] = p.[medline_item] AND s.[vendor] = @medline_vendor
+            WHERE s.[medline_item] = p.[medline_item]
+              AND (s.[vendor_id] = @medline_vendor OR s.[vendor] IN (@medline_name, 'Medline'))
               AND s.[vendor_part] = p.[vendor_part]
         )
     ),
@@ -64,11 +66,11 @@ BEGIN
         HAVING COUNT(DISTINCT CONCAT(cl.[uom], '|', cl.[qoe])) = 1
     )
     INSERT INTO [FillKill].[Sub] (
-        [medline_item], [vendor], [vendor_name], [vendor_part], [description], [uom], [qoe],
+        [medline_item], [vendor], [vendor_id], [vendor_part], [description], [uom], [qoe],
         [status], [is_picked], [source], [entered_by], [create_dt], [update_dt]
     )
     OUTPUT inserted.[sub_id], inserted.[medline_item] INTO @added
-    SELECT n.[medline_item], @medline_vendor, @medline_name, n.[vendor_part], c.[description], c.[uom],
+    SELECT n.[medline_item], @medline_name, @medline_vendor, n.[vendor_part], c.[description], c.[uom],
            CASE WHEN c.[qoe] > 0 THEN c.[qoe] END,
            'pending_review', 0, 'medline_pbo', 'Medline', @now, @now
     FROM new_pbo AS n

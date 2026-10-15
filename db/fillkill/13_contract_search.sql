@@ -1,5 +1,5 @@
 -- Contract-line search for "Add sub": Infor contract lines active today, with what a sub needs;
--- and Infor's vendors (vw_Vendor), for a sub's vendor ID and name.
+-- and Infor's vendors (vw_Vendor), to check a sub's vendor ID and fill in its name.
 -- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.2). Safe to re-run.
 --
 -- The app matches the stripped vendor item or manufacturer number first, then description words,
@@ -38,8 +38,8 @@ WHERE cl.[Contract.ContractStatus] = 'Active'
   AND CAST(GETDATE() AS DATE) BETWEEN cl.[EffectiveDate] AND cl.[ExpirationDate];
 GO
 
--- Infor's vendors (2026-10-15). A sub's vendor is Infor's vendor ID; the app reads its name here,
--- both to show it as the Sub Finder types the ID and to store it with the sub.
+-- Infor's vendors (2026-10-15). A sub can carry Infor's vendor ID; when the Sub Finder types one,
+-- the app checks it here and fills in the vendor's name.
 CREATE OR ALTER VIEW [FillKill].[vw_Vendor] AS
 SELECT v.[Vendor]       AS [vendor_id],
        v.[VendorName]   AS [vendor_name],

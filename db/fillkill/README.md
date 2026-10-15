@@ -115,14 +115,14 @@ all are safe to re-run.
 
 1. `10_kill_lines.sql` again: `vw_MedlineFillKill` gains `Reason` and `Reason Date`, and
    `vw_FillKillLastLoad` (for "data as of") is added. Re-running also reloads the test lines.
-2. `12_workflow_tables.sql`: `Sub`, `SubOrder` and `History`. Since 2026-10-15 a sub's `vendor` is
-   Infor's vendor ID and `vendor_name` its name: re-running 12 adds the column, moves Medline PBO
-   subs from "Medline" to vendor ID 1000931 (with a History row) and fills in names from
-   `MDM_VENDOR`.
+2. `12_workflow_tables.sql`: `Sub`, `SubOrder` and `History`. Since 2026-10-15 a sub has an
+   optional `vendor_id` (Infor's vendor ID) beside its vendor name: re-running 12 adds the column
+   and gives Medline PBO subs vendor ID 1000931 and Infor's name for it, MEDLINE INDUSTRIES INC
+   (with History rows).
 3. `13_contract_search.sql`: `vw_ContractLineSearch`, Infor contract lines active today, for
    "Add sub". Since 2026-10-15 it has `[is_mhs]` (MHS contract or not), and `vw_Vendor` (Infor's
-   vendors, for a sub's vendor name). The app reads both: re-run 12, 13 and 14 before running that
-   version of the app, or the subs, contract search and vendor lookup fail.
+   vendors, to check a vendor ID and fill in its name). The app reads both: re-run 12, 13 and 14
+   before running that version of the app, or the subs, contract search and vendor lookup fail.
 4. `14_pbo_sync.sql`: `usp_SyncPboSubs`, which adds Medline PBO subs. The app runs it when the
    main table loads; today it would add one (`MMO2329H` → `2329RH`).
 5. `09_verify.sql`: the kill-line and workflow result sets should say `PASS`.

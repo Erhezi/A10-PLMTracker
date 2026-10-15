@@ -234,7 +234,7 @@ def api_contract_lines():
 @login_required
 @require_module(FILLKILL, "add_sub")
 def api_vendor():
-    """Infor's vendor for an ID, so the add-sub form can show its name as the ID is typed."""
+    """Infor's vendor for an ID, so the add-sub form can check it and fill in the name."""
     vendor_id = (request.args.get("id") or "").strip()
     found = queries.vendor(vendor_id) if vendor_id.isdigit() else None
     return ok({"vendor": found})

@@ -149,7 +149,7 @@ def latest_reasons(scope: Scope, items=None) -> dict[str, dict]:
 def sub_dict(sub: Sub) -> dict:
     return {
         "sub_id": sub.sub_id, "medline_item": sub.medline_item, "vendor": sub.vendor,
-        "vendor_name": sub.vendor_name, "vendor_part": sub.vendor_part, "description": sub.description, "uom": sub.uom, "qoe": sub.qoe,
+        "vendor_id": sub.vendor_id, "vendor_part": sub.vendor_part, "description": sub.description, "uom": sub.uom, "qoe": sub.qoe,
         "status": sub.status, "is_picked": bool(sub.is_picked), "source": sub.source,
         "entered_by": sub.entered_by, "create_dt": sub.create_dt, "update_dt": sub.update_dt,
     }
@@ -236,7 +236,6 @@ def order_dict(order: SubOrder) -> dict:
         "order_id": order.order_id, "sub_id": order.sub_id, "medline_item": order.medline_item,
         "sub_label": sub.vendor_part if sub else None,  # the order has its own vendor
         "sub_vendor": sub.vendor if sub else None,
-        "sub_vendor_name": sub.vendor_name if sub else None,
         "quantity": order.quantity, "uom": order.uom, "qoe": order.qoe, "vendor": order.vendor,
         "ordered_by": order.ordered_by, "ordered_dt": order.ordered_dt,
         "voided_by": order.voided_by, "voided_at": order.voided_at, "void_reason": order.void_reason,
@@ -407,7 +406,7 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
         like = f"%{q.strip().lower()}%"
         conditions = [
             func.lower(Sub.medline_item).like(like), func.lower(Sub.vendor).like(like),
-            func.lower(func.coalesce(Sub.vendor_name, "")).like(like),
+            func.coalesce(Sub.vendor_id, "").like(like),
             func.lower(Sub.vendor_part).like(like), func.lower(func.coalesce(Sub.description, "")).like(like),
         ]
         bare = _compact(q)

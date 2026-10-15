@@ -1,8 +1,8 @@
 -- Fill/Kill workflow tables: subs, orders, and the history of every change and comment.
 -- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
 --
---   Sub       a sub of a Medline item: vendor (Infor's vendor ID) and its name, vendor part,
---             status, pick
+--   Sub       a sub of a Medline item: vendor (name) and vendor part, Infor's vendor ID when
+--             known, status, pick
 --   SubOrder  an order a Materials Manager recorded against a picked sub
 --   History   one row per change or comment on a sub or an order (comments live only here)
 --
@@ -17,8 +17,8 @@ BEGIN
     CREATE TABLE [FillKill].[Sub] (
         [sub_id]       INT IDENTITY(1, 1) NOT NULL,
         [medline_item] VARCHAR(50)    NOT NULL,
-        [vendor]       VARCHAR(255)   NOT NULL,  -- Infor's vendor ID, e.g. 1000931
-        [vendor_name]  VARCHAR(255)   NULL,      -- its name in Infor's vendor master
+        [vendor]       VARCHAR(255)   NOT NULL,  -- the vendor's name
+        [vendor_id]    VARCHAR(20)    NULL,      -- Infor's vendor ID, when known (e.g. 1000931)
         [vendor_part]  VARCHAR(100)   NOT NULL,
         [description]  VARCHAR(255)   NULL,
         [uom]          VARCHAR(10)    NULL,
@@ -98,41 +98,42 @@ BEGIN
 END;
 GO
 
--- 2026-10-15: [vendor] holds Infor's vendor ID and [vendor_name] its name. Subs made before held a
--- name in [vendor]: Medline PBO subs move to Medline's vendor ID (with a History row), and every
--- sub gets its name from Infor's vendor master, or keeps its old text as the name.
-IF COL_LENGTH(N'FillKill.Sub', N'vendor_name') IS NULL
+-- 2026-10-15: [vendor_id], Infor's vendor ID, when the sub has one (filled in when the Sub Finder
+-- picks a contract line; optional otherwise). Medline PBO subs get Medline's (1000931) and
+-- Infor's name for it, with History rows.
+IF COL_LENGTH(N'FillKill.Sub', N'vendor_id') IS NULL
 BEGIN
-    ALTER TABLE [FillKill].[Sub] ADD [vendor_name] VARCHAR(255) NULL;
-    PRINT 'Added Sub.vendor_name';
+    ALTER TABLE [FillKill].[Sub] ADD [vendor_id] VARCHAR(20) NULL;
+    PRINT 'Added Sub.vendor_id';
 END;
 GO
 
 DECLARE @medline_vendor VARCHAR(20) = '1000931';  -- MEDLINE INDUSTRIES INC; the same in 14 (usp_SyncPboSubs)
-DECLARE @moved TABLE ([sub_id] INT, [medline_item] VARCHAR(50));
+DECLARE @medline_name VARCHAR(255) = COALESCE(
+    (SELECT TOP (1) [VendorName] FROM [PLMPreprocessorShared].[infor].[MDM_VENDOR] WHERE [Vendor] = @medline_vendor),
+    'MEDLINE INDUSTRIES INC');
+DECLARE @moved TABLE ([sub_id] INT, [medline_item] VARCHAR(50), [old_vendor] VARCHAR(255));
 
 BEGIN TRANSACTION;
 
-UPDATE s SET s.[vendor] = @medline_vendor
-OUTPUT inserted.[sub_id], inserted.[medline_item] INTO @moved
+UPDATE s SET s.[vendor_id] = @medline_vendor, s.[vendor] = @medline_name
+OUTPUT inserted.[sub_id], inserted.[medline_item], deleted.[vendor] INTO @moved
 FROM [FillKill].[Sub] AS s
-WHERE s.[source] = 'medline_pbo' AND s.[vendor] = 'Medline'
+WHERE s.[source] = 'medline_pbo' AND s.[vendor] = 'Medline' AND s.[vendor_id] IS NULL
   AND NOT EXISTS (SELECT 1 FROM [FillKill].[Sub] AS o
-                  WHERE o.[medline_item] = s.[medline_item] AND o.[vendor] = @medline_vendor
+                  WHERE o.[medline_item] = s.[medline_item] AND o.[vendor] = @medline_name
                     AND o.[vendor_part] = s.[vendor_part]);
 
 INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [field], [from_value],
                                   [to_value], [actor], [acted_at])
-SELECT 'sub', [sub_id], [medline_item], 'edit', 'vendor', 'Medline', @medline_vendor, '12_workflow_tables.sql', GETDATE()
-FROM @moved;
-DECLARE @moved_count INT = (SELECT COUNT(*) FROM @moved);
-PRINT CONCAT('Medline PBO subs moved to vendor ID ', @medline_vendor, ': ', @moved_count);
+SELECT 'sub', m.[sub_id], m.[medline_item], 'edit', f.[field], f.[from_value], f.[to_value],
+       '12_workflow_tables.sql', GETDATE()
+FROM @moved AS m
+CROSS APPLY (VALUES ('vendor', m.[old_vendor], @medline_name),
+                    ('vendor_id', NULL, @medline_vendor)) AS f ([field], [from_value], [to_value]);
 
-UPDATE s SET s.[vendor_name] = COALESCE(v.[VendorName], s.[vendor])
-FROM [FillKill].[Sub] AS s
-LEFT JOIN [PLMPreprocessorShared].[infor].[MDM_VENDOR] AS v ON v.[Vendor] = s.[vendor]
-WHERE s.[vendor_name] IS NULL;
-PRINT CONCAT('Vendor names filled in: ', @@ROWCOUNT);
+DECLARE @moved_count INT = (SELECT COUNT(*) FROM @moved);
+PRINT CONCAT('Medline PBO subs given vendor ID ', @medline_vendor, ': ', @moved_count);
 
 COMMIT TRANSACTION;
 GO

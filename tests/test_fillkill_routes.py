@@ -276,6 +276,23 @@ def test_contract_search_for_sub_finders(app, viewer, finder_approver):
     assert data["lines"] == []
 
 
+def test_without_the_vendor_view_a_vendor_id_is_refused_with_a_message_not_a_server_error(app, finder_approver):
+    # As on O2 before 13_contract_search.sql adds FillKill.vw_Vendor.
+    from app import db
+    with app.app_context():
+        with db.engine.begin() as conn:
+            conn.exec_driver_sql('DROP TABLE "FillKill"."vw_Vendor"')
+    status, data = get(finder_approver, "/fillkill/api/vendor", id=CARDINAL)
+    assert status == 503 and "can't be checked" in data["message"]
+    status, data = post(finder_approver, "/fillkill/api/subs",
+                        {"medline_item": "MDS2585H", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "vendor_part": "88885"})
+    assert status == 503 and "Leave Vendor ID empty" in data["message"]
+    # Without a vendor ID the sub is added as usual.
+    status, data = post(finder_approver, "/fillkill/api/subs",
+                        {"medline_item": "MDS2585H", "vendor": "CARDINAL HEALTH", "vendor_part": "88885"})
+    assert status == 201 and data["sub"]["vendor_id"] is None
+
+
 def test_vendor_lookup_for_the_add_sub_form(app, viewer, finder_approver):
     assert get(viewer, "/fillkill/api/vendor", id=CARDINAL)[0] == 403
     _, data = get(finder_approver, "/fillkill/api/vendor", id=CARDINAL)

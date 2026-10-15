@@ -236,7 +236,7 @@ def api_contract_lines():
 def api_vendor():
     """Infor's vendor for an ID, so the add-sub form can check it and fill in the name."""
     vendor_id = (request.args.get("id") or "").strip()
-    found = queries.vendor(vendor_id) if vendor_id.isdigit() else None
+    found = services.find_vendor(vendor_id) if vendor_id.isdigit() else None
     return ok({"vendor": found})
 
 

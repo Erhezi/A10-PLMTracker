@@ -7,15 +7,24 @@ nothing is written.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from .. import db
 from ..models import now_ny_naive
 from ..models.fillkill import History, Sub, SubOrder
 from . import queries, rules
 from .rules import RuleError
+
+log = logging.getLogger(__name__)
+
+VENDOR_LOOKUP_DOWN = (
+    "Vendor IDs can't be checked against Infor right now, so nothing was saved. "
+    "Leave Vendor ID empty to add the sub, or ask the Item Management admin."
+)
 
 
 # --- helpers ---------------------------------------------------------------------
@@ -78,9 +87,21 @@ def _ensure_unique(medline_item: str, vendor: str, vendor_part: str, *, except_i
         )
 
 
+def find_vendor(vendor_id: str) -> dict | None:
+    """Infor's vendor for an ID (vw_Vendor, 13_contract_search.sql). If the lookup itself fails (the
+    view is missing or not readable), the user gets a message instead of a server error, and the
+    details go to the log."""
+    try:
+        return queries.vendor(vendor_id)
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("FillKill.vw_Vendor lookup failed; has 13_contract_search.sql been run?")
+        raise RuleError(VENDOR_LOOKUP_DOWN, 503) from None
+
+
 def _check_vendor_id(vendor_id: str | None) -> None:
     """A vendor ID, when given, must be one Infor knows."""
-    if vendor_id and queries.vendor(vendor_id) is None:
+    if vendor_id and find_vendor(vendor_id) is None:
         raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list. Fix it or leave it empty.")
 
 

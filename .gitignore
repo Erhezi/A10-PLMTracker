@@ -145,8 +145,9 @@ _ref/**
 !_ref/**/*.html
 !_ref/
 !_ref/**/
-# Un-ignore the design doc so it can be tracked
+# Un-ignore the design docs so they can be tracked
 !_ref/PLM/overall_design.md
+!_ref/FillKill/fillkill_design.md
 
 # Ignore everything under _query_backup
 _query_backup/**

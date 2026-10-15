@@ -712,6 +712,14 @@
       </div>`;
   }
 
+  // Whether the contract line is available for MHS (on a contract of MMAHS organization 105188574).
+  // A non-MHS line can still be chosen; the badge only says so.
+  function contractMhsBadge(line) {
+    return line.is_mhs === 'Yes'
+      ? '<span class="badge text-bg-success ms-auto">MHS</span>'
+      : '<span class="badge text-bg-warning ms-auto" title="Not on an MHS contract. You can still choose it.">Non-MHS</span>';
+  }
+
   const searchContracts = debounce(async (q) => {
     const box = $('fk-contract-results');
     if (!box) return;
@@ -722,12 +730,24 @@
       if (!$('fk-contract-q') || $('fk-contract-q').value !== q) return;
       if (!data.lines.length) { box.innerHTML = '<span class="text-muted">No active contract line found; fill in the sub below.</span>'; return; }
       state.contractLines = data.lines;
-      box.innerHTML = `<div class="list-group">${data.lines.map((line, i) => `
+      box.innerHTML = `<div class="list-group">${data.lines.map((line, i) => {
+        const facts = [
+          line.infor_item ? `Infor item ${esc(line.infor_item)}` : 'No Infor item',
+          `${esc(line.uom)}${line.qoe ? ` × ${fmtNumber(line.qoe)}` : ''}`,
+          line.contracts > 1 ? `${line.contracts} contracts${line.mhs_contracts && line.mhs_contracts < line.contracts
+            ? ` (${line.mhs_contracts} MHS)` : ''}` : '',
+        ].filter(Boolean).join(' · ');
+        return `
         <button type="button" class="list-group-item list-group-item-action py-1" data-contract="${i}">
-          <span class="fw-semibold">${esc(line.vendor_item)}</span> · ${esc(line.vendor_name)}
-          <span class="text-muted">· ${esc(line.uom)}${line.qoe ? ` × ${fmtNumber(line.qoe)}` : ''}${line.contracts > 1 ? ` · ${line.contracts} contracts` : ''}</span>
+          <div class="d-flex gap-2 align-items-baseline">
+            <span><span class="fw-semibold">${esc(line.vendor_item)}</span> · ${esc(line.vendor_name)}
+              <span class="text-muted">(vendor ${esc(line.vendor_id)})</span></span>
+            ${contractMhsBadge(line)}
+          </div>
+          <div class="text-muted">${facts}</div>
           <div class="text-muted text-truncate">${esc(line.description)}</div>
-        </button>`).join('')}</div>`;
+        </button>`;
+      }).join('')}</div>`;
     } catch (error) {
       box.innerHTML = alertBox(error.message);
     }

@@ -286,6 +286,12 @@ The order form shows the combined need ("All 2 UOMs of Infor item 111848 killed 
 The panel covers the Infor item: every Medline item (UOM) Medline has killed under it, those
 killed in the range first (2026-10-14).
 
+**Scope** (2026-10-15): clicking the **Infor item** shows all its UOMs (subs, kill lines, Sub
+History and orders of every Medline item); clicking a **Medline item** shows only that Medline item
+(one UOM), with "Show all N UOMs of Infor item X" to widen. In the all-UOMs view, clicking a Medline
+item in the UOM list narrows to it. A Medline item's subs section still lists subs on the other UOMs
+not on it yet. The API returns the whole Infor item either way; the page filters.
+
 - **Item details** at the top: the Infor item and whether it's active (or *not found*), its long
   description, its commodity code and description, and the manufacturer (2026-10-14).
 - **UOMs:** each Medline item with its UOM and QOE, the ⚠ where Medline's customer item isn't the
@@ -293,8 +299,11 @@ killed in the range first (2026-10-14).
 - **Subs:** one section per Medline item, with status, pick and comments; under each, the other
   UOMs' subs not on it yet, with "Add to <Medline item>". Add a sub, choosing the Medline item
   (the one clicked by default); click a sub for its timeline.
-- **Pick history:** every pick, unpick and status change on the item's subs, across all days, so
-  the Sub Approver sees what they decided before (9.2).
+- **Sub History** (was "Pick history"; renamed 2026-10-15, since "pick" means something specific to
+  Materials Managers): every sub added, every status change, pick and unpick on the item's subs,
+  across all days, so the Sub Approver sees what they decided before (9.2).
+- **Width:** drag the panel's left edge (or arrow keys on it) to resize; remembered per browser,
+  double-click resets (2026-10-15).
 - **Order history:** every order for the item across all days and subs, with edits and voids
   (9.3).
 
@@ -343,6 +352,10 @@ killed in the range first (2026-10-14).
     nursing and the Materials Manager judge from the reasons. **Decided.**
 - **Contract search** (9.4): when adding a sub, a search over Infor's active contract lines, like
   PLM's contract-item search, fills vendor, vendor part, description, UOM and QOE. **Decided.**
+  Each result also shows the vendor ID next to the vendor name, the 6-digit Infor item number when
+  the line is an item-master line ("Special" lines have none), and **MHS / Non-MHS**: whether any of
+  its contracts is MHS's (`[Contract.MMAHSOrganizationEID] = '105188574'`). Non-MHS lines can still
+  be chosen (2026-10-15). These aren't stored on the sub.
 - **Where subs come from:**
   - **Medline PBO** substitutes (`SCSFileIngestor.MedlinePBO.MedlineSubCollection`) are added
     automatically: Vendor *Medline*, Vendor Part = the substitute number, Entered By *Medline*,

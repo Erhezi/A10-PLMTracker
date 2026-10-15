@@ -4,6 +4,10 @@
 -- The app matches the stripped vendor item or manufacturer number first, then description words,
 -- and picking a row fills vendor, vendor part, description, UOM and QOE. Measured on 2026-10-13:
 -- 632k lines, 50-200 ms per search.
+--
+-- Each result also shows the vendor ID, the Infor item number (6 digits, item-master lines only;
+-- "Special" lines have numbers like 1296-DYNJAA04), and whether the line is on an MHS contract
+-- ([is_mhs], 2026-10-15). Non-MHS lines can still be chosen.
 
 SET NOCOUNT ON;
 GO
@@ -22,7 +26,8 @@ SELECT cl.[Vendor]                            AS [vendor_id],
        cl.[ItemType]                          AS [item_type],
        cl.[Contract]                          AS [contract],
        cl.[ContractName]                      AS [contract_name],
-       cl.[BaseCost]                          AS [base_cost]
+       cl.[BaseCost]                          AS [base_cost],
+       iif(cl.[Contract.MMAHSOrganizationEID] = '105188574', 'Yes', 'No') AS [is_mhs]
 FROM [PLMPreprocessorShared].[infor].[CONTRACTLINE] AS cl
 WHERE cl.[Contract.ContractStatus] = 'Active'
   AND cl.[ContractLineState] = 'Active'

@@ -91,7 +91,7 @@ FILLKILL_VIEWS = {
     "vw_ContractLineSearch": [
         "vendor_id", "vendor_name", "vendor_item", "vendor_item_stripped", "manufacturer_number",
         "manufacturer_number_stripped", "description", "uom", "qoe", "infor_item", "item_type", "contract",
-        "contract_name", "base_cost",
+        "contract_name", "base_cost", "is_mhs",
     ],
 }
 

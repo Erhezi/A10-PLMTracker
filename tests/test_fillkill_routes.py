@@ -56,10 +56,14 @@ def app(sqlite_app):
     add_view_rows(sqlite_app, "vw_ContractLineSearch", [
         {"vendor_id": "1", "vendor_name": "CARDINAL HEALTH", "vendor_item": "88885", "vendor_item_stripped": "88885",
          "manufacturer_number": "N88", "manufacturer_number_stripped": "N88", "description": "GLOVE EXAM NITRILE",
-         "uom": "BX", "qoe": 100, "infor_item": "200001", "contract": "C1"},
+         "uom": "BX", "qoe": 100, "infor_item": "200001", "item_type": "Itemmast", "contract": "C1", "is_mhs": "Yes"},
         {"vendor_id": "1", "vendor_name": "CARDINAL HEALTH", "vendor_item": "88885", "vendor_item_stripped": "88885",
          "manufacturer_number": "N88", "manufacturer_number_stripped": "N88", "description": "GLOVE EXAM NITRILE",
-         "uom": "BX", "qoe": 100, "infor_item": "200001", "contract": "C2"},
+         "uom": "BX", "qoe": 100, "infor_item": "200001", "item_type": "Itemmast", "contract": "C2", "is_mhs": "No"},
+        # A "Special" line: its item number isn't an Infor item number.
+        {"vendor_id": "1000931", "vendor_name": "MEDLINE INDUSTRIES INC", "vendor_item": "DYNJAA04",
+         "vendor_item_stripped": "DYNJAA04", "description": "LINE GAS SMPL", "uom": "CA", "qoe": 50,
+         "infor_item": "1296-DYNJAA04", "item_type": "Special", "contract": "C3", "is_mhs": "No"},
     ])
     return sqlite_app
 
@@ -260,6 +264,12 @@ def test_contract_search_for_sub_finders(app, viewer, finder_approver):
     assert data["lines"] == [] and "at least 3" in data["message"]
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="888-85")
     assert [(r["vendor_name"], r["vendor_item"], r["contracts"]) for r in data["lines"]] == [("CARDINAL HEALTH", "88885", 2)]
+    # Vendor ID, Infor item, and MHS when any of its contracts is MHS's (C1 is, C2 isn't).
+    [glove] = data["lines"]
+    assert (glove["vendor_id"], glove["infor_item"], glove["is_mhs"], glove["mhs_contracts"]) == ("1", "200001", "Yes", 1)
+    _, data = get(finder_approver, "/fillkill/api/contract-lines", q="DYNJAA04")
+    [special] = data["lines"]
+    assert (special["vendor_id"], special["infor_item"], special["is_mhs"]) == ("1000931", None, "No")
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="nitrile glove")
     assert [r["vendor_item"] for r in data["lines"]] == ["88885"]
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="glove 7.5%")

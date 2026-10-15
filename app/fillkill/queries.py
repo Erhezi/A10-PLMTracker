@@ -439,17 +439,26 @@ def _search_terms(q: str) -> list[str]:
 
 
 def _contract_rows(where: str, params: dict) -> list[dict]:
-    """Contract lines grouped per vendor item and UOM: the same item on several contracts shows once."""
-    return _rows(
+    """Contract lines grouped per vendor item and UOM: the same item on several contracts shows once.
+
+    ``infor_item`` is the 6-digit Infor item number, from item-master lines only ("Special" lines
+    have numbers like 1296-DYNJAA04). ``is_mhs`` is "Yes" when any of the contracts is MHS's, and
+    ``mhs_contracts`` says how many are.
+    """
+    rows = _rows(
         f"""SELECT vendor_id, vendor_name, vendor_item, uom, qoe,
                    MAX(manufacturer_number) AS manufacturer_number, MAX(description) AS description,
-                   MAX(infor_item) AS infor_item, COUNT(*) AS contracts
+                   MAX(CASE WHEN item_type = 'Itemmast' THEN infor_item END) AS infor_item,
+                   COUNT(*) AS contracts, SUM(CASE WHEN is_mhs = 'Yes' THEN 1 ELSE 0 END) AS mhs_contracts
             FROM {CONTRACTS} WHERE {where}
             GROUP BY vendor_id, vendor_name, vendor_item, uom, qoe
             ORDER BY CASE WHEN vendor_item = CAST(:raw AS VARCHAR(120)) THEN 0 ELSE 1 END,
                      vendor_name, vendor_item, uom""",
         params,
     )
+    for row in rows:
+        row["is_mhs"] = "Yes" if row["mhs_contracts"] else "No"
+    return rows
 
 
 def contract_lines(q: str, limit: int = CONTRACT_LIMIT) -> list[dict]:

@@ -114,7 +114,8 @@ all are safe to re-run.
    `vw_FillKillLastLoad` (for "data as of") is added. Re-running also reloads the test lines.
 2. `12_workflow_tables.sql`: `Sub`, `SubOrder` and `History`.
 3. `13_contract_search.sql`: `vw_ContractLineSearch`, Infor contract lines active today, for
-   "Add sub".
+   "Add sub". Since 2026-10-15 it has `[is_mhs]` (MHS contract or not), which the app reads: re-run
+   13 before running that version of the app, or the contract search fails.
 4. `14_pbo_sync.sql`: `usp_SyncPboSubs`, which adds Medline PBO subs. The app runs it when the
    main table loads; today it would add one (`MMO2329H` → `2329RH`).
 5. `09_verify.sql`: the kill-line and workflow result sets should say `PASS`.

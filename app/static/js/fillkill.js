@@ -18,6 +18,7 @@
     sites: [],
     needs: 'all',
     search: '',
+    dateMode: 'range',  // 'today' or 'range'
     rows: [],
     counts: {},
     panelItem: null,
@@ -130,50 +131,56 @@
 
   // --- controls: dates, sites, search, needs ----------------------------------------------
 
-  const DAY = 24 * 60 * 60 * 1000;
-  const toDay = (iso) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY);
-  const fromDay = (n) => new Date(n * DAY).toISOString().slice(0, 10);
-  let slider = null;
-
+  // Two ways to choose the order dates: today only, or a range in the two date boxes. The button
+  // beside them switches. The page opens on today when the newest kill lines are today's, and
+  // otherwise on the newest day there is (a range of one day).
   function setupDates() {
     const startInput = $('fk-start');
     const endInput = $('fk-end');
+    const modeButton = $('fk-date-mode');
     const first = config.bounds && config.bounds.first;
-    const last = config.bounds && config.bounds.last;
-    startInput.value = state.start || '';
-    endInput.value = state.end || '';
-    if (first) { startInput.min = first; endInput.min = first; }
-    if (last) { startInput.max = last; endInput.max = last; }
+    const today = config.today;
+    [startInput, endInput].forEach((input) => {
+      if (first) input.min = first;
+      if (today) input.max = today;
+    });
+    state.dateMode = today && state.start === today && state.end === today ? 'today' : 'range';
 
-    const sliderEl = $('fk-date-slider');
-    if (window.noUiSlider && first && last && first !== last) {
-      slider = window.noUiSlider.create(sliderEl, {
-        start: [toDay(state.start || first), toDay(state.end || last)],
-        connect: true,
-        step: 1,
-        range: { min: toDay(first), max: toDay(last) },
-        tooltips: [{ to: (v) => fmtDate(fromDay(Math.round(v))) }, { to: (v) => fmtDate(fromDay(Math.round(v))) }],
-      });
-      slider.on('change', (values) => {
-        state.start = fromDay(Math.round(values[0]));
-        state.end = fromDay(Math.round(values[1]));
-        startInput.value = state.start;
-        endInput.value = state.end;
-        reloadAll();
-      });
-    } else {
-      sliderEl.classList.add('d-none');  // the date boxes still work
-    }
+    const showMode = () => {
+      const onToday = state.dateMode === 'today';
+      startInput.value = state.start || '';
+      endInput.value = state.end || '';
+      startInput.disabled = onToday;
+      endInput.disabled = onToday;
+      modeButton.textContent = onToday ? 'Select a range' : 'View today';
+      modeButton.title = onToday ? 'Choose the first and last order dates'
+        : `Show only today's kill lines (${fmtDate(today)})`;
+    };
+
+    modeButton.addEventListener('click', () => {
+      if (state.dateMode === 'today') {
+        state.dateMode = 'range';  // the same dates until the range changes
+        showMode();
+        startInput.focus();
+        return;
+      }
+      state.dateMode = 'today';
+      state.start = today;
+      state.end = today;
+      showMode();
+      reloadAll();
+    });
 
     const fromInputs = () => {
       if (!startInput.value || !endInput.value) return;
       [state.start, state.end] = startInput.value <= endInput.value
         ? [startInput.value, endInput.value] : [endInput.value, startInput.value];
-      if (slider) slider.set([toDay(state.start), toDay(state.end)], false);
+      showMode();
       reloadAll();
     };
     startInput.addEventListener('change', fromInputs);
     endInput.addEventListener('change', fromInputs);
+    showMode();
   }
 
   function setupSites() {

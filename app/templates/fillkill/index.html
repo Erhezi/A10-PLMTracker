@@ -1,10 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Fill/Kill Management — Item Management{% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.css" />
-{% endblock %}
-
 {% block content %}
 {# The one operating page for every role (design §5, plan v2 §5.2). Everything below the
    controls is drawn by static/js/fillkill.js from the JSON API; the server checks every action. #}
@@ -22,11 +18,11 @@
     <div class="row g-3 align-items-end">
       <div class="col-12 col-lg-5">
         <span class="form-label small text-muted d-block mb-1" id="fk-dates-label">Order dates</span>
-        <div id="fk-date-slider" class="fk-date-slider mb-2" aria-labelledby="fk-dates-label"></div>
-        <div class="d-flex gap-2 align-items-center">
+        <div class="d-flex gap-2 align-items-center" role="group" aria-labelledby="fk-dates-label">
           <input type="date" id="fk-start" class="form-control form-control-sm" aria-label="First order date" />
           <span class="small text-muted">to</span>
           <input type="date" id="fk-end" class="form-control form-control-sm" aria-label="Last order date" />
+          <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="fk-date-mode">View today</button>
         </div>
       </div>
       <div class="col-6 col-lg-3">
@@ -146,6 +142,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/nouislider@15/dist/nouislider.min.js"></script>
 <script src="{{ url_for('static', filename='js/fillkill.js') }}"></script>
 {% endblock %}

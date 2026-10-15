@@ -1268,9 +1268,6 @@ tbody td.col-repl { background: #f5fbff; }
 }
 
 /* Fill/Kill Main page (templates/fillkill/index.html, static/js/fillkill.js) */
-.fk-date-slider { margin: 2.25rem 2.75rem 0.75rem; }
-.fk-date-slider .noUi-tooltip { font-size: 0.75rem; padding: 0.1rem 0.35rem; }
-.fk-date-slider .noUi-connect { background: var(--bs-primary); }
 .fk-sites-menu { min-width: 16rem; max-height: 18rem; overflow-y: auto; }
 .fk-main td { vertical-align: top; }
 .fk-main .fk-desc { max-width: 22rem; }

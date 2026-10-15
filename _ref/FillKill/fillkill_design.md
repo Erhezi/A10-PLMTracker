@@ -219,8 +219,10 @@ Trends and analytics live on a separate Dashboard page (section 7).
 
 **Controls**
 
-- **Date range slider:** pick the start and end order date. Default: today to today; the slider
-  spans the first to the last date in the data.
+- **Order dates** (2026-10-15; the slider was dropped): two date boxes, and a button beside them
+  that switches between **View today** (today only, the boxes locked) and **Select a range** (the
+  boxes open). Default: today when the newest kill lines are today's, otherwise the newest day
+  with lines.
 - **Site filter:** one or more sites. Default: all.
 - **Needs filter:** All · Needs subs · Needs review · Needs pick · Needs order · Ordered (9.8):
   - *needs subs*: no sub that is pending review, approved or on hold

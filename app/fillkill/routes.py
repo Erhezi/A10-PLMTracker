@@ -113,6 +113,7 @@ def index():
     config = {
         "bounds": {"first": first, "last": last},
         "default": {"start": last, "end": last},
+        "today": now_ny_naive().date(),  # for "View today"
         "sites": queries.sites(),
         "can": capabilities(current_user),
         "me": current_user.email,

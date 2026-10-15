@@ -412,6 +412,58 @@
   const panelEl = $('fk-panel');
   const panel = window.bootstrap ? window.bootstrap.Offcanvas.getOrCreateInstance(panelEl) : null;
 
+  // Drag the panel's left edge (or use the arrow keys on it) to change its width; this browser
+  // remembers it. Double-click the edge to go back to the default.
+  const PANEL_WIDTH_KEY = 'fk-panel-width';
+  const resizer = $('fk-panel-resize');
+  const clampWidth = (px) => Math.round(Math.min(Math.max(px, 320), window.innerWidth - 40));
+
+  function setPanelWidth(px, save) {
+    const width = clampWidth(px);
+    panelEl.style.width = `${width}px`;
+    if (save) {
+      try { localStorage.setItem(PANEL_WIDTH_KEY, String(width)); } catch (error) { /* not remembered */ }
+    }
+  }
+
+  try {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (saved) setPanelWidth(saved, false);
+  } catch (error) { /* default width */ }
+
+  resizer.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    resizer.setPointerCapture(event.pointerId);
+    document.body.classList.add('fk-resizing');
+    const move = (e) => setPanelWidth(window.innerWidth - e.clientX, false);
+    const done = () => {
+      resizer.removeEventListener('pointermove', move);
+      resizer.removeEventListener('pointerup', done);
+      resizer.removeEventListener('pointercancel', done);
+      document.body.classList.remove('fk-resizing');
+      setPanelWidth(panelEl.getBoundingClientRect().width, true);
+    };
+    resizer.addEventListener('pointermove', move);
+    resizer.addEventListener('pointerup', done);
+    resizer.addEventListener('pointercancel', done);
+  });
+
+  resizer.addEventListener('keydown', (event) => {
+    const step = { ArrowLeft: 32, ArrowRight: -32 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    setPanelWidth(panelEl.getBoundingClientRect().width + step, true);
+  });
+
+  resizer.addEventListener('dblclick', () => {
+    panelEl.style.width = '';
+    try { localStorage.removeItem(PANEL_WIDTH_KEY); } catch (error) { /* nothing kept */ }
+  });
+
+  window.addEventListener('resize', debounce(() => {
+    if (panelEl.style.width) setPanelWidth(parseFloat(panelEl.style.width), false);
+  }, 150));
+
   async function openPanel(item, tab) {
     state.panelItem = item;
     if (tab) state.panelTab = tab;
@@ -447,7 +499,7 @@
     const tabs = [
       ['subs', `Subs <span class="badge text-bg-light">${subs}</span>`],
       ['lines', `Kill lines <span class="badge text-bg-light">${data.lines.length}</span>`],
-      ['picks', 'Pick history'],
+      ['picks', 'Sub History'],
       ['orders', `Orders <span class="badge text-bg-light">${data.orders.length}</span>`],
     ];
     $('fk-panel-body').innerHTML = `

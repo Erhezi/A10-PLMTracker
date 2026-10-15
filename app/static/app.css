@@ -1280,5 +1280,15 @@ tbody td.col-repl { background: #f5fbff; }
 .fk-main > tbody.fk-item > tr.fk-total > td { font-size: 0.875rem; }
 .fk-flag { margin-left: 0.125rem; }
 .fk-panel.offcanvas-end { width: min(44rem, 100vw); }
+/* The panel's left edge: drag to resize (fillkill.js). */
+.fk-panel-resize { position: absolute; top: 0; bottom: 0; left: 0; width: 8px; cursor: col-resize; z-index: 2; touch-action: none; }
+.fk-panel-resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: transparent; transition: background-color 0.15s; }
+.fk-panel-resize:hover::after, .fk-panel-resize:focus-visible::after, .fk-resizing .fk-panel-resize::after { background: var(--bs-primary); }
+.fk-panel-resize:focus-visible { outline: none; }
+.fk-resizing { cursor: col-resize; user-select: none; }
+@media (max-width: 575.98px) {
+  .fk-panel.offcanvas-end { width: 100vw !important; }
+  .fk-panel-resize { display: none; }
+}
 .fk-timeline li { line-height: 1.35; }
 .fk-chart { position: relative; height: 16rem; }

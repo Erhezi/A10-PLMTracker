@@ -22,6 +22,7 @@
     counts: {},
     panelItem: null,
     panelTab: 'subs',
+    panelScope: 'medline',  // 'infor': the whole Infor item; 'medline': only panelItem (one UOM)
     panelData: null,
   };
 
@@ -353,7 +354,8 @@
     const inactive = row.infor_active && row.infor_active !== 'Yes'
       ? ' <span class="badge text-bg-secondary" title="The Infor item is not active">Inactive</span>' : '';
     const infor = row.infor_item
-      ? `<button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(packs[0].medline_item)}">${esc(row.infor_item)}</button>${inactive}`
+      ? `<button type="button" class="btn btn-link p-0 fw-semibold" data-open="${esc(packs[0].medline_item)}" data-scope="infor"
+           title="All UOMs of this Infor item">${esc(row.infor_item)}</button>${inactive}`
       : '<span class="text-muted small" title="Not a Medline vendor item in Infor">Not in Infor</span>';
     const count = many ? `<div class="small text-muted">${packs.length} UOMs</div>` : '';
     const inforDesc = row.long_description
@@ -404,7 +406,7 @@
       return;
     }
     const opener = event.target.closest('[data-open]');
-    if (opener) openPanel(opener.dataset.open);
+    if (opener) openPanel(opener.dataset.open, null, opener.dataset.scope);
   });
 
   // --- the item panel -------------------------------------------------------------------------
@@ -464,8 +466,10 @@
     if (panelEl.style.width) setPanelWidth(parseFloat(panelEl.style.width), false);
   }, 150));
 
-  async function openPanel(item, tab) {
+  // scope 'infor' shows the whole Infor item (all UOMs); otherwise just this Medline item.
+  async function openPanel(item, tab, scope) {
     state.panelItem = item;
+    state.panelScope = scope === 'infor' ? 'infor' : 'medline';
     if (tab) state.panelTab = tab;
     $('fk-panel-title').textContent = item;
     $('fk-panel-subtitle').textContent = '';
@@ -474,12 +478,15 @@
     await loadPanel();
   }
 
+  let panelRequest = 0;
+
   async function loadPanel(message) {
     const item = state.panelItem;
     if (!item) return;
+    const ticket = ++panelRequest;
     try {
       const data = await getJSON(api.item, Object.assign({ item }, scopeParams()));
-      if (item !== state.panelItem) return;
+      if (ticket !== panelRequest) return;  // a newer request is on its way
       state.panelData = data;
       renderPanel(message);
     } catch (error) {
@@ -487,25 +494,47 @@
     }
   }
 
+  // What the panel shows. The API always returns the whole Infor item; clicked on a Medline item,
+  // the panel keeps to that Medline item (one UOM): its subs, kill lines, history and orders.
+  function panelView() {
+    const data = state.panelData;
+    const whole = state.panelScope === 'infor';
+    const mine = (x) => whole || x.medline_item === state.panelItem;
+    const packs = data.packagings.filter(mine);
+    const lines = data.lines.filter(mine);
+    return {
+      whole,
+      packs,
+      lines,
+      orders: data.orders.filter(mine),
+      history: data.pick_history.filter(mine),
+      many: packs.length > 1,
+      reason: whole ? data.latest_reason : lines[0],  // lines are newest first
+    };
+  }
+
   function renderPanel(message) {
     const data = state.panelData;
     const d = data.details || {};
-    const reason = data.latest_reason;
-    $('fk-panel-title').textContent = data.infor_item ? `Infor item ${data.infor_item}` : data.medline_item;
-    $('fk-panel-subtitle').innerHTML = [esc(d.description || ''), reason ? esc(reason.comment) : '']
-      .filter(Boolean).join(' · ');
+    const view = panelView();
+    $('fk-panel-title').textContent = view.whole && data.infor_item ? `Infor item ${data.infor_item}` : state.panelItem;
+    $('fk-panel-subtitle').innerHTML = [
+      !view.whole && data.infor_item ? `Infor item ${esc(data.infor_item)}` : '',
+      esc((view.whole ? d.description : (view.packs[0] || {}).description) || ''),
+      view.reason ? esc(view.reason.comment) : '',
+    ].filter(Boolean).join(' · ');
 
-    const subs = data.packagings.reduce((n, p) => n + p.subs.length, 0);
+    const subs = view.packs.reduce((n, p) => n + p.subs.length, 0);
     const tabs = [
       ['subs', `Subs <span class="badge text-bg-light">${subs}</span>`],
-      ['lines', `Kill lines <span class="badge text-bg-light">${data.lines.length}</span>`],
+      ['lines', `Kill lines <span class="badge text-bg-light">${view.lines.length}</span>`],
       ['picks', 'Sub History'],
-      ['orders', `Orders <span class="badge text-bg-light">${data.orders.length}</span>`],
+      ['orders', `Orders <span class="badge text-bg-light">${view.orders.length}</span>`],
     ];
     $('fk-panel-body').innerHTML = `
       ${message ? alertBox(message.text, message.kind) : ''}
       ${itemDetails(d)}
-      ${packagingList(data)}
+      ${packagingList(data, view)}
       <ul class="nav nav-pills nav-fill small mb-3" role="tablist">
         ${tabs.map(([key, label]) => `<li class="nav-item"><button type="button" class="nav-link py-1 ${state.panelTab === key ? 'active' : ''}"
             data-panel-tab="${key}">${label}</button></li>`).join('')}
@@ -526,30 +555,37 @@
       <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
   }
 
-  // The Infor item's Medline items, one per UOM: those killed in these dates first, then any other
-  // Medline has killed under it.
-  function packagingList(data) {
-    const packs = data.packagings;
-    return `<div class="small mb-3"><div class="text-muted mb-1">${packs.length > 1 ? `${packs.length} UOMs (Medline items)` : 'Medline item'}</div>
-      <ul class="list-unstyled mb-0">${packs.map((p) => {
+  // The Medline items (UOMs) shown: those killed in these dates first, then any other Medline has
+  // killed under the Infor item. Switch between one Medline item and all of them here.
+  function packagingList(data, view) {
+    const total = data.packagings.length;
+    let label = view.many ? `${view.packs.length} UOMs (Medline items)` : 'Medline item';
+    if (view.whole && total > 1) label += ' · click one to see only it';
+    const widen = !view.whole && total > 1
+      ? `<button type="button" class="btn btn-link btn-sm p-0 ms-2 align-baseline" data-panel-focus="">Show all ${total} UOMs
+          of Infor item ${esc(data.infor_item)}</button>` : '';
+    return `<div class="small mb-3"><div class="text-muted mb-1">${label}${widen}</div>
+      <ul class="list-unstyled mb-0">${view.packs.map((p) => {
         const notes = [
           esc(p.um),
           p.qoe != null ? `QOE ${fmtNumber(p.qoe)}` : '',
           p.killed_in_range ? '' : 'not killed in these dates',
         ].filter(Boolean).join(' · ');
-        return `<li class="mb-1"><span class="${p.medline_item === data.medline_item ? 'fw-semibold' : ''}">${esc(p.medline_item)}</span>${customerFlag(p)}
+        const name = view.many
+          ? `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-panel-focus="${esc(p.medline_item)}">${esc(p.medline_item)}</button>`
+          : `<span class="fw-semibold">${esc(p.medline_item)}</span>`;
+        return `<li class="mb-1">${name}${customerFlag(p)}
           <span class="text-muted">${notes}</span>
           ${p.description ? `<div class="text-muted text-truncate">${esc(p.description)}</div>` : ''}</li>`;
       }).join('')}</ul></div>`;
   }
 
   function renderPanelTab(tab) {
-    const data = state.panelData;
-    const many = data.packagings.length > 1;
-    if (tab === 'lines') return linesTab(data.lines, many);
-    if (tab === 'picks') return picksTab(data.pick_history, many);
-    if (tab === 'orders') return ordersTab(data.orders, many);
-    return subsTab(data);
+    const view = panelView();
+    if (tab === 'lines') return linesTab(view.lines, view.many);
+    if (tab === 'picks') return picksTab(view.history, view.many);
+    if (tab === 'orders') return ordersTab(view.orders, view.many);
+    return subsTab(view);
   }
 
   const panelSubs = () => (state.panelData ? state.panelData.packagings.flatMap((p) => p.subs) : []);
@@ -557,9 +593,8 @@
   // Subs ----
 
   // Subs belong to a Medline item: with several UOMs, one section each.
-  function subsTab(data) {
-    const packs = data.packagings;
-    const many = packs.length > 1;
+  function subsTab(view) {
+    const { packs, many } = view;
     const add = can.add_sub ? `
       <div class="mb-3">
         <button type="button" class="btn btn-sm btn-primary" data-act="show-add"><i class="bi bi-plus-lg"></i> Add sub</button>
@@ -747,7 +782,7 @@
   }
 
   function picksTab(history, many) {
-    return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for this item${many ? ' and its other UOMs' : ''}, newest first.</p>
+    return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for ${many ? 'these Medline items' : 'this Medline item'}, newest first.</p>
       ${timeline(history, true, many)}`;
   }
 
@@ -800,6 +835,18 @@
     const tab = event.target.closest('[data-panel-tab]');
     if (tab) {
       state.panelTab = tab.dataset.panelTab;
+      renderPanel();
+      return;
+    }
+    // One Medline item, or (empty) the whole Infor item: the data is already here.
+    const focus = event.target.closest('[data-panel-focus]');
+    if (focus) {
+      if (focus.dataset.panelFocus) {
+        state.panelItem = focus.dataset.panelFocus;
+        state.panelScope = 'medline';
+      } else {
+        state.panelScope = 'infor';
+      }
       renderPanel();
       return;
     }

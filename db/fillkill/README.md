@@ -93,6 +93,9 @@ Run any time, in order. Both are safe to re-run.
        1296-DYNJAA04 (Infor's contract-only number; no Infor item); B-D930299H under itself (not a
        Medline vendor item in Infor, so no Infor item); and B-D367344 under 198765, a number not in
        Infor (Infor item 102205, by vendor item).
+     - **Contract search, MHS or not** (hand-made, 9/30): BXT2D0737H (EA, Infor item 112057), on
+       Medline JIT contracts 1412 and 2421 (not MHS) and 2680 (MHS). Needs `13` re-run for the
+       MHS badge.
 
      Re-running deletes and reloads them all.
 2. `11_item_qty_views.sql`: `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`,

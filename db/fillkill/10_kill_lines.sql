@@ -16,6 +16,8 @@
 --     1296-DYNJAA04 (an Infor contract-only number), B-D930299H under itself (not a Medline vendor
 --     item in Infor), and B-D367344 under 198765 (not in Infor; the vendor item is 102205). Given
 --     in full; ship-to, plant and buyer copy the latest real line.
+--   - Contract search, MHS or not (hand-made, 9/30): BXT2D0737H (EA, Infor item 112057), on
+--     Medline JIT contracts that are and aren't MHS's. Given in full, like the ones above.
 -- Re-running deletes and reloads them all.
 --
 -- At go-live, remove them:  TRUNCATE TABLE [FillKill].[TestFillKillLine];
@@ -84,6 +86,9 @@ DECLARE @customer_bd930299h VARCHAR(300) = 'Customer item is the Medline item it
     + 'Infor item, so it stands alone, flagged.';
 DECLARE @customer_bd367344 VARCHAR(300) = 'Customer item is a number, but not the Infor item: 198765 isn''t in '
     + 'Infor''s item master, while Medline vendor item B-D367344 is Infor item 102205 (CA = 200 EA).';
+DECLARE @contract_bxt2d0737h VARCHAR(300) = 'Contract search MHS / Non-MHS: BXT2D0737H (EA, Infor item 112057) is '
+    + 'on Medline JIT contracts 1412 and 2421 (not MHS) and 2680 (MHS, from 10/01/2026); BXT2D0737 (CA) also '
+    + 'on Medline contract 2632 (MHS).';
 
 BEGIN TRANSACTION;
 
@@ -148,8 +153,10 @@ CROSS APPLY (
 
 PRINT CONCAT('Test lines loaded (many Medline items to one Infor item): ', @@ROWCOUNT);
 
--- Hand-made lines whose customer item isn't the Infor item. Everything Medline would send is given
--- here (no PO for B-D367344); ship-to, plant and buyer copy the latest real line.
+-- Hand-made lines given in full: customer items that aren't the Infor item, and the contract
+-- search's MHS indicator. Everything Medline would send is given here (no PO for B-D367344 or
+-- BXT2D0737H; BXT2D0737H's description and manufacturer are Infor's contract line's); ship-to,
+-- plant and buyer copy the latest real line.
 INSERT INTO [FillKill].[TestFillKillLine] (
     [Sold-To], [Sold-To Name], [Ship-To], [Ship-To Name], [Ship-To Name 2], [Order Date], [Order Time],
     [PO #], [PO Line], [Sales Order #], [Order Line #], [Item], [Item Description], [Item # on PO],
@@ -171,7 +178,10 @@ FROM (VALUES
      'Allocation limit has been reached', @customer_bd930299h),
     ('TEST-BD367344-0930',  CAST('2026-09-30' AS DATE), 'B-D367344',  '198765',
      'MBO-SET,BLOOD COLL,21G X .75",VACUTAINER', '367344', 'BD', NULL, NULL, 'CA', 3, 0,
-     'MBO - ERD is 11/30/2026', @customer_bd367344)
+     'MBO - ERD is 11/30/2026', @customer_bd367344),
+    ('TEST-BXT2D0737H-0930', CAST('2026-09-30' AS DATE), 'BXT2D0737H', '112057',
+     'SOLUTION INHL H2O 2000ML FLXB BG CNTNR STRL LF ARLF', '2D0737', 'AIRLIFE', NULL, NULL, 'EA', 5, 0,
+     'MBO - ERD is 11/30/2026', @contract_bxt2d0737h)
 ) AS v ([sales_order], [order_date], [item], [customer_item], [description], [mfr_item], [manufacturer], [po],
         [po_line], [um], [qty], [filled], [comment], [purpose])
 CROSS APPLY (
@@ -180,7 +190,7 @@ CROSS APPLY (
     ORDER BY m.[Order Date] DESC, m.[Order Time] DESC
 ) AS t;
 
-PRINT CONCAT('Test lines loaded (customer item not the Infor item): ', @@ROWCOUNT);
+PRINT CONCAT('Test lines loaded (given in full): ', @@ROWCOUNT);
 
 COMMIT TRANSACTION;
 GO

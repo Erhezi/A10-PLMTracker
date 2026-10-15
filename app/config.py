@@ -84,6 +84,9 @@ class Config:
     # so a page left open all day still submits; the daily reset bounds them.
     WTF_CSRF_TIME_LIMIT = None
     SESSION_COOKIE_SAMESITE = "Lax"
+    # Own cookie name: cookies ignore the port, so on localhost the default "session"
+    # is shared with the Preprocessor (:5001) and each login would log out the other.
+    SESSION_COOKIE_NAME = "plm_session"
 
     DB_TARGET, _target = _resolve_target()
     # Per-value overrides still win, so a one-off host can be tried without

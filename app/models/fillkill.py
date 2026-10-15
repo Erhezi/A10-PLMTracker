@@ -37,8 +37,8 @@ class Sub(db.Model):
     __tablename__ = "Sub"
     __table_args__ = (
         db.PrimaryKeyConstraint("sub_id", name="PK_Sub"),
-        # One live sub per item, vendor and vendor part; deleted ones don't count.
-        db.Index("UX_Sub_item_vendor_part", "medline_item", "vendor", "vendor_part", unique=True,
+        # One live sub per item and vendor part; deleted ones don't count.
+        db.Index("UX_Sub_item_vendor_part", "medline_item", "vendor_part", unique=True,
                  mssql_where=db.text("deleted_at IS NULL"), sqlite_where=db.text("deleted_at IS NULL")),
         db.CheckConstraint(_one_of("status", SUB_STATUSES), name="CK_Sub_status"),
         db.CheckConstraint(_one_of("source", SUB_SOURCES), name="CK_Sub_source"),
@@ -54,7 +54,7 @@ class Sub(db.Model):
 
     sub_id = db.Column(db.Integer, autoincrement=True)
     medline_item = db.Column(db.String(50), nullable=False)
-    vendor = db.Column(db.String(255), nullable=False)  # the vendor's name
+    vendor = db.Column(db.String(255))  # the vendor's name; the Materials Manager fills it in
     vendor_id = db.Column(db.String(20))                # Infor's vendor ID, when known (e.g. 1000931)
     vendor_part = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255))
@@ -71,7 +71,7 @@ class Sub(db.Model):
     delete_reason = db.Column(db.String(TEXT_MAX))
 
     def label(self) -> str:
-        return f"{self.vendor_part} ({self.vendor})"
+        return f"{self.vendor_part} ({self.vendor})" if self.vendor else self.vendor_part
 
 
 class SubOrder(db.Model):

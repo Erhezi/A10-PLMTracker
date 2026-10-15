@@ -3,7 +3,8 @@
 -- (plan v2 §4.3, P6). Safe to re-run.
 --
 -- The app calls it each time the main table loads. It is set-based and idempotent, and never
--- touches an existing sub. A sub it adds:
+-- touches an existing sub. It skips a part the item already has as a sub (entered by nursing, or
+-- deleted). A sub it adds:
 --   vendor = Medline's name in Infor and vendor ID 1000931 (@medline_vendor),
 --   vendor part = the substitute number, status 'pending_review',
 --   source 'medline_pbo', entered by 'Medline'; description, UOM and QOE from Medline's
@@ -51,9 +52,9 @@ BEGIN
         FROM pbo AS p
         WHERE NOT EXISTS (
             SELECT 1 FROM [FillKill].[Sub] AS s
-            WHERE s.[medline_item] = p.[medline_item]
-              AND (s.[vendor_id] = @medline_vendor OR s.[vendor] IN (@medline_name, 'Medline'))
-              AND s.[vendor_part] = p.[vendor_part]
+            WHERE s.[medline_item] = p.[medline_item] AND s.[vendor_part] = p.[vendor_part]
+            -- any vendor, deleted ones too: nursing may have entered the part already, and a
+            -- deleted PBO sub stays deleted
         )
     ),
     contract AS (

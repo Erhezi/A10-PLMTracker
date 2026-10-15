@@ -23,11 +23,11 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
 
 @pytest.mark.parametrize("roles, expected", [
     (("viewer",), {"view"}),
-    (("sub_finder",), {"view", "add_sub"}),
-    (("sub_approver",), {"view", "review"}),
-    (("materials_manager",), {"view", "order"}),  # adding subs is Sub Finder's (design 9.7)
-    (("sub_finder", "materials_manager"), {"view", "add_sub", "order"}),
-    (("sub_finder", "sub_approver"), {"view", "add_sub", "review"}),
+    (("sub_finder",), {"view", "add_sub", "details"}),
+    (("sub_approver",), {"view", "add_sub", "review"}),  # nursing enters subs (2026-10-15)
+    (("materials_manager",), {"view", "details", "order"}),  # fills in the vendor details, orders
+    (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "order"}),
+    (("sub_finder", "sub_approver"), {"view", "add_sub", "details", "review"}),
     ((), set()),
 ])
 def test_fillkill_capabilities_follow_roles(roles, expected):

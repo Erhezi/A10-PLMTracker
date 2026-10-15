@@ -132,9 +132,10 @@ def sort_key(row) -> tuple:
     )
 
 
-def _sub_key(sub) -> tuple[str, str]:
-    """Vendor and vendor part, ignoring case: the same sub on two Medline items."""
-    return (str(sub.get("vendor") or "").strip().lower(), str(sub.get("vendor_part") or "").strip().lower())
+def _sub_key(sub) -> str:
+    """The vendor part, ignoring case: the same sub on two Medline items (the vendor may not be
+    filled in yet)."""
+    return str(sub.get("vendor_part") or "").strip().lower()
 
 
 def each_factors(item_rows) -> dict[tuple[str, str], float]:

@@ -33,14 +33,22 @@ def history(entity=None, entity_id=None):
 
 
 def new_sub(**data):
-    base = {"medline_item": "MDS2585H", "vendor": "Cardinal", "vendor_part": "88885"}
+    """A sub proposed for review (a Sub Finder; Medline's PBO subs work the same): pending."""
+    base = {"medline_item": "MDS2585H", "vendor_part": "88885"}
     return services().add_sub({**base, **data}, FINDER)
 
 
+def nurse_sub(**data):
+    """A vendor part nursing enters (2026-10-15): approved on entry."""
+    base = {"medline_item": "MDS2585H", "vendor_part": "88885"}
+    return services().add_sub({**base, **data}, APPROVER, approve=True)
+
+
 def approved_and_picked():
-    sub = new_sub(uom="BX", qoe="100")
-    services().set_status(sub.sub_id, "approved", APPROVER)
-    return services().pick(sub.sub_id, APPROVER)
+    """Nursing's only sub for the item, with the Materials Manager's details."""
+    sub = nurse_sub(vendor="Cardinal", uom="BX", qoe="100")
+    assert sub.is_picked
+    return sub
 
 
 def refused(call, *, status=400, says=""):
@@ -51,7 +59,7 @@ def refused(call, *, status=400, says=""):
     return caught.value
 
 
-# --- subs --------------------------------------------------------------------------
+# --- entering subs -------------------------------------------------------------------
 
 def test_adding_a_sub_records_who_and_the_first_comment(ctx):
     sub = new_sub(comment="Same glove, other distributor")
@@ -62,46 +70,61 @@ def test_adding_a_sub_records_who_and_the_first_comment(ctx):
     ]
 
 
-def test_the_same_vendor_part_twice_is_refused_whatever_the_case(ctx):
+def test_nursing_enters_a_vendor_part_approved_and_picked_when_its_the_only_approved_one(ctx):
+    first = nurse_sub(vendor_part="A1", comment="From Owens' email: 200 in stock")
+    assert (first.status, first.is_picked, first.vendor, first.uom) == ("approved", True, None, None)
+    assert history("sub", first.sub_id) == [
+        ("created", None, None, None, None, APPROVER),
+        ("comment", None, None, None, "From Owens' email: 200 in stock", APPROVER),
+        ("status", "status", "pending_review", "approved", None, APPROVER),
+        ("pick", None, None, None, "Picked automatically: the only approved sub.", APPROVER),
+    ]
+    second = nurse_sub(vendor_part="B1")  # another approved one: the Sub Approver picks
+    assert (second.status, second.is_picked) == ("approved", False)
+    # Medline's PBO subs (and a future AI finder's) wait for review; approving one picks it when
+    # it's the item's only approved sub.
+    pbo = services().add_sub({"medline_item": "MDS2585H", "vendor_part": "2329RH"}, "Medline", source="medline_pbo")
+    assert (pbo.status, pbo.is_picked) == ("pending_review", False)
+    assert services().set_status(pbo.sub_id, "approved", APPROVER).is_picked is False  # A1 and B1 are approved
+    other_item = new_sub(medline_item="OTHERITEM")
+    assert services().set_status(other_item.sub_id, "approved", APPROVER).is_picked is True
+
+
+def test_the_same_vendor_part_twice_is_refused_whatever_the_case_or_vendor(ctx):
     new_sub(vendor_part="ab-1")
-    refused(lambda: new_sub(vendor_part="AB-1"), status=409, says="already a sub")
+    refused(lambda: nurse_sub(vendor_part="AB-1"), status=409, says="already a sub")
+    refused(lambda: new_sub(vendor="Owens", vendor_part="ab-1"), status=409, says="already a sub")
     new_sub(medline_item="OTHERITEM", vendor_part="ab-1")  # another item may have the same sub
-    new_sub(vendor="Owens", vendor_part="ab-1")  # and another vendor the same part number
 
 
-def test_the_vendor_id_is_optional_and_must_be_infors_when_given(ctx):
-    sub = new_sub()
-    assert (sub.vendor, sub.vendor_id, sub.label()) == ("Cardinal", None, "88885 (Cardinal)")
-    sub = new_sub(vendor="CARDINAL HEALTH", vendor_id=CARDINAL, vendor_part="X1")  # as picked from a contract line
-    assert (sub.vendor, sub.vendor_id) == ("CARDINAL HEALTH", CARDINAL)
-    refused(lambda: new_sub(vendor_id="9999999", vendor_part="X2"), says="isn't in Infor's vendor list")
-    refused(lambda: new_sub(vendor_id="Cardinal", vendor_part="X2"), says="digits")
-    # Before the first review the ID can be added or changed, and the history keeps it.
-    sub = services().edit_sub(sub.sub_id, {"vendor_id": OWENS, "vendor": "OWENS & MINOR"}, FINDER)
-    assert (sub.vendor, sub.vendor_id) == ("OWENS & MINOR", OWENS)
-    assert [row[:4] for row in history("sub", sub.sub_id) if row[0] == "edit"] == [
-        ("edit", "vendor", "CARDINAL HEALTH", "OWENS & MINOR"), ("edit", "vendor_id", CARDINAL, OWENS),
+def test_the_vendor_details_are_the_materials_managers(ctx):
+    sub = nurse_sub()
+    sub = services().set_details(sub.sub_id, {"vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "description": "Glove",
+                                              "uom": "bx", "qoe": "100", "vendor_part": "ignored"}, MANAGER)
+    assert (sub.vendor, sub.vendor_id, sub.description, sub.uom, sub.qoe, sub.vendor_part) == (
+        "CARDINAL HEALTH", CARDINAL, "Glove", "BX", Decimal("100.0000"), "88885")
+    assert [row[1:4] + (row[5],) for row in history("sub", sub.sub_id) if row[0] == "edit"] == [
+        ("vendor", None, "CARDINAL HEALTH", MANAGER), ("vendor_id", None, CARDINAL, MANAGER),
+        ("description", None, "Glove", MANAGER), ("uom", None, "BX", MANAGER), ("qoe", None, "100", MANAGER),
     ]
-    refused(lambda: services().edit_sub(sub.sub_id, {"vendor_id": "9999999"}, FINDER), says="isn't in Infor's vendor list")
-    assert services().edit_sub(sub.sub_id, {"vendor_id": ""}, FINDER).vendor_id is None  # can be emptied
+    refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "9999999"}, MANAGER), says="isn't in Infor's vendor list")
+    refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "Cardinal"}, MANAGER), says="digits")
+    refused(lambda: services().set_details(sub.sub_id, {"uom": "BX"}, MANAGER), says="Nothing to change")
+    services().set_status(sub.sub_id, "hold", APPROVER)  # whatever the status
+    assert services().set_details(sub.sub_id, {"vendor_id": "", "vendor": "OWENS & MINOR"}, MANAGER).vendor_id is None
 
 
-def test_corrections_are_logged_field_by_field(ctx):
-    sub = new_sub()
-    services().edit_sub(sub.sub_id, {"vendor_part": "88886", "description": "Glove"}, FINDER)
-    edits = [row for row in history("sub", sub.sub_id) if row[0] == "edit"]
-    assert edits == [
-        ("edit", "vendor_part", "88885", "88886", None, FINDER),
-        ("edit", "description", None, "Glove", None, FINDER),
-    ]
-    services().set_status(sub.sub_id, "hold", APPROVER)
-    refused(lambda: services().edit_sub(sub.sub_id, {"vendor": "Owens"}, FINDER), says="after the sub has been reviewed")
-    refused(lambda: services().edit_sub(sub.sub_id, {"vendor_id": OWENS}, FINDER), says="after the sub has been reviewed")
+def test_nursing_corrects_the_vendor_part_until_the_sub_has_an_order(ctx):
+    sub = approved_and_picked()
+    services().edit_sub(sub.sub_id, {"vendor_part": "88886", "vendor": "ignored"}, APPROVER)
+    assert [row[:4] for row in history("sub", sub.sub_id) if row[0] == "edit"] == [("edit", "vendor_part", "88885", "88886")]
+    refused(lambda: services().edit_sub(sub.sub_id, {"vendor_part": "88886"}, APPROVER), says="Nothing to change")
+    services().record_order(sub.sub_id, {"quantity": 1}, MANAGER)
+    refused(lambda: services().edit_sub(sub.sub_id, {"vendor_part": "88887"}, APPROVER), status=409, says="has an order")
 
 
 def test_status_changes_and_leaving_approved_unpicks(ctx):
     sub = approved_and_picked()
-    assert sub.is_picked
     sub = services().set_status(sub.sub_id, "hold", APPROVER, expected_status="approved")
     assert (sub.status, sub.is_picked) == ("hold", False)
     assert [row[:4] for row in history("sub", sub.sub_id)][-2:] == [
@@ -121,11 +144,10 @@ def test_a_stale_status_is_refused_and_names_who_changed_it(ctx):
 def test_picks(ctx):
     sub = new_sub()
     refused(lambda: services().pick(sub.sub_id, APPROVER), says="Only an approved sub")
-    services().set_status(sub.sub_id, "approved", APPROVER)
-    services().pick(sub.sub_id, APPROVER)
+    assert services().set_status(sub.sub_id, "approved", APPROVER).is_picked  # the only approved one
     refused(lambda: services().pick(sub.sub_id, APPROVER), status=409)
-    sub = services().unpick(sub.sub_id, APPROVER)
-    assert not sub.is_picked
+    assert not services().unpick(sub.sub_id, APPROVER).is_picked
+    assert services().pick(sub.sub_id, APPROVER).is_picked
 
 
 def test_comments_on_subs_append(ctx):
@@ -165,17 +187,32 @@ def test_an_order_is_recorded_against_a_pick_with_the_sub_defaults(ctx):
     ]
 
 
+def test_the_materials_manager_fills_in_the_vendor_details_with_the_order(ctx):
+    sub = nurse_sub()  # just the vendor part
+    refused(lambda: services().record_order(sub.sub_id, {"quantity": 2, "uom": "CS"}, MANAGER), says="Vendor is required")
+    details = {"vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "cs", "qoe": "12"}
+    refused(lambda: services().record_order(sub.sub_id, {**details, "quantity": 0}, MANAGER), says="more than 0")
+    from app import db
+    from app.models.fillkill import Sub
+    assert db.session.get(Sub, sub.sub_id).vendor is None  # a refused order saves no details either
+    order = services().record_order(sub.sub_id, {**details, "quantity": 2}, MANAGER)
+    assert (order.vendor, order.uom, order.qoe) == ("OWENS & MINOR", "CS", Decimal("12.0000"))
+    sub = db.session.get(Sub, sub.sub_id)
+    assert (sub.vendor, sub.vendor_id, sub.uom) == ("OWENS & MINOR", OWENS, "CS")
+    assert [row[1] for row in history("sub", sub.sub_id) if row[0] == "edit" and row[5] == MANAGER] == [
+        "vendor", "vendor_id", "uom", "qoe"]
+
+
 def test_no_order_without_a_pick(ctx):
-    sub = new_sub()
-    services().set_status(sub.sub_id, "approved", APPROVER)
-    refused(lambda: services().record_order(sub.sub_id, {"quantity": 1, "uom": "BX"}, MANAGER),
+    approved_and_picked()
+    second = nurse_sub(vendor_part="B1", vendor="V", uom="EA")  # approved, but not the pick
+    refused(lambda: services().record_order(second.sub_id, {"quantity": 1}, MANAGER),
             status=409, says="isn't picked")
 
 
 def test_two_orders_for_one_item(ctx):
     first = approved_and_picked()
-    second = new_sub(vendor="Owens", vendor_part="OM-1", uom="CS")
-    services().set_status(second.sub_id, "approved", APPROVER)
+    second = nurse_sub(vendor="Owens", vendor_part="OM-1", uom="CS")
     services().pick(second.sub_id, APPROVER)
     services().record_order(first.sub_id, {"quantity": 10}, MANAGER)
     services().record_order(second.sub_id, {"quantity": 5}, MANAGER)

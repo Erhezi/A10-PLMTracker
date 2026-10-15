@@ -255,7 +255,8 @@ def api_add_sub():
     item = (data.get("medline_item") or "").strip()
     if item and not queries.item_exists(item):
         raise RuleError(f"{item} isn't a Medline item in the fill/kill data.", 404)
-    sub = services.add_sub(data, current_user.email)
+    # A Sub Approver's entry (nursing's) is approved on entry; a Sub Finder's waits for review.
+    sub = services.add_sub(data, current_user.email, approve=can(current_user, FILLKILL, "review"))
     return ok(_sub_payload(sub), 201)
 
 
@@ -267,6 +268,7 @@ SUB_ACTIONS = {
     "unpick": "review",
     "comments": "review",
     "delete": "add_sub",
+    "details": "details",
 }
 
 
@@ -292,6 +294,8 @@ def api_sub_action(sub_id, action):
         sub = services.unpick(sub_id, me, expected_status=expected)
     elif action == "delete":
         sub = services.delete_sub(sub_id, data.get("reason"), me, expected_status=expected)
+    elif action == "details":
+        sub = services.set_details(sub_id, data, me)
     else:
         sub = services.comment_on_sub(sub_id, data.get("comment"), me)
     return ok(_sub_payload(sub))

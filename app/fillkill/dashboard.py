@@ -96,7 +96,7 @@ def rejected_groups(subs, history) -> list[dict]:
         if sub["status"] != "rejected":
             continue
         who = rejected_by.get(sub["sub_id"], {})
-        groups[sub["vendor"]].append({
+        groups[sub["vendor"] or "Vendor not filled in"].append({
             "sub_id": sub["sub_id"], "medline_item": sub["medline_item"], "vendor_part": sub["vendor_part"],
             "rejected_by": who.get("actor"), "rejected_at": who.get("acted_at"), "comments": comments.get(sub["sub_id"], []),
         })

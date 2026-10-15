@@ -78,10 +78,10 @@ def _ensure_current(sub: Sub, expected_status: str | None) -> None:
     )
 
 
-def _ensure_unique(medline_item: str, vendor: str, vendor_part: str, *, except_id: int | None = None) -> None:
+def _ensure_unique(medline_item: str, vendor_part: str, *, except_id: int | None = None) -> None:
+    """One live sub per Medline item and vendor part, whatever its vendor."""
     query = select(Sub).where(
         Sub.medline_item == medline_item,
-        func.lower(Sub.vendor) == vendor.lower(),
         func.lower(Sub.vendor_part) == vendor_part.lower(),
         Sub.deleted_at.is_(None),
     )
@@ -133,13 +133,51 @@ def _run(action):
     return result
 
 
-# --- subs (Sub Finder) ---------------------------------------------------------------
+def _open_orders(sub: Sub) -> int:
+    return db.session.execute(
+        select(func.count()).select_from(SubOrder).where(SubOrder.sub_id == sub.sub_id, SubOrder.voided_at.is_(None))
+    ).scalar()
 
-def add_sub(data: dict, actor: str, *, source: str = "manual") -> Sub:
+
+def _auto_pick(sub: Sub, actor: str, now: datetime) -> None:
+    """A sub that has just been approved is picked when it's its Medline item's only approved one
+    (2026-10-15). With others approved, the Sub Approver picks."""
+    others = db.session.execute(
+        select(func.count()).select_from(Sub).where(
+            Sub.medline_item == sub.medline_item, Sub.sub_id != sub.sub_id,
+            Sub.status == "approved", Sub.deleted_at.is_(None),
+        )
+    ).scalar()
+    if sub.status == "approved" and not sub.is_picked and not others:
+        sub.is_picked = True
+        _history("sub", sub.sub_id, sub.medline_item, "pick", actor, now,
+                 comment="Picked automatically: the only approved sub.")
+
+
+def _apply_details(sub: Sub, data: dict, actor: str, now: datetime, *, required: bool) -> dict:
+    """The Materials Manager's vendor details, each change in History."""
+    changes = rules.check_sub_changes(sub, data, rules.SUB_DETAIL_FIELDS, required=required)
+    if changes.get("vendor_id"):
+        _check_vendor_id(changes["vendor_id"])
+    for name, value in changes.items():
+        _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
+                 field=name, from_value=getattr(sub, name), to_value=value)
+        setattr(sub, name, value)
+    if changes:
+        sub.update_dt = now
+    return changes
+
+
+# --- subs: entering, correcting, deleting ------------------------------------------------------
+
+def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = False) -> Sub:
+    """A new sub. With ``approve`` (a Sub Approver entering it) it's approved on entry, and picked
+    when it's the item's only approved sub; otherwise it waits for review (a Sub Finder, Medline's
+    PBO subs, a future AI finder)."""
     clean = rules.check_new_sub(data)
 
     def action():
-        _ensure_unique(clean["medline_item"], clean["vendor"], clean["vendor_part"])
+        _ensure_unique(clean["medline_item"], clean["vendor_part"])
         _check_vendor_id(clean["vendor_id"])
         now = now_ny_naive()
         sub = Sub(
@@ -154,26 +192,40 @@ def add_sub(data: dict, actor: str, *, source: str = "manual") -> Sub:
         _history("sub", sub.sub_id, sub.medline_item, "created", actor, now)
         if clean["comment"]:
             _history("sub", sub.sub_id, sub.medline_item, "comment", actor, now, comment=clean["comment"])
+        if approve:
+            sub.status = "approved"
+            _history("sub", sub.sub_id, sub.medline_item, "status", actor, now,
+                     field="status", from_value="pending_review", to_value="approved")
+            _auto_pick(sub, actor, now)
         return sub
 
     return _run(action)
 
 
 def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
+    """Correct the vendor part (nursing), until the sub has an order."""
     def action():
         sub = _live_sub(sub_id)
-        changes = rules.check_sub_edit(sub, data)
-        if "vendor" in changes or "vendor_part" in changes:
-            _ensure_unique(sub.medline_item, changes.get("vendor", sub.vendor),
-                           changes.get("vendor_part", sub.vendor_part), except_id=sub.sub_id)
-        if changes.get("vendor_id"):
-            _check_vendor_id(changes["vendor_id"])
+        changes = rules.check_sub_changes(sub, data, rules.SUB_PART_FIELDS)
+        if _open_orders(sub):
+            raise RuleError(f"{sub.label()} has an order, so its vendor part can't change.", 409)
+        _ensure_unique(sub.medline_item, changes["vendor_part"], except_id=sub.sub_id)
         now = now_ny_naive()
         for name, value in changes.items():
             _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
                      field=name, from_value=getattr(sub, name), to_value=value)
             setattr(sub, name, value)
         sub.update_dt = now
+        return sub
+
+    return _run(action)
+
+
+def set_details(sub_id: int, data: dict, actor: str) -> Sub:
+    """The Materials Manager fills in or corrects the vendor details, any time."""
+    def action():
+        sub = _live_sub(sub_id)
+        _apply_details(sub, data, actor, now_ny_naive(), required=True)
         return sub
 
     return _run(action)
@@ -186,9 +238,7 @@ def delete_sub(sub_id: int, reason, actor: str, *, expected_status: str | None =
         sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         why = rules.check_delete(sub, reason)
-        orders = db.session.execute(
-            select(func.count()).select_from(SubOrder).where(SubOrder.sub_id == sub.sub_id, SubOrder.voided_at.is_(None))
-        ).scalar()
+        orders = _open_orders(sub)
         if orders:
             raise RuleError(f"{sub.label()} has {orders} order{'s' if orders > 1 else ''}; "
                             "void {} before deleting it.".format("them" if orders > 1 else "it"), 409)
@@ -218,6 +268,8 @@ def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str
                      comment="Unpicked automatically: no longer approved.")
         sub.status = status
         sub.update_dt = now
+        if status == "approved":
+            _auto_pick(sub, actor, now)
         return sub
 
     return _run(action)
@@ -267,11 +319,16 @@ def comment_on_sub(sub_id: int, text, actor: str) -> Sub:
 # --- orders (Materials Manager) -------------------------------------------------------
 
 def record_order(sub_id: int, data: dict, actor: str, *, expected_status: str | None = None) -> SubOrder:
+    """An order against a pick. Vendor details sent with it are saved on the sub first (the
+    Materials Manager fills them in with the order); the order takes the sub's."""
     def action():
         sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         now = now_ny_naive()
-        clean = rules.check_new_order(sub, data, now=now)
+        rules.check_orderable(sub)
+        _apply_details(sub, data, actor, now, required=False)
+        order_data = {key: value for key, value in data.items() if key not in rules.SUB_DETAIL_FIELDS}
+        clean = rules.check_new_order(sub, order_data, now=now)
         order = SubOrder(
             sub_id=sub.sub_id, medline_item=sub.medline_item, quantity=clean["quantity"],
             uom=clean["uom"], qoe=clean["qoe"], vendor=clean["vendor"], ordered_by=actor,

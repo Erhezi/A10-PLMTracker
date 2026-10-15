@@ -1,8 +1,9 @@
 -- Fill/Kill workflow tables: subs, orders, and the history of every change and comment.
 -- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
 --
---   Sub       a sub of a Medline item: vendor (name) and vendor part, Infor's vendor ID when
---             known, status, pick
+--   Sub       a sub of a Medline item: its vendor part (nursing enters it), the vendor details the
+--             Materials Manager fills in (vendor, Infor's vendor ID, description, UOM, QOE),
+--             status, pick
 --   SubOrder  an order a Materials Manager recorded against a picked sub
 --   History   one row per change or comment on a sub or an order (comments live only here)
 --
@@ -17,7 +18,7 @@ BEGIN
     CREATE TABLE [FillKill].[Sub] (
         [sub_id]       INT IDENTITY(1, 1) NOT NULL,
         [medline_item] VARCHAR(50)    NOT NULL,
-        [vendor]       VARCHAR(255)   NOT NULL,  -- the vendor's name
+        [vendor]       VARCHAR(255)   NULL,      -- the vendor's name; the Materials Manager fills it in
         [vendor_id]    VARCHAR(20)    NULL,      -- Infor's vendor ID, when known (e.g. 1000931)
         [vendor_part]  VARCHAR(100)   NOT NULL,
         [description]  VARCHAR(255)   NULL,
@@ -42,9 +43,9 @@ BEGIN
     OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL AND [is_picked] = 0)
         )
     );
-    -- One live sub per item, vendor and vendor part; deleted ones don't count. In EXEC, so this
-    -- batch still compiles where Sub exists without deleted_at (the block further down adds it).
-    EXEC (N'CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor], [vendor_part])
+    -- One live sub per item and vendor part; deleted ones don't count. In EXEC, so this batch
+    -- still compiles where Sub exists without deleted_at (the block further down adds it).
+    EXEC (N'CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor_part])
         WHERE [deleted_at] IS NULL;');
     PRINT 'Created FillKill.Sub';
 END;
@@ -148,7 +149,7 @@ PRINT CONCAT('Medline PBO subs given vendor ID ', @medline_vendor, ': ', @moved_
 COMMIT TRANSACTION;
 GO
 
--- 2026-10-15: a Sub Finder can delete a sub, with a reason. The row stays (deleted_at, deleted_by,
+-- 2026-10-15: a sub can be deleted, with a reason. The row stays (deleted_at, deleted_by,
 -- delete_reason) so its history stays and the PBO sync doesn't add it back; the unique key becomes
 -- a unique index over live subs only, so the same vendor part can be added again; History gets
 -- the 'delete' action.
@@ -169,18 +170,38 @@ BEGIN
     PRINT 'Added CK_Sub_delete';
 END;
 
+-- 2026-10-15, after the stakeholder review: nursing enters only the vendor part, so the vendor
+-- waits for the Materials Manager ([vendor] allows NULL), and a live sub is one vendor part per
+-- Medline item: the unique index moves from (item, vendor, vendor part) to (item, vendor part).
 IF OBJECT_ID(N'[FillKill].[UQ_Sub_item_vendor_part]', N'UQ') IS NOT NULL
 BEGIN
     EXEC (N'ALTER TABLE [FillKill].[Sub] DROP CONSTRAINT UQ_Sub_item_vendor_part');
     PRINT 'Dropped the old unique key UQ_Sub_item_vendor_part';
 END;
 
+IF EXISTS (SELECT 1 FROM sys.index_columns AS ic
+           JOIN sys.indexes AS i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+           JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+           WHERE i.object_id = OBJECT_ID(N'[FillKill].[Sub]') AND i.name = N'UX_Sub_item_vendor_part'
+             AND c.name = N'vendor')
+BEGIN
+    EXEC (N'DROP INDEX UX_Sub_item_vendor_part ON [FillKill].[Sub]');
+    PRINT 'Dropped UX_Sub_item_vendor_part on (item, vendor, vendor part)';
+END;
+
+IF EXISTS (SELECT 1 FROM sys.columns
+           WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'vendor' AND is_nullable = 0)
+BEGIN
+    ALTER TABLE [FillKill].[Sub] ALTER COLUMN [vendor] VARCHAR(255) NULL;
+    PRINT 'Sub.vendor can now wait for the Materials Manager';
+END;
+
 IF NOT EXISTS (SELECT 1 FROM sys.indexes
                WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'UX_Sub_item_vendor_part')
 BEGIN
-    CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor], [vendor_part])
+    CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor_part])
         WHERE [deleted_at] IS NULL;
-    PRINT 'Created UX_Sub_item_vendor_part (live subs only)';
+    PRINT 'Created UX_Sub_item_vendor_part (item, vendor part; live subs only)';
 END;
 
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints

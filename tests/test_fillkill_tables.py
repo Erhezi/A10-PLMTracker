@@ -90,6 +90,20 @@ def test_sub_table_enforces_its_rules(sqlite_app, status, picked, source, allowe
             db.session.rollback()
 
 
+def test_one_live_sub_per_item_and_vendor_part_whatever_the_vendor(sqlite_app):
+    from app import db
+
+    insert = text('INSERT INTO "FillKill"."Sub" (medline_item, vendor, vendor_part, status, is_picked, source, '
+                  "entered_by, create_dt, update_dt) VALUES ('MDS1', :vendor, 'P1', 'approved', 0, 'manual', 'me', "
+                  "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+    with sqlite_app.app_context():
+        db.session.execute(insert, {"vendor": None})  # nursing's: the vendor comes later
+        db.session.commit()
+        with pytest.raises(IntegrityError):
+            db.session.execute(insert, {"vendor": "Owens"})
+        db.session.rollback()
+
+
 def test_one_sub_per_item_vendor_and_part(sqlite_app):
     from app import db
 

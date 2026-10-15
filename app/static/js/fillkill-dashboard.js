@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ALLOCATION: 'Allocation', MBO: 'Manufacturer backorder', OUT_OF_STOCK: 'Out of stock',
     NONSTOCK_UOM: 'Non-stock UOM', NONSTOCK: 'Non-stock', DISCONTINUED: 'Discontinued', SPIKE: 'Spike', OTHER: 'Other',
   };
-  const SOURCE_LABEL = { manual: 'Entered by a Sub Finder', medline_pbo: 'Medline PBO', llm: 'AI (future)' };
+  const SOURCE_LABEL = { manual: 'Entered by hand', medline_pbo: 'Medline PBO', llm: 'AI (future)' };
   const STATUS_COLOR = { approved: '#198754', hold: '#ffc107', pending_review: '#0dcaf0', rejected: '#dc3545' };
   const PALETTE = ['#003769', '#d6336c', '#2a9d8f', '#e9c46a', '#f4a261', '#6c757d', '#7b2cbf', '#0d6efd'];
 

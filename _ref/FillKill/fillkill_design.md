@@ -184,19 +184,36 @@ Fill/Kill roles (named 2026-10-13; earlier drafts called them A, B and C):
 | Role | Code | Responsible for |
 |---|---|---|
 | Viewer | `viewer` | Seeing everything in the module, without changing anything |
-| Sub Finder | `sub_finder` | Adding subs to a Medline item |
-| Sub Approver | `sub_approver` | Setting each sub's status (approve / hold / reject); picking approved subs for ordering; adding comments to subs |
-| Materials Manager | `materials_manager` | Recording orders against the picks; adding comments to orders |
+| Sub Approver | `sub_approver` | Nursing. Entering a sub's vendor part (approved on entry; picked when it's the item's only approved sub); holding, rejecting and approving subs; picking and unpicking; comments on subs; correcting a vendor part; deleting a sub |
+| Materials Manager | `materials_manager` | Filling in each sub's vendor details (vendor, vendor ID, description, UOM, QOE), with the contract search; recording orders against the picks; comments on orders |
+| Sub Finder | `sub_finder` | Proposing subs, pending review; filling in vendor details. Kept for a future AI finder |
+
+**Revised 2026-10-15 after the stakeholder review.** Nursing should do as little as possible, and
+there is no team to collect and enter every candidate: nursing, supply chain and Materials Managers
+gather options from suppliers by email and phone, and nursing filters them. So:
+
+1. Nursing (Sub Approver) enters only the vendor part, with a note if they like; it's **approved on
+   entry**, and **picked** if it's the Medline item's only approved sub. They can still Hold or
+   Reject it later. The Sub Approver's comments stay.
+2. The **Materials Manager** determines and fills in the vendor details (vendor, Infor's vendor ID,
+   description, UOM, QOE), with the contract search if they like, then records the order; both can
+   happen in the order form. An order needs a vendor and a UOM.
+3. Subs proposed by the system (Medline PBO, a future AI agent) stay **pending review**; the Sub
+   Approver approves (picked when it's the only approved one), holds or rejects them.
+4. A sub is one vendor part per Medline item: its vendor can wait for the Materials Manager.
+
+Capabilities: `add_sub` = Sub Approver, Sub Finder (enter, correct the part, delete); `review` =
+Sub Approver; `details` = Materials Manager, Sub Finder; `order` = Materials Manager.
 
 - **The Sub Approver decides what is clinically acceptable and which sub to use; the Materials
   Manager records what was ordered.** Today the Sub Approver is usually nursing. **Decided.**
 - **Combinations:**
   - Viewer is held alone: it can't be combined with the other roles, which can all view.
     **Decided** (2026-10-13).
-  - In practice people hold **Sub Finder + Sub Approver** (nursing today), **Sub Finder +
-    Materials Manager**, or **Viewer**. Sub Finder on its own is kept for a future AI agent that
-    finds subs. **Decided** (9.7).
-  - Only Sub Finders add subs; a Materials Manager without Sub Finder can't. **Decided** (9.7).
+  - In practice nursing holds **Sub Approver**, Materials Managers **Materials Manager**, and
+    others **Viewer**. Sub Finder is kept for a future AI agent that finds subs.
+  - Sub Approvers and Sub Finders add subs; a Materials Manager doesn't (revised 2026-10-15; was
+    "only Sub Finders", 9.7).
   - Sub Approver and Materials Manager may not be the same person; User Control refuses the
     combination. **Decided for now** (stakeholder item 8.3).
 - **Admins** approve accounts and assign module roles. Being an admin grants nothing inside a
@@ -210,8 +227,9 @@ Fill/Kill roles (named 2026-10-13; earlier drafts called them A, B and C):
 ## 5. Workflow
 
 **One operating page for every role** (2026-10-13). **Decided.** Everyone works on the Main page
-and sees the same thing; what they can do on it follows their roles. Sub Finders add subs and Sub
-Approvers set status and pick right there, and Materials Managers record orders from the picks.
+and sees the same thing; what they can do on it follows their roles. Nursing enters subs (approved
+on entry) and reviews and picks right there, and Materials Managers fill in vendor details and
+record orders from the picks (revised 2026-10-15, section 4).
 The full sub list and the order log are tables (or cards) on the same page, not pages of their own.
 Trends and analytics live on a separate Dashboard page (section 7).
 

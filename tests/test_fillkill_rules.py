@@ -33,7 +33,7 @@ def refused(call, *, status=400, says=""):
 
 # --- adding and editing subs --------------------------------------------------------
 
-def test_new_sub_needs_vendor_and_part_and_cleans_the_rest():
+def test_a_new_sub_needs_only_its_vendor_part_and_cleans_the_rest():
     clean = rules.check_new_sub({
         "medline_item": " MDS2585H ", "vendor": "Cardinal", "vendor_id": " 1000001 ", "vendor_part": "88885",
         "uom": "bx", "qoe": "100", "comment": "  same glove  ",
@@ -43,7 +43,11 @@ def test_new_sub_needs_vendor_and_part_and_cleans_the_rest():
         "description": None,
         "uom": "BX", "qoe": Decimal("100.0000"), "comment": "same glove",
     }
-    refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor_part": "P"}), says="Vendor name is required")
+    # Nursing enters the vendor part alone; the Materials Manager fills in the rest (2026-10-15).
+    assert rules.check_new_sub({"medline_item": "M", "vendor_part": "P"}) == {
+        "medline_item": "M", "vendor": None, "vendor_id": None, "vendor_part": "P", "description": None,
+        "uom": None, "qoe": None, "comment": None,
+    }
     refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor": "V"}), says="Vendor part is required")
     # The vendor ID is optional; when given, it's Infor's (digits), not a name.
     assert rules.check_new_sub({"medline_item": "M", "vendor": "V", "vendor_id": " ", "vendor_part": "P"})["vendor_id"] is None
@@ -62,15 +66,19 @@ def test_new_sub_refuses_bad_values(field, value, says):
     refused(lambda: rules.check_new_sub(data), says=says)
 
 
-def test_vendor_and_part_can_be_fixed_only_before_the_first_review():
-    assert rules.check_sub_edit(sub(), {"vendor_part": "P2"}) == {"vendor_part": "P2"}
-    refused(lambda: rules.check_sub_edit(sub(status="approved"), {"vendor": "Other"}),
-            says="can't change after the sub has been reviewed")
-    assert rules.check_sub_edit(sub(status="hold"), {"description": "Glove"}) == {"description": "Glove"}
+def test_changes_are_only_the_fields_asked_for_that_differ():
+    details = rules.SUB_DETAIL_FIELDS
+    assert rules.check_sub_changes(sub(status="approved"), {"vendor": "Other", "vendor_part": "X"}, details) == {"vendor": "Other"}
+    assert rules.check_sub_changes(sub(), {"vendor_part": "P2"}, rules.SUB_PART_FIELDS) == {"vendor_part": "P2"}
+    assert rules.check_sub_changes(sub(), {"uom": "bx", "vendor_id": ""}, details) == {"uom": "BX"}
+    refused(lambda: rules.check_sub_changes(sub(), {"vendor_part": " "}, rules.SUB_PART_FIELDS), says="Vendor part is required")
 
 
-def test_an_edit_that_changes_nothing_is_refused():
-    refused(lambda: rules.check_sub_edit(sub(qoe=Decimal("100")), {"qoe": "100.0"}), says="Nothing to change")
+def test_an_edit_that_changes_nothing_is_refused_unless_it_comes_with_an_order():
+    unchanged = {"qoe": "100.0", "vendor": "Medline"}
+    refused(lambda: rules.check_sub_changes(sub(qoe=Decimal("100")), unchanged, rules.SUB_DETAIL_FIELDS),
+            says="Nothing to change")
+    assert rules.check_sub_changes(sub(qoe=Decimal("100")), unchanged, rules.SUB_DETAIL_FIELDS, required=False) == {}
 
 
 # --- status and picks ----------------------------------------------------------------

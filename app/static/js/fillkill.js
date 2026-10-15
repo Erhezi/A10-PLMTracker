@@ -120,10 +120,20 @@
     };
   }
 
-  // A sub's vendor: its name, with Infor's vendor ID when it has one.
+  // A sub's vendor: its name, with Infor's vendor ID when it has one; empty until the Materials
+  // Manager fills it in.
   function vendorText(s) {
     return `${s.vendor || ''}${s.vendor_id ? ` (${s.vendor_id})` : ''}`;
   }
+
+  // A sub as text: its vendor part, and its vendor when known.
+  function subText(s) {
+    const vendor = vendorText(s);
+    return vendor ? `${s.vendor_part} · ${vendor}` : s.vendor_part;
+  }
+
+  // Vendor and UOM are what an order needs; nursing leaves them to the Materials Manager.
+  const needsDetails = (s) => !s.vendor || !s.uom;
 
   function alertBox(message, kind) {
     return `<div class="alert alert-${kind || 'danger'} py-2 small mb-2" role="alert">${esc(message)}</div>`;
@@ -296,7 +306,7 @@
   function otherPackagingNote(approved) {
     if (!approved || !approved.length) return '';
     const items = [...new Set(approved.map((a) => `${a.medline_item}${a.um ? ` (${a.um})` : ''}`))];
-    const subs = approved.map((a) => `${a.vendor_part} · ${vendorText(a)} on ${a.medline_item}`).join('\n');
+    const subs = approved.map((a) => `${subText(a)} on ${a.medline_item}`).join('\n');
     return `<div class="small text-success mt-1" title="${esc(subs)}"><i class="bi bi-box-seam"></i>
       ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
   }
@@ -304,7 +314,9 @@
   function picksCell(picks) {
     if (!picks.length) return '<span class="text-muted small">—</span>';
     return picks.map((pick) => {
-      const label = `${esc(pick.vendor_part)} <span class="text-muted">· ${esc(vendorText(pick))}</span>`;
+      const vendor = vendorText(pick);
+      const label = `${esc(pick.vendor_part)}${vendor ? ` <span class="text-muted">· ${esc(vendor)}</span>` : ''}${needsDetails(pick)
+        ? ' <i class="bi bi-pencil-square text-warning" title="Vendor details to fill in"></i>' : ''}`;
       return can.order
         ? `<button type="button" class="btn btn-sm btn-outline-primary py-0 mb-1 text-start" data-order-sub="${pick.sub_id}"
              data-item="${esc(pick.medline_item)}" title="Record an order for this pick">${label}</button>`
@@ -652,6 +664,8 @@
       sub.description ? esc(sub.description) : '',
       sub.uom ? `UOM ${esc(sub.uom)}${sub.qoe ? ` · QOE ${fmtNumber(sub.qoe)}` : ''}` : '',
     ].filter(Boolean).join(' · ');
+    const detailsNeeded = needsDetails(sub)
+      ? ' <span class="badge text-bg-warning" title="The Materials Manager fills in the vendor, vendor ID, description, UOM and QOE">Vendor details needed</span>' : '';
     const source = sub.source === 'medline_pbo' ? 'Medline PBO' : esc(sub.entered_by);
     const comment = sub.latest_comment
       ? `<div class="small border-start border-3 ps-2 my-2"><span class="text-muted">${esc(sub.latest_comment.actor)},
@@ -669,12 +683,15 @@
           : `<button type="button" class="btn btn-sm btn-success" data-act="pick" data-sub="${sub.sub_id}" data-expected="${sub.status}"><i class="bi bi-hand-index-thumb"></i> Pick</button>`);
       }
     }
+    if (can.details) {
+      actions.push(`<button type="button" class="btn btn-sm btn-outline-primary" data-act="details" data-sub="${sub.sub_id}">Vendor details</button>`);
+    }
     if (can.order && sub.is_picked) {
       actions.push(`<button type="button" class="btn btn-sm btn-primary" data-act="order" data-sub="${sub.sub_id}"
         data-item="${esc(sub.medline_item)}">Record order</button>`);
     }
     if (can.add_sub) {
-      actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Edit</button>`);
+      actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Edit part</button>`);
       // The Approver's Pick can't be deleted until it's unpicked (the server refuses it too).
       actions.push(sub.is_picked
         ? `<span class="d-inline-block" tabindex="0" title="It's the Approver's Pick: unpick it first">
@@ -693,7 +710,7 @@
       <div class="card-body p-2">
         <div class="d-flex flex-wrap gap-2 align-items-center">
           <span class="fw-semibold">${esc(sub.vendor_part)}</span><span class="text-muted">${esc(vendorText(sub))}</span>
-          ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-check2"></i> Picked</span>' : ''}
+          ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-check2"></i> Picked</span>' : ''}${detailsNeeded}
           ${(sub.approved_elsewhere || []).map((o) => `<span class="badge text-success border border-success bg-white"
               title="Approved by ${esc(o.approved_by || '')} ${fmtDateTime(o.approved_at)}"><i class="bi bi-box-seam"></i>
               Approved for ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}</span>`).join(' ')}
@@ -708,6 +725,9 @@
     </div>`;
   }
 
+  // Nursing enters the vendor part, and a note if they like (2026-10-15). A Sub Approver's entry is
+  // approved on entry, and picked when it's the only approved sub; the Materials Manager fills in
+  // the vendor details.
   function addSubForm(packs) {
     // Several UOMs: which Medline item the sub is for (the one clicked, unless changed).
     const target = packs.length > 1 ? `
@@ -715,29 +735,18 @@
             <select class="form-select form-select-sm" id="fk-add-item" name="medline_item">${packs.map((p) => `
               <option value="${esc(p.medline_item)}" ${p.medline_item === state.panelItem ? 'selected' : ''}>${esc(p.medline_item)} (${esc(p.um)})</option>`).join('')}
             </select></div>` : '';
+    const what = can.review
+      ? "It's approved as soon as it's added, and picked if it's the only approved sub. The Materials Manager fills in the vendor details."
+      : "It waits for a Sub Approver's review.";
     return `
       <div class="border rounded p-2 bg-light">
-        <label class="form-label small mb-1" for="fk-contract-q">Search Infor's active contracts</label>
-        <input type="search" class="form-control form-control-sm mb-2" id="fk-contract-q" autocomplete="off"
-               placeholder="Vendor item, manufacturer number, or description words">
-        <div id="fk-contract-results" class="small mb-2"></div>
         <form id="fk-add-form" class="row g-2" novalidate>${target}
-          <div class="col-4"><label class="form-label small mb-0" for="fk-add-vendor-id">Vendor ID</label>
-            <input class="form-control form-control-sm" id="fk-add-vendor-id" name="vendor_id" maxlength="20"
-                   inputmode="numeric" placeholder="Optional" data-vendor-name="fk-add-vendor">
-            <div class="form-text small mt-0" id="fk-add-vendor-id-note"></div></div>
-          <div class="col-8"><label class="form-label small mb-0" for="fk-add-vendor">Vendor name *</label>
-            <input class="form-control form-control-sm" id="fk-add-vendor" name="vendor" maxlength="255" required></div>
           <div class="col-6"><label class="form-label small mb-0" for="fk-add-part">Vendor part *</label>
             <input class="form-control form-control-sm" id="fk-add-part" name="vendor_part" maxlength="100" required></div>
-          <div class="col-12"><label class="form-label small mb-0" for="fk-add-desc">Description</label>
-            <input class="form-control form-control-sm" id="fk-add-desc" name="description" maxlength="255"></div>
-          <div class="col-4"><label class="form-label small mb-0" for="fk-add-uom">UOM</label>
-            <input class="form-control form-control-sm" id="fk-add-uom" name="uom" maxlength="10"></div>
-          <div class="col-4"><label class="form-label small mb-0" for="fk-add-qoe">QOE</label>
-            <input class="form-control form-control-sm" id="fk-add-qoe" name="qoe" inputmode="decimal"></div>
-          <div class="col-12"><label class="form-label small mb-0" for="fk-add-comment">Comment</label>
-            <input class="form-control form-control-sm" id="fk-add-comment" name="comment" maxlength="400"></div>
+          <div class="col-12"><label class="form-label small mb-0" for="fk-add-comment">Note</label>
+            <input class="form-control form-control-sm" id="fk-add-comment" name="comment" maxlength="400"
+                   placeholder="Optional: what you know about it, e.g. from the supplier"></div>
+          <div class="col-12 small text-muted">${what}</div>
           <div class="col-12"><button type="submit" class="btn btn-sm btn-primary">Add sub</button>
             <button type="button" class="btn btn-sm btn-link" data-act="hide-add">Cancel</button></div>
         </form>
@@ -760,7 +769,7 @@
     try {
       const data = await getJSON(api.contractLines, { q });
       if (!$('fk-contract-q') || $('fk-contract-q').value !== q) return;
-      if (!data.lines.length) { box.innerHTML = '<span class="text-muted">No active contract line found; fill in the sub below.</span>'; return; }
+      if (!data.lines.length) { box.innerHTML = '<span class="text-muted">No active contract line found; fill in the details below.</span>'; return; }
       state.contractLines = data.lines;
       box.innerHTML = `<div class="list-group">${data.lines.map((line, i) => {
         const facts = [
@@ -785,15 +794,20 @@
     }
   }, 350);
 
+  // A contract line fills in the vendor details; the sub's vendor part stays nursing's, and a line
+  // for another vendor item (another packaging, say) is pointed out.
   function fillFromContract(line) {
-    $('fk-add-vendor-id').value = line.vendor_id || '';
-    vendorNote($('fk-add-vendor-id'), '');
-    $('fk-add-vendor').value = line.vendor_name || '';
-    $('fk-add-vendor').dataset.autofilled = '1';
-    $('fk-add-part').value = line.vendor_item || '';
-    $('fk-add-desc').value = line.description || '';
-    $('fk-add-uom').value = line.uom || '';
-    $('fk-add-qoe').value = line.qoe != null ? fmtNumber(line.qoe).replace(/,/g, '') : '';
+    const part = $('fk-contract-q').dataset.part || '';
+    const bare = (value) => String(value || '').toUpperCase().replace(/[\s\-./]/g, '');
+    $('fk-contract-note').textContent = part && bare(line.vendor_item) !== bare(part)
+      ? `This contract line is for vendor item ${line.vendor_item}; the sub's vendor part is ${part}.` : '';
+    $('fk-m-vendor_id').value = line.vendor_id || '';
+    vendorNote($('fk-m-vendor_id'), '');
+    $('fk-m-vendor').value = line.vendor_name || '';
+    $('fk-m-vendor').dataset.autofilled = '1';
+    $('fk-m-description').value = line.description || '';
+    $('fk-m-uom').value = line.uom || '';
+    $('fk-m-qoe').value = line.qoe != null ? fmtNumber(line.qoe).replace(/,/g, '') : '';
   }
 
   // Kill lines, pick history, orders ----
@@ -819,7 +833,7 @@
     switch (h.action) {
       case 'created': return h.entity === 'order' ? 'Recorded the order' : 'Added the sub';
       case 'status': return `Status ${esc(labels[h.from_value] || h.from_value)} → ${statusBadge(h.to_value)}`;
-      case 'pick': return 'Picked';
+      case 'pick': return h.comment ? esc(h.comment) : 'Picked';
       case 'unpick': return h.comment ? esc(h.comment) : 'Unpicked';
       case 'comment': return `Comment: ${esc(h.comment)}`;
       case 'edit': return `Changed ${esc(String(h.field || '').replace('_', ' '))}: ${esc(h.from_value || '—')} → ${esc(h.to_value || '—')}`;
@@ -873,10 +887,11 @@
 
   // Panel events ----
 
+  // ``done`` is the message to show, or a function of the server's answer that returns it.
   async function act(path, payload, done) {
     try {
-      await postJSON(path, payload);
-      await afterChange(done);
+      const data = await postJSON(path, payload);
+      await afterChange(typeof done === 'function' ? done(data) : done);
     } catch (error) {
       // 409: someone changed it meanwhile; the reloaded panel shows the latest next to the message.
       await loadPanel({ text: error.message, kind: error.status === 409 ? 'warning' : 'danger' });
@@ -906,16 +921,11 @@
       renderPanel();
       return;
     }
-    const contract = event.target.closest('[data-contract]');
-    if (contract) {
-      fillFromContract(state.contractLines[Number(contract.dataset.contract)]);
-      return;
-    }
     const button = event.target.closest('button[data-act]');
     if (!button) return;
     const { act: what } = button.dataset;
     const subId = Number(button.dataset.sub);
-    if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-contract-q').focus(); return; }
+    if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-part').focus(); return; }
     if (what === 'hide-add') { $('fk-add-sub').classList.add('d-none'); return; }
     if (what === 'pick' || what === 'unpick') {
       await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Picked.' : 'Unpicked.');
@@ -928,13 +938,14 @@
       const o = pack && pack.other_subs.find((x) => x.sub_id === subId);
       if (!o) return;
       await act(api.addSub, {
-        medline_item: target, vendor: o.vendor, vendor_part: o.vendor_part, description: o.description || '',
-        uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
+        medline_item: target, vendor: o.vendor || '', vendor_id: o.vendor_id || '', vendor_part: o.vendor_part,
+        description: o.description || '', uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
         comment: `Added from ${o.medline_item}${o.um ? ` (${o.um})` : ''}, where it is ${config.statusLabels[o.status]}.`,
-      }, `Sub added to ${target} from the other UOM. It is pending review there.`);
+      }, (data) => `Sub added to ${target}. ${addedMessage(data.sub)}`);
       return;
     }
     if (what === 'edit-sub') { openSubEditForm(panelSubs().find((s) => s.sub_id === subId)); return; }
+    if (what === 'details') { openDetailsForm(panelSubs().find((s) => s.sub_id === subId)); return; }
     if (what === 'delete-sub') { openSubDeleteForm(panelSubs().find((s) => s.sub_id === subId)); return; }
     if (what === 'edit-order') { openOrderEditForm(state.panelData.orders.find((o) => o.order_id === Number(button.dataset.order))); return; }
     if (what === 'void-order') { openVoidForm(Number(button.dataset.order)); return; }
@@ -955,17 +966,19 @@
     const select = event.target.closest('select[data-act="status"]');
     if (!select || !select.value) return;
     await act(subUrl(select.dataset.sub, 'status'), { status: select.value, expected_status: select.dataset.expected },
-      `Status set to ${config.statusLabels[select.value]}.`);
+      (data) => `Status set to ${config.statusLabels[select.value]}.${data.sub.is_picked && select.value === 'approved'
+        ? ' Picked too: it is the only approved sub.' : ''}`);
   });
 
-  panelEl.addEventListener('input', (event) => {
-    if (event.target.id === 'fk-contract-q') searchContracts(event.target.value);
-    vendorInput(event.target);
-  });
+  // What happened to a new sub: approved on entry (and maybe picked), or waiting for review.
+  function addedMessage(added) {
+    if (added.is_picked) return 'Approved and picked: it is the only approved sub.';
+    return added.status === 'approved' ? 'Approved.' : 'It is pending review.';
+  }
 
   // An optional vendor ID box (data-vendor-name names its vendor name box) is checked against
   // Infor as it's typed. Infor's name goes into the name box when that is empty or was filled in
-  // for the Sub Finder (from a contract line or an earlier ID); a name they typed stays.
+  // for them (from a contract line or an earlier ID); a name they typed stays.
   function vendorInput(target) {
     if (target.dataset.vendorName) lookupVendor(target);
     else if (target.name === 'vendor') delete target.dataset.autofilled;
@@ -1007,7 +1020,7 @@
     if (form.id === 'fk-add-form') {
       const payload = Object.fromEntries(new FormData(form).entries());
       payload.medline_item = payload.medline_item || state.panelItem;  // the UOM chosen, if several
-      await act(api.addSub, payload, 'Sub added. It is pending review.');
+      await act(api.addSub, payload, (data) => `Sub added. ${addedMessage(data.sub)}`);
       return;
     }
     const comment = form.elements.comment ? form.elements.comment.value.trim() : '';
@@ -1056,7 +1069,15 @@
     openModal();
   }
 
-  modalForm.addEventListener('input', (event) => vendorInput(event.target));
+  modalForm.addEventListener('input', (event) => {
+    if (event.target.id === 'fk-contract-q') searchContracts(event.target.value);
+    vendorInput(event.target);
+  });
+
+  modalForm.addEventListener('click', (event) => {
+    const contract = event.target.closest('[data-contract]');
+    if (contract) fillFromContract(state.contractLines[Number(contract.dataset.contract)]);
+  });
 
   modalForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1086,6 +1107,39 @@
     return panelSubs().concat(...state.rows.map((row) => row.picks)).find((s) => s.sub_id === subId) || null;
   }
 
+  // The contract search, and the vendor details it fills in (the Materials Manager's).
+  function detailFields(sub) {
+    return `
+      <div class="col-12"><label class="form-label small mb-0" for="fk-contract-q">Search Infor's active contracts to fill these in</label>
+        <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
+               placeholder="Vendor item, manufacturer number, or description words" value="${esc(sub.vendor_part)}"
+               data-part="${esc(sub.vendor_part)}">
+        <div id="fk-contract-results" class="small mt-1"></div>
+        <div id="fk-contract-note" class="small text-warning-emphasis mt-1"></div></div>
+      <div class="col-4"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID</label>
+        <input class="form-control form-control-sm" id="fk-m-vendor_id" name="vendor_id" value="${esc(sub.vendor_id || '')}"
+               maxlength="20" inputmode="numeric" placeholder="Optional" data-vendor-name="fk-m-vendor">
+        <div class="form-text small mt-0" id="fk-m-vendor_id-note"></div></div>
+      ${field('vendor', 'Vendor *', sub.vendor, 'maxlength="255" required', 8)}
+      ${field('description', 'Description', sub.description, 'maxlength="255"', 12)}
+      ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 4)}
+      ${field('qoe', 'QOE', sub.qoe != null ? fmtNumber(sub.qoe).replace(/,/g, '') : '', 'inputmode="decimal"', 4)}`;
+  }
+
+  // Search the contracts for nursing's vendor part as soon as the form opens.
+  function searchForTheSub(sub) {
+    whenModal('shown', () => { if ($('fk-contract-q')) searchContracts(sub.vendor_part); });
+  }
+
+  function openDetailsForm(sub) {
+    if (!sub) return;
+    showModal(`Vendor details · ${esc(sub.vendor_part)}`, detailFields(sub), 'Save details',
+      (values) => postJSON(subUrl(sub.sub_id, 'details'), values).then(() => 'Vendor details saved.'));
+    searchForTheSub(sub);
+  }
+
+  // Recording an order: the Materials Manager fills in (or checks) the sub's vendor details, which
+  // are saved on the sub, and the order takes them; then the quantity.
   function openOrderForm(subId, item) {
     const sub = findSub(subId);
     if (!sub) return;
@@ -1099,16 +1153,16 @@
           ${fmtNumber(row.quantities_each.killed)} EA in these dates${sub.qoe ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} ×
           ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
     showModal(`Record an order · ${esc(medline)}`, `
-      <div class="col-12 small text-muted">Pick: <span class="fw-semibold">${esc(sub.vendor_part)}</span> · ${esc(vendorText(sub))}
+      <div class="col-12 small text-muted">Pick: <span class="fw-semibold">${esc(subText(sub))}</span>
         ${killed ? ` · ${esc(medline)} killed in these dates: ${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}` : ''}</div>${combined}
+      ${detailFields(sub)}
+      <div class="col-12"><hr class="my-1"></div>
       ${field('quantity', 'Quantity *', killed, 'type="number" min="1" step="1" required', 4)}
-      ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 4)}
-      ${field('qoe', 'QOE', sub.qoe != null ? fmtNumber(sub.qoe).replace(/,/g, '') : '', 'inputmode="decimal"', 4)}
-      ${field('vendor', 'Vendor', sub.vendor, 'maxlength="255"', 6)}
-      ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 6)}
+      ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 8)}
       ${field('comment', 'Comment', '', 'maxlength="400"', 12)}`,
     'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { sub_id: subId, expected_status: 'approved' }))
       .then(() => 'Order recorded.'));
+    if (needsDetails(sub)) searchForTheSub(sub);
   }
 
   function openOrderEditForm(order) {
@@ -1126,7 +1180,7 @@
   function openSubDeleteForm(sub) {
     if (!sub) return;
     showModal(`Delete a sub · ${esc(sub.vendor_part)}`, `
-      <div class="col-12 small text-muted">${esc(vendorText(sub))} on ${esc(sub.medline_item)}. It leaves the item and the
+      <div class="col-12 small text-muted">${esc(subText(sub))} on ${esc(sub.medline_item)}. It leaves the item and the
         library; who deleted it, when and why stay in its history.</div>
       ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`,
     'Delete sub', (values) => postJSON(subUrl(sub.sub_id, 'delete'), { reason: values.reason, expected_status: sub.status })
@@ -1138,21 +1192,13 @@
       'Void order', (values) => postJSON(orderUrl(orderId, 'void'), values).then(() => 'Order voided.'));
   }
 
+  // Nursing corrects the vendor part (until the sub has an order); the details are the Materials
+  // Manager's ("Vendor details").
   function openSubEditForm(sub) {
     if (!sub) return;
-    const locked = sub.status !== 'pending_review';
-    const lockNote = locked ? '<div class="col-12 small text-muted">Vendor, vendor ID and vendor part are fixed once the sub has been reviewed.</div>' : '';
-    showModal(`Correct a sub · ${esc(sub.vendor_part)}`, `${lockNote}
-      ${locked ? '' : `<div class="col-4"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID</label>
-        <input class="form-control form-control-sm" id="fk-m-vendor_id" name="vendor_id" value="${esc(sub.vendor_id || '')}"
-               maxlength="20" inputmode="numeric" placeholder="Optional" data-vendor-name="fk-m-vendor">
-        <div class="form-text small mt-0" id="fk-m-vendor_id-note"></div></div>`}
-      ${locked ? '' : field('vendor', 'Vendor name *', sub.vendor, 'maxlength="255" required', 8)}
-      ${locked ? '' : field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 6)}
-      ${field('description', 'Description', sub.description, 'maxlength="255"', 12)}
-      ${field('uom', 'UOM', sub.uom, 'maxlength="10"', 6)}
-      ${field('qoe', 'QOE', sub.qoe != null ? fmtNumber(sub.qoe).replace(/,/g, '') : '', 'inputmode="decimal"', 6)}`,
-    'Save correction', (values) => postJSON(subUrl(sub.sub_id, 'edit'), values).then(() => 'Sub corrected.'));
+    showModal(`Correct the vendor part · ${esc(sub.vendor_part)}`,
+      field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 8),
+      'Save', (values) => postJSON(subUrl(sub.sub_id, 'edit'), { vendor_part: values.vendor_part }).then(() => 'Vendor part corrected.'));
   }
 
   // --- the tables under the main table ------------------------------------------------------------
@@ -1180,7 +1226,7 @@
       const data = await getJSON(api.subs, { status: $('fk-lib-status').value, source: $('fk-lib-source').value, q: $('fk-lib-q').value.trim() });
       body.innerHTML = data.subs.length ? data.subs.map((s) => `<tr>
           <td><button type="button" class="btn btn-link p-0" data-open="${esc(s.medline_item)}">${esc(s.medline_item)}</button></td>
-          <td>${esc(s.vendor)}${s.vendor_id ? `<div class="small text-muted">${esc(s.vendor_id)}</div>` : ''}</td>
+          <td>${s.vendor ? esc(s.vendor) : '<span class="text-muted small">to fill in</span>'}${s.vendor_id ? `<div class="small text-muted">${esc(s.vendor_id)}</div>` : ''}</td>
           <td class="fw-semibold">${esc(s.vendor_part)}</td>
           <td class="small">${esc(s.description)}</td>
           <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}</td>

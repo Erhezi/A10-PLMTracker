@@ -20,9 +20,10 @@ STATUS_LABELS = {
     "rejected": "Rejected",
 }
 
-# Fields a Sub Finder can correct, before and after the first review (P2).
-SUB_FIELDS_BEFORE_REVIEW = ("vendor", "vendor_id", "vendor_part", "description", "uom", "qoe")
-SUB_FIELDS_AFTER_REVIEW = ("description", "uom", "qoe")
+# Who fills in what on a sub (2026-10-15): nursing enters the vendor part; the Materials Manager
+# fills in the vendor details.
+SUB_PART_FIELDS = ("vendor_part",)
+SUB_DETAIL_FIELDS = ("vendor", "vendor_id", "description", "uom", "qoe")
 ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "ordered_dt")
 
 LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "description": 255, "uom": 10}
@@ -103,10 +104,6 @@ def clean_ordered_dt(value, *, now: datetime | None = None) -> datetime | None:
     return parsed
 
 
-def clean_vendor_name(value) -> str:
-    return clean_text(value, label="Vendor name", max_len=LIMITS["vendor"], required=True)
-
-
 def clean_vendor_id(value) -> str | None:
     """Infor's vendor ID, optional: digits only (e.g. 1000931). Filled in from a contract line."""
     text = clean_text(value, label="Vendor ID", max_len=LIMITS["vendor_id"])
@@ -122,11 +119,11 @@ def clean_comment(value, *, label: str = "Comment") -> str:
 # --- subs ----------------------------------------------------------------------
 
 def check_new_sub(data: dict) -> dict:
-    """A sub a Sub Finder adds: vendor name and vendor part required; Infor's vendor ID and a first
-    comment optional."""
+    """A new sub: the vendor part is required. The vendor details (vendor, vendor ID, description,
+    UOM, QOE) and a first comment are optional: the Materials Manager fills the details in."""
     return {
         "medline_item": clean_field("medline_item", data.get("medline_item"), required=True),
-        "vendor": clean_vendor_name(data.get("vendor")),
+        "vendor": clean_field("vendor", data.get("vendor")),
         "vendor_id": clean_vendor_id(data.get("vendor_id")),
         "vendor_part": clean_field("vendor_part", data.get("vendor_part"), required=True),
         "description": clean_field("description", data.get("description")),
@@ -136,21 +133,14 @@ def check_new_sub(data: dict) -> dict:
     }
 
 
-def check_sub_edit(sub, data: dict) -> dict:
-    """Changed fields only. Vendor, vendor ID and vendor part are fixed after the first review (P2)."""
-    allowed = SUB_FIELDS_BEFORE_REVIEW if sub.status == "pending_review" else SUB_FIELDS_AFTER_REVIEW
-    asked = [name for name in SUB_FIELDS_BEFORE_REVIEW if name in data]
-    locked = [name for name in asked if name not in allowed]
-    if locked:
-        raise RuleError(
-            "Vendor, vendor ID and vendor part can't change after the sub has been reviewed. "
-            "Reject it and add the right one instead."
-        )
+def check_sub_changes(sub, data: dict, fields, *, required: bool = True) -> dict:
+    """The fields of ``fields`` in ``data`` that differ from the sub's, cleaned. With ``required``,
+    nothing to change is refused."""
     changes = {}
-    for name in asked:
-        if name == "vendor":
-            value = clean_vendor_name(data[name])
-        elif name == "vendor_id":
+    for name in fields:
+        if name not in data:
+            continue
+        if name == "vendor_id":
             value = clean_vendor_id(data[name])
         else:
             value = clean_field(name, data[name], required=name == "vendor_part")
@@ -163,7 +153,7 @@ def check_sub_edit(sub, data: dict) -> dict:
             same = (value or None) == (current or None)
         if not same:
             changes[name] = value
-    if not changes:
+    if not changes and required:
         raise RuleError("Nothing to change.")
     return changes
 
@@ -190,7 +180,7 @@ def check_unpick(sub) -> None:
 
 
 def check_delete(sub, reason) -> str:
-    """A Sub Finder deletes a sub with a reason. The Approver's Pick stays until it's unpicked."""
+    """A sub is deleted with a reason. The Approver's Pick stays until it's unpicked."""
     if sub.is_picked:
         raise RuleError(f"{sub.label()} is the Approver's Pick; it has to be unpicked before it's deleted.", 409)
     return clean_comment(reason, label="Reason")
@@ -198,19 +188,27 @@ def check_delete(sub, reason) -> str:
 
 # --- orders --------------------------------------------------------------------
 
-def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
-    """An order against a picked sub (S3). UOM, QOE and vendor default to the sub's."""
+def check_orderable(sub) -> None:
     if not sub.is_picked:
         raise RuleError("Orders are recorded against a picked sub, and this one isn't picked.", 409)
+
+
+def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
+    """An order against a picked sub (S3). UOM, QOE and vendor default to the sub's details,
+    which the Materials Manager fills in (with the order or before)."""
+    check_orderable(sub)
     uom = clean_field("uom", data.get("uom")) or sub.uom
-    if not uom:
-        raise RuleError("UOM is required.")
+    vendor = clean_field("vendor", data.get("vendor")) or sub.vendor
+    missing = [name for name, value in (("Vendor", vendor), ("UOM", uom)) if not value]
+    if missing:
+        raise RuleError(f"{' and '.join(missing)} {'are' if len(missing) > 1 else 'is'} required: "
+                        "fill in the sub's vendor details.")
     qoe = clean_qoe(data["qoe"]) if "qoe" in data else (Decimal(sub.qoe) if sub.qoe is not None else None)
     return {
         "quantity": clean_quantity(data.get("quantity")),
         "uom": uom,
         "qoe": qoe,
-        "vendor": clean_field("vendor", data.get("vendor")) or sub.vendor,
+        "vendor": vendor,
         "ordered_dt": clean_ordered_dt(data.get("ordered_dt"), now=now),
         "comment": clean_text(data.get("comment"), label="Comment", max_len=TEXT_MAX),
     }

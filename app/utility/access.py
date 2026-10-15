@@ -32,9 +32,9 @@ PLM_VIEWER = "viewer"
 PLM_EDITOR = "editor"
 
 ROLE_VIEWER = "viewer"                        # sees the module; held alone
-ROLE_SUB_FINDER = "sub_finder"                # enters subs (alone: kept for a future AI finder)
-ROLE_SUB_APPROVER = "sub_approver"            # sets sub status, picks subs, comments on subs
-ROLE_MATERIALS_MANAGER = "materials_manager"  # records orders, comments on orders
+ROLE_SUB_FINDER = "sub_finder"                # proposes subs, pending review (kept for a future AI finder)
+ROLE_SUB_APPROVER = "sub_approver"            # nursing: enters vendor parts (approved on entry), reviews, picks, comments
+ROLE_MATERIALS_MANAGER = "materials_manager"  # fills in a sub's vendor details, records orders, comments on orders
 
 
 @dataclass(frozen=True)
@@ -76,8 +76,11 @@ MODULES = {
         ),
         capabilities={
             "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
-            "add_sub": frozenset({ROLE_SUB_FINDER}),
+            # Enter a vendor part, correct it, delete a sub (a Sub Approver's entries are approved).
+            "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_SUB_APPROVER}),
             "review": frozenset({ROLE_SUB_APPROVER}),
+            # A sub's vendor, vendor ID, description, UOM and QOE (2026-10-15).
+            "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
         },
         exclusive_roles=frozenset({ROLE_VIEWER}),  # the other roles can already view
@@ -211,7 +214,8 @@ DENIED_MESSAGES = {
     (PLM, "view"): "You don't have access to PLM Tracker. Ask an admin for a PLM role.",
     (PLM, "edit"): "Your PLM Tracker role is Viewer, so you can't make changes.",
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
-    (FILLKILL, "add_sub"): "Only Sub Finders can add, correct or delete subs.",
+    (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
+    (FILLKILL, "details"): "Only Materials Managers and Sub Finders can fill in a sub's vendor details.",
     (FILLKILL, "review"): "Only Sub Approvers can review, pick or comment on subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
 }

@@ -121,12 +121,16 @@ all are safe to re-run.
    (with History rows). Also since 2026-10-15, subs can be deleted: re-running 12 adds
    `deleted_at`, `deleted_by` and `delete_reason`, replaces the unique key `UQ_Sub_item_vendor_part`
    with the unique index `UX_Sub_item_vendor_part` over live subs only, and lets History record
-   'delete'. Re-run it before running that version of the app.
+   'delete'. Re-run it before running that version of the app. And since the stakeholder review
+   (2026-10-15), nursing enters only the vendor part: re-running 12 lets `Sub.vendor` be empty
+   until the Materials Manager fills it in, and makes the unique index `UX_Sub_item_vendor_part`
+   one live sub per (item, vendor part), whatever the vendor.
 3. `13_contract_search.sql`: `vw_ContractLineSearch`, Infor contract lines active today, for
    "Add sub". Since 2026-10-15 it has `[is_mhs]` (MHS contract or not), and `vw_Vendor` (Infor's
    vendors, to check a vendor ID and fill in its name). The app reads both: re-run 12, 13 and 14
    before running that version of the app, or the subs, contract search and vendor lookup fail.
-4. `14_pbo_sync.sql`: `usp_SyncPboSubs`, which adds Medline PBO subs. The app runs it when the
+4. `14_pbo_sync.sql`: `usp_SyncPboSubs`, which adds Medline PBO subs; it skips a part the item
+   already has, whoever entered it (re-run it with 12 after 2026-10-15). The app runs it when the
    main table loads; today it would add one (`MMO2329H` → `2329RH`).
 5. `09_verify.sql`: the kill-line and workflow result sets should say `PASS`.
 

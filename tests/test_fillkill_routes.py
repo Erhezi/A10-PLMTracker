@@ -222,6 +222,8 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
     ("finder_approver", "/fillkill/api/subs/{sub}/edit", {"description": "x"}, True),
     ("finder_approver", "/fillkill/api/orders", {"sub_id": "{sub}", "quantity": 1, "uom": "EA"}, False),
     ("viewer", "/fillkill/api/subs/{sub}/pick", {}, False),
+    ("viewer", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, False),
+    ("finder_manager", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, True),
 ])
 def test_each_action_needs_its_role(app, request, finder_approver, who, path, payload, allowed):
     _, data = post(finder_approver, "/fillkill/api/subs",
@@ -366,3 +368,26 @@ def test_packagings_of_one_infor_item_share_a_row_and_see_each_others_subs(app, 
     assert here["status"] == "pending_review"
     assert [o["medline_item"] for o in here["approved_elsewhere"]] == ["MDS2585H"]
     assert [o["vendor_part"] for o in packs["MDS2585HX"]["other_subs"]] == ["OM-9"]
+
+
+def test_deleting_a_sub_hides_it_and_shows_in_sub_history(app, viewer, finder_approver):
+    approver = client(app, "approver@example.org", plm=None, fillkill=("sub_approver",))
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor": "Owens", "vendor_part": "OM1"})
+    sub_id = data["sub"]["sub_id"]
+    status, data = post(approver, f"/fillkill/api/subs/{sub_id}/delete", {"reason": "dup"})
+    assert status == 403 and "delete" in data["message"]
+    status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/delete", {"reason": ""})
+    assert status == 400 and "Reason is required" in data["message"]
+    status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/delete",
+                        {"reason": "Owens doesn't carry it any more", "expected_status": "pending_review"})
+    assert status == 200 and data["sub"]["sub_id"] == sub_id
+
+    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-28", end="2026-09-30")
+    assert [s for p in panel["packagings"] for s in p["subs"]] == []
+    assert [(h["action"], h["label"], h["comment"]) for h in panel["pick_history"]][0] == (
+        "delete", "OM1 (Owens)", "Owens doesn't carry it any more")
+    _, library = get(viewer, "/fillkill/api/subs")
+    assert library["subs"] == []
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    glove = next(r for r in main["rows"] if "MDS2585H" in r["medline_items"])
+    assert sum(glove["subs_status"].values()) == 0 and "needs_subs" in glove["needs"]

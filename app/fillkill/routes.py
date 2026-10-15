@@ -265,6 +265,7 @@ SUB_ACTIONS = {
     "pick": "review",
     "unpick": "review",
     "comments": "review",
+    "delete": "add_sub",
 }
 
 
@@ -288,6 +289,8 @@ def api_sub_action(sub_id, action):
         sub = services.pick(sub_id, me, expected_status=expected)
     elif action == "unpick":
         sub = services.unpick(sub_id, me, expected_status=expected)
+    elif action == "delete":
+        sub = services.delete_sub(sub_id, data.get("reason"), me, expected_status=expected)
     else:
         sub = services.comment_on_sub(sub_id, data.get("comment"), me)
     return ok(_sub_payload(sub))

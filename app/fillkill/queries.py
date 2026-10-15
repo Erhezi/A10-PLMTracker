@@ -162,7 +162,9 @@ def subs_for_items(items) -> list[dict]:
     subs = []
     for start in range(0, len(items), 1000):  # stay well under SQL Server's 2,100 parameters
         chunk = items[start:start + 1000]
-        subs += db.session.execute(select(Sub).where(Sub.medline_item.in_(chunk))).scalars().all()
+        subs += db.session.execute(
+            select(Sub).where(Sub.medline_item.in_(chunk), Sub.deleted_at.is_(None))
+        ).scalars().all()
     return [sub_dict(sub) for sub in subs]
 
 
@@ -272,14 +274,15 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     )
     details = rollup.merge_item_details(item_view_rows)
 
-    subs = db.session.execute(
+    every_sub = db.session.execute(
         select(Sub).where(Sub.medline_item.in_(members)).order_by(Sub.create_dt, Sub.sub_id)
     ).scalars().all()
+    sub_labels = {s.sub_id: s.label() for s in every_sub}  # deleted ones too, for the history
+    subs = [s for s in every_sub if s.deleted_at is None]
     comments = _latest_comments("sub", [s.sub_id for s in subs])
     approvals = _latest_approvals([s.sub_id for s in subs])
     all_subs = [{**sub_dict(s), "latest_comment": comments.get(s.sub_id), **approvals.get(s.sub_id, {})}
                 for s in subs]
-    sub_labels = {s.sub_id: s.label() for s in subs}
 
     where, params, binds = scope.where("[Order Date]", "[Sold-To]")
     params["members"] = members
@@ -328,7 +331,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     picks = db.session.execute(
         select(History).where(
             History.medline_item.in_(members), History.entity == "sub",
-            History.action.in_(("created", "status", "pick", "unpick")),
+            History.action.in_(("created", "status", "pick", "unpick", "delete")),
         ).order_by(History.acted_at.desc(), History.history_id.desc())
     ).scalars().all()
     orders = db.session.execute(
@@ -397,8 +400,8 @@ def _compact_column(column):
 
 
 def subs_library(*, status: str | None = None, source: str | None = None, q: str | None = None) -> list[dict]:
-    """Every sub across all items (the reference library), newest change first."""
-    query = select(Sub)
+    """Every sub across all items (the reference library), newest change first; deleted ones aren't."""
+    query = select(Sub).where(Sub.deleted_at.is_(None))
     if status:
         query = query.where(Sub.status == status)
     if source:
@@ -530,7 +533,8 @@ def lines_by_day(scope: Scope, by: str) -> list[dict]:
 
 
 def all_subs() -> list[dict]:
-    return [sub_dict(s) for s in db.session.execute(select(Sub)).scalars()]
+    """Every sub that isn't deleted (the Dashboard)."""
+    return [sub_dict(s) for s in db.session.execute(select(Sub).where(Sub.deleted_at.is_(None))).scalars()]
 
 
 def sub_history(actions) -> list[dict]:

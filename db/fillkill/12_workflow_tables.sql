@@ -29,13 +29,23 @@ BEGIN
         [entered_by]   VARCHAR(255)   NOT NULL,
         [create_dt]    DATETIME       NOT NULL CONSTRAINT [DF_Sub_create_dt] DEFAULT (GETDATE()),
         [update_dt]    DATETIME       NOT NULL CONSTRAINT [DF_Sub_update_dt] DEFAULT (GETDATE()),
+        [deleted_at]   DATETIME       NULL,      -- a deleted sub keeps its row: who, when and why
+        [deleted_by]   VARCHAR(255)   NULL,
+        [delete_reason] VARCHAR(400)  NULL,
         CONSTRAINT [PK_Sub] PRIMARY KEY CLUSTERED ([sub_id]),
-        CONSTRAINT [UQ_Sub_item_vendor_part] UNIQUE ([medline_item], [vendor], [vendor_part]),
         CONSTRAINT [CK_Sub_status] CHECK ([status] IN ('pending_review', 'approved', 'hold', 'rejected')),
         CONSTRAINT [CK_Sub_source] CHECK ([source] IN ('manual', 'medline_pbo', 'llm')),
         CONSTRAINT [CK_Sub_pick_needs_approved] CHECK ([is_picked] = 0 OR [status] = 'approved'),
-        CONSTRAINT [CK_Sub_qoe] CHECK ([qoe] IS NULL OR [qoe] > 0)
+        CONSTRAINT [CK_Sub_qoe] CHECK ([qoe] IS NULL OR [qoe] > 0),
+        CONSTRAINT [CK_Sub_delete] CHECK (
+       ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
+    OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL AND [is_picked] = 0)
+        )
     );
+    -- One live sub per item, vendor and vendor part; deleted ones don't count. In EXEC, so this
+    -- batch still compiles where Sub exists without deleted_at (the block further down adds it).
+    EXEC (N'CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor], [vendor_part])
+        WHERE [deleted_at] IS NULL;');
     PRINT 'Created FillKill.Sub';
 END;
 GO
@@ -89,7 +99,7 @@ BEGIN
         CONSTRAINT [PK_History] PRIMARY KEY CLUSTERED ([history_id]),
         CONSTRAINT [CK_History_entity] CHECK ([entity] IN ('sub', 'order')),
         CONSTRAINT [CK_History_action] CHECK (
-            [action] IN ('created', 'status', 'pick', 'unpick', 'comment', 'edit', 'void')
+            [action] IN ('created', 'status', 'pick', 'unpick', 'comment', 'edit', 'void', 'delete')
         )
     );
     CREATE INDEX [IX_History_item] ON [FillKill].[History] ([medline_item], [acted_at]);
@@ -136,6 +146,54 @@ DECLARE @moved_count INT = (SELECT COUNT(*) FROM @moved);
 PRINT CONCAT('Medline PBO subs given vendor ID ', @medline_vendor, ': ', @moved_count);
 
 COMMIT TRANSACTION;
+GO
+
+-- 2026-10-15: a Sub Finder can delete a sub, with a reason. The row stays (deleted_at, deleted_by,
+-- delete_reason) so its history stays and the PBO sync doesn't add it back; the unique key becomes
+-- a unique index over live subs only, so the same vendor part can be added again; History gets
+-- the 'delete' action.
+IF COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[Sub] ADD [deleted_at] DATETIME NULL, [deleted_by] VARCHAR(255) NULL,
+                                     [delete_reason] VARCHAR(400) NULL;
+    PRINT 'Added Sub.deleted_at, deleted_by, delete_reason';
+END;
+GO
+
+IF OBJECT_ID(N'[FillKill].[CK_Sub_delete]', N'C') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[Sub] ADD CONSTRAINT [CK_Sub_delete] CHECK (
+       ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
+    OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL AND [is_picked] = 0)
+    );
+    PRINT 'Added CK_Sub_delete';
+END;
+
+IF OBJECT_ID(N'[FillKill].[UQ_Sub_item_vendor_part]', N'UQ') IS NOT NULL
+BEGIN
+    EXEC (N'ALTER TABLE [FillKill].[Sub] DROP CONSTRAINT UQ_Sub_item_vendor_part');
+    PRINT 'Dropped the old unique key UQ_Sub_item_vendor_part';
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes
+               WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'UX_Sub_item_vendor_part')
+BEGIN
+    CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor], [vendor_part])
+        WHERE [deleted_at] IS NULL;
+    PRINT 'Created UX_Sub_item_vendor_part (live subs only)';
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE parent_object_id = OBJECT_ID(N'[FillKill].[History]') AND name = N'CK_History_action'
+                 AND [definition] LIKE N'%''delete''%')
+BEGIN
+    IF OBJECT_ID(N'[FillKill].[CK_History_action]', N'C') IS NOT NULL
+        EXEC (N'ALTER TABLE [FillKill].[History] DROP CONSTRAINT CK_History_action');
+    ALTER TABLE [FillKill].[History] ADD CONSTRAINT [CK_History_action] CHECK (
+            [action] IN ('created', 'status', 'pick', 'unpick', 'comment', 'edit', 'void', 'delete')
+    );
+    PRINT 'CK_History_action now allows delete';
+END;
 GO
 
 -- Defaults, in case the app's startup created a table before this script ran.

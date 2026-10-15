@@ -18,7 +18,7 @@ SCHEMA = "FillKill"
 SUB_STATUSES = ("pending_review", "approved", "hold", "rejected")
 SUB_SOURCES = ("manual", "medline_pbo", "llm")
 HISTORY_ENTITIES = ("sub", "order")
-HISTORY_ACTIONS = ("created", "status", "pick", "unpick", "comment", "edit", "void")
+HISTORY_ACTIONS = ("created", "status", "pick", "unpick", "comment", "edit", "void", "delete")
 
 TEXT_MAX = 400  # comments and void reasons
 
@@ -28,16 +28,27 @@ def _one_of(column: str, values) -> str:
 
 
 class Sub(db.Model):
-    """A sub of a Medline item: a vendor and that vendor's part number."""
+    """A sub of a Medline item: a vendor and that vendor's part number.
+
+    A deleted sub keeps its row (who, when, why), so its history stays and Medline's PBO sync
+    doesn't add it back; it's hidden everywhere, and the same vendor part can be added again.
+    """
 
     __tablename__ = "Sub"
     __table_args__ = (
         db.PrimaryKeyConstraint("sub_id", name="PK_Sub"),
-        db.UniqueConstraint("medline_item", "vendor", "vendor_part", name="UQ_Sub_item_vendor_part"),
+        # One live sub per item, vendor and vendor part; deleted ones don't count.
+        db.Index("UX_Sub_item_vendor_part", "medline_item", "vendor", "vendor_part", unique=True,
+                 mssql_where=db.text("deleted_at IS NULL"), sqlite_where=db.text("deleted_at IS NULL")),
         db.CheckConstraint(_one_of("status", SUB_STATUSES), name="CK_Sub_status"),
         db.CheckConstraint(_one_of("source", SUB_SOURCES), name="CK_Sub_source"),
         db.CheckConstraint("is_picked = 0 OR status = 'approved'", name="CK_Sub_pick_needs_approved"),
         db.CheckConstraint("qoe IS NULL OR qoe > 0", name="CK_Sub_qoe"),
+        db.CheckConstraint(
+            "(deleted_at IS NULL AND deleted_by IS NULL AND delete_reason IS NULL) "
+            "OR (deleted_at IS NOT NULL AND deleted_by IS NOT NULL AND delete_reason IS NOT NULL AND is_picked = 0)",
+            name="CK_Sub_delete",
+        ),
         {"schema": SCHEMA},
     )
 
@@ -55,6 +66,9 @@ class Sub(db.Model):
     entered_by = db.Column(db.String(255), nullable=False)
     create_dt = db.Column(db.DateTime, nullable=False, default=now_ny_naive)
     update_dt = db.Column(db.DateTime, nullable=False, default=now_ny_naive)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(255))
+    delete_reason = db.Column(db.String(TEXT_MAX))
 
     def label(self) -> str:
         return f"{self.vendor_part} ({self.vendor})"

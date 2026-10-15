@@ -50,6 +50,14 @@ def _locked(model, key):
     return row
 
 
+def _live_sub(sub_id: int) -> Sub:
+    """The sub, locked; a deleted one can't be changed."""
+    sub = _locked(Sub, sub_id)
+    if sub.deleted_at is not None:
+        raise RuleError(f"{sub.label()} was deleted by {sub.deleted_by}; reload the page.", 409)
+    return sub
+
+
 def _last_change(entity: str, entity_id: int) -> History | None:
     return db.session.execute(
         select(History).where(History.entity == entity, History.entity_id == entity_id)
@@ -75,6 +83,7 @@ def _ensure_unique(medline_item: str, vendor: str, vendor_part: str, *, except_i
         Sub.medline_item == medline_item,
         func.lower(Sub.vendor) == vendor.lower(),
         func.lower(Sub.vendor_part) == vendor_part.lower(),
+        Sub.deleted_at.is_(None),
     )
     if except_id is not None:
         query = query.where(Sub.sub_id != except_id)
@@ -152,7 +161,7 @@ def add_sub(data: dict, actor: str, *, source: str = "manual") -> Sub:
 
 def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
     def action():
-        sub = _locked(Sub, sub_id)
+        sub = _live_sub(sub_id)
         changes = rules.check_sub_edit(sub, data)
         if "vendor" in changes or "vendor_part" in changes:
             _ensure_unique(sub.medline_item, changes.get("vendor", sub.vendor),
@@ -170,12 +179,34 @@ def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
     return _run(action)
 
 
+def delete_sub(sub_id: int, reason, actor: str, *, expected_status: str | None = None) -> Sub:
+    """Hide a sub everywhere, keeping its row and history (who, when, why). Refused for the
+    Approver's Pick and for a sub with orders that aren't voided."""
+    def action():
+        sub = _live_sub(sub_id)
+        _ensure_current(sub, expected_status)
+        why = rules.check_delete(sub, reason)
+        orders = db.session.execute(
+            select(func.count()).select_from(SubOrder).where(SubOrder.sub_id == sub.sub_id, SubOrder.voided_at.is_(None))
+        ).scalar()
+        if orders:
+            raise RuleError(f"{sub.label()} has {orders} order{'s' if orders > 1 else ''}; "
+                            "void {} before deleting it.".format("them" if orders > 1 else "it"), 409)
+        now = now_ny_naive()
+        sub.deleted_at, sub.deleted_by, sub.delete_reason = now, actor, why
+        sub.update_dt = now
+        _history("sub", sub.sub_id, sub.medline_item, "delete", actor, now, comment=why)
+        return sub
+
+    return _run(action)
+
+
 # --- subs (Sub Approver) -------------------------------------------------------------
 
 def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str | None = None) -> Sub:
     """S1, S2: leaving 'approved' unpicks the sub, recorded as its own History row."""
     def action():
-        sub = _locked(Sub, sub_id)
+        sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         status = rules.check_status_change(sub, new_status)
         now = now_ny_naive()
@@ -194,7 +225,7 @@ def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str
 
 def pick(sub_id: int, actor: str, *, expected_status: str | None = None) -> Sub:
     def action():
-        sub = _locked(Sub, sub_id)
+        sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         rules.check_pick(sub)
         now = now_ny_naive()
@@ -208,7 +239,7 @@ def pick(sub_id: int, actor: str, *, expected_status: str | None = None) -> Sub:
 
 def unpick(sub_id: int, actor: str, *, expected_status: str | None = None) -> Sub:
     def action():
-        sub = _locked(Sub, sub_id)
+        sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         rules.check_unpick(sub)
         now = now_ny_naive()
@@ -224,7 +255,7 @@ def comment_on_sub(sub_id: int, text, actor: str) -> Sub:
     comment = rules.clean_comment(text)
 
     def action():
-        sub = _locked(Sub, sub_id)
+        sub = _live_sub(sub_id)
         now = now_ny_naive()
         sub.update_dt = now
         _history("sub", sub.sub_id, sub.medline_item, "comment", actor, now, comment=comment)
@@ -237,7 +268,7 @@ def comment_on_sub(sub_id: int, text, actor: str) -> Sub:
 
 def record_order(sub_id: int, data: dict, actor: str, *, expected_status: str | None = None) -> SubOrder:
     def action():
-        sub = _locked(Sub, sub_id)
+        sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         now = now_ny_naive()
         clean = rules.check_new_order(sub, data, now=now)

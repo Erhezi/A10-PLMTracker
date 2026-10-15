@@ -118,7 +118,10 @@ all are safe to re-run.
 2. `12_workflow_tables.sql`: `Sub`, `SubOrder` and `History`. Since 2026-10-15 a sub has an
    optional `vendor_id` (Infor's vendor ID) beside its vendor name: re-running 12 adds the column
    and gives Medline PBO subs vendor ID 1000931 and Infor's name for it, MEDLINE INDUSTRIES INC
-   (with History rows).
+   (with History rows). Also since 2026-10-15, subs can be deleted: re-running 12 adds
+   `deleted_at`, `deleted_by` and `delete_reason`, replaces the unique key `UQ_Sub_item_vendor_part`
+   with the unique index `UX_Sub_item_vendor_part` over live subs only, and lets History record
+   'delete'. Re-run it before running that version of the app.
 3. `13_contract_search.sql`: `vw_ContractLineSearch`, Infor contract lines active today, for
    "Add sub". Since 2026-10-15 it has `[is_mhs]` (MHS contract or not), and `vw_Vendor` (Infor's
    vendors, to check a vendor ID and fill in its name). The app reads both: re-run 12, 13 and 14

@@ -211,7 +211,7 @@ DENIED_MESSAGES = {
     (PLM, "view"): "You don't have access to PLM Tracker. Ask an admin for a PLM role.",
     (PLM, "edit"): "Your PLM Tracker role is Viewer, so you can't make changes.",
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
-    (FILLKILL, "add_sub"): "Only Sub Finders can add or correct subs.",
+    (FILLKILL, "add_sub"): "Only Sub Finders can add, correct or delete subs.",
     (FILLKILL, "review"): "Only Sub Approvers can review, pick or comment on subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
 }

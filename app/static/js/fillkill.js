@@ -668,6 +668,11 @@
     }
     if (can.add_sub) {
       actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Edit</button>`);
+      // The Approver's Pick can't be deleted until it's unpicked (the server refuses it too).
+      actions.push(sub.is_picked
+        ? `<span class="d-inline-block" tabindex="0" title="It's the Approver's Pick: unpick it first">
+             <button type="button" class="btn btn-sm btn-outline-danger" disabled>Delete</button></span>`
+        : `<button type="button" class="btn btn-sm btn-outline-danger" data-act="delete-sub" data-sub="${sub.sub_id}">Delete</button>`);
     }
     actions.push(`<button type="button" class="btn btn-sm btn-link" data-act="history" data-entity="sub" data-id="${sub.sub_id}">History</button>`);
 
@@ -812,6 +817,7 @@
       case 'comment': return `Comment: ${esc(h.comment)}`;
       case 'edit': return `Changed ${esc(String(h.field || '').replace('_', ' '))}: ${esc(h.from_value || '—')} → ${esc(h.to_value || '—')}`;
       case 'void': return `Voided: ${esc(h.comment)}`;
+      case 'delete': return `Deleted: ${esc(h.comment)}`;
       default: return esc(h.action);
     }
   }
@@ -922,6 +928,7 @@
       return;
     }
     if (what === 'edit-sub') { openSubEditForm(panelSubs().find((s) => s.sub_id === subId)); return; }
+    if (what === 'delete-sub') { openSubDeleteForm(panelSubs().find((s) => s.sub_id === subId)); return; }
     if (what === 'edit-order') { openOrderEditForm(state.panelData.orders.find((o) => o.order_id === Number(button.dataset.order))); return; }
     if (what === 'void-order') { openVoidForm(Number(button.dataset.order)); return; }
     if (what === 'history') {
@@ -1106,6 +1113,17 @@
       ${field('vendor', 'Vendor', order.vendor, 'maxlength="255"', 6)}
       ${field('ordered_dt', 'Ordered', String(order.ordered_dt || '').slice(0, 16), 'type="datetime-local"', 6)}`,
     'Save correction', (values) => postJSON(orderUrl(order.order_id, 'edit'), values).then(() => 'Order corrected.'));
+  }
+
+  // Deleting a sub needs a reason; the sub's row and history stay.
+  function openSubDeleteForm(sub) {
+    if (!sub) return;
+    showModal(`Delete a sub · ${esc(sub.vendor_part)}`, `
+      <div class="col-12 small text-muted">${esc(vendorText(sub))} on ${esc(sub.medline_item)}. It leaves the item and the
+        library; who deleted it, when and why stay in its history.</div>
+      ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`,
+    'Delete sub', (values) => postJSON(subUrl(sub.sub_id, 'delete'), { reason: values.reason, expected_status: sub.status })
+      .then(() => 'Sub deleted.'));
   }
 
   function openVoidForm(orderId) {

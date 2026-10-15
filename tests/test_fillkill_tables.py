@@ -29,7 +29,7 @@ def _model_ddl() -> str:
 
 
 def _names(ddl: str) -> set[str]:
-    return set(re.findall(r"CONSTRAINT \[(\w+)\]", ddl)) | set(re.findall(r"CREATE INDEX \[(\w+)\]", ddl))
+    return set(re.findall(r"CONSTRAINT \[(\w+)\]", ddl)) | set(re.findall(r"CREATE (?:UNIQUE )?INDEX \[(\w+)\]", ddl))
 
 
 def _checks(ddl: str) -> dict[str, str]:
@@ -116,3 +116,20 @@ def test_a_void_needs_who_when_and_why(sqlite_app):
         with pytest.raises(IntegrityError):
             db.session.execute(insert, {"by": "me", "at": None, "why": None})
         db.session.rollback()
+
+
+def test_a_deleted_sub_needs_who_when_and_why_and_doesnt_block_a_new_one(sqlite_app):
+    from app import db
+
+    params = {"item": "MDS1", "part": "P1", "status": "pending_review", "picked": 0, "source": "manual"}
+    delete = text('UPDATE "FillKill"."Sub" SET deleted_at = CURRENT_TIMESTAMP, deleted_by = :by, '
+                  "delete_reason = :why WHERE sub_id = 1")
+    with sqlite_app.app_context():
+        db.session.execute(INSERT_SUB, params)
+        db.session.commit()
+        with pytest.raises(IntegrityError):
+            db.session.execute(delete, {"by": "me", "why": None})
+        db.session.rollback()
+        db.session.execute(delete, {"by": "me", "why": "duplicate"})
+        db.session.execute(INSERT_SUB, params)  # the same item, vendor and part, live again
+        db.session.commit()

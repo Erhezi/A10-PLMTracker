@@ -189,6 +189,13 @@ def check_unpick(sub) -> None:
         raise RuleError("The sub isn't picked.", 409)
 
 
+def check_delete(sub, reason) -> str:
+    """A Sub Finder deletes a sub with a reason. The Approver's Pick stays until it's unpicked."""
+    if sub.is_picked:
+        raise RuleError(f"{sub.label()} is the Approver's Pick; it has to be unpicked before it's deleted.", 409)
+    return clean_comment(reason, label="Reason")
+
+
 # --- orders --------------------------------------------------------------------
 
 def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:

@@ -206,3 +206,31 @@ def test_an_order_survives_its_sub_being_unpicked(ctx):
     from app import db
     from app.models.fillkill import SubOrder
     assert db.session.get(SubOrder, order.order_id).voided_at is None
+
+
+# --- deleting a sub ----------------------------------------------------------------------
+
+def test_a_deleted_sub_keeps_its_row_and_history_and_leaves_every_list(ctx):
+    from app.fillkill import queries
+    sub = new_sub()
+    refused(lambda: services().delete_sub(sub.sub_id, "  ", FINDER), says="Reason is required")
+    sub = services().delete_sub(sub.sub_id, "Wrong item: a sterile glove", FINDER, expected_status="pending_review")
+    assert (sub.deleted_by, sub.delete_reason, sub.deleted_at is not None) == (FINDER, "Wrong item: a sterile glove", True)
+    assert history("sub", sub.sub_id)[-1] == ("delete", None, None, None, "Wrong item: a sterile glove", FINDER)
+    assert queries.subs_for_items(["MDS2585H"]) == []
+    assert queries.subs_library() == [] and queries.all_subs() == []
+    # Nothing more can happen to it, and the same vendor part can be added again as a new sub.
+    refused(lambda: services().set_status(sub.sub_id, "approved", APPROVER), status=409, says="was deleted")
+    refused(lambda: services().delete_sub(sub.sub_id, "again", FINDER), status=409, says="was deleted")
+    again = new_sub()
+    assert again.sub_id != sub.sub_id and [s["sub_id"] for s in queries.subs_for_items(["MDS2585H"])] == [again.sub_id]
+
+
+def test_the_approvers_pick_and_a_sub_with_orders_cant_be_deleted(ctx):
+    sub = approved_and_picked()
+    refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="unpicked before")
+    order = services().record_order(sub.sub_id, {"quantity": 3}, MANAGER)
+    services().unpick(sub.sub_id, APPROVER)
+    refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="void it before")
+    services().void_order(order.order_id, "entered twice", MANAGER)
+    assert services().delete_sub(sub.sub_id, "not needed", FINDER).deleted_by == FINDER

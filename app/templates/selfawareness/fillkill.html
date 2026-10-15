@@ -33,7 +33,7 @@
         </thead>
         <tbody>
           <tr><td class="text-nowrap">Viewer</td><td>Seeing everything in the module.</td></tr>
-          <tr><td class="text-nowrap">Sub Finder</td><td>Adding substitutes to an item: vendor, vendor part number, Infor's vendor ID when known, and comments.</td></tr>
+          <tr><td class="text-nowrap">Sub Finder</td><td>Adding substitutes to an item: vendor, vendor part number, Infor's vendor ID when known, and comments; correcting them, or deleting one with a reason.</td></tr>
           <tr><td class="text-nowrap">Sub Approver</td><td>Setting each substitute to approve, hold or reject, picking the approved one(s) to order, and adding comments to substitutes.</td></tr>
           <tr><td class="text-nowrap">Materials Manager</td><td>Recording what was ordered against the Approver's Pick (quantity, UOM, QOE, vendor), and adding comments to orders.</td></tr>
           <tr><td class="text-nowrap">Admin</td><td>Assigns these roles in User Control. Inside the module, admins have only the roles they hold, like everyone else.</td></tr>
@@ -119,6 +119,8 @@
         comes from Infor's Medline vendor items, never from the customer item, which can be the Medline item
         itself or a contract-only number like 1296-DYNJAA04.</li>
       <li>Comments are added, never overwritten, and show who wrote them and when.</li>
+      <li><strong>Deleting a substitute</strong> asks why. It disappears from the item and the library, but who deleted it,
+        when and why stay in the item's Sub History. The Approver's Pick has to be unpicked first, and orders voided.</li>
       <li>If someone changed a substitute while you had it open, you'll see who changed it and be asked to reload.</li>
       <li>Every login ends at 2:30 AM. The next click takes you to the login page, then back to where you were.</li>
     </ul>

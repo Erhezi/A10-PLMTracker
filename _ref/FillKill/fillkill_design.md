@@ -329,6 +329,11 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 - **Keyed on the Medline item**, not the Infor item: Medline's substitute data uses that key, and
   the Infor number is meaningless outside Infor. **Decided.**
 - An item can have any number of subs. There is one sub per (Medline item, vendor, vendor part).
+- **Deleting a sub** (2026-10-15): a Sub Finder can delete one, with a required reason. It leaves the
+  item, the library, the counts and the Dashboard, but its row stays (who, when, why) and Sub History
+  shows "Deleted: <reason>"; Medline's PBO sync doesn't add a deleted PBO sub back, and the same
+  vendor part can be added again as a new sub. Refused for the Approver's Pick (unpick first) and
+  for a sub with orders that aren't voided.
 - **Every sub needs the Sub Approver's approval**, including the same product from another vendor
   or in another UOM. Those usually mean buying on a different contract, so the Sub Approver should
   see that even though they judge only item equivalence. **Decided.**

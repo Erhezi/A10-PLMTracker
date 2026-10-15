@@ -13,8 +13,8 @@ NOW = datetime(2026, 10, 13, 14, 0)
 
 
 def sub(**kwargs):
-    base = dict(status="pending_review", is_picked=False, vendor="Medline", vendor_part="P1",
-                description=None, uom=None, qoe=None)
+    base = dict(status="pending_review", is_picked=False, vendor="1000931", vendor_name="MEDLINE INDUSTRIES INC",
+                vendor_part="P1", description=None, uom=None, qoe=None)
     return SimpleNamespace(**{**base, **kwargs})
 
 
@@ -35,15 +35,18 @@ def refused(call, *, status=400, says=""):
 
 def test_new_sub_needs_vendor_and_part_and_cleans_the_rest():
     clean = rules.check_new_sub({
-        "medline_item": " MDS2585H ", "vendor": "Cardinal", "vendor_part": "88885",
+        "medline_item": " MDS2585H ", "vendor": " 1000001 ", "vendor_part": "88885",
         "uom": "bx", "qoe": "100", "comment": "  same glove  ",
     })
     assert clean == {
-        "medline_item": "MDS2585H", "vendor": "Cardinal", "vendor_part": "88885", "description": None,
+        "medline_item": "MDS2585H", "vendor": "1000001", "vendor_part": "88885", "description": None,
         "uom": "BX", "qoe": Decimal("100.0000"), "comment": "same glove",
     }
-    refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor_part": "P"}), says="Vendor is required")
-    refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor": "V"}), says="Vendor part is required")
+    refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor_part": "P"}), says="Vendor ID is required")
+    refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor": "1000001"}), says="Vendor part is required")
+    # The vendor is Infor's vendor ID, not the vendor's name.
+    refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor": "Cardinal", "vendor_part": "P"}),
+            says="Infor's vendor ID (digits")
 
 
 @pytest.mark.parametrize("field, value, says", [
@@ -53,13 +56,13 @@ def test_new_sub_needs_vendor_and_part_and_cleans_the_rest():
     ("comment", "x" * 401, "longer than 400"),
 ])
 def test_new_sub_refuses_bad_values(field, value, says):
-    data = {"medline_item": "M", "vendor": "V", "vendor_part": "P", field: value}
+    data = {"medline_item": "M", "vendor": "1000001", "vendor_part": "P", field: value}
     refused(lambda: rules.check_new_sub(data), says=says)
 
 
 def test_vendor_and_part_can_be_fixed_only_before_the_first_review():
     assert rules.check_sub_edit(sub(), {"vendor_part": "P2"}) == {"vendor_part": "P2"}
-    refused(lambda: rules.check_sub_edit(sub(status="approved"), {"vendor": "Other"}),
+    refused(lambda: rules.check_sub_edit(sub(status="approved"), {"vendor": "1000002"}),
             says="can't change after the sub has been reviewed")
     assert rules.check_sub_edit(sub(status="hold"), {"description": "Glove"}) == {"description": "Glove"}
 
@@ -97,7 +100,8 @@ def test_an_order_needs_a_picked_sub():
 def test_an_order_takes_uom_qoe_and_vendor_from_the_sub_unless_given():
     picked = sub(status="approved", is_picked=True, uom="CS", qoe=Decimal("4"))
     clean = rules.check_new_order(picked, {"quantity": "15"}, now=NOW)
-    assert (clean["quantity"], clean["uom"], clean["qoe"], clean["vendor"]) == (15, "CS", Decimal("4"), "Medline")
+    # The order's vendor is free text: the sub's vendor name unless given.
+    assert (clean["quantity"], clean["uom"], clean["qoe"], clean["vendor"]) == (15, "CS", Decimal("4"), "MEDLINE INDUSTRIES INC")
     assert clean["ordered_dt"] is None  # "now", set when saved
 
     clean = rules.check_new_order(picked, {"quantity": 2, "uom": "ea", "qoe": "", "vendor": "Owens"}, now=NOW)

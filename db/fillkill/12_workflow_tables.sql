@@ -1,7 +1,8 @@
 -- Fill/Kill workflow tables: subs, orders, and the history of every change and comment.
 -- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
 --
---   Sub       a sub of a Medline item: vendor + vendor part, status, pick
+--   Sub       a sub of a Medline item: vendor (Infor's vendor ID) and its name, vendor part,
+--             status, pick
 --   SubOrder  an order a Materials Manager recorded against a picked sub
 --   History   one row per change or comment on a sub or an order (comments live only here)
 --
@@ -16,7 +17,8 @@ BEGIN
     CREATE TABLE [FillKill].[Sub] (
         [sub_id]       INT IDENTITY(1, 1) NOT NULL,
         [medline_item] VARCHAR(50)    NOT NULL,
-        [vendor]       VARCHAR(255)   NOT NULL,
+        [vendor]       VARCHAR(255)   NOT NULL,  -- Infor's vendor ID, e.g. 1000931
+        [vendor_name]  VARCHAR(255)   NULL,      -- its name in Infor's vendor master
         [vendor_part]  VARCHAR(100)   NOT NULL,
         [description]  VARCHAR(255)   NULL,
         [uom]          VARCHAR(10)    NULL,
@@ -94,6 +96,45 @@ BEGIN
     CREATE INDEX [IX_History_entity] ON [FillKill].[History] ([entity], [entity_id], [acted_at]);
     PRINT 'Created FillKill.History';
 END;
+GO
+
+-- 2026-10-15: [vendor] holds Infor's vendor ID and [vendor_name] its name. Subs made before held a
+-- name in [vendor]: Medline PBO subs move to Medline's vendor ID (with a History row), and every
+-- sub gets its name from Infor's vendor master, or keeps its old text as the name.
+IF COL_LENGTH(N'FillKill.Sub', N'vendor_name') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[Sub] ADD [vendor_name] VARCHAR(255) NULL;
+    PRINT 'Added Sub.vendor_name';
+END;
+GO
+
+DECLARE @medline_vendor VARCHAR(20) = '1000931';  -- MEDLINE INDUSTRIES INC; the same in 14 (usp_SyncPboSubs)
+DECLARE @moved TABLE ([sub_id] INT, [medline_item] VARCHAR(50));
+
+BEGIN TRANSACTION;
+
+UPDATE s SET s.[vendor] = @medline_vendor
+OUTPUT inserted.[sub_id], inserted.[medline_item] INTO @moved
+FROM [FillKill].[Sub] AS s
+WHERE s.[source] = 'medline_pbo' AND s.[vendor] = 'Medline'
+  AND NOT EXISTS (SELECT 1 FROM [FillKill].[Sub] AS o
+                  WHERE o.[medline_item] = s.[medline_item] AND o.[vendor] = @medline_vendor
+                    AND o.[vendor_part] = s.[vendor_part]);
+
+INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [field], [from_value],
+                                  [to_value], [actor], [acted_at])
+SELECT 'sub', [sub_id], [medline_item], 'edit', 'vendor', 'Medline', @medline_vendor, '12_workflow_tables.sql', GETDATE()
+FROM @moved;
+DECLARE @moved_count INT = (SELECT COUNT(*) FROM @moved);
+PRINT CONCAT('Medline PBO subs moved to vendor ID ', @medline_vendor, ': ', @moved_count);
+
+UPDATE s SET s.[vendor_name] = COALESCE(v.[VendorName], s.[vendor])
+FROM [FillKill].[Sub] AS s
+LEFT JOIN [PLMPreprocessorShared].[infor].[MDM_VENDOR] AS v ON v.[Vendor] = s.[vendor]
+WHERE s.[vendor_name] IS NULL;
+PRINT CONCAT('Vendor names filled in: ', @@ROWCOUNT);
+
+COMMIT TRANSACTION;
 GO
 
 -- Defaults, in case the app's startup created a table before this script ran.

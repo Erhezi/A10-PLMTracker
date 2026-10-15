@@ -25,7 +25,7 @@ SUB_FIELDS_BEFORE_REVIEW = ("vendor", "vendor_part", "description", "uom", "qoe"
 SUB_FIELDS_AFTER_REVIEW = ("description", "uom", "qoe")
 ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "ordered_dt")
 
-LIMITS = {"medline_item": 50, "vendor": 255, "vendor_part": 100, "description": 255, "uom": 10}
+LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "description": 255, "uom": 10}
 
 
 class RuleError(Exception):
@@ -103,6 +103,14 @@ def clean_ordered_dt(value, *, now: datetime | None = None) -> datetime | None:
     return parsed
 
 
+def clean_vendor_id(value) -> str:
+    """A sub's vendor: Infor's vendor ID, digits only (e.g. 1000931). Its name comes from Infor."""
+    text = clean_text(value, label="Vendor ID", max_len=LIMITS["vendor_id"], required=True)
+    if not text.isdigit():
+        raise RuleError("Vendor must be Infor's vendor ID (digits, like 1000931), not the vendor's name.")
+    return text
+
+
 def clean_comment(value, *, label: str = "Comment") -> str:
     return clean_text(value, label=label, max_len=TEXT_MAX, required=True)
 
@@ -110,10 +118,11 @@ def clean_comment(value, *, label: str = "Comment") -> str:
 # --- subs ----------------------------------------------------------------------
 
 def check_new_sub(data: dict) -> dict:
-    """A sub a Sub Finder adds: vendor and vendor part required; an optional first comment."""
+    """A sub a Sub Finder adds: vendor (Infor's vendor ID) and vendor part required; an optional
+    first comment."""
     return {
         "medline_item": clean_field("medline_item", data.get("medline_item"), required=True),
-        "vendor": clean_field("vendor", data.get("vendor"), required=True),
+        "vendor": clean_vendor_id(data.get("vendor")),
         "vendor_part": clean_field("vendor_part", data.get("vendor_part"), required=True),
         "description": clean_field("description", data.get("description")),
         "uom": clean_field("uom", data.get("uom")),
@@ -134,7 +143,10 @@ def check_sub_edit(sub, data: dict) -> dict:
         )
     changes = {}
     for name in asked:
-        value = clean_field(name, data[name], required=name in ("vendor", "vendor_part"))
+        if name == "vendor":
+            value = clean_vendor_id(data[name])
+        else:
+            value = clean_field(name, data[name], required=name == "vendor_part")
         current = getattr(sub, name)
         if name == "qoe":
             same = (value is None and current is None) or (
@@ -173,7 +185,8 @@ def check_unpick(sub) -> None:
 # --- orders --------------------------------------------------------------------
 
 def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
-    """An order against a picked sub (S3). UOM, QOE and vendor default to the sub's."""
+    """An order against a picked sub (S3). UOM, QOE and vendor default to the sub's (the order's
+    vendor is free text: the sub's vendor name unless changed)."""
     if not sub.is_picked:
         raise RuleError("Orders are recorded against a picked sub, and this one isn't picked.", 409)
     uom = clean_field("uom", data.get("uom")) or sub.uom
@@ -184,7 +197,7 @@ def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
         "quantity": clean_quantity(data.get("quantity")),
         "uom": uom,
         "qoe": qoe,
-        "vendor": clean_field("vendor", data.get("vendor")) or sub.vendor,
+        "vendor": clean_field("vendor", data.get("vendor")) or getattr(sub, "vendor_name", None) or sub.vendor,
         "ordered_dt": clean_ordered_dt(data.get("ordered_dt"), now=now),
         "comment": clean_text(data.get("comment"), label="Comment", max_len=TEXT_MAX),
     }

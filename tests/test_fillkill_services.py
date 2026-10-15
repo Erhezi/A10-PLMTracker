@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from app.fillkill.rules import RuleError
+from conftest import CARDINAL, OWENS
 
 FINDER, APPROVER, OTHER_APPROVER, MANAGER = (
     "finder@example.org", "approver@example.org", "approver2@example.org", "mm@example.org",
@@ -32,7 +33,7 @@ def history(entity=None, entity_id=None):
 
 
 def new_sub(**data):
-    base = {"medline_item": "MDS2585H", "vendor": "Cardinal", "vendor_part": "88885"}
+    base = {"medline_item": "MDS2585H", "vendor": CARDINAL, "vendor_part": "88885"}
     return services().add_sub({**base, **data}, FINDER)
 
 
@@ -62,9 +63,23 @@ def test_adding_a_sub_records_who_and_the_first_comment(ctx):
 
 
 def test_the_same_vendor_part_twice_is_refused_whatever_the_case(ctx):
-    new_sub()
-    refused(lambda: new_sub(vendor="CARDINAL", vendor_part="88885"), status=409, says="already a sub")
-    new_sub(medline_item="OTHERITEM")  # another item may have the same sub
+    new_sub(vendor_part="ab-1")
+    refused(lambda: new_sub(vendor_part="AB-1"), status=409, says="already a sub")
+    new_sub(medline_item="OTHERITEM", vendor_part="ab-1")  # another item may have the same sub
+    new_sub(vendor=OWENS, vendor_part="ab-1")  # and another vendor the same part number
+
+
+def test_the_vendor_is_an_infor_vendor_id_and_its_name_comes_from_infor(ctx):
+    sub = new_sub()
+    assert (sub.vendor, sub.vendor_name, sub.label()) == (CARDINAL, "CARDINAL HEALTH", "88885 (CARDINAL HEALTH)")
+    refused(lambda: new_sub(vendor="9999999", vendor_part="X1"), says="isn't in Infor's vendor list")
+    refused(lambda: new_sub(vendor="Cardinal", vendor_part="X1"), says="Infor's vendor ID")
+    # A new vendor ID before the first review brings its name; the history keeps the ID change.
+    sub = services().edit_sub(sub.sub_id, {"vendor": OWENS}, FINDER)
+    assert (sub.vendor, sub.vendor_name) == (OWENS, "OWENS & MINOR")
+    assert [row[:4] for row in history("sub", sub.sub_id) if row[0] == "edit"] == [("edit", "vendor", CARDINAL, OWENS)]
+    refused(lambda: services().edit_sub(sub.sub_id, {"vendor": "9999999"}, FINDER), says="isn't in Infor's vendor list")
+    assert services().edit_sub(sub.sub_id, {"description": "Glove"}, FINDER).vendor_name == "OWENS & MINOR"
 
 
 def test_corrections_are_logged_field_by_field(ctx):
@@ -76,7 +91,7 @@ def test_corrections_are_logged_field_by_field(ctx):
         ("edit", "description", None, "Glove", None, FINDER),
     ]
     services().set_status(sub.sub_id, "hold", APPROVER)
-    refused(lambda: services().edit_sub(sub.sub_id, {"vendor": "Owens"}, FINDER), says="after the sub has been reviewed")
+    refused(lambda: services().edit_sub(sub.sub_id, {"vendor": OWENS}, FINDER), says="after the sub has been reviewed")
 
 
 def test_status_changes_and_leaving_approved_unpicks(ctx):
@@ -136,7 +151,7 @@ def test_an_order_is_recorded_against_a_pick_with_the_sub_defaults(ctx):
     order = services().record_order(sub.sub_id, {"quantity": 15, "comment": "covers 4E and ICU"}, MANAGER,
                                     expected_status="approved")
     assert (order.medline_item, order.quantity, order.uom, order.qoe, order.vendor, order.ordered_by) == (
-        "MDS2585H", 15, "BX", Decimal("100.0000"), "Cardinal", MANAGER,
+        "MDS2585H", 15, "BX", Decimal("100.0000"), "CARDINAL HEALTH", MANAGER,
     )
     assert isinstance(order.ordered_dt, datetime)
     assert history("order", order.order_id) == [
@@ -154,13 +169,13 @@ def test_no_order_without_a_pick(ctx):
 
 def test_two_orders_for_one_item(ctx):
     first = approved_and_picked()
-    second = new_sub(vendor="Owens", vendor_part="OM-1", uom="CS")
+    second = new_sub(vendor=OWENS, vendor_part="OM-1", uom="CS")
     services().set_status(second.sub_id, "approved", APPROVER)
     services().pick(second.sub_id, APPROVER)
     services().record_order(first.sub_id, {"quantity": 10}, MANAGER)
     services().record_order(second.sub_id, {"quantity": 5}, MANAGER)
     from app.models.fillkill import SubOrder
-    assert sorted((o.vendor, o.quantity) for o in SubOrder.query.all()) == [("Cardinal", 10), ("Owens", 5)]
+    assert sorted((o.vendor, o.quantity) for o in SubOrder.query.all()) == [("CARDINAL HEALTH", 10), ("OWENS & MINOR", 5)]
 
 
 def test_order_corrections_void_and_comments(ctx):

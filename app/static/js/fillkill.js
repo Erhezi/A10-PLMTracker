@@ -119,6 +119,12 @@
     };
   }
 
+  // A sub's vendor: Infor's vendor ID, shown after its name.
+  function vendorText(s) {
+    const name = s.vendor_name || '';
+    return name && name !== s.vendor ? `${name} (${s.vendor})` : String(s.vendor || '');
+  }
+
   function alertBox(message, kind) {
     return `<div class="alert alert-${kind || 'danger'} py-2 small mb-2" role="alert">${esc(message)}</div>`;
   }
@@ -284,7 +290,7 @@
   function otherPackagingNote(approved) {
     if (!approved || !approved.length) return '';
     const items = [...new Set(approved.map((a) => `${a.medline_item}${a.um ? ` (${a.um})` : ''}`))];
-    const subs = approved.map((a) => `${a.vendor_part} · ${a.vendor} on ${a.medline_item}`).join('\n');
+    const subs = approved.map((a) => `${a.vendor_part} · ${vendorText(a)} on ${a.medline_item}`).join('\n');
     return `<div class="small text-success mt-1" title="${esc(subs)}"><i class="bi bi-box-seam"></i>
       ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
   }
@@ -292,7 +298,7 @@
   function picksCell(picks) {
     if (!picks.length) return '<span class="text-muted small">—</span>';
     return picks.map((pick) => {
-      const label = `${esc(pick.vendor_part)} <span class="text-muted">· ${esc(pick.vendor)}</span>`;
+      const label = `${esc(pick.vendor_part)} <span class="text-muted">· ${esc(vendorText(pick))}</span>`;
       return can.order
         ? `<button type="button" class="btn btn-sm btn-outline-primary py-0 mb-1 text-start" data-order-sub="${pick.sub_id}"
              data-item="${esc(pick.medline_item)}" title="Record an order for this pick">${label}</button>`
@@ -615,7 +621,7 @@
     return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review and pick it here:</div>
       <ul class="list-group list-group-flush small mb-2">${p.other_subs.map((o) => `
         <li class="list-group-item px-0 d-flex flex-wrap gap-2 align-items-center">
-          <span class="fw-semibold">${esc(o.vendor_part)}</span><span class="text-muted">${esc(o.vendor)}</span>
+          <span class="fw-semibold">${esc(o.vendor_part)}</span><span class="text-muted">${esc(vendorText(o))}</span>
           ${statusBadge(o.status)}
           <span class="text-muted">on ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}${o.approved_by
             ? `, approved by ${esc(o.approved_by)} ${fmtDateTime(o.approved_at)}` : ''}</span>
@@ -664,7 +670,7 @@
     return `<div class="card mb-2 ${sub.is_picked ? 'border-success' : ''}">
       <div class="card-body p-2">
         <div class="d-flex flex-wrap gap-2 align-items-center">
-          <span class="fw-semibold">${esc(sub.vendor_part)}</span><span class="text-muted">${esc(sub.vendor)}</span>
+          <span class="fw-semibold">${esc(sub.vendor_part)}</span><span class="text-muted">${esc(vendorText(sub))}</span>
           ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-check2"></i> Picked</span>' : ''}
           ${(sub.approved_elsewhere || []).map((o) => `<span class="badge text-success border border-success bg-white"
               title="Approved by ${esc(o.approved_by || '')} ${fmtDateTime(o.approved_at)}"><i class="bi bi-box-seam"></i>
@@ -694,8 +700,12 @@
                placeholder="Vendor item, manufacturer number, or description words">
         <div id="fk-contract-results" class="small mb-2"></div>
         <form id="fk-add-form" class="row g-2" novalidate>${target}
-          <div class="col-6"><label class="form-label small mb-0" for="fk-add-vendor">Vendor *</label>
-            <input class="form-control form-control-sm" id="fk-add-vendor" name="vendor" maxlength="255" required></div>
+          <div class="col-4"><label class="form-label small mb-0" for="fk-add-vendor">Vendor ID *</label>
+            <input class="form-control form-control-sm" id="fk-add-vendor" name="vendor" maxlength="20" required
+                   inputmode="numeric" placeholder="e.g. 1000931" data-vendor-name="fk-add-vendor-name"></div>
+          <div class="col-8"><label class="form-label small mb-0" for="fk-add-vendor-name">Vendor name</label>
+            <input class="form-control form-control-sm" id="fk-add-vendor-name" readonly tabindex="-1"
+                   placeholder="From Infor, for the vendor ID"></div>
           <div class="col-6"><label class="form-label small mb-0" for="fk-add-part">Vendor part *</label>
             <input class="form-control form-control-sm" id="fk-add-part" name="vendor_part" maxlength="100" required></div>
           <div class="col-12"><label class="form-label small mb-0" for="fk-add-desc">Description</label>
@@ -754,7 +764,8 @@
   }, 350);
 
   function fillFromContract(line) {
-    $('fk-add-vendor').value = line.vendor_name || '';
+    $('fk-add-vendor').value = line.vendor_id || '';
+    showVendorName($('fk-add-vendor-name'), { vendor_name: line.vendor_name });
     $('fk-add-part').value = line.vendor_item || '';
     $('fk-add-desc').value = line.description || '';
     $('fk-add-uom').value = line.uom || '';
@@ -923,7 +934,32 @@
 
   panelEl.addEventListener('input', (event) => {
     if (event.target.id === 'fk-contract-q') searchContracts(event.target.value);
+    if (event.target.dataset.vendorName) lookupVendor(event.target);
   });
+
+  // The vendor name beside a vendor ID box (data-vendor-name names it), from Infor as the ID is
+  // typed. The server looks the name up again when the sub is saved.
+  function showVendorName(target, vendor, problem) {
+    if (!target) return;
+    target.classList.toggle('is-invalid', Boolean(problem));
+    if (problem) { target.value = problem; return; }
+    const status = vendor && vendor.vendor_status && vendor.vendor_status !== 'Active' ? ` (${vendor.vendor_status})` : '';
+    target.value = vendor ? `${vendor.vendor_name || ''}${status}` : '';
+  }
+
+  const lookupVendor = debounce(async (input) => {
+    const target = $(input.dataset.vendorName);
+    const id = input.value.trim();
+    if (!id) { showVendorName(target, null); return; }
+    if (!/^\d+$/.test(id)) { showVendorName(target, null, "Type Infor's vendor ID (digits), not the name"); return; }
+    try {
+      const data = await getJSON(api.vendor, { id });
+      if (input.value.trim() !== id) return;  // typed on meanwhile
+      showVendorName(target, data.vendor, data.vendor ? '' : "Not in Infor's vendor list");
+    } catch (error) {
+      showVendorName(target, null, error.message);
+    }
+  }, 300);
 
   panelEl.addEventListener('submit', async (event) => {
     const form = event.target;
@@ -980,6 +1016,10 @@
     openModal();
   }
 
+  modalForm.addEventListener('input', (event) => {
+    if (event.target.dataset.vendorName) lookupVendor(event.target);
+  });
+
   modalForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!modalSubmit) return;
@@ -1021,12 +1061,12 @@
           ${fmtNumber(row.quantities_each.killed)} EA in these dates${sub.qoe ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} ×
           ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
     showModal(`Record an order · ${esc(medline)}`, `
-      <div class="col-12 small text-muted">Pick: <span class="fw-semibold">${esc(sub.vendor_part)}</span> · ${esc(sub.vendor)}
+      <div class="col-12 small text-muted">Pick: <span class="fw-semibold">${esc(sub.vendor_part)}</span> · ${esc(vendorText(sub))}
         ${killed ? ` · ${esc(medline)} killed in these dates: ${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}` : ''}</div>${combined}
       ${field('quantity', 'Quantity *', killed, 'type="number" min="1" step="1" required', 4)}
       ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 4)}
       ${field('qoe', 'QOE', sub.qoe != null ? fmtNumber(sub.qoe).replace(/,/g, '') : '', 'inputmode="decimal"', 4)}
-      ${field('vendor', 'Vendor', sub.vendor, 'maxlength="255"', 6)}
+      ${field('vendor', 'Vendor', sub.vendor_name || sub.vendor, 'maxlength="255"', 6)}
       ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 6)}
       ${field('comment', 'Comment', '', 'maxlength="400"', 12)}`,
     'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { sub_id: subId, expected_status: 'approved' }))
@@ -1054,7 +1094,9 @@
     const locked = sub.status !== 'pending_review';
     const lockNote = locked ? '<div class="col-12 small text-muted">Vendor and vendor part are fixed once the sub has been reviewed.</div>' : '';
     showModal(`Correct a sub · ${esc(sub.vendor_part)}`, `${lockNote}
-      ${locked ? '' : field('vendor', 'Vendor', sub.vendor, 'maxlength="255"', 6)}
+      ${locked ? '' : field('vendor', 'Vendor ID', sub.vendor, 'maxlength="20" inputmode="numeric" data-vendor-name="fk-m-vendor-name"', 4)}
+      ${locked ? '' : `<div class="col-8"><label class="form-label small mb-0" for="fk-m-vendor-name">Vendor name</label>
+        <input class="form-control form-control-sm" id="fk-m-vendor-name" value="${esc(sub.vendor_name || '')}" readonly tabindex="-1"></div>`}
       ${locked ? '' : field('vendor_part', 'Vendor part', sub.vendor_part, 'maxlength="100"', 6)}
       ${field('description', 'Description', sub.description, 'maxlength="255"', 12)}
       ${field('uom', 'UOM', sub.uom, 'maxlength="10"', 6)}
@@ -1087,7 +1129,8 @@
       const data = await getJSON(api.subs, { status: $('fk-lib-status').value, source: $('fk-lib-source').value, q: $('fk-lib-q').value.trim() });
       body.innerHTML = data.subs.length ? data.subs.map((s) => `<tr>
           <td><button type="button" class="btn btn-link p-0" data-open="${esc(s.medline_item)}">${esc(s.medline_item)}</button></td>
-          <td>${esc(s.vendor)}</td><td class="fw-semibold">${esc(s.vendor_part)}</td>
+          <td>${esc(s.vendor_name || s.vendor)}${s.vendor_name && s.vendor_name !== s.vendor
+            ? `<div class="small text-muted">${esc(s.vendor)}</div>` : ''}</td><td class="fw-semibold">${esc(s.vendor_part)}</td>
           <td class="small">${esc(s.description)}</td>
           <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}</td>
           <td class="small">${s.source === 'medline_pbo' ? 'Medline PBO' : esc(s.entered_by)}</td>

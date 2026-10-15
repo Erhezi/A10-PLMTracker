@@ -207,7 +207,8 @@ def test_a_sub_approved_on_a_packaging_not_killed_in_the_range_is_signalled():
     )
     [row] = rows
     assert row["approved_other_packagings"] == [
-        {"medline_item": "JLC-EA", "um": "EA", "vendor": "Cardinal", "vendor_part": "CARD-1", "sub_id": 1},
+        {"medline_item": "JLC-EA", "um": "EA", "vendor": "Cardinal", "vendor_name": None, "vendor_part": "CARD-1",
+         "sub_id": 1},
     ]
     assert row["needs"] == ["needs_review"]  # still needs its own review here
 

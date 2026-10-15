@@ -315,7 +315,7 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 
 | Field | Notes |
 |---|---|
-| Vendor | |
+| Vendor | Infor's vendor ID (e.g. 1000931; digits only). Its **Vendor Name** comes from Infor's vendor master (`vw_Vendor`), shown beside the ID as it's typed and stored with the sub (`vendor_name`); an ID Infor doesn't know is refused (2026-10-15). Medline PBO subs use Medline's vendor ID 1000931. |
 | Vendor Part | the vendor's part number; searchable, and what future LLM sub-finding will use |
 | Description | optional; pre-filled for PBO subs from contract data when found (9.4) |
 | Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |
@@ -351,7 +351,7 @@ not on it yet. The API returns the whole Infor item either way; the page filters
     depends on why it's killed too (e.g. it may be on backorder or allocation as well), which
     nursing and the Materials Manager judge from the reasons. **Decided.**
 - **Contract search** (9.4): when adding a sub, a search over Infor's active contract lines, like
-  PLM's contract-item search, fills vendor, vendor part, description, UOM and QOE. **Decided.**
+  PLM's contract-item search, fills vendor ID and name, vendor part, description, UOM and QOE. **Decided.**
   Each result also shows the vendor ID next to the vendor name, the 6-digit Infor item number when
   the line is an item-master line ("Special" lines have none), and **MHS / Non-MHS**: whether any of
   its contracts is MHS's (`[Contract.MMAHSOrganizationEID] = '105188574'`). Non-MHS lines can still
@@ -373,7 +373,7 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   |---|---|
   | Quantity, UOM | UOM pre-filled from the sub when known |
   | QOE | quantity of each: eaches per UOM, e.g. a BX of 100 → 100 (9.6); pre-filled from the sub when known |
-  | Vendor | pre-filled from the sub |
+  | Vendor | pre-filled with the sub's vendor name; free text |
   | Ordered By | the user |
   | Ordered DT | defaults to now; editable |
   | Comments | entries of up to 400 characters each, with who and when; Materials Managers add more later (9.7) |

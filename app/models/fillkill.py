@@ -43,7 +43,8 @@ class Sub(db.Model):
 
     sub_id = db.Column(db.Integer, autoincrement=True)
     medline_item = db.Column(db.String(50), nullable=False)
-    vendor = db.Column(db.String(255), nullable=False)
+    vendor = db.Column(db.String(255), nullable=False)  # Infor's vendor ID, e.g. 1000931
+    vendor_name = db.Column(db.String(255))             # its name in Infor's vendor master
     vendor_part = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255))
     uom = db.Column(db.String(10))
@@ -56,7 +57,7 @@ class Sub(db.Model):
     update_dt = db.Column(db.DateTime, nullable=False, default=now_ny_naive)
 
     def label(self) -> str:
-        return f"{self.vendor_part} ({self.vendor})"
+        return f"{self.vendor_part} ({self.vendor_name or self.vendor})"
 
 
 class SubOrder(db.Model):

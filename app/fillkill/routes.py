@@ -126,6 +126,7 @@ def index():
             "subs": url_for("fillkill.api_subs"),
             "orders": url_for("fillkill.api_orders"),
             "contractLines": url_for("fillkill.api_contract_lines"),
+            "vendor": url_for("fillkill.api_vendor"),
             "addSub": url_for("fillkill.api_add_sub"),
             "subAction": url_for("fillkill.api_sub_action", sub_id=0, action="ACTION"),
             "recordOrder": url_for("fillkill.api_record_order"),
@@ -227,6 +228,16 @@ def api_contract_lines():
     if len(q.replace(" ", "")) < 3:
         return ok({"lines": [], "message": "Type at least 3 characters."})
     return ok({"lines": queries.contract_lines(q)})
+
+
+@bp.get("/api/vendor")
+@login_required
+@require_module(FILLKILL, "add_sub")
+def api_vendor():
+    """Infor's vendor for an ID, so the add-sub form can show its name as the ID is typed."""
+    vendor_id = (request.args.get("id") or "").strip()
+    found = queries.vendor(vendor_id) if vendor_id.isdigit() else None
+    return ok({"vendor": found})
 
 
 # --- actions --------------------------------------------------------------------------------

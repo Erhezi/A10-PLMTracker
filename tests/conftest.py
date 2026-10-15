@@ -93,7 +93,17 @@ FILLKILL_VIEWS = {
         "manufacturer_number_stripped", "description", "uom", "qoe", "infor_item", "item_type", "contract",
         "contract_name", "base_cost", "is_mhs",
     ],
+    "vw_Vendor": ["vendor_id", "vendor_name", "vendor_status"],
 }
+
+# Infor vendors every Fill/Kill test can use as a sub's vendor ID.
+CARDINAL, OWENS, MEDLINE = "1000001", "1000002", "1000931"
+TEST_VENDORS = [
+    {"vendor_id": CARDINAL, "vendor_name": "CARDINAL HEALTH", "vendor_status": "Active"},
+    {"vendor_id": OWENS, "vendor_name": "OWENS & MINOR", "vendor_status": "Active"},
+    {"vendor_id": MEDLINE, "vendor_name": "MEDLINE INDUSTRIES INC", "vendor_status": "Active"},
+    {"vendor_id": "1000099", "vendor_name": "OLD SUPPLY CO", "vendor_status": "Inactive"},
+]
 
 
 def create_fillkill_views(app):
@@ -104,6 +114,7 @@ def create_fillkill_views(app):
             for name, columns in FILLKILL_VIEWS.items():
                 cols = ", ".join(f'"{c}"' for c in columns)
                 conn.exec_driver_sql(f'CREATE TABLE IF NOT EXISTS "FillKill"."{name}" ({cols})')
+    add_view_rows(app, "vw_Vendor", TEST_VENDORS)
 
 
 def add_view_rows(app, name, rows):

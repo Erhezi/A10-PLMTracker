@@ -115,17 +115,21 @@ all are safe to re-run.
 
 1. `10_kill_lines.sql` again: `vw_MedlineFillKill` gains `Reason` and `Reason Date`, and
    `vw_FillKillLastLoad` (for "data as of") is added. Re-running also reloads the test lines.
-2. `12_workflow_tables.sql`: `Sub`, `SubOrder` and `History`.
+2. `12_workflow_tables.sql`: `Sub`, `SubOrder` and `History`. Since 2026-10-15 a sub's `vendor` is
+   Infor's vendor ID and `vendor_name` its name: re-running 12 adds the column, moves Medline PBO
+   subs from "Medline" to vendor ID 1000931 (with a History row) and fills in names from
+   `MDM_VENDOR`.
 3. `13_contract_search.sql`: `vw_ContractLineSearch`, Infor contract lines active today, for
-   "Add sub". Since 2026-10-15 it has `[is_mhs]` (MHS contract or not), which the app reads: re-run
-   13 before running that version of the app, or the contract search fails.
+   "Add sub". Since 2026-10-15 it has `[is_mhs]` (MHS contract or not), and `vw_Vendor` (Infor's
+   vendors, for a sub's vendor name). The app reads both: re-run 12, 13 and 14 before running that
+   version of the app, or the subs, contract search and vendor lookup fail.
 4. `14_pbo_sync.sql`: `usp_SyncPboSubs`, which adds Medline PBO subs. The app runs it when the
    main table loads; today it would add one (`MMO2329H` → `2329RH`).
 5. `09_verify.sql`: the kill-line and workflow result sets should say `PASS`.
 
 **Read access for the app's account** (plan v2 §3): `SCSFileIngestor` (`MedlineFillKill`,
 `ETLHealth`, `MedlineSubCollection`) and `PLMPreprocessorShared.infor` (`MDM_ITEM`, `MDM_ITEMUOM`,
-`CONTRACTLINE`, `MDM_VENDORITEM`). A view in PLM doesn't carry permissions into another database.
+`CONTRACTLINE`, `MDM_VENDORITEM`, `MDM_VENDOR`). A view in PLM doesn't carry permissions into another database.
 
 **Go-live:** `TRUNCATE TABLE [FillKill].[TestFillKillLine];`. Subs and orders entered during UAT
 are kept; `90_reset_workflow.sql` empties them only if you edit it to confirm.

@@ -177,7 +177,8 @@ def approved_on_other_packagings(item, subs_by_item, infor_of, members, *, skip=
             if s["status"] == "approved" and key not in approved_here and (sibling, key) not in seen:
                 seen.add((sibling, key))
                 found.append({"medline_item": sibling, "um": uom, "vendor": s["vendor"],
-                              "vendor_part": s["vendor_part"], "sub_id": s["sub_id"]})
+                              "vendor_name": s.get("vendor_name"), "vendor_part": s["vendor_part"],
+                              "sub_id": s["sub_id"]})
     return found
 
 

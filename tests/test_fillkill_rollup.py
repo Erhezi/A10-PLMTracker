@@ -83,7 +83,7 @@ def test_main_rows_without_infor_items_stand_alone():
     assert a["packagings"][0]["consistent"] is False  # no Infor item: flagged
     assert a["subs_status"] == {"approved": 1, "hold": 0, "pending_review": 0, "rejected": 1}
     assert [p["sub_id"] for p in a["picks"]] == [1]
-    assert (a["ordering_status"], a["orders_in_range"], a["needs"]) == ("ordered", 1, ["ordered"])
+    assert (a["ordering_status"], [o["order_id"] for o in a["orders"]], a["needs"]) == ("ordered", [9], ["ordered"])
     assert a["latest_reason"]["reason"] == "MBO"
     assert (b["ordering_status"], b["needs"]) == ("no order", ["needs_review"])
     assert (c["description"], c["needs"], c["latest_reason"]) == (None, ["needs_subs"], None)

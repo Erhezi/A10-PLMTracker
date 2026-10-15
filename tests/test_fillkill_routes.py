@@ -175,7 +175,7 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
     assert post(finder_approver, f"/fillkill/api/subs/{sub_id}/pick", {"expected_status": "approved"})[0] == 200
 
     status, data = post(finder_manager, "/fillkill/api/orders", {
-        "sub_id": sub_id, "quantity": 30, "ordered_dt": "2026-09-30T15:00", "expected_status": "approved",
+        "sub_id": sub_id, "quantity": 30, "ordered_dt": "2026-09-29T15:00", "expected_status": "approved",
     })
     assert status == 201, data
     assert (data["order"]["uom"], data["order"]["qoe"], data["order"]["vendor"]) == ("BX", 100, "Cardinal Health")
@@ -183,11 +183,17 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert (row["ordering_status"], row["needs"]) == ("ordered", ["ordered"])
+    assert [(o["quantity"], o["uom"], o["ordered_dt"][:10]) for o in row["orders"]] == [(30, "BX", "2026-09-29")]
     assert [p["vendor_part"] for p in row["picks"]] == ["88885"]
 
-    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-29")
+    # Ordered on 9/29: it counts for kills from 9/28 (ordered since), even with the dates ending
+    # before the order, but not for kills from 9/30 on (S4, 2026-10-15).
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-28")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
-    assert row["ordering_status"] == "no order"  # ordered on 9/30, outside these dates (S4)
+    assert row["ordering_status"] == "ordered"
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-30", end="2026-09-30")
+    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
+    assert (row["ordering_status"], row["orders"], row["needs"]) == ("no order", [], ["needs_order"])
 
     _, panel = get(viewer, "/fillkill/api/item", item="DYND70294BH", start="2026-09-28", end="2026-09-30")
     assert panel["infor_item"] == "100339"
@@ -203,7 +209,7 @@ def test_finder_adds_approver_reviews_and_picks_manager_orders(app, viewer, find
 
     _, library = get(viewer, "/fillkill/api/subs", status="approved")
     assert [s["vendor_part"] for s in library["subs"]] == ["88885"]
-    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-09-30")
+    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-29", end="2026-09-29")  # by the order's own date
     assert [o["quantity"] for o in orders["orders"]] == [30]
 
 

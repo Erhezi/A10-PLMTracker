@@ -263,7 +263,7 @@ rest:
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
 | Approver's Pick | per UOM. A Materials Manager clicks one to record an order |
-| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT inside the selected range (9.3) |
+| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT on or after the range's first day (9.3, changed 2026-10-15), listing each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab |
 
 The **Needs filter** counts Infor items, over all their Medline items' subs, picks and orders.
 
@@ -495,6 +495,10 @@ the active module's pages (Fill/Kill: Main, Dashboard). PLM pages and URLs are u
    item's pick history.
 3. **Ordering Status.** *Ordered* when an order for the item has an Ordered DT inside the selected
    range. The item panel shows the item's whole order history.
+   **Changed 2026-10-15:** on or after the range's first day, with no end. Orders are placed after
+   the kills, so an order recorded today for the 9/30 kills counted as *No order* under the old
+   rule whenever the dates ended before today. The "Orders in these dates" table still lists
+   orders by their own date.
 4. **Sub description.** Yes, optional, pre-filled for PBO subs from contract data. A contract
    search, like PLM's, helps fill in a sub.
 5. **Latest Reason column.** Yes.

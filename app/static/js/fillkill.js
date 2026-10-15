@@ -365,8 +365,7 @@
     const count = many ? `<div class="small text-muted">${packs.length} UOMs</div>` : '';
     const inforDesc = row.long_description
       ? `<div class="text-truncate small text-muted" title="Infor: ${esc(row.long_description)}">${esc(row.long_description)}</div>` : '';
-    const ordering = row.ordering_status === 'ordered'
-      ? '<span class="badge text-bg-success">Ordered</span>' : '<span class="badge text-bg-light border">No order</span>';
+    const ordering = orderingCell(row);
     const note = otherPackagingNote(row.approved_other_packagings);
     const trs = packs.map((p, i) => `<tr>
       ${i ? '' : `<td${span}>${infor}${count}</td>`}
@@ -380,10 +379,22 @@
       <td>${reasonCell(p.latest_reason)}</td>
       <td role="button" data-open="${esc(p.medline_item)}">${subsStatusCell(p.subs_status)}${many ? '' : note}</td>
       <td>${picksCell(p.picks)}</td>
-      ${i ? '' : `<td${span}>${ordering}</td>`}
+      ${i ? '' : `<td${span} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
+          title="Open the orders">${ordering}</td>`}
     </tr>`);
     if (many) trs.push(totalRow(row, note));
     return `<tbody class="fk-item">${trs.join('')}</tbody>`;
+  }
+
+  // Orders placed since the first selected day: quantity, UOM and date, newest first.
+  const ORDERS_SHOWN = 3;
+
+  function orderingCell(row) {
+    if (!row.orders.length) return '<span class="badge text-bg-light border">No order</span>';
+    const lines = row.orders.slice(0, ORDERS_SHOWN).map((o) => `<div class="small text-nowrap">${fmtNumber(o.quantity)}
+      <span class="text-muted">${esc(o.uom)}</span> · ${fmtDate(o.ordered_dt)}</div>`).join('');
+    const more = row.orders.length > ORDERS_SHOWN ? `<div class="small text-muted">+${row.orders.length - ORDERS_SHOWN} more</div>` : '';
+    return `<span class="badge text-bg-success">Ordered</span>${lines}${more}`;
   }
 
   // The UOMs added up in eaches, by Infor's UOM conversion.
@@ -411,7 +422,7 @@
       return;
     }
     const opener = event.target.closest('[data-open]');
-    if (opener) openPanel(opener.dataset.open, null, opener.dataset.scope);
+    if (opener) openPanel(opener.dataset.open, opener.dataset.tab || null, opener.dataset.scope);
   });
 
   // --- the item panel -------------------------------------------------------------------------

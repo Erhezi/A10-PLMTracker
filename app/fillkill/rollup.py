@@ -10,7 +10,8 @@ Inputs, all plain dicts:
   item_rows    vw_MedlineFillKillItemCollection rows of the Medline items in the range
   subs         subs of those Medline items and of their Infor items' other Medline items:
                sub_id, medline_item, vendor, vendor_part, status, is_picked, uom, qoe
-  orders       non-voided orders with ordered_dt inside the range, for the same Medline items
+  orders       non-voided orders dated on or after the range's first day, for the same Medline
+               items: medline_item, order_id, quantity, uom, ordered_dt
   reasons      {medline_item: {comment, reason, reason_date, order_date, order_time}}: the latest
                comment in the range
   family_rows  item-view rows (Medline Item, UM, Customer Item #, Infor Item) of every Medline item
@@ -212,6 +213,11 @@ def latest_of(reasons):
     return max(found, key=lambda r: (str(r.get("order_date") or ""), str(r.get("order_time") or "")))
 
 
+def _order_key(order) -> tuple:
+    """Orders by date, then by ID (reverse it for newest first)."""
+    return (str(order.get("ordered_dt") or ""), order.get("order_id") or 0)
+
+
 def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> dict:
     for q in qty["by_uom"]:
         q["each"] = factors.get((item, q["uom"]))
@@ -227,7 +233,7 @@ def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> di
         "latest_reason": reason,
         "subs_status": subs_status(item_subs),
         "picks": [s for s in item_subs if s.get("is_picked")],
-        "orders_in_range": orders,
+        "orders": orders,
     }
 
 
@@ -241,9 +247,9 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
     subs_by_item: dict[str, list] = defaultdict(list)
     for sub in subs:
         subs_by_item[sub["medline_item"]].append(sub)
-    orders_by_item: dict[str, int] = defaultdict(int)
-    for order in orders:
-        orders_by_item[order["medline_item"]] += 1
+    orders_by_item: dict[str, list] = defaultdict(list)
+    for order in sorted(orders, key=_order_key, reverse=True):
+        orders_by_item[order["medline_item"]].append(order)
 
     blank = {key: None for key in ITEM_FIELDS} | {"varies": [], "infor_consistent": None}
     infos: dict[str, dict] = {}
@@ -254,7 +260,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
         infor = infor_of.get(item) or (None if "infor_item" in info["varies"] else info["infor_item"])
         groups[infor or f"M:{item}"].append(_packaging(
             item, qty, info, factors, subs_by_item.get(item, []), reasons.get(item),
-            orders_by_item.get(item, 0), infor,
+            orders_by_item.get(item, []), infor,
         ))
 
     rows = []
@@ -266,7 +272,8 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
         row_subs = [s for p in packagings for s in subs_by_item.get(p["medline_item"], [])]
         counts = subs_status(row_subs)
         picks = [s for p in packagings for s in p["picks"]]
-        ordered = any(p["orders_in_range"] for p in packagings)
+        row_orders = sorted((o for p in packagings for o in p["orders"]), key=_order_key, reverse=True)
+        ordered = bool(row_orders)
         quantities_ = [q for p in packagings for q in p["quantities"]]
         # Approved on a packaging of this Infor item not killed in the range, and on none here.
         approved_here = {_sub_key(s) for s in row_subs if s["status"] == "approved"}
@@ -294,7 +301,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
             "subs_status": counts,
             "picks": picks,
             "approved_other_packagings": list(elsewhere.values()),
-            "orders_in_range": sum(p["orders_in_range"] for p in packagings),
+            "orders": row_orders,  # since the range's first day, newest first
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered),
         })

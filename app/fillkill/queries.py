@@ -170,9 +170,10 @@ def _range_condition(column, scope: Scope):
     return and_(column >= scope.start, column < scope.end + timedelta(days=1))
 
 
-def orders_in_range(scope: Scope, items=None) -> list[dict]:
-    """Non-voided orders with an ordered date inside the scope's dates (Ordering Status, S4)."""
-    query = select(SubOrder).where(SubOrder.voided_at.is_(None), _range_condition(SubOrder.ordered_dt, scope))
+def orders_since_start(scope: Scope, items=None) -> list[dict]:
+    """Non-voided orders dated on or after the scope's first day: the orders placed since those
+    kills (Ordering Status, S4; 2026-10-15). Kills are ordered for afterwards, so there's no end."""
+    query = select(SubOrder).where(SubOrder.voided_at.is_(None), SubOrder.ordered_dt >= scope.start)
     if items is not None:
         query = query.where(SubOrder.medline_item.in_(sorted(set(items)) or [""]))
     return [order_dict(order) for order in db.session.execute(query).scalars()]
@@ -206,7 +207,7 @@ def main_table_inputs(scope: Scope) -> dict:
         "qty_rows": qty,
         "item_rows": details,
         "subs": subs_for_items(items | {row["Medline Item"] for row in family}),
-        "orders": orders_in_range(scope, items),
+        "orders": orders_since_start(scope, items),
         "reasons": latest_reasons(scope),
         "family_rows": family,
     }

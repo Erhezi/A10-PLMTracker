@@ -25,6 +25,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const PALETTE = ['#003769', '#d6336c', '#2a9d8f', '#e9c46a', '#f4a261', '#6c757d', '#7b2cbf', '#0d6efd'];
 
   const state = { start: config.default.start, end: config.default.end, sites: [] };
+
+  // An item's panel on Main (fillkill.js opens it from ?item=&scope=&tab=).
+  function itemLink(item, scope, tab) {
+    const query = new URLSearchParams({ item });
+    if (scope) query.set('scope', scope);
+    if (tab) query.set('tab', tab);
+    return `${config.api.main}?${query}`;
+  }
   const charts = {};
 
   // --- controls --------------------------------------------------------------------------
@@ -135,7 +143,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ? `${Number(row.quantities_each.killed).toLocaleString()} EA`
         : row.packagings.flatMap((p) => p.quantities).map((q) => `${q.killed} ${esc(q.uom)}`).join('<br>');
       return `<tr>
-        <td><a href="${esc(config.api.main)}" class="fw-semibold">${esc(row.infor_item || row.medline_items[0])}</a>
+        <td><a href="${esc(itemLink(row.medline_items[0], row.infor_item ? 'infor' : ''))}" class="fw-semibold"
+               title="Open the item on Main">${esc(row.infor_item || row.medline_items[0])}</a>
           <div class="small text-muted">${row.infor_item ? esc(row.medline_items.join(', ')) : 'Not in Infor'}</div></td>
         <td class="small">${esc(row.description)}</td>
         <td class="text-end">${row.lines}</td>
@@ -151,7 +160,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="mb-3">
         <div class="fw-semibold">${esc(g.vendor)} <span class="badge text-bg-danger">${g.count}</span></div>
         <ul class="list-unstyled small mb-0 ms-2">${g.subs.map((s) => `
-          <li class="mb-1"><span class="fw-semibold">${esc(s.vendor_part)}</span> for ${esc(s.medline_item)}
+          <li class="mb-1"><span class="fw-semibold">${esc(s.vendor_part)}</span> for
+            <a href="${esc(itemLink(s.medline_item, '', 'subs'))}" title="Open the item on Main">${esc(s.medline_item)}</a>
             <span class="text-muted">· rejected${s.rejected_by ? ` by ${esc(s.rejected_by)}` : ''}${s.rejected_at ? ` ${fmtDateTime(s.rejected_at)}` : ''}</span>
             ${s.comments.map((c) => `<div class="border-start border-2 ps-2 text-muted">${esc(c.actor)}: ${esc(c.comment)}</div>`).join('')}
           </li>`).join('')}

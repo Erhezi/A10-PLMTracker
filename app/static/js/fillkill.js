@@ -899,7 +899,7 @@
   }
 
   async function afterChange(message) {
-    await Promise.all([loadPanel(message ? { text: message, kind: 'success' } : null), loadMain(), loadLibrary(), loadOrders()]);
+    await Promise.all([loadPanel(message ? { text: message, kind: 'success' } : null), loadMain(), loadOrders()]);
   }
 
   panelEl.addEventListener('click', async (event) => {
@@ -1201,47 +1201,17 @@
       'Save', (values) => postJSON(subUrl(sub.sub_id, 'edit'), { vendor_part: values.vendor_part }).then(() => 'Vendor part corrected.'));
   }
 
-  // --- the tables under the main table ------------------------------------------------------------
+  // --- the orders under the main table (every sub is on the Subs page) ---------------------------
 
-  function setupLibrary() {
-    const status = $('fk-lib-status');
-    status.innerHTML += config.statuses
-      .map(([key, label]) => `<option value="${key}">${esc(label)}</option>`).join('');
-    status.addEventListener('change', loadLibrary);
-    $('fk-lib-source').addEventListener('change', loadLibrary);
-    $('fk-lib-q').addEventListener('input', debounce(loadLibrary, 300));
-    $('fk-lib-rows').addEventListener('click', (event) => {
-      const opener = event.target.closest('[data-open]');
-      if (opener) openPanel(opener.dataset.open, 'subs');
-    });
-    $('fk-orders-rows').addEventListener('click', (event) => {
-      const opener = event.target.closest('[data-open]');
-      if (opener) openPanel(opener.dataset.open, 'orders');
-    });
-  }
+  $('fk-orders-rows').addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-open]');
+    if (opener) openPanel(opener.dataset.open, 'orders');
+  });
 
-  async function loadLibrary() {
-    const body = $('fk-lib-rows');
-    try {
-      const data = await getJSON(api.subs, { status: $('fk-lib-status').value, source: $('fk-lib-source').value, q: $('fk-lib-q').value.trim() });
-      body.innerHTML = data.subs.length ? data.subs.map((s) => `<tr>
-          <td><button type="button" class="btn btn-link p-0" data-open="${esc(s.medline_item)}">${esc(s.medline_item)}</button></td>
-          <td>${s.vendor ? esc(s.vendor) : '<span class="text-muted small">to fill in</span>'}${s.vendor_id ? `<div class="small text-muted">${esc(s.vendor_id)}</div>` : ''}</td>
-          <td class="fw-semibold">${esc(s.vendor_part)}</td>
-          <td class="small">${esc(s.description)}</td>
-          <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}</td>
-          <td class="small">${s.source === 'medline_pbo' ? 'Medline PBO' : esc(s.entered_by)}</td>
-          <td class="small text-nowrap">${fmtDateTime(s.update_dt)}</td>
-          <td class="small">${s.latest_comment ? esc(s.latest_comment.comment) : ''}</td>
-        </tr>`).join('')
-        : '<tr><td colspan="8" class="text-muted small">No subs match.</td></tr>';
-    } catch (error) {
-      body.innerHTML = `<tr><td colspan="8">${alertBox(error.message)}</td></tr>`;
-    }
-  }
-
+  // Orders placed since the first selected day: the ones the Ordering column counts.
   async function loadOrders() {
     const body = $('fk-orders-rows');
+    $('fk-orders-title').textContent = state.start ? `Orders since ${fmtDate(state.start)}` : 'Orders';
     try {
       const data = await getJSON(api.orders, scopeParams());
       body.innerHTML = data.orders.length ? data.orders.map((o) => `<tr class="${o.voided_at ? 'text-muted' : ''}">
@@ -1253,7 +1223,7 @@
           <td class="small">${esc(o.ordered_by)}${o.voided_at ? ' <span class="badge text-bg-secondary">Voided</span>' : ''}</td>
           <td class="small">${o.latest_comment ? esc(o.latest_comment.comment) : ''}</td>
         </tr>`).join('')
-        : '<tr><td colspan="7" class="text-muted small">No orders recorded with an ordered date in these dates.</td></tr>';
+        : `<tr><td colspan="7" class="text-muted small">No orders recorded since ${fmtDate(state.start)}.</td></tr>`;
     } catch (error) {
       body.innerHTML = `<tr><td colspan="7">${alertBox(error.message)}</td></tr>`;
     }
@@ -1275,9 +1245,12 @@
   setupDates();
   setupSites();
   setupSearch();
-  setupLibrary();
   renderNeeds();
   loadMain();
-  loadLibrary();
   loadOrders();
+
+  // A link can open an item's panel: ?item=<Medline item>, with &scope=infor for all its UOMs and
+  // &tab=subs|lines|picks|orders (from the Subs page and the Dashboard).
+  const linked = new URLSearchParams(window.location.search);
+  if (linked.get('item')) openPanel(linked.get('item'), linked.get('tab'), linked.get('scope'));
 })();

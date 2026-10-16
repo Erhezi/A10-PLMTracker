@@ -467,17 +467,24 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
 - **Main** (`/`): the one operating page for every role (section 5).
   - The main table with its controls. **View subs** opens a panel for that item: the sub list, add
     sub, status, pick, history, and recording orders against picks.
-  - **All subs:** a table (or cards) of every sub across all items, filterable by status, vendor and
-    item. This is the reference library.
-  - **Orders:** a table (or cards) of the orders Materials Managers recorded, with their history.
+  - **Orders:** the orders placed since the first selected day (the ones the Ordering column counts),
+    voided ones included (2026-10-16; it listed only orders dated inside the dates, so it was empty
+    whenever orders were recorded after the kills shown).
+  - A link `?item=<Medline item>[&scope=infor][&tab=…]` opens that item's panel (from Subs and the
+    Dashboard).
+- **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data
+  asset. Filters: text (item, vendor part, vendor, vendor ID, description), status, source,
+  "vendor details needed", and deleted subs (with who, when, why). Columns add the Infor item, who
+  approved it, and its orders (count, last date). **Export CSV** gives everything the filters match.
+  Read-only; a row's Medline item opens the panel on Main.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
   coverage, time to review, and rejected subs with their comments, grouped by vendor and item. Read-only for every Fill/Kill role. Separate from
   PLM Tracker's dashboard.
 
-`/subs` and `/orders` are no longer pages (2026-10-13).
+`/orders` is not a page (2026-10-13); `/subs` came back as the Subs page (2026-10-16).
 
 **Navigation:** a top row switches between PLM Tracker and Fill/Kill Management; a second row shows
-the active module's pages (Fill/Kill: Main, Dashboard). PLM pages and URLs are unchanged.
+the active module's pages (Fill/Kill: Main, Subs, Dashboard). PLM pages and URLs are unchanged.
 
 ## 8. For stakeholders
 

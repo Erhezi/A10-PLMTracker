@@ -306,7 +306,8 @@ def _plm_pages(user):
 
 
 def _fillkill_pages(user):
-    return [_page("Main", "fillkill.index"), _page("Dashboard", "fillkill.dashboard_page")]
+    return [_page("Main", "fillkill.index"), _page("Subs", "fillkill.subs_page"),
+            _page("Dashboard", "fillkill.dashboard_page")]
 
 
 MODULE_HOMES = {PLM: "dashboard.index", FILLKILL: "fillkill.index"}

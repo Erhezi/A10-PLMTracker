@@ -217,15 +217,22 @@ def main_table_inputs(scope: Scope) -> dict:
 
 # --- the item panel --------------------------------------------------------------------
 
+def _chunks(values, size: int = 1000):
+    """``values`` in lists of ``size``: SQL Server takes at most 2,100 parameters a statement."""
+    values = list(values)
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
+
+
 def _latest_comments(entity: str, ids) -> dict[int, dict]:
     """Per sub or order: its newest comment and how many it has."""
-    ids = list(ids)
-    if not ids:
-        return {}
-    rows = db.session.execute(
-        select(History).where(History.entity == entity, History.entity_id.in_(ids), History.action == "comment")
-        .order_by(History.acted_at, History.history_id)
-    ).scalars().all()
+    rows = []
+    for chunk in _chunks(ids):
+        rows += db.session.execute(
+            select(History).where(History.entity == entity, History.entity_id.in_(chunk), History.action == "comment")
+            .order_by(History.acted_at, History.history_id)
+        ).scalars().all()
+    rows.sort(key=lambda row: (row.acted_at, row.history_id))
     found: dict[int, dict] = {}
     for row in rows:
         entry = found.setdefault(row.entity_id, {"count": 0})
@@ -360,14 +367,13 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
 
 def _latest_approvals(sub_ids) -> dict[int, dict]:
     """Per sub: who last approved it and when."""
-    sub_ids = list(sub_ids)
-    if not sub_ids:
-        return {}
-    rows = db.session.execute(
-        select(History).where(History.entity == "sub", History.entity_id.in_(sub_ids),
-                              History.action == "status", History.to_value == "approved")
-        .order_by(History.acted_at, History.history_id)
-    ).scalars().all()
+    rows = []
+    for chunk in _chunks(sub_ids):
+        rows += db.session.execute(
+            select(History).where(History.entity == "sub", History.entity_id.in_(chunk),
+                                  History.action == "status", History.to_value == "approved")
+        ).scalars().all()
+    rows.sort(key=lambda row: (row.acted_at, row.history_id))
     return {row.entity_id: {"approved_by": row.actor, "approved_at": row.acted_at} for row in rows}
 
 
@@ -399,9 +405,39 @@ def _compact_column(column):
     return expression
 
 
-def subs_library(*, status: str | None = None, source: str | None = None, q: str | None = None) -> list[dict]:
-    """Every sub across all items (the reference library), newest change first; deleted ones aren't."""
-    query = select(Sub).where(Sub.deleted_at.is_(None))
+def infor_items_of(medline_items) -> dict[str, str]:
+    """Medline item -> Infor item, from the item view (Medline items Infor can't place are left out)."""
+    found: dict[str, str] = {}
+    for chunk in _chunks(sorted({item for item in medline_items if item})):
+        for row in _rows(
+            f"SELECT DISTINCT [Medline Item] AS item, [Infor Item] AS infor FROM {ITEMS} WHERE [Medline Item] IN :items",
+            {"items": chunk}, [bindparam("items", expanding=True)],
+        ):
+            if row["infor"]:
+                found.setdefault(row["item"], row["infor"])
+    return found
+
+
+def _order_stats(sub_ids) -> dict[int, dict]:
+    """Per sub: how many orders that aren't voided, and the latest one's date."""
+    found = {}
+    for chunk in _chunks(sub_ids):
+        rows = db.session.execute(
+            select(SubOrder.sub_id, func.count(), func.max(SubOrder.ordered_dt))
+            .where(SubOrder.sub_id.in_(chunk), SubOrder.voided_at.is_(None)).group_by(SubOrder.sub_id)
+        ).all()
+        found.update({sub_id: {"orders": count, "last_ordered": last} for sub_id, count, last in rows})
+    return found
+
+
+def subs_library(*, status: str | None = None, source: str | None = None, q: str | None = None,
+                 needs_details: bool = False, deleted: bool = False, limit: int | None = LIBRARY_LIMIT) -> list[dict]:
+    """Every sub across all items (the Subs page), newest change first, with its Infor item, who
+    approved it, and its orders. ``deleted`` shows the deleted ones instead (who, when, why);
+    ``needs_details`` keeps those still without a vendor or UOM; ``limit`` None means all."""
+    query = select(Sub).where(Sub.deleted_at.is_not(None) if deleted else Sub.deleted_at.is_(None))
+    if needs_details:
+        query = query.where(or_(Sub.vendor.is_(None), Sub.uom.is_(None)))
     if status:
         query = query.where(Sub.status == status)
     if source:
@@ -418,17 +454,24 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
             conditions += [_compact_column(Sub.medline_item).like(f"%{bare}%"),
                            _compact_column(Sub.vendor_part).like(f"%{bare}%")]
         query = query.where(or_(*conditions))
-    subs = db.session.execute(
-        query.order_by(Sub.update_dt.desc(), Sub.sub_id.desc()).limit(LIBRARY_LIMIT)
-    ).scalars().all()
-    comments = _latest_comments("sub", [s.sub_id for s in subs])
-    return [{**sub_dict(s), "latest_comment": comments.get(s.sub_id)} for s in subs]
+    query = query.order_by(Sub.update_dt.desc(), Sub.sub_id.desc())
+    subs = db.session.execute(query.limit(limit) if limit else query).scalars().all()
+    ids = [s.sub_id for s in subs]
+    comments, approvals, orders = _latest_comments("sub", ids), _latest_approvals(ids), _order_stats(ids)
+    infor = infor_items_of(s.medline_item for s in subs)
+    return [{
+        **sub_dict(s), "infor_item": infor.get(s.medline_item), "latest_comment": comments.get(s.sub_id),
+        "approved_by": None, "approved_at": None, **approvals.get(s.sub_id, {}),
+        "orders": 0, "last_ordered": None, **orders.get(s.sub_id, {}),
+        "deleted_at": s.deleted_at, "deleted_by": s.deleted_by, "delete_reason": s.delete_reason,
+    } for s in subs]
 
 
 def orders_log(scope: Scope) -> list[dict]:
-    """Orders with an ordered date inside the scope's dates, voided ones included."""
+    """Orders dated on or after the scope's first day, voided ones included: the orders the main
+    table's Ordering column counts (2026-10-16; it listed only orders inside the dates)."""
     orders = db.session.execute(
-        select(SubOrder).where(_range_condition(SubOrder.ordered_dt, scope))
+        select(SubOrder).where(SubOrder.ordered_dt >= scope.start)
         .order_by(SubOrder.ordered_dt.desc(), SubOrder.order_id.desc())
     ).scalars().all()
     comments = _latest_comments("order", [o.order_id for o in orders])

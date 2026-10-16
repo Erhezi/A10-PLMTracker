@@ -6,16 +6,18 @@ capability for that action, and services check the rules.
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from flask import Blueprint, jsonify, render_template, request, url_for
+from flask import Blueprint, Response, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, require_module, roles_in
 from . import dashboard, queries, rollup, services
-from ..models.fillkill import SUB_STATUSES
+from ..models.fillkill import SUB_SOURCES, SUB_STATUSES
 from .rules import STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
@@ -124,7 +126,6 @@ def index():
             "main": url_for("fillkill.api_main"),
             "item": url_for("fillkill.api_item"),
             "history": url_for("fillkill.api_history", entity="ENTITY", entity_id=0),
-            "subs": url_for("fillkill.api_subs"),
             "orders": url_for("fillkill.api_orders"),
             "contractLines": url_for("fillkill.api_contract_lines"),
             "vendor": url_for("fillkill.api_vendor"),
@@ -139,6 +140,24 @@ def index():
         roles=[label for code, label in module.roles if code in held],
         config=plain(config),
     )
+
+
+SOURCE_LABELS = {"manual": "Entered by hand", "medline_pbo": "Medline PBO", "llm": "AI finder"}
+
+
+@bp.route("/subs")
+@login_required
+@require_module(FILLKILL, "view")
+def subs_page():
+    """Every sub on file, as a reference (2026-10-16; it was a tab on Main)."""
+    config = {
+        "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
+        "sources": [[code, SOURCE_LABELS.get(code, code)] for code in SUB_SOURCES],
+        "limit": queries.LIBRARY_LIMIT,
+        "api": {"subs": url_for("fillkill.api_subs"), "export": url_for("fillkill.export_subs"),
+                "main": url_for("fillkill.index")},
+    }
+    return render_template("fillkill/subs.html", config=plain(config))
 
 
 @bp.route("/dashboard")
@@ -194,16 +213,65 @@ def api_history(entity, entity_id):
     return ok({"entity": entity, "entity_id": entity_id, "history": queries.history(entity, entity_id)})
 
 
+def _library_filters() -> dict:
+    return {
+        "status": request.args.get("status") or None,
+        "source": request.args.get("source") or None,
+        "q": request.args.get("q") or None,
+        "needs_details": request.args.get("needs_details") == "1",
+        "deleted": request.args.get("deleted") == "1",
+    }
+
+
 @bp.get("/api/subs")
 @login_required
 @require_module(FILLKILL, "view")
 def api_subs():
-    subs = queries.subs_library(
-        status=request.args.get("status") or None,
-        source=request.args.get("source") or None,
-        q=request.args.get("q") or None,
-    )
-    return ok({"subs": subs, "limit": queries.LIBRARY_LIMIT})
+    return ok({"subs": queries.subs_library(**_library_filters()), "limit": queries.LIBRARY_LIMIT})
+
+
+# The Subs page's export: every sub the filters match, not just the first LIBRARY_LIMIT.
+EXPORT_COLUMNS = (
+    ("Sub ID", "sub_id"), ("Medline Item", "medline_item"), ("Infor Item", "infor_item"),
+    ("Vendor Part", "vendor_part"), ("Vendor", "vendor"), ("Vendor ID", "vendor_id"),
+    ("Description", "description"), ("UOM", "uom"), ("QOE", "qoe"), ("Status", "status"),
+    ("Picked", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
+    ("Approved By", "approved_by"), ("Approved", "approved_at"), ("Orders", "orders"),
+    ("Last Ordered", "last_ordered"), ("Updated", "update_dt"), ("Latest Comment", "latest_comment"),
+    ("Deleted By", "deleted_by"), ("Deleted", "deleted_at"), ("Delete Reason", "delete_reason"),
+)
+
+
+def _csv_cell(key: str, value):
+    if key == "status":
+        return STATUS_LABELS.get(value, value)
+    if key == "source":
+        return SOURCE_LABELS.get(value, value)
+    if key == "is_picked":
+        return "Yes" if value else "No"
+    if key == "latest_comment":
+        value = value["comment"] if value else None
+    if isinstance(value, datetime):
+        value = f"{value:%Y-%m-%d %H:%M}"
+    value = plain(value)
+    text = "" if value is None else str(value)
+    # A cell starting with = + - @ would run as a formula in Excel.
+    return "'" + text if text[:1] in ("=", "+", "-", "@") else text
+
+
+@bp.get("/subs/export")
+@login_required
+@require_module(FILLKILL, "view")
+def export_subs():
+    rows = queries.subs_library(**_library_filters(), limit=None)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([label for label, _ in EXPORT_COLUMNS])
+    for row in rows:
+        writer.writerow([_csv_cell(key, row.get(key)) for _, key in EXPORT_COLUMNS])
+    name = f"fillkill-subs-{now_ny_naive():%Y%m%d}.csv"
+    return Response("\ufeff" + out.getvalue(), mimetype="text/csv",  # the BOM: Excel reads it as UTF-8
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @bp.get("/api/orders")

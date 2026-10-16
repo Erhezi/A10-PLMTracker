@@ -4,6 +4,8 @@ Stand-in tables hold the views' data (conftest.FILLKILL_VIEWS): two sites, like 
 the test site, over 9/28-9/30.
 """
 
+import csv
+import io
 import json
 import re
 
@@ -213,8 +215,11 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
 
     _, library = get(viewer, "/fillkill/api/subs", status="approved")
     assert [s["vendor_part"] for s in library["subs"]] == ["88885"]
-    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-29", end="2026-09-29")  # by the order's own date
+    # The orders under the main table: placed since the first selected day, like the Ordering column.
+    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-28", end="2026-09-28")
     assert [o["quantity"] for o in orders["orders"]] == [30]
+    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-09-30")
+    assert orders["orders"] == []
 
 
 @pytest.mark.parametrize("who, path, payload, allowed", [
@@ -415,3 +420,47 @@ def test_deleting_a_sub_hides_it_and_shows_in_sub_history(app, viewer, finder_ap
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     glove = next(r for r in main["rows"] if "MDS2585H" in r["medline_items"])
     assert sum(glove["subs_status"].values()) == 0 and "needs_subs" in glove["needs"]
+
+
+# --- the Subs page ------------------------------------------------------------------------------
+
+def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, finder_approver, finder_manager):
+    page = viewer.get("/fillkill/subs").get_data(as_text=True)
+    assert 'id="fk-subs-rows"' in page and ">Subs</a>" in page  # its own page, in the module's menu
+    assert 'id="fk-lib-rows"' not in viewer.get("/fillkill/").get_data(as_text=True)  # no longer a tab on Main
+
+    # Nursing's sub, ordered with the Materials Manager's details; a Sub Finder's, still without
+    # details; a deleted one.
+    _, data = post(finder_approver, "/fillkill/api/subs",
+                   {"medline_item": "DYND70294BH", "vendor_part": "88885", "comment": "=SUM(A1)"})
+    post(finder_manager, "/fillkill/api/orders", {"sub_id": data["sub"]["sub_id"], "quantity": 2,
+                                                  "ordered_dt": "2026-09-29T10:00", "vendor": "Cardinal", "uom": "BX"})
+    post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor_part": "OM1"})
+    _, data = post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor_part": "GONE"})
+    post(finder_manager, f"/fillkill/api/subs/{data['sub']['sub_id']}/delete", {"reason": "duplicate"})
+
+    _, library = get(viewer, "/fillkill/api/subs")
+    rows = {s["vendor_part"]: s for s in library["subs"]}
+    assert sorted(rows) == ["88885", "OM1"]
+    cup, glove = rows["88885"], rows["OM1"]
+    assert (cup["infor_item"], cup["approved_by"], cup["orders"], cup["last_ordered"][:10]) == (
+        "100339", "nurse@example.org", 1, "2026-09-29")
+    assert (glove["infor_item"], glove["status"], glove["approved_by"], glove["orders"]) == ("999999", "pending_review", None, 0)
+    _, library = get(viewer, "/fillkill/api/subs", needs_details="1")
+    assert [s["vendor_part"] for s in library["subs"]] == ["OM1"]
+    _, library = get(viewer, "/fillkill/api/subs", deleted="1")
+    assert [(s["vendor_part"], s["deleted_by"], s["delete_reason"]) for s in library["subs"]] == [
+        ("GONE", "mm@example.org", "duplicate")]
+
+    # The export: what the filters match, all of it, readable by Excel.
+    response = viewer.get("/fillkill/subs/export", query_string={"status": "approved"})
+    assert response.mimetype == "text/csv" and "attachment" in response.headers["Content-Disposition"]
+    text = response.get_data(as_text=True)
+    assert text.startswith("\ufeffSub ID,Medline Item,Infor Item,Vendor Part")
+    header, *lines = list(csv.reader(io.StringIO(text.lstrip("\ufeff"))))
+    [cup_line] = lines
+    line = dict(zip(header, cup_line))
+    assert (line["Medline Item"], line["Infor Item"], line["Vendor"], line["Status"], line["Picked"], line["Orders"]) == (
+        "DYND70294BH", "100339", "Cardinal", "Approved", "Yes", "1")
+    assert line["Last Ordered"] == "2026-09-29 10:00"
+    assert line["Latest Comment"] == "'=SUM(A1)"  # kept as text: Excel won't run it

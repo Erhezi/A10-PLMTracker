@@ -74,40 +74,10 @@
   </div>
 </div>
 
-<ul class="nav nav-tabs" id="fk-tabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="fk-tab-subs" data-bs-toggle="tab" data-bs-target="#fk-pane-subs"
-            type="button" role="tab" aria-controls="fk-pane-subs" aria-selected="true">All subs</button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="fk-tab-orders" data-bs-toggle="tab" data-bs-target="#fk-pane-orders"
-            type="button" role="tab" aria-controls="fk-pane-orders" aria-selected="false">Orders in these dates</button>
-  </li>
-</ul>
-<div class="tab-content card shadow-sm border-0 border-top-0 rounded-top-0 mb-4">
-  <div class="tab-pane fade show active card-body" id="fk-pane-subs" role="tabpanel" aria-labelledby="fk-tab-subs">
-    <div class="d-flex flex-wrap gap-2 mb-2">
-      <select class="form-select form-select-sm w-auto" id="fk-lib-status" aria-label="Status">
-        <option value="">Any status</option>
-      </select>
-      <select class="form-select form-select-sm w-auto" id="fk-lib-source" aria-label="Source">
-        <option value="">Any source</option>
-        <option value="manual">Entered by hand</option>
-        <option value="medline_pbo">Medline PBO</option>
-      </select>
-      <input type="search" class="form-control form-control-sm w-auto flex-grow-1" id="fk-lib-q"
-             placeholder="Item, vendor, vendor part, description" aria-label="Search subs" />
-    </div>
-    <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
-      <thead class="table-light"><tr>
-        <th scope="col">Medline Item</th><th scope="col">Vendor</th><th scope="col">Vendor Part</th>
-        <th scope="col">Description</th><th scope="col">Status</th><th scope="col">Entered By</th>
-        <th scope="col">Updated</th><th scope="col">Latest Comment</th>
-      </tr></thead>
-      <tbody id="fk-lib-rows"></tbody>
-    </table></div>
-  </div>
-  <div class="tab-pane fade card-body" id="fk-pane-orders" role="tabpanel" aria-labelledby="fk-tab-orders">
+{# Every sub on file has its own page (Subs, 2026-10-16); the orders the Ordering column counts stay here. #}
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <h2 class="h6 fw-semibold mb-2" id="fk-orders-title">Orders</h2>
     <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
       <thead class="table-light"><tr>
         <th scope="col">Ordered</th><th scope="col">Medline Item</th><th scope="col">Sub</th>

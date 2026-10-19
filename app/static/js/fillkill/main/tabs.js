@@ -54,6 +54,12 @@ function subCard(sub) {
     sub.description ? esc(sub.description) : '',
     sub.uom ? `UOM ${esc(sub.uom)}${sub.qoe ? ` · QOE ${fmtNumber(sub.qoe)}` : ''}` : '',
   ].filter(Boolean).join(' · ');
+  // What was entered, when the vendor part ordered differs; the manufacturer's part; Infor's item.
+  const parts = [
+    sub.entered_part && sub.entered_part !== sub.vendor_part ? `Entered as ${esc(sub.entered_part)}` : '',
+    sub.manufacturer_part ? `Mfr part ${esc(sub.manufacturer_part)}` : '',
+    sub.infor_item ? `Infor item ${esc(sub.infor_item)}` : '',
+  ].filter(Boolean).join(' · ');
   const detailsNeeded = needsDetails(sub)
     ? ' <span class="badge text-bg-warning" title="The Materials Manager fills in the vendor, vendor ID, description, UOM and QOE">Vendor details needed</span>' : '';
   const source = sub.source === 'medline_pbo' ? 'Medline PBO' : esc(sub.entered_by);
@@ -105,6 +111,7 @@ function subCard(sub) {
             title="Approved by ${esc(o.approved_by || '')} ${fmtDateTime(o.approved_at)}"><i class="bi bi-box-seam"></i>
             Approved for ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}</span>`).join(' ')}
       </div>
+      ${parts ? `<div class="small text-muted">${parts}</div>` : ''}
       ${meta ? `<div class="small text-muted">${meta}</div>` : ''}
       <div class="small text-muted">Added by ${source}, ${fmtDateTime(sub.create_dt)} · updated ${fmtDateTime(sub.update_dt)}</div>
       ${comment}

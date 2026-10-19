@@ -138,19 +138,24 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
              "is_mhs": "No"},
             # ChloraPrep lines as O2 has them (descriptions often run words together): more than
             # the list shows at once, and "930103 chloraprep" finds one.
+            # B-D930103CS(Z) is BD's 930103 sold by Medline: a nurse may enter either number.
             *[{"vendor_id": vid, "vendor_name": vname, "vendor_item": part, "vendor_item_stripped": part.replace("-", ""),
-               "manufacturer_number": None, "manufacturer_number_stripped": None, "description": desc, "uom": uom,
+               "manufacturer_number": mfr, "manufacturer_number_stripped": mfr, "description": desc, "uom": uom,
                "qoe": qoe, "infor_item": infor, "item_type": "Itemmast" if infor else "Special",
                "contract": "C-CHG", "contract_name": "Sample prep contract", "base_cost": 1, "is_mhs": mhs}
-              for vid, vname, part, desc, uom, qoe, infor, mhs in [
-                  ("1000931", "MEDLINE INDUSTRIES INC", "B-D930700", "APPLICATORCHLORAPREP10.5ML", "CA", 100, "108304", "Yes"),
-                  ("1000931", "MEDLINE INDUSTRIES INC", "B-D930415", "APPLICATOR SKIN PREP CHLORAPREP HI-LITE SWAB 3ML",
-                   "CA", 100, None, "Yes"),
-                  ("1017968", "MEDLINE INDUSTRIES INC-PHYSICIAN OFFICE-LUM", "B-D930103CS",
+              for vid, vname, part, mfr, desc, uom, qoe, infor, mhs in [
+                  ("1000931", "MEDLINE INDUSTRIES INC", "B-D930700", "930700", "APPLICATORCHLORAPREP10.5ML", "CA", 100,
+                   "108304", "Yes"),
+                  ("1000931", "MEDLINE INDUSTRIES INC", "B-D930415", "930415",
+                   "APPLICATOR SKIN PREP CHLORAPREP HI-LITE SWAB 3ML", "CA", 100, None, "Yes"),
+                  ("1017968", "MEDLINE INDUSTRIES INC-PHYSICIAN OFFICE-LUM", "B-D930103CS", "930103",
                    "MBO-SWABSTICKSTRIPLE5.25MLCHLORAPREP", "CA", 400, None, "No"),
-                  ("1037888", "MEDLINE INDUSTRIES-JIT HOSPITAL TOTE PROGRAM (WPH-SLC-MMC)", "B-D930400",
+                  ("1017968", "MEDLINE INDUSTRIES INC-PHYSICIAN OFFICE-LUM", "B-D930103CSZ", "930103",
+                   "MBO-SWABSTICKSTRIPLE5.25MLCHLORAPREP", "BX", 40, None, "No"),
+                  ("1037888", "MEDLINE INDUSTRIES-JIT HOSPITAL TOTE PROGRAM (WPH-SLC-MMC)", "B-D930400", "930400",
                    "MBO-APPLICATORCHLORAPREP3ML", "CA", 100, "107896", "No"),
-                  ("1000307", "BECTON DICKINSON COMPANY INC", "260815", "CHLORAPREP ONE-STEP 26ML", "CS", 25, None, "Yes"),
+                  ("1000307", "BECTON DICKINSON COMPANY INC", "260815", "260815", "CHLORAPREP ONE-STEP 26ML", "CS", 25,
+                   None, "Yes"),
               ]],
         ],
         # Infor's vendors: the tests' four and a few more, several Cardinal Health ones among them.

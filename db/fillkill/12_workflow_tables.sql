@@ -1,9 +1,9 @@
 -- Fill/Kill workflow tables: subs, orders, and the history of every change and comment.
 -- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
 --
---   Sub       a sub of a Medline item: its vendor part (nursing enters it), the vendor details the
---             Materials Manager fills in (vendor, Infor's vendor ID, description, UOM, QOE),
---             status, pick
+--   Sub       a sub of a Medline item: the part nursing entered, the vendor details the
+--             Materials Manager fills in (the vendor part ordered, vendor, Infor's vendor ID,
+--             manufacturer part, Infor item, description, UOM, QOE), status, pick
 --   SubOrder  an order a Materials Manager recorded against a picked sub
 --   History   one row per change or comment on a sub or an order (comments live only here)
 --
@@ -21,6 +21,8 @@
 --      2c. 2026-10-15  (stakeholder review) Sub.vendor may wait for the Materials Manager; one live
 --                      sub per (item, vendor part): the index UX_Sub_item_vendor_part replaces the
 --                      key UQ_Sub_item_vendor_part; CK_History_action allows 'delete'
+--      2d. 2026-10-19  Sub.entered_part (the part as entered, kept when the Materials Manager sets
+--                      the vendor part ordered), manufacturer_part, infor_item
 --   3. Adds any default a table made by the app's startup lacks.
 --
 -- A change to what the app needs from these tables goes in step 1 (the shape) and as a new step
@@ -37,7 +39,10 @@ BEGIN
         [medline_item] VARCHAR(50)    NOT NULL,
         [vendor]       VARCHAR(255)   NULL,      -- the vendor's name; the Materials Manager fills it in
         [vendor_id]    VARCHAR(20)    NULL,      -- Infor's vendor ID, when known (e.g. 1000931)
-        [vendor_part]  VARCHAR(100)   NOT NULL,
+        [vendor_part]  VARCHAR(100)   NOT NULL,  -- as entered, then the one ordered (the Materials Manager's)
+        [entered_part] VARCHAR(100)   NULL,      -- as entered: nursing's approved reference, or Medline's PBO number
+        [manufacturer_part] VARCHAR(100) NULL,
+        [infor_item]   VARCHAR(50)    NULL,      -- Infor's item number for the sub, when it has one
         [description]  VARCHAR(255)   NULL,
         [uom]          VARCHAR(10)    NULL,
         [qoe]          DECIMAL(12, 4) NULL,
@@ -234,6 +239,23 @@ BEGIN
     );
     PRINT 'CK_History_action now allows delete';
 END;
+GO
+
+-- 2d. 2026-10-19 --------------------------------------------------------------------------
+-- Nursing enters the part they approved, which may be the manufacturer's part or another vendor's;
+-- the Materials Manager sets the vendor part ordered. [entered_part] keeps what was entered (filled
+-- in here for existing subs), and the sub gets the manufacturer's part and Infor's item number.
+IF COL_LENGTH(N'FillKill.Sub', N'entered_part') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[Sub] ADD [entered_part] VARCHAR(100) NULL, [manufacturer_part] VARCHAR(100) NULL,
+                                     [infor_item] VARCHAR(50) NULL;
+    PRINT 'Added Sub.entered_part, manufacturer_part, infor_item';
+END;
+GO
+
+-- In EXEC, so this batch compiles before the column exists (a first run checked with NOEXEC).
+EXEC (N'UPDATE [FillKill].[Sub] SET [entered_part] = [vendor_part] WHERE [entered_part] IS NULL;
+       IF @@ROWCOUNT > 0 PRINT ''Sub.entered_part filled in for the subs already there'';');
 GO
 
 -- 3. Defaults, in case the app's startup created a table before this script ran -------------

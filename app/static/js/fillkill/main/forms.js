@@ -111,13 +111,17 @@ const searchContracts = debounce(async (q) => {
   }
 }, 350);
 
-// A contract line fills in the vendor details; the sub's vendor part stays nursing's, and a line
-// for another vendor item (another packaging, say) is pointed out.
+// A contract line fills in the vendor details, the vendor part ordered among them: what nursing
+// entered may be the manufacturer's part or another vendor's (2026-10-19). What they entered stays
+// with the sub, and a change of part is pointed out.
 function fillFromContract(line) {
-  const part = $('fk-contract-q').dataset.part || '';
+  const entered = $('fk-contract-q').dataset.part || '';
   const bare = (value) => String(value || '').toUpperCase().replace(/[\s\-./]/g, '');
-  $('fk-contract-note').textContent = part && bare(line.vendor_item) !== bare(part)
-    ? `This contract line is for vendor item ${line.vendor_item}; the sub's vendor part is ${part}.` : '';
+  $('fk-contract-note').textContent = entered && bare(line.vendor_item) !== bare(entered)
+    ? `The vendor part becomes ${line.vendor_item}, this contract line's; ${entered}, as entered, stays with the sub.` : '';
+  $('fk-m-vendor_part').value = line.vendor_item || '';
+  $('fk-m-manufacturer_part').value = line.manufacturer_number || '';
+  $('fk-m-infor_item').value = line.infor_item || '';
   $('fk-m-vendor_id').value = line.vendor_id || '';
   vendorNote($('fk-m-vendor_id'), '');
   $('fk-m-vendor').value = line.vendor_name || '';
@@ -222,15 +226,22 @@ const lookupVendor = debounce(async (input) => {
 
 // --- the forms -------------------------------------------------------------------------------
 
-// The contract search, and the vendor details it fills in (the Materials Manager's).
+// The contract search, and the vendor details it fills in (the Materials Manager's): the vendor part
+// ordered, the manufacturer's part and Infor's item number among them (2026-10-19).
 function detailFields(sub) {
+  const entered = sub.entered_part || sub.vendor_part;
   return `
     <div class="col-12"><label class="form-label small mb-0" for="fk-contract-q">Search Infor's active contracts to fill these in</label>
       <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
              placeholder="Vendor item, manufacturer number, Infor item, or words, e.g. 930103 chloraprep"
-             value="${esc(sub.vendor_part)}" data-part="${esc(sub.vendor_part)}">
+             value="${esc(sub.vendor_part)}" data-part="${esc(entered)}">
       <div id="fk-contract-results" class="small mt-1"></div>
       <div id="fk-contract-note" class="small text-warning-emphasis mt-1"></div></div>
+    ${field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 5)}
+    ${field('manufacturer_part', 'Manufacturer part', sub.manufacturer_part, 'maxlength="100"', 4)}
+    ${field('infor_item', 'Infor item', sub.infor_item, 'maxlength="50"', 3)}
+    <div class="col-12 small text-muted mt-0">Entered as <span class="fw-semibold">${esc(entered)}</span>${sub.source === 'medline_pbo'
+      ? ' (Medline PBO)' : ''}: the vendor part is the one ordered, which may differ.</div>
     <div class="col-7"><label class="form-label small mb-0" for="fk-m-vendor">Vendor *</label>
       <input class="form-control form-control-sm" id="fk-m-vendor" name="vendor" value="${esc(sub.vendor || '')}"
              maxlength="255" required autocomplete="off" placeholder="Type the name to find Infor's vendor ID"></div>

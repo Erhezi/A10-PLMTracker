@@ -250,8 +250,9 @@ def api_subs():
 
 # The Subs page's export: every sub the filters match, not just the first LIBRARY_LIMIT.
 EXPORT_COLUMNS = (
-    ("Sub ID", "sub_id"), ("Medline Item", "medline_item"), ("Infor Item", "infor_item"),
-    ("Vendor Part", "vendor_part"), ("Vendor", "vendor"), ("Vendor ID", "vendor_id"),
+    ("Sub ID", "sub_id"), ("Medline Item", "medline_item"), ("Medline Item's Infor Item", "medline_infor_item"),
+    ("Vendor Part", "vendor_part"), ("Entered As", "entered_part"), ("Manufacturer Part", "manufacturer_part"),
+    ("Sub's Infor Item", "infor_item"), ("Vendor", "vendor"), ("Vendor ID", "vendor_id"),
     ("Description", "description"), ("UOM", "uom"), ("QOE", "qoe"), ("Status", "status"),
     ("Picked", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
     ("Approved By", "approved_by"), ("Approved", "approved_at"), ("Orders", "orders"),

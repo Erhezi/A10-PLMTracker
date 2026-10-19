@@ -56,7 +56,13 @@ class Sub(db.Model):
     medline_item = db.Column(db.String(50), nullable=False)
     vendor = db.Column(db.String(255))  # the vendor's name; the Materials Manager fills it in
     vendor_id = db.Column(db.String(20))                # Infor's vendor ID, when known (e.g. 1000931)
+    # The vendor's part number: as entered, then the one ordered (the Materials Manager's details).
     vendor_part = db.Column(db.String(100), nullable=False)
+    # As entered (2026-10-19): nursing's approved reference, or Medline's PBO number. It may be the
+    # manufacturer's part, or another vendor's; the Materials Manager sorts out vendor_part.
+    entered_part = db.Column(db.String(100))
+    manufacturer_part = db.Column(db.String(100))
+    infor_item = db.Column(db.String(50))  # Infor's item number for the sub, when it has one
     description = db.Column(db.String(255))
     uom = db.Column(db.String(10))
     qoe = db.Column(db.Numeric(12, 4))

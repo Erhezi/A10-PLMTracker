@@ -98,13 +98,18 @@ def test_the_same_vendor_part_twice_is_refused_whatever_the_case_or_vendor(ctx):
 
 
 def test_the_vendor_details_are_the_materials_managers(ctx):
-    sub = nurse_sub()
+    sub = nurse_sub()  # nursing entered 88885, the manufacturer's part as it turns out
     sub = services().set_details(sub.sub_id, {"vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "description": "Glove",
-                                              "uom": "bx", "qoe": "100", "vendor_part": "ignored"}, MANAGER)
-    assert (sub.vendor, sub.vendor_id, sub.description, sub.uom, sub.qoe, sub.vendor_part) == (
-        "CARDINAL HEALTH", CARDINAL, "Glove", "BX", Decimal("100.0000"), "88885")
+                                              "uom": "bx", "qoe": "100", "vendor_part": "88885-BX",
+                                              "manufacturer_part": "88885", "infor_item": "200001"}, MANAGER)
+    assert (sub.vendor, sub.vendor_id, sub.description, sub.uom, sub.qoe) == (
+        "CARDINAL HEALTH", CARDINAL, "Glove", "BX", Decimal("100.0000"))
+    # The vendor part ordered is the Materials Manager's; what nursing entered stays (2026-10-19).
+    assert (sub.vendor_part, sub.entered_part, sub.manufacturer_part, sub.infor_item) == ("88885-BX", "88885", "88885", "200001")
     assert [row[1:4] + (row[5],) for row in history("sub", sub.sub_id) if row[0] == "edit"] == [
+        ("vendor_part", "88885", "88885-BX", MANAGER),
         ("vendor", None, "CARDINAL HEALTH", MANAGER), ("vendor_id", None, CARDINAL, MANAGER),
+        ("manufacturer_part", None, "88885", MANAGER), ("infor_item", None, "200001", MANAGER),
         ("description", None, "Glove", MANAGER), ("uom", None, "BX", MANAGER), ("qoe", None, "100", MANAGER),
     ]
     refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "9999999"}, MANAGER), says="isn't in Infor's vendor list")
@@ -313,3 +318,38 @@ def test_the_approvers_pick_and_a_sub_with_orders_cant_be_deleted(ctx):
     refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="void it before")
     services().void_order(order.order_id, "entered twice", MANAGER)
     assert services().delete_sub(sub.sub_id, "not needed", FINDER).deleted_by == FINDER
+
+
+def test_the_vendor_part_ordered_replaces_what_nursing_entered(ctx):
+    # Nursing approved 930103, the manufacturer's part; the Materials Manager orders Medline's
+    # B-D930103CSZ, chosen from its contract line, with the order.
+    sub = nurse_sub(medline_item="B-D930299Z", vendor_part="930103")
+    details = {"vendor": "MEDLINE INDUSTRIES INC-PHYSICIAN OFFICE-LUM", "vendor_id": OWENS, "vendor_part": "B-D930103CSZ",
+               "manufacturer_part": "930103", "uom": "BX", "qoe": "40"}
+    order = services().record_order(sub.sub_id, {**details, "quantity": 21}, MANAGER)
+    from app import db
+    from app.models.fillkill import Sub
+    sub = db.session.get(Sub, sub.sub_id)
+    assert (sub.vendor_part, sub.entered_part, sub.manufacturer_part) == ("B-D930103CSZ", "930103", "930103")
+    assert (order.uom, order.quantity) == ("BX", 21)
+    assert [row[1:4] for row in history("sub", sub.sub_id) if row[0] == "edit"][0] == ("vendor_part", "930103", "B-D930103CSZ")
+    # Nursing can no longer change it: it has an order.
+    refused(lambda: services().edit_sub(sub.sub_id, {"vendor_part": "930104"}, APPROVER), status=409, says="has an order")
+
+
+def test_one_live_sub_per_vendor_part_ordered(ctx):
+    first = nurse_sub(vendor_part="930103")
+    nurse_sub(vendor_part="B-D930103CS")
+    refused(lambda: services().set_details(first.sub_id, {"vendor_part": "b-d930103cs"}, MANAGER),
+            status=409, says="already a sub")
+
+
+def test_nursing_corrects_what_they_entered_after_the_vendor_part_is_set(ctx):
+    sub = nurse_sub(vendor_part="930103")
+    services().set_details(sub.sub_id, {"vendor_part": "B-D930103CSZ", "vendor": "Medline", "vendor_id": OWENS,
+                                        "uom": "BX"}, MANAGER)
+    # The Materials Manager's vendor part stays; only what nursing entered changes.
+    sub = services().edit_sub(sub.sub_id, {"vendor_part": "930104"}, APPROVER)
+    assert (sub.vendor_part, sub.entered_part) == ("B-D930103CSZ", "930104")
+    assert [row[:4] for row in history("sub", sub.sub_id) if row[0] == "edit"][-1] == ("edit", "entered_part", "930103", "930104")
+    refused(lambda: services().edit_sub(sub.sub_id, {"vendor_part": "930104"}, APPROVER), says="Nothing to change")

@@ -6,9 +6,10 @@
 -- touches an existing sub. It skips a part the item already has as a sub (entered by nursing, or
 -- deleted). A sub it adds:
 --   vendor = Medline's name in Infor and vendor ID 1000931 (@medline_vendor),
---   vendor part = the substitute number, status 'pending_review',
+--   vendor part (and the part as entered) = the substitute number, status 'pending_review',
 --   source 'medline_pbo', entered by 'Medline'; description, UOM and QOE from Medline's
---   contract line for that part when its lines agree on one UOM and QOE.
+--   contract line for that part when its lines agree on one UOM and QOE, with the manufacturer's
+--   part and Infor's item number (item-master lines only) from them (2026-10-19, after 12's 2d).
 -- Each gets a 'created' History row. Returns the number of subs added.
 
 SET NOCOUNT ON;
@@ -17,7 +18,7 @@ GO
 CREATE OR ALTER PROCEDURE [FillKill].[usp_SyncPboSubs]
 AS
 BEGIN
-    -- version 2026-10-15: app/fillkill/health.py looks for this line; change both together.
+    -- version 2026-10-19: app/fillkill/health.py and 09_verify.sql look for this line; change them together.
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
@@ -60,7 +61,9 @@ BEGIN
     ),
     contract AS (
         SELECT cl.[vendor_item], MAX(cl.[description]) AS [description],
-               MAX(cl.[uom]) AS [uom], MAX(cl.[qoe]) AS [qoe]
+               MAX(cl.[uom]) AS [uom], MAX(cl.[qoe]) AS [qoe],
+               MAX(cl.[manufacturer_number]) AS [manufacturer_part],
+               MAX(CASE WHEN cl.[item_type] = 'Itemmast' THEN cl.[infor_item] END) AS [infor_item]
         FROM [FillKill].[vw_ContractLineSearch] AS cl
         JOIN (SELECT DISTINCT [vendor_part] FROM new_pbo) AS n ON n.[vendor_part] = cl.[vendor_item]
         WHERE cl.[vendor_name] LIKE '%MEDLINE%'
@@ -68,11 +71,12 @@ BEGIN
         HAVING COUNT(DISTINCT CONCAT(cl.[uom], '|', cl.[qoe])) = 1
     )
     INSERT INTO [FillKill].[Sub] (
-        [medline_item], [vendor], [vendor_id], [vendor_part], [description], [uom], [qoe],
-        [status], [is_picked], [source], [entered_by], [create_dt], [update_dt]
+        [medline_item], [vendor], [vendor_id], [vendor_part], [entered_part], [manufacturer_part], [infor_item],
+        [description], [uom], [qoe], [status], [is_picked], [source], [entered_by], [create_dt], [update_dt]
     )
     OUTPUT inserted.[sub_id], inserted.[medline_item] INTO @added
-    SELECT n.[medline_item], @medline_name, @medline_vendor, n.[vendor_part], c.[description], c.[uom],
+    SELECT n.[medline_item], @medline_name, @medline_vendor, n.[vendor_part], n.[vendor_part], c.[manufacturer_part],
+           c.[infor_item], c.[description], c.[uom],
            CASE WHEN c.[qoe] > 0 THEN c.[qoe] END,
            'pending_review', 0, 'medline_pbo', 'Medline', @now, @now
     FROM new_pbo AS n

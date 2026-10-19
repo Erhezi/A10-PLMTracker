@@ -20,13 +20,14 @@ STATUS_LABELS = {
     "rejected": "Rejected",
 }
 
-# Who fills in what on a sub (2026-10-15): nursing enters the vendor part; the Materials Manager
-# fills in the vendor details.
-SUB_PART_FIELDS = ("vendor_part",)
-SUB_DETAIL_FIELDS = ("vendor", "vendor_id", "description", "uom", "qoe")
+# Who fills in what on a sub (2026-10-15): nursing enters the part they approved; the Materials
+# Manager fills in the vendor details, the vendor part ordered among them (2026-10-19: what nursing
+# entered may be the manufacturer's part, or another vendor's).
+SUB_DETAIL_FIELDS = ("vendor_part", "vendor", "vendor_id", "manufacturer_part", "infor_item", "description", "uom", "qoe")
 ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "ordered_dt")
 
-LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "description": 255, "uom": 10}
+LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "manufacturer_part": 100,
+          "infor_item": 50, "description": 255, "uom": 10}
 
 # A sub's vendor details need Infor's vendor ID (2026-10-19). When Infor has no such vendor, the
 # Materials Manager says so on purpose with this one; Infor has no vendor 000000.
@@ -146,13 +147,16 @@ def clean_comment(value, *, label: str = "Comment") -> str:
 # --- subs ----------------------------------------------------------------------
 
 def check_new_sub(data: dict) -> dict:
-    """A new sub: the vendor part is required. The vendor details (vendor, vendor ID, description,
-    UOM, QOE) and a first comment are optional: the Materials Manager fills the details in."""
+    """A new sub: the vendor part is required. The vendor details (vendor, vendor ID, manufacturer
+    part, Infor item, description, UOM, QOE) and a first comment are optional: the Materials Manager
+    fills the details in."""
     return {
         "medline_item": clean_field("medline_item", data.get("medline_item"), required=True),
         "vendor": clean_field("vendor", data.get("vendor")),
         "vendor_id": clean_vendor_id(data.get("vendor_id")),
         "vendor_part": clean_field("vendor_part", data.get("vendor_part"), required=True),
+        "manufacturer_part": clean_field("manufacturer_part", data.get("manufacturer_part")),
+        "infor_item": clean_field("infor_item", data.get("infor_item")),
         "description": clean_field("description", data.get("description")),
         "uom": clean_field("uom", data.get("uom")),
         "qoe": clean_qoe(data.get("qoe")),

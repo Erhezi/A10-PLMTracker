@@ -14,7 +14,7 @@ NOW = datetime(2026, 10, 13, 14, 0)
 
 def sub(**kwargs):
     base = dict(status="pending_review", is_picked=False, vendor="Medline", vendor_id=None,
-                vendor_part="P1", description=None, uom=None, qoe=None)
+                vendor_part="P1", manufacturer_part=None, infor_item=None, description=None, uom=None, qoe=None)
     return SimpleNamespace(**{**base, **kwargs})
 
 
@@ -40,13 +40,13 @@ def test_a_new_sub_needs_only_its_vendor_part_and_cleans_the_rest():
     })
     assert clean == {
         "medline_item": "MDS2585H", "vendor": "Cardinal", "vendor_id": "1000001", "vendor_part": "88885",
-        "description": None,
+        "manufacturer_part": None, "infor_item": None, "description": None,
         "uom": "BX", "qoe": Decimal("100.0000"), "comment": "same glove",
     }
     # Nursing enters the vendor part alone; the Materials Manager fills in the rest (2026-10-15).
     assert rules.check_new_sub({"medline_item": "M", "vendor_part": "P"}) == {
-        "medline_item": "M", "vendor": None, "vendor_id": None, "vendor_part": "P", "description": None,
-        "uom": None, "qoe": None, "comment": None,
+        "medline_item": "M", "vendor": None, "vendor_id": None, "vendor_part": "P", "manufacturer_part": None,
+        "infor_item": None, "description": None, "uom": None, "qoe": None, "comment": None,
     }
     refused(lambda: rules.check_new_sub({"medline_item": "M", "vendor": "V"}), says="Vendor part is required")
     # The vendor ID is optional; when given, it's Infor's (digits), not a name.
@@ -68,10 +68,14 @@ def test_new_sub_refuses_bad_values(field, value, says):
 
 def test_changes_are_only_the_fields_asked_for_that_differ():
     details = rules.SUB_DETAIL_FIELDS
-    assert rules.check_sub_changes(sub(status="approved"), {"vendor": "Other", "vendor_part": "X"}, details) == {"vendor": "Other"}
-    assert rules.check_sub_changes(sub(), {"vendor_part": "P2"}, rules.SUB_PART_FIELDS) == {"vendor_part": "P2"}
+    # The vendor part is among the Materials Manager's details: the one ordered (2026-10-19).
+    assert rules.check_sub_changes(sub(status="approved"), {"vendor": "Other", "vendor_part": "X"}, details) == {
+        "vendor": "Other", "vendor_part": "X"}
+    assert rules.check_sub_changes(sub(), {"manufacturer_part": " 930103 ", "infor_item": "100091"}, details) == {
+        "manufacturer_part": "930103", "infor_item": "100091"}
+    assert rules.check_sub_changes(sub(), {"vendor_part": "P2"}, ("vendor_part",)) == {"vendor_part": "P2"}
     assert rules.check_sub_changes(sub(), {"uom": "bx", "vendor_id": ""}, details) == {"uom": "BX"}
-    refused(lambda: rules.check_sub_changes(sub(), {"vendor_part": " "}, rules.SUB_PART_FIELDS), says="Vendor part is required")
+    refused(lambda: rules.check_sub_changes(sub(), {"vendor_part": " "}, ("vendor_part",)), says="Vendor part is required")
 
 
 def test_an_edit_that_changes_nothing_is_refused_unless_it_comes_with_an_order():

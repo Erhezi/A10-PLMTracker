@@ -85,10 +85,13 @@
     <h2 class="h5 fw-semibold mb-3">How an item moves</h2>
     <ol class="mb-0">
       <li class="mb-2"><strong>Killed.</strong> The item appears in the main table with its total ordered, killed and filled quantities.</li>
-      <li class="mb-2"><strong>Substitute entered.</strong> Nursing gathers options from suppliers (emails, calls) and enters the vendor part of the one they choose, with a note if useful. It's <em>approved</em> right away, and <em>picked</em> if it's the item's only approved substitute; with several, the Sub Approver picks. Substitutes stay with the item, so the next time it's killed they're already there.</li>
+      <li class="mb-2"><strong>Substitute entered.</strong> Nursing gathers options from suppliers (emails, calls) and enters the part number of the one they choose, with a note if useful.
+        It's their approved reference: the manufacturer's part or a vendor's, whichever they have; the Materials Manager sorts out which vendor part is ordered. It's <em>approved</em> right away, and <em>picked</em> if it's the item's only approved substitute; with several, the Sub Approver picks. Substitutes stay with the item, so the next time it's killed they're already there.</li>
       <li class="mb-2"><strong>Proposed substitutes.</strong> Medline's backorder substitutes appear automatically (and, later, an AI finder's). They're <em>pending review</em> until a Sub Approver approves, holds or rejects them; approving one picks it if it's the only approved one.</li>
       <li class="mb-2"><strong>Changed later.</strong> The Sub Approver can still hold or reject a substitute, pick or unpick, and comment. Leaving <em>approved</em> unpicks it. Click a substitute's History to see every change, with who made it and when.</li>
       <li><strong>Ordered.</strong> A Materials Manager clicks the pick, fills in or checks its vendor details (vendor, vendor ID, description, UOM, QOE; the search of Infor's active contracts can fill them in) and records the order.
+        The vendor part becomes the one ordered (choosing a contract line sets it, with the manufacturer's part and Infor's item number); what nursing entered stays,
+        shown as <em>Entered as</em>.
         The vendor ID is required: typing the vendor's name lists Infor's vendors (by their name, legal name or search name) to choose
         it from, and when Infor doesn't have the vendor, <strong>000000</strong> (<em>Vendor not available in system</em>) says so.
         The contract search takes a part number, an Infor item number or words; several words, like <em>930103 chloraprep</em>, narrow

@@ -149,7 +149,11 @@ def latest_reasons(scope: Scope, items=None) -> dict[str, dict]:
 def sub_dict(sub: Sub) -> dict:
     return {
         "sub_id": sub.sub_id, "medline_item": sub.medline_item, "vendor": sub.vendor,
-        "vendor_id": sub.vendor_id, "vendor_part": sub.vendor_part, "description": sub.description, "uom": sub.uom, "qoe": sub.qoe,
+        "vendor_id": sub.vendor_id, "vendor_part": sub.vendor_part,
+        # as entered (nursing's reference, or Medline's PBO number); subs from before 12's 2d have none
+        "entered_part": sub.entered_part or sub.vendor_part,
+        "manufacturer_part": sub.manufacturer_part, "infor_item": sub.infor_item,
+        "description": sub.description, "uom": sub.uom, "qoe": sub.qoe,
         "status": sub.status, "is_picked": bool(sub.is_picked), "source": sub.source,
         "entered_by": sub.entered_by, "create_dt": sub.create_dt, "update_dt": sub.update_dt,
     }
@@ -446,13 +450,13 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
         like = f"%{q.strip().lower()}%"
         conditions = [
             func.lower(Sub.medline_item).like(like), func.lower(Sub.vendor).like(like),
-            func.coalesce(Sub.vendor_id, "").like(like),
+            func.coalesce(Sub.vendor_id, "").like(like), func.coalesce(Sub.infor_item, "").like(like),
             func.lower(Sub.vendor_part).like(like), func.lower(func.coalesce(Sub.description, "")).like(like),
         ]
         bare = _compact(q)
         if bare:  # item numbers also match without dashes, spaces, dots and slashes ("bd930")
-            conditions += [_compact_column(Sub.medline_item).like(f"%{bare}%"),
-                           _compact_column(Sub.vendor_part).like(f"%{bare}%")]
+            conditions += [_compact_column(column).like(f"%{bare}%") for column in (
+                Sub.medline_item, Sub.vendor_part, Sub.entered_part, Sub.manufacturer_part)]
         query = query.where(or_(*conditions))
     query = query.order_by(Sub.update_dt.desc(), Sub.sub_id.desc())
     subs = db.session.execute(query.limit(limit) if limit else query).scalars().all()
@@ -460,7 +464,8 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
     comments, approvals, orders = _latest_comments("sub", ids), _latest_approvals(ids), _order_stats(ids)
     infor = infor_items_of(s.medline_item for s in subs)
     return [{
-        **sub_dict(s), "infor_item": infor.get(s.medline_item), "latest_comment": comments.get(s.sub_id),
+        # medline_infor_item: the killed Medline item's Infor item (infor_item is the sub's own)
+        **sub_dict(s), "medline_infor_item": infor.get(s.medline_item), "latest_comment": comments.get(s.sub_id),
         "approved_by": None, "approved_at": None, **approvals.get(s.sub_id, {}),
         "orders": 0, "last_ordered": None, **orders.get(s.sub_id, {}),
         "deleted_at": s.deleted_at, "deleted_by": s.deleted_by, "delete_reason": s.delete_reason,
@@ -519,8 +524,8 @@ def contract_lines(q: str, limit: int = CONTRACT_LIMIT) -> list[dict]:
 
     Several words, e.g. "930103 chloraprep" (2026-10-19): every word must be in the line's vendor
     item or manufacturer number (without dashes), its Infor item number, its description or its
-    vendor's name. Descriptions often run words together ("APPLICATORCHLORAPREP10.5ML"), so a word
-    matches anywhere in them. If no line has them all, the words are read as one part number.
+    vendor's name, or be its UOM ("930103 bx"). Descriptions often run words together
+    ("APPLICATORCHLORAPREP10.5ML"), so a word matches anywhere in them. If no line has them all, the words are read as one part number.
 
     One word: by part number, the word without dashes inside the stripped vendor item or
     manufacturer number, or the Infor item number (exact vendor item first); and if that finds fewer
@@ -542,10 +547,11 @@ def contract_lines(q: str, limit: int = CONTRACT_LIMIT) -> list[dict]:
             params[f"p{i}"] = f"%{word.replace('-', '').upper()}%"
             params[f"w{i}"] = f"%{word.upper()}%"
             params[f"i{i}"] = word
+            params[f"u{i}"] = word.upper()
             p, w = like.format(f"p{i}"), like.format(f"w{i}")
             where.append(f"([vendor_item_stripped] LIKE {p} OR [manufacturer_number_stripped] LIKE {p}"
                          f" OR UPPER([description]) LIKE {w} OR UPPER([vendor_name]) LIKE {w}"
-                         f" OR [infor_item] = {like.format(f'i{i}')})")
+                         f" OR [infor_item] = {like.format(f'i{i}')} OR UPPER([uom]) = {like.format(f'u{i}')})")
         found = _contract_rows(" AND ".join(where), params)[:limit]
         if found:
             return found

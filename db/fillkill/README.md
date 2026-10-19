@@ -33,7 +33,7 @@ The design is in `_ref/FillKill/fillkill_design.md`; the build plans are
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
 | `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines plus the test lines, with `Reason`, `Reason Date`, `Is Test`, `Test Purpose`), `vw_FillKillLastLoad` ("data as of"), and the test lines in `FillKill.TestFillKillLine`. | Any time; re-running reloads the test lines. |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (so the test site shows), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
-| `12_workflow_tables.sql` | `Sub`, `SubOrder`, `History`, and the steps that bring older ones up to date (listed at its top). | Whenever it changes, before running that code. |
+| `12_workflow_tables.sql` | `Sub` (with the part as entered, the vendor part ordered, the manufacturer part and Infor item), `SubOrder`, `History`, and the steps that bring older ones up to date (listed at its top). | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`) and `vw_Vendor` (Infor's vendors, with their legal and search names). | Whenever it changes, before running that code. |
 | `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes. Its version line is what `09` and the app check. |
 | `90_reset_workflow.sql` | Empties `Sub`, `SubOrder` and `History`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
@@ -56,11 +56,17 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 
 ## On O2 now (checked 2026-10-19, read-only)
 
-- `01`-`03`, `10`-`12`: run and current.
+- `01`-`03`, `10`, `11`: run and current.
+- **`12`: re-run it.** Its step 2d (2026-10-19) adds `Sub.entered_part` (what nursing entered, kept
+  when the Materials Manager sets the vendor part ordered), `manufacturer_part` and `infor_item`.
 - `04`: not yet (deploy #1 isn't live).
+- Sub 10 on B-D930299Z has vendor part 930103, BD's part nursing entered, though its order was
+  Medline's B-D930103CSZ (BX of 40). Once this release is in, its **Vendor details** with the
+  B-D930103CSZ contract line set the vendor part ordered; 930103 stays as entered.
 - **`13`: re-run it.** Its `vw_Vendor` now has Infor's legal and search names (2026-10-19), for
   finding a vendor ID by name; O2's has neither yet.
-- **`14`: O2 has an older `usp_SyncPboSubs`. Re-run `14`.**
+- **`14`: O2 has an older `usp_SyncPboSubs`. Re-run `14`, after `12`** (its 2026-10-19 version fills
+  in the new columns).
 - `09`'s "every sub and order has a created History row" says `FAIL` for one sub: the Medline PBO
   sub MMO2329H → 2329RH from 10/14. History was emptied after it was added (its ids restart on
   10/19), so its row went with it. That's test data: step 11 of the checklist fixes it, whether

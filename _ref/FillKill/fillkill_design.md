@@ -196,9 +196,16 @@ gather options from suppliers by email and phone, and nursing filters them. So:
    entry**, and **picked** if it's the Medline item's only approved sub. They can still Hold or
    Reject it later. The Sub Approver's comments stay. When the pick is held or rejected and one
    approved sub is left, that one becomes the pick (2026-10-19); a manual unpick picks nothing.
-2. The **Materials Manager** determines and fills in the vendor details (vendor, Infor's vendor ID,
-   description, UOM, QOE), with the contract search if they like, then records the order; both can
-   happen in the order form. An order needs a vendor and a UOM.
+2. The **Materials Manager** determines and fills in the vendor details (the vendor part ordered,
+   vendor, Infor's vendor ID, manufacturer part, Infor item, description, UOM, QOE), with the
+   contract search if they like, then records the order; both can happen in the order form. An
+   order needs a vendor, its vendor ID and a UOM.
+   **The part nursing enters is their approved reference** (2026-10-19): it may be the
+   manufacturer's part (e.g. BD's 930103) or another vendor's, since the same product can come from
+   the manufacturer or a distributor. The Materials Manager sets the vendor part actually ordered
+   (e.g. Medline's B-D930103CSZ; choosing a contract line does it); what nursing entered stays as
+   **Entered as**, shown when it differs. Nursing's own correction changes the vendor part too only
+   while the Materials Manager hasn't set another.
 3. Subs proposed by the system (Medline PBO, a future AI agent) stay **pending review**; the Sub
    Approver approves (picked when it's the only approved one), holds or rejects them.
 4. A sub is one vendor part per Medline item: its vendor can wait for the Materials Manager.
@@ -340,7 +347,10 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 |---|---|
 | Vendor | the vendor's **name**, required. Picking a contract line fills it with Infor's name. Typing it searches Infor's vendors (2026-10-19): every word anywhere in the vendor name, legal name or search name (`MDM_VENDOR`'s VendorName, LegalName, VendorSearchName, through `vw_Vendor`), `*` inside a word for anything, digits also matching IDs; active vendors first, at most 20. Choosing one fills in its vendor ID and Infor's name |
 | Vendor ID | Infor's vendor ID (e.g. 1000931), **required with the vendor details** (2026-10-19; optional from 10-15): the details can't be saved, nor an order recorded, without it. When Infor has no such vendor, the Materials Manager says so on purpose with **000000**, "Vendor not available in system" (Infor has no vendor 000000). Filled in from a contract line or the vendor search; typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO subs get 1000931 (MEDLINE INDUSTRIES INC). Nursing's entry has none until the Materials Manager's details |
-| Vendor Part | the vendor's part number; searchable, and what future LLM sub-finding will use |
+| Vendor Part | the vendor's part number: as entered, then the one ordered, set by the Materials Manager (2026-10-19); searchable, and what future LLM sub-finding will use |
+| Entered As | what was entered (2026-10-19): nursing's approved reference, or Medline's PBO number; kept when the vendor part ordered differs |
+| Manufacturer Part | the manufacturer's part number (2026-10-19), from the contract line's manufacturer number or typed |
+| Infor Item | Infor's item number for the sub (2026-10-19), when it has one: item-master contract lines only ("Special" lines have none) |
 | Description | optional; pre-filled for PBO subs from contract data when found (9.4) |
 | Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |
 | Entered By | email, `Medline` for PBO subs, or `system` (reserved for future LLM subs) |
@@ -351,7 +361,8 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 
 - **Keyed on the Medline item**, not the Infor item: Medline's substitute data uses that key, and
   the Infor number is meaningless outside Infor. **Decided.**
-- An item can have any number of subs. There is one sub per (Medline item, vendor, vendor part).
+- An item can have any number of subs. There is one live sub per (Medline item, vendor part),
+  whatever the vendor (2026-10-15); the vendor part ordered counts once set.
 - **Deleting a sub** (2026-10-15): a Sub Finder can delete one, with a required reason. It leaves the
   item, the library, the counts and the Dashboard, but its row stays (who, when, why) and Sub History
   shows "Deleted: <reason>"; Medline's PBO sync doesn't add a deleted PBO sub back, and the same

@@ -216,13 +216,13 @@ const steps = [
     await click('#fk-panel-content [data-act="details"]');
     await modalOpen();
     await setValue('#fk-contract-q', 'chloraprep', 'input');
-    await waitFor(`document.querySelectorAll('[data-contract]').length === 5`, 'five ChloraPrep lines');
+    await waitFor(`document.querySelectorAll('[data-contract]').length === 6`, 'six ChloraPrep lines');
     const list = await evaluate(`(() => { const l = document.querySelector('.fk-contract-list');
       return { shown: l.clientHeight, all: l.scrollHeight, rem: parseFloat(getComputedStyle(document.documentElement).fontSize) }; })()`);
     expect(list.all > list.shown && list.shown <= 15 * list.rem + 1, `the list doesn't scroll within 15rem (${JSON.stringify(list)})`);
-    await setValue('#fk-contract-q', '930103 chloraprep', 'input');
-    await waitFor(`document.querySelectorAll('[data-contract]').length === 1`, 'one line for "930103 chloraprep"');
-    expect((await text('#fk-contract-results')).includes('B-D930103CS'), 'not B-D930103CS');
+    await setValue('#fk-contract-q', '930103 chloraprep bx', 'input');
+    await waitFor(`document.querySelectorAll('[data-contract]').length === 1`, 'one line for "930103 chloraprep bx"');
+    expect((await text('#fk-contract-results')).includes('B-D930103CSZ'), 'not B-D930103CSZ');
     await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
     await modalClosed();
   }],
@@ -292,6 +292,31 @@ const steps = [
     await panelSays('Vendor details saved.');
     await panelSays('Local Supply Co (not in Infor)');
   }, { refusals: [/\/details$/] }],  // the save without a vendor ID
+  ['What nursing entered becomes the vendor part ordered, and stays as entered', async () => {
+    // Nursing approves 930103, BD's part; Medline sells it as B-D930103CSZ (a box of 40).
+    await go('/dev-login?as=nurse', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
+    await click('[data-act="show-add"]');
+    await setValue('#fk-add-part', '930103');
+    await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
+    await panelSays('Sub added');
+    await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
+    const card = `[...document.querySelectorAll('#fk-panel-content .card')].find((c) => c.querySelector('.fw-semibold').innerText === '930103')`;
+    await waitFor(card, 'the 930103 sub');
+    await evaluate(`${card}.querySelector('[data-act="details"]').click()`);
+    await modalOpen();
+    const line = `[...document.querySelectorAll('[data-contract]')].find((b) => b.innerText.includes('B-D930103CSZ'))`;
+    await waitFor(line, 'B-D930103CSZ among the contract lines for 930103');
+    await evaluate(`${line}.click()`);
+    const values = await evaluate(`['vendor_part', 'manufacturer_part', 'vendor_id', 'uom'].map((n) => document.getElementById('fk-m-' + n).value).join(' ')`);
+    expect(values === 'B-D930103CSZ 930103 1017968 BX', `filled in: ${values}`);
+    expect((await text('#fk-contract-note')).includes('becomes B-D930103CSZ'), 'no note about the vendor part');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    await panelSays('Vendor details saved.');
+    await panelSays('Entered as 930103 · Mfr part 930103');
+  }],
   ['A viewer: nothing to change', async () => {
     await go('/dev-login?as=viewer', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');

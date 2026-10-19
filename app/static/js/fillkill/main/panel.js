@@ -192,6 +192,7 @@ async function onClick(event) {
     if (!o) return;
     await act(api.addSub, {
       medline_item: target, vendor: o.vendor || '', vendor_id: o.vendor_id || '', vendor_part: o.vendor_part,
+      manufacturer_part: o.manufacturer_part || '', infor_item: o.infor_item || '',
       description: o.description || '', uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
       comment: `Added from ${o.medline_item}${o.um ? ` (${o.um})` : ''}, where it is ${config.statusLabels[o.status]}.`,
     }, (data) => `Sub added to ${target}. ${addedMessage(data.sub)}`);

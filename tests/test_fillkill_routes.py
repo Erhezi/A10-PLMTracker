@@ -323,6 +323,7 @@ def test_contract_search_by_several_words_and_by_infor_item(app, finder_approver
     # Every word somewhere in the line: its part number, description or vendor (2026-10-19).
     assert lines("88885 nitrile") == lines("NITRILE 888-85") == lines("cardinal 88885") == [("CARDINAL HEALTH", "88885")]
     assert lines("88885 owens") == []
+    assert lines("88885 bx") == [("CARDINAL HEALTH", "88885")] and lines("88885 cs") == []  # a word can be the UOM
     assert lines("DYNJ AA04") == [("MEDLINE INDUSTRIES INC", "DYNJAA04")]  # read as one part number
     # The Infor item number finds its lines.
     assert lines("200001") == [("CARDINAL HEALTH", "88885")]
@@ -514,9 +515,10 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     rows = {s["vendor_part"]: s for s in library["subs"]}
     assert sorted(rows) == ["88885", "OM1"]
     cup, glove = rows["88885"], rows["OM1"]
-    assert (cup["infor_item"], cup["approved_by"], cup["orders"], cup["last_ordered"][:10]) == (
+    assert (cup["medline_infor_item"], cup["approved_by"], cup["orders"], cup["last_ordered"][:10]) == (
         "100339", "nurse@example.org", 1, "2026-09-29")
-    assert (glove["infor_item"], glove["status"], glove["approved_by"], glove["orders"]) == ("999999", "pending_review", None, 0)
+    assert (glove["medline_infor_item"], glove["status"], glove["approved_by"], glove["orders"]) == (
+        "999999", "pending_review", None, 0)
     _, library = get(viewer, "/fillkill/api/subs", needs_details="1")
     assert [s["vendor_part"] for s in library["subs"]] == ["OM1"]
     _, library = get(viewer, "/fillkill/api/subs", deleted="1")
@@ -527,11 +529,13 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     response = viewer.get("/fillkill/subs/export", query_string={"status": "approved"})
     assert response.mimetype == "text/csv" and "attachment" in response.headers["Content-Disposition"]
     text = response.get_data(as_text=True)
-    assert text.startswith("\ufeffSub ID,Medline Item,Infor Item,Vendor Part")
+    assert text.startswith("\ufeffSub ID,Medline Item,Medline Item's Infor Item,Vendor Part,Entered As,Manufacturer Part")
     header, *lines = list(csv.reader(io.StringIO(text.lstrip("\ufeff"))))
     [cup_line] = lines
     line = dict(zip(header, cup_line))
-    assert (line["Medline Item"], line["Infor Item"], line["Vendor"], line["Status"], line["Picked"], line["Orders"]) == (
-        "DYND70294BH", "100339", "Cardinal", "Approved", "Yes", "1")
+    assert (line["Medline Item"], line["Medline Item's Infor Item"], line["Vendor"], line["Status"], line["Picked"],
+            line["Orders"]) == ("DYND70294BH", "100339", "Cardinal", "Approved", "Yes", "1")
+    assert (line["Vendor Part"], line["Entered As"], line["Manufacturer Part"], line["Sub's Infor Item"]) == (
+        "88885", "88885", "", "")
     assert line["Last Ordered"] == "2026-09-29 10:00"
     assert line["Latest Comment"] == "'=SUM(A1)"  # kept as text: Excel won't run it

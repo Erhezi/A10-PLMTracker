@@ -184,10 +184,15 @@ def _pick_the_one_left(sub: Sub, actor: str, now: datetime) -> Sub | None:
 
 
 def _apply_details(sub: Sub, data: dict, actor: str, now: datetime, *, required: bool) -> dict:
-    """The Materials Manager's vendor details, each change in History."""
+    """The Materials Manager's vendor details, each change in History. The vendor part among them
+    is the one ordered (2026-10-19); what was entered stays in ``entered_part``."""
     changes = rules.check_sub_changes(sub, data, rules.SUB_DETAIL_FIELDS, required=required)
     if changes.get("vendor_id"):
         _check_vendor_id(changes["vendor_id"])
+    if "vendor_part" in changes:
+        _ensure_unique(sub.medline_item, changes["vendor_part"], except_id=sub.sub_id)
+        if not sub.entered_part:  # a sub from before 12's 2d: what was entered is the part until now
+            sub.entered_part = sub.vendor_part
     for name, value in changes.items():
         _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
                  field=name, from_value=getattr(sub, name), to_value=value)
@@ -211,7 +216,8 @@ def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = F
         now = now_ny_naive()
         sub = Sub(
             medline_item=clean["medline_item"], vendor=clean["vendor"], vendor_id=clean["vendor_id"],
-            vendor_part=clean["vendor_part"],
+            vendor_part=clean["vendor_part"], entered_part=clean["vendor_part"],
+            manufacturer_part=clean["manufacturer_part"], infor_item=clean["infor_item"],
             description=clean["description"], uom=clean["uom"], qoe=clean["qoe"],
             status="pending_review", is_picked=False, source=source, entered_by=actor,
             create_dt=now, update_dt=now,
@@ -232,18 +238,27 @@ def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = F
 
 
 def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
-    """Correct the vendor part (nursing), until the sub has an order."""
+    """Nursing corrects the part they entered, until the sub has an order. While it's also the vendor
+    part (the Materials Manager hasn't set the one ordered), the vendor part changes with it; after,
+    only what was entered does (2026-10-19)."""
     def action():
         sub = _live_sub(sub_id)
-        changes = rules.check_sub_changes(sub, data, rules.SUB_PART_FIELDS)
+        entered = sub.entered_part or sub.vendor_part
+        new = rules.clean_field("vendor_part", data.get("vendor_part"), required=True)
+        if new == entered:
+            raise RuleError("Nothing to change.")
         if _open_orders(sub):
             raise RuleError(f"{sub.label()} has an order, so its vendor part can't change.", 409)
-        _ensure_unique(sub.medline_item, changes["vendor_part"], except_id=sub.sub_id)
         now = now_ny_naive()
-        for name, value in changes.items():
+        if sub.vendor_part == entered:
+            _ensure_unique(sub.medline_item, new, except_id=sub.sub_id)
             _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
-                     field=name, from_value=getattr(sub, name), to_value=value)
-            setattr(sub, name, value)
+                     field="vendor_part", from_value=sub.vendor_part, to_value=new)
+            sub.vendor_part = new
+        else:
+            _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
+                     field="entered_part", from_value=entered, to_value=new)
+        sub.entered_part = new
         sub.update_dt = now
         return sub
 

@@ -165,6 +165,11 @@ SELECT 'Sub has vendor_id, deleted_at, deleted_by, delete_reason (12, 2026-10-15
              AND COL_LENGTH(N'FillKill.Sub', N'deleted_by') IS NOT NULL
              AND COL_LENGTH(N'FillKill.Sub', N'delete_reason') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
+SELECT 'Sub has entered_part, manufacturer_part, infor_item (12, 2026-10-19)',
+       CASE WHEN COL_LENGTH(N'FillKill.Sub', N'entered_part') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.Sub', N'manufacturer_part') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.Sub', N'infor_item') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
 -- Nursing enters only the vendor part; the Materials Manager fills in the vendor.
 SELECT 'Sub.vendor can wait for the Materials Manager (12, 2026-10-15)',
        CASE WHEN EXISTS (SELECT 1 FROM sys.columns
@@ -208,11 +213,11 @@ SELECT 'view FillKill.vw_Vendor has the legal and search names (13, 2026-10-19)'
              AND COL_LENGTH(N'FillKill.vw_Vendor', N'search_name') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 -- The version line near the top of 14; change both together.
-SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-15 version (14)',
+SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-19 version (14)',
        CASE WHEN OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]', N'P') IS NULL THEN 'FAIL: run 14'
             WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) IS NULL
                 THEN 'CHECK: no VIEW DEFINITION permission to read it'
-            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-10-15%' THEN 'PASS'
+            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-10-19%' THEN 'PASS'
             ELSE 'FAIL: an older version; re-run 14' END;
 
 -- Workflow data, once the tables exist and 12 is current.

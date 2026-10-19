@@ -26,7 +26,8 @@ COLUMNS = {
          "CommodityCode", "CommodityCode.Description", "Medline.Sub"), "11_item_qty_views.sql"),
     ("FillKill", "vw_MedlineFillKillQtyAgg"): (("Medline Item", "Total Killed Qty", "Total PO Line Count"),
                                                 "11_item_qty_views.sql"),
-    ("FillKill", "Sub"): (("vendor_id", "deleted_at", "deleted_by", "delete_reason"), "12_workflow_tables.sql"),
+    ("FillKill", "Sub"): (("vendor_id", "deleted_at", "deleted_by", "delete_reason", "entered_part",
+                           "manufacturer_part", "infor_item"), "12_workflow_tables.sql"),
     ("FillKill", "SubOrder"): (("sub_id", "ordered_dt", "voided_at"), "12_workflow_tables.sql"),
     ("FillKill", "History"): (("entity", "entity_id", "action", "comment"), "12_workflow_tables.sql"),
     ("FillKill", "vw_ContractLineSearch"): (("vendor_id", "vendor_name", "infor_item", "item_type", "is_mhs"),
@@ -52,7 +53,7 @@ CHECKS = {
 
 # Procedures, the version marker in their body, and whether the app runs them.
 PROCEDURES = {
-    ("FillKill", "usp_SyncPboSubs"): ("version 2026-10-15", "14_pbo_sync.sql"),
+    ("FillKill", "usp_SyncPboSubs"): ("version 2026-10-19", "14_pbo_sync.sql"),
 }
 
 # Views the app's account must be able to read: a view reading another database (SCSFileIngestor,

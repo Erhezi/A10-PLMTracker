@@ -475,8 +475,10 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
     recorded after the kills shown.
-  - A link `?item=<Medline item>[&scope=infor][&tab=…]` opens that item's panel (from Subs and the
-    Dashboard).
+  - **The page link keeps the view** (2026-10-19): `?dates=today` or `?start=&end=`, `?sites=a,b`,
+    `?q=`, `?needs=`, and the open panel's `?item=<Medline item>[&scope=infor][&tab=…]`, updated as
+    the user works (no new history entries), so a copied link reopens the same view. Subs and the
+    Dashboard link to `?item=`.
 - **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data
   asset. Filters: text (item, vendor part, vendor, vendor ID, description), status, source,
   "vendor details needed", and deleted subs (with who, when, why). Columns add the Infor item, who

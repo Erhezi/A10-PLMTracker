@@ -29,6 +29,20 @@
     panelData: null,
   };
 
+  // The page link keeps what's shown, so it can be shared or bookmarked (2026-10-19): ?dates=today
+  // or ?start=&end=, ?sites=a,b, ?q= (the search), ?needs=, and the open panel's ?item=&scope=&tab=.
+  const linked = new URLSearchParams(window.location.search);
+  if (linked.get('dates') === 'today' && config.today) {
+    state.start = config.today;
+    state.end = config.today;
+  } else if (linked.get('start') && linked.get('end')) {
+    state.start = linked.get('start');
+    state.end = linked.get('end');
+  }
+  state.sites = (linked.get('sites') || '').split(',').filter(Boolean);
+  state.search = (linked.get('q') || '').trim().toLowerCase();
+  if (linked.get('needs') && (config.needs || []).some(([key]) => key === linked.get('needs'))) state.needs = linked.get('needs');
+
   // --- small helpers ----------------------------------------------------------------
 
   const $ = (id) => document.getElementById(id);
@@ -204,17 +218,23 @@
         <label class="form-check-label text-nowrap" for="fk-site-${i}">${esc(site.name || site.code)}</label>
       </div>`).join('') || '<div class="small text-muted">No sites yet</div>';
     const boxes = Array.from(menu.querySelectorAll('input'));
-    const update = debounce(() => {
-      state.sites = boxes.filter((b) => b.checked).map((b) => b.value);
+    const label = () => {
       const names = boxes.filter((b) => b.checked).map((b) => b.nextElementSibling.textContent);
       button.textContent = !names.length || names.length === boxes.length ? 'All sites'
         : (names.length === 1 ? names[0] : `${names.length} sites`);
+    };
+    boxes.forEach((b) => { b.checked = state.sites.includes(b.value); });  // from the page link
+    label();
+    const update = debounce(() => {
+      state.sites = boxes.filter((b) => b.checked).map((b) => b.value);
+      label();
       reloadAll();
     }, 300);
     boxes.forEach((b) => b.addEventListener('change', update));
   }
 
   function setupSearch() {
+    $('fk-search').value = linked.get('q') || '';
     $('fk-search').addEventListener('input', debounce((event) => {
       state.search = event.target.value.trim().toLowerCase();
       renderRows();
@@ -354,7 +374,26 @@
       : '<span class="text-muted" title="Infor has no conversion for this UOM of the Infor item">—</span>'}</div>`).join('');
   }
 
+  // Keep the page link in step with what's shown (no new history entry each time).
+  function syncLink() {
+    const params = new URLSearchParams();
+    if (state.dateMode === 'today') params.set('dates', 'today');
+    else if (state.start && state.end) { params.set('start', state.start); params.set('end', state.end); }
+    if (state.sites.length) params.set('sites', state.sites.join(','));
+    const search = $('fk-search').value.trim();
+    if (search) params.set('q', search);
+    if (state.needs !== 'all') params.set('needs', state.needs);
+    if (state.panelItem) {
+      params.set('item', state.panelItem);
+      if (state.panelScope === 'infor') params.set('scope', 'infor');
+      if (state.panelTab && state.panelTab !== 'subs') params.set('tab', state.panelTab);
+    }
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `${window.location.pathname}?${query}` : window.location.pathname);
+  }
+
   function renderRows() {
+    syncLink();
     const rows = state.rows.filter((row) => (state.needs === 'all' || row.needs.includes(state.needs)) && matchesSearch(row));
     if (!rows.length) {
       const why = state.rows.length ? 'No item matches these filters.' : 'No kill lines for these dates and sites.';
@@ -551,6 +590,7 @@
   }
 
   function renderPanel(message) {
+    syncLink();
     const data = state.panelData;
     const d = data.details || {};
     const view = panelView();
@@ -1280,6 +1320,7 @@
   panelEl.addEventListener('hidden.bs.offcanvas', () => {
     state.panelItem = null;
     state.panelData = null;
+    syncLink();
   });
 
   setupDates();
@@ -1291,7 +1332,6 @@
   loadOrders();
 
   // A link can open an item's panel: ?item=<Medline item>, with &scope=infor for all its UOMs and
-  // &tab=subs|lines|picks|orders (from the Subs page and the Dashboard).
-  const linked = new URLSearchParams(window.location.search);
+  // &tab=subs|lines|picks|orders (the Subs page and the Dashboard link to it).
   if (linked.get('item')) openPanel(linked.get('item'), linked.get('tab'), linked.get('scope'));
 })();

@@ -1267,7 +1267,7 @@ tbody td.col-repl { background: #f5fbff; }
   }
 }
 
-/* Fill/Kill Main page (templates/fillkill/index.html, static/js/fillkill.js) */
+/* Fill/Kill Main page (templates/fillkill/index.html, static/js/fillkill/main/) */
 .fk-sites-menu { min-width: 16rem; max-height: 18rem; overflow-y: auto; }
 .fk-main td { vertical-align: top; }
 .fk-main .fk-desc { max-width: 22rem; }

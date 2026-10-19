@@ -166,8 +166,8 @@ def subs_page():
         "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
         "sources": [[code, SOURCE_LABELS.get(code, code)] for code in SUB_SOURCES],
         "limit": queries.LIBRARY_LIMIT,
-        "api": {"subs": url_for("fillkill.api_subs"), "export": url_for("fillkill.export_subs"),
-                "main": url_for("fillkill.index")},
+        "api": {"subs": url_for("fillkill.api_subs"), "export": url_for("fillkill.export_subs")},
+        "mainPage": url_for("fillkill.index"),
     }
     return render_template("fillkill/subs.html", config=plain(config))
 
@@ -183,7 +183,8 @@ def dashboard_page():
         "default": {"start": start, "end": end},
         "sites": queries.sites(),
         "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
-        "api": {"dashboard": url_for("fillkill.api_dashboard"), "main": url_for("fillkill.index")},
+        "api": {"dashboard": url_for("fillkill.api_dashboard")},
+        "mainPage": url_for("fillkill.index"),
     }
     return render_template("fillkill/dashboard.html", config=plain(config))
 

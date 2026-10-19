@@ -1,0 +1,115 @@
+/* Fill/Kill: what the Main, Subs and Dashboard pages share.
+ *
+ * The pages' scripts are ES modules (2026-10-19), loaded with <script type="module">: they run once
+ * the page is parsed, after base.html has loaded Bootstrap and defined appFetch (which adds the
+ * CSRF token). Each page renders its settings as JSON in #fk-config.
+ */
+
+export const $ = (id) => document.getElementById(id);
+
+export const config = JSON.parse($('fk-config').textContent);
+config.statusLabels = Object.fromEntries(config.statuses || []);
+
+export const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+));
+
+export const STATUS_CLASS = {
+  approved: 'text-bg-success', hold: 'text-bg-warning', pending_review: 'text-bg-info', rejected: 'text-bg-danger',
+};
+export const STATUS_ORDER = ['approved', 'hold', 'pending_review', 'rejected'];
+export const REASON_LABEL = {
+  ALLOCATION: 'Allocation', MBO: 'Manufacturer backorder', OUT_OF_STOCK: 'Out of stock',
+  NONSTOCK_UOM: 'Non-stock UOM', NONSTOCK: 'Non-stock', DISCONTINUED: 'Discontinued', SPIKE: 'Spike', OTHER: 'Other',
+};
+
+export function statusBadge(status, extra) {
+  return `<span class="badge ${STATUS_CLASS[status] || 'text-bg-secondary'}${extra ? ' ' + extra : ''}">`
+    + `${esc(config.statusLabels[status] || status)}</span>`;
+}
+
+export function fmtDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).slice(0, 10).split('-');
+  return `${m}/${d}/${y}`;
+}
+
+export function fmtDateTime(iso) {
+  if (!iso) return '';
+  const text = String(iso);
+  return `${fmtDate(text)} ${text.slice(11, 16)}`.trim();
+}
+
+export function fmtNumber(value) {
+  if (value == null || value === '') return '';
+  const n = Number(value);
+  return Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+// A path with a query; empty values and empty lists are left out.
+export function url(path, params) {
+  const query = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      if (value.length) query.set(key, value.join(','));
+    } else if (value != null && value !== '') {
+      query.set(key, value);
+    }
+  });
+  const qs = query.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+export async function getJSON(path, params) {
+  const response = await window.appFetch(url(path, params));
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || `The server answered ${response.status}.`);
+  return data;
+}
+
+// A refused change throws an error carrying the HTTP status (409: someone changed it meanwhile).
+export async function postJSON(path, payload) {
+  const response = await window.appFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.message || `The server answered ${response.status}.`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+export function alertBox(message, kind) {
+  return `<div class="alert alert-${kind || 'danger'} py-2 small mb-2" role="alert">${esc(message)}</div>`;
+}
+
+// A sub's vendor: its name, with Infor's vendor ID when it has one; empty until the Materials
+// Manager fills it in.
+export function vendorText(s) {
+  return `${s.vendor || ''}${s.vendor_id ? ` (${s.vendor_id})` : ''}`;
+}
+
+// A sub as text: its vendor part, and its vendor when known.
+export function subText(s) {
+  const vendor = vendorText(s);
+  return vendor ? `${s.vendor_part} · ${vendor}` : s.vendor_part;
+}
+
+// Vendor and UOM are what an order needs; nursing leaves them to the Materials Manager.
+export const needsDetails = (s) => !s.vendor || !s.uom;
+
+// An item's panel on Main, from the Subs page or the Dashboard: ?item=<Medline item>, with
+// scope 'infor' for all its UOMs and a tab (subs, lines, picks, orders).
+export const itemLink = (item, scope, tab) => url(config.mainPage, { item, scope, tab });

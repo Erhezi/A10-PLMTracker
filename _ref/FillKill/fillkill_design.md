@@ -486,16 +486,22 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
   Read-only; a row's Medline item opens the panel on Main.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
   coverage, time to review, and rejected subs with their comments, grouped by vendor and item.
+  Read-only for every Fill/Kill role. Separate from PLM Tracker's dashboard.
   **Flow** (2026-10-19): for the Medline items killed in the dates, the median time from the first
   kill to a sub (0 when one was already on file), from that sub to the first order since the kill,
   and from the kill to that order, each with how many items it covers; the share of killed items
-  with an order is the "Items ordered" card. Read-only for every Fill/Kill role. Separate from
-  PLM Tracker's dashboard.
+  with an order is the "Items ordered" card.
 
 `/orders` is not a page (2026-10-13); `/subs` came back as the Subs page (2026-10-16).
 
 **Navigation:** a top row switches between PLM Tracker and Fill/Kill Management; a second row shows
 the active module's pages (Fill/Kill: Main, Subs, Dashboard). PLM pages and URLs are unchanged.
+
+**Code** (2026-10-19): server side in `app/fillkill/` (routes, services, rules, queries, rollup,
+dashboard, health). The pages' scripts are ES modules in `app/static/js/fillkill/`: `common.js`,
+shared by the three pages (formatting, fetching, status badges, the link to an item on Main);
+`subs.js`; `dashboard.js`; and Main in `main/`, started by `main/index.js`, whose header maps its
+modules (state and page link, controls, table, panel and its tabs, modal forms, orders, refresh).
 
 ## 8. For stakeholders
 

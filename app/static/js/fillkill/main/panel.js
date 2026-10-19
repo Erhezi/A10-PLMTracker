@@ -1,0 +1,308 @@
+/* Main: the item panel, an offcanvas on the right. Clicked on an Infor item it shows all its UOMs;
+ * clicked on a Medline item, only that one. Its tabs are drawn in tabs.js; its forms open in the
+ * modal (forms.js).
+ */
+
+import { $, alertBox, config, debounce, esc, fmtNumber, getJSON, postJSON } from '../common.js';
+import {
+  openDetailsForm, openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm, openVoidForm,
+} from './forms.js';
+import { afterChange } from './refresh.js';
+import { api, historyUrl, orderUrl, scopeParams, state, subUrl, syncLink } from './state.js';
+import { customerFlag } from './table.js';
+import { renderPanelTab, timeline } from './tabs.js';
+
+export const panelEl = $('fk-panel');
+const panel = window.bootstrap ? window.bootstrap.Offcanvas.getOrCreateInstance(panelEl) : null;
+
+export const panelIsOpen = () => Boolean(state.panelItem) && panelEl.classList.contains('show');
+
+// scope 'infor' shows the whole Infor item (all UOMs); otherwise just this Medline item.
+export async function openPanel(item, tab, scope) {
+  state.panelItem = item;
+  state.panelScope = scope === 'infor' ? 'infor' : 'medline';
+  if (tab) state.panelTab = tab;
+  $('fk-panel-title').textContent = item;
+  $('fk-panel-subtitle').textContent = '';
+  $('fk-panel-body').innerHTML = '<div class="text-muted small">Loading…</div>';
+  if (panel) panel.show();
+  await loadPanel();
+}
+
+let panelRequest = 0;
+
+export async function loadPanel(message) {
+  const item = state.panelItem;
+  if (!item) return;
+  const ticket = ++panelRequest;
+  try {
+    const data = await getJSON(api.item, Object.assign({ item }, scopeParams()));
+    if (ticket !== panelRequest) return;  // a newer request is on its way
+    state.panelData = data;
+    renderPanel(message);
+  } catch (error) {
+    $('fk-panel-body').innerHTML = alertBox(error.message);
+  }
+}
+
+// What the panel shows. The API always returns the whole Infor item; clicked on a Medline item,
+// the panel keeps to that Medline item (one UOM): its subs, kill lines, history and orders.
+function panelView() {
+  const data = state.panelData;
+  const whole = state.panelScope === 'infor';
+  const mine = (x) => whole || x.medline_item === state.panelItem;
+  const packs = data.packagings.filter(mine);
+  const lines = data.lines.filter(mine);
+  return {
+    whole,
+    packs,
+    lines,
+    orders: data.orders.filter(mine),
+    history: data.pick_history.filter(mine),
+    many: packs.length > 1,
+    reason: whole ? data.latest_reason : lines[0],  // lines are newest first
+  };
+}
+
+function renderPanel(message) {
+  syncLink();
+  const data = state.panelData;
+  const d = data.details || {};
+  const view = panelView();
+  $('fk-panel-title').textContent = view.whole && data.infor_item ? `Infor item ${data.infor_item}` : state.panelItem;
+  $('fk-panel-subtitle').innerHTML = [
+    !view.whole && data.infor_item ? `Infor item ${esc(data.infor_item)}` : '',
+    esc((view.whole ? d.description : (view.packs[0] || {}).description) || ''),
+    view.reason ? esc(view.reason.comment) : '',
+  ].filter(Boolean).join(' · ');
+
+  const subs = view.packs.reduce((n, p) => n + p.subs.length, 0);
+  const tabs = [
+    ['subs', `Subs <span class="badge text-bg-light">${subs}</span>`],
+    ['lines', `Kill lines <span class="badge text-bg-light">${view.lines.length}</span>`],
+    ['picks', 'Sub History'],
+    ['orders', `Orders <span class="badge text-bg-light">${view.orders.length}</span>`],
+  ];
+  $('fk-panel-body').innerHTML = `
+    ${message ? alertBox(message.text, message.kind) : ''}
+    ${itemDetails(d)}
+    ${packagingList(data, view)}
+    <ul class="nav nav-pills nav-fill small mb-3" role="tablist">
+      ${tabs.map(([key, label]) => `<li class="nav-item"><button type="button" class="nav-link py-1 ${state.panelTab === key ? 'active' : ''}"
+          data-panel-tab="${key}">${label}</button></li>`).join('')}
+    </ul>
+    <div id="fk-panel-content">${renderPanelTab(state.panelTab, view)}</div>`;
+}
+
+function itemDetails(d) {
+  const rows = [
+    ['Infor item', d.infor_item
+      ? [d.infor_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : ''].filter(Boolean).join(' · ')
+      : 'None: not a Medline vendor item in Infor'],
+    ['Long description', d.long_description],
+    ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
+    ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],
+  ].filter(([, value]) => value);
+  return `<dl class="row small bg-light border rounded py-2 mx-0 mb-3">${rows.map(([label, value]) => `
+    <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
+}
+
+// The Medline items (UOMs) shown: those killed in these dates first, then any other Medline has
+// killed under the Infor item. Switch between one Medline item and all of them here.
+function packagingList(data, view) {
+  const total = data.packagings.length;
+  let label = view.many ? `${view.packs.length} UOMs (Medline items)` : 'Medline item';
+  if (view.whole && total > 1) label += ' · click one to see only it';
+  const widen = !view.whole && total > 1
+    ? `<button type="button" class="btn btn-link btn-sm p-0 ms-2 align-baseline" data-panel-focus="">Show all ${total} UOMs
+        of Infor item ${esc(data.infor_item)}</button>` : '';
+  return `<div class="small mb-3"><div class="text-muted mb-1">${label}${widen}</div>
+    <ul class="list-unstyled mb-0">${view.packs.map((p) => {
+      const notes = [
+        esc(p.um),
+        p.qoe != null ? `QOE ${fmtNumber(p.qoe)}` : '',
+        p.killed_in_range ? '' : 'not killed in these dates',
+      ].filter(Boolean).join(' · ');
+      const name = view.many
+        ? `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-panel-focus="${esc(p.medline_item)}">${esc(p.medline_item)}</button>`
+        : `<span class="fw-semibold">${esc(p.medline_item)}</span>`;
+      return `<li class="mb-1">${name}${customerFlag(p)}
+        <span class="text-muted">${notes}</span>
+        ${p.description ? `<div class="text-muted text-truncate">${esc(p.description)}</div>` : ''}</li>`;
+    }).join('')}</ul></div>`;
+}
+
+// Every sub on the Infor item, whichever UOM is shown.
+export const panelSubs = () => (state.panelData ? state.panelData.packagings.flatMap((p) => p.subs) : []);
+
+// --- actions ---------------------------------------------------------------------------------
+
+// ``done`` is the message to show, or a function of the server's answer that returns it.
+async function act(path, payload, done) {
+  try {
+    const data = await postJSON(path, payload);
+    await afterChange(typeof done === 'function' ? done(data) : done);
+  } catch (error) {
+    // 409: someone changed it meanwhile; the reloaded panel shows the latest next to the message.
+    await loadPanel({ text: error.message, kind: error.status === 409 ? 'warning' : 'danger' });
+  }
+}
+
+// What happened to a new sub: approved on entry (and maybe picked), or waiting for review.
+function addedMessage(added) {
+  if (added.is_picked) return 'Approved and picked: it is the only approved sub.';
+  return added.status === 'approved' ? 'Approved.' : 'It is pending review.';
+}
+
+async function onClick(event) {
+  const tab = event.target.closest('[data-panel-tab]');
+  if (tab) {
+    state.panelTab = tab.dataset.panelTab;
+    renderPanel();
+    return;
+  }
+  // One Medline item, or (empty) the whole Infor item: the data is already here.
+  const focus = event.target.closest('[data-panel-focus]');
+  if (focus) {
+    if (focus.dataset.panelFocus) {
+      state.panelItem = focus.dataset.panelFocus;
+      state.panelScope = 'medline';
+    } else {
+      state.panelScope = 'infor';
+    }
+    renderPanel();
+    return;
+  }
+  const button = event.target.closest('button[data-act]');
+  if (!button) return;
+  const { act: what } = button.dataset;
+  const subId = Number(button.dataset.sub);
+  const sub = () => panelSubs().find((s) => s.sub_id === subId);
+  if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-part').focus(); return; }
+  if (what === 'hide-add') { $('fk-add-sub').classList.add('d-none'); return; }
+  if (what === 'pick' || what === 'unpick') {
+    await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Picked.' : 'Unpicked.');
+    return;
+  }
+  if (what === 'order') { openOrderForm(subId, button.dataset.item); return; }
+  if (what === 'copy-sub') {
+    const target = button.dataset.item;
+    const pack = state.panelData.packagings.find((p) => p.medline_item === target);
+    const o = pack && pack.other_subs.find((x) => x.sub_id === subId);
+    if (!o) return;
+    await act(api.addSub, {
+      medline_item: target, vendor: o.vendor || '', vendor_id: o.vendor_id || '', vendor_part: o.vendor_part,
+      description: o.description || '', uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
+      comment: `Added from ${o.medline_item}${o.um ? ` (${o.um})` : ''}, where it is ${config.statusLabels[o.status]}.`,
+    }, (data) => `Sub added to ${target}. ${addedMessage(data.sub)}`);
+    return;
+  }
+  if (what === 'edit-sub') { openSubEditForm(sub()); return; }
+  if (what === 'details') { openDetailsForm(sub()); return; }
+  if (what === 'delete-sub') { openSubDeleteForm(sub()); return; }
+  if (what === 'edit-order') { openOrderEditForm(state.panelData.orders.find((o) => o.order_id === Number(button.dataset.order))); return; }
+  if (what === 'void-order') { openVoidForm(Number(button.dataset.order)); return; }
+  if (what === 'history') {
+    const target = $(`fk-history-${button.dataset.entity}-${button.dataset.id}`);
+    if (target.innerHTML) { target.innerHTML = ''; return; }
+    target.innerHTML = '<span class="text-muted">Loading…</span>';
+    try {
+      const data = await getJSON(historyUrl(button.dataset.entity, button.dataset.id));
+      target.innerHTML = timeline(data.history, false);
+    } catch (error) {
+      target.innerHTML = alertBox(error.message);
+    }
+  }
+}
+
+async function onStatusChange(event) {
+  const select = event.target.closest('select[data-act="status"]');
+  if (!select || !select.value) return;
+  await act(subUrl(select.dataset.sub, 'status'), { status: select.value, expected_status: select.dataset.expected },
+    (data) => `Status set to ${config.statusLabels[select.value]}.${data.sub.is_picked && select.value === 'approved'
+      ? ' Picked too: it is the only approved sub.' : ''}${data.picked_instead
+      ? ` ${data.picked_instead} is the pick now: the only approved sub left.` : ''}`);
+}
+
+async function onSubmit(event) {
+  const form = event.target;
+  event.preventDefault();
+  if (form.id === 'fk-add-form') {
+    const payload = Object.fromEntries(new FormData(form).entries());
+    payload.medline_item = payload.medline_item || state.panelItem;  // the UOM chosen, if several
+    await act(api.addSub, payload, (data) => `Sub added. ${addedMessage(data.sub)}`);
+    return;
+  }
+  const comment = form.elements.comment ? form.elements.comment.value.trim() : '';
+  if (!comment) return;
+  if (form.dataset.act === 'comment-sub') await act(subUrl(form.dataset.sub, 'comments'), { comment }, 'Comment added.');
+  if (form.dataset.act === 'comment-order') await act(orderUrl(form.dataset.order, 'comments'), { comment }, 'Comment added.');
+}
+
+// --- width -----------------------------------------------------------------------------------
+
+// Drag the panel's left edge (or use the arrow keys on it) to change its width; this browser
+// remembers it. Double-click the edge to go back to the default.
+const PANEL_WIDTH_KEY = 'fk-panel-width';
+const clampWidth = (px) => Math.round(Math.min(Math.max(px, 320), window.innerWidth - 40));
+
+function setPanelWidth(px, save) {
+  const width = clampWidth(px);
+  panelEl.style.width = `${width}px`;
+  if (save) {
+    try { localStorage.setItem(PANEL_WIDTH_KEY, String(width)); } catch (error) { /* not remembered */ }
+  }
+}
+
+function setupResizer() {
+  const resizer = $('fk-panel-resize');
+  try {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (saved) setPanelWidth(saved, false);
+  } catch (error) { /* default width */ }
+
+  resizer.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    resizer.setPointerCapture(event.pointerId);
+    document.body.classList.add('fk-resizing');
+    const move = (e) => setPanelWidth(window.innerWidth - e.clientX, false);
+    const done = () => {
+      resizer.removeEventListener('pointermove', move);
+      resizer.removeEventListener('pointerup', done);
+      resizer.removeEventListener('pointercancel', done);
+      document.body.classList.remove('fk-resizing');
+      setPanelWidth(panelEl.getBoundingClientRect().width, true);
+    };
+    resizer.addEventListener('pointermove', move);
+    resizer.addEventListener('pointerup', done);
+    resizer.addEventListener('pointercancel', done);
+  });
+
+  resizer.addEventListener('keydown', (event) => {
+    const step = { ArrowLeft: 32, ArrowRight: -32 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    setPanelWidth(panelEl.getBoundingClientRect().width + step, true);
+  });
+
+  resizer.addEventListener('dblclick', () => {
+    panelEl.style.width = '';
+    try { localStorage.removeItem(PANEL_WIDTH_KEY); } catch (error) { /* nothing kept */ }
+  });
+
+  window.addEventListener('resize', debounce(() => {
+    if (panelEl.style.width) setPanelWidth(parseFloat(panelEl.style.width), false);
+  }, 150));
+}
+
+export function setupPanel() {
+  setupResizer();
+  panelEl.addEventListener('click', onClick);
+  panelEl.addEventListener('change', onStatusChange);
+  panelEl.addEventListener('submit', onSubmit);
+  panelEl.addEventListener('hidden.bs.offcanvas', () => {
+    state.panelItem = null;
+    state.panelData = null;
+    syncLink();
+  });
+}

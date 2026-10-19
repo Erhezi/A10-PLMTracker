@@ -50,19 +50,21 @@ def test_item_details_merge_and_say_when_rows_disagree():
     assert details["B"]["infor_item"] is None
 
 
-@pytest.mark.parametrize("counts, has_pick, ordered, expected", [
-    ({}, False, False, ["needs_subs"]),
-    ({"rejected": 2}, False, False, ["needs_subs"]),
-    ({"hold": 1}, False, False, []),
-    ({"pending_review": 1}, False, False, ["needs_review"]),
-    ({"approved": 1}, False, False, ["needs_pick"]),
-    ({"approved": 1}, True, False, ["needs_order"]),
-    ({"approved": 1, "pending_review": 1}, True, False, ["needs_review", "needs_order"]),
-    ({"approved": 1}, True, True, ["ordered"]),
-    ({"rejected": 1}, False, True, ["needs_subs", "ordered"]),  # ordered from a pick since rejected
+@pytest.mark.parametrize("counts, has_pick, ordered, missing, expected", [
+    ({}, False, False, False, ["needs_subs"]),
+    ({"rejected": 2}, False, False, False, ["needs_subs"]),
+    ({"hold": 1}, False, False, False, []),
+    ({"pending_review": 1}, False, False, False, ["needs_review"]),
+    ({"approved": 1}, False, False, False, ["needs_pick"]),
+    ({"approved": 1}, True, False, False, ["needs_order"]),
+    ({"approved": 1}, True, False, True, ["needs_details", "needs_order"]),  # nursing's pick, no vendor yet
+    ({"approved": 1, "pending_review": 1}, True, False, False, ["needs_review", "needs_order"]),
+    ({"approved": 1}, True, True, False, ["ordered"]),
+    ({"approved": 1}, True, True, True, ["ordered"]),  # the order took a vendor and a UOM
+    ({"rejected": 1}, False, True, False, ["needs_subs", "ordered"]),  # ordered from a pick since rejected
 ])
-def test_needs_flags(counts, has_pick, ordered, expected):
-    assert rollup.needs_flags(counts, has_pick=has_pick, ordered=ordered) == expected
+def test_needs_flags(counts, has_pick, ordered, missing, expected):
+    assert rollup.needs_flags(counts, has_pick=has_pick, ordered=ordered, details_missing=missing) == expected
 
 
 def test_main_rows_without_infor_items_stand_alone():
@@ -88,7 +90,7 @@ def test_main_rows_without_infor_items_stand_alone():
     assert (b["ordering_status"], b["needs"]) == ("no order", ["needs_review"])
     assert (c["description"], c["needs"], c["latest_reason"]) == (None, ["needs_subs"], None)
     assert rollup.needs_counts(rows) == {
-        "all": 3, "needs_subs": 1, "needs_review": 1, "needs_pick": 0, "needs_order": 0, "ordered": 1,
+        "all": 3, "needs_subs": 1, "needs_review": 1, "needs_pick": 0, "needs_details": 0, "needs_order": 0, "ordered": 1,
     }
     assert [r["key"] for r in rollup.most_killed(rows, 2)] == ["M:A", "M:C"]  # 3 lines each; A killed more
 

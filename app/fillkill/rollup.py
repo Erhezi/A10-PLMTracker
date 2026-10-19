@@ -22,11 +22,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-NEEDS = ("needs_subs", "needs_review", "needs_pick", "needs_order", "ordered")
+NEEDS = ("needs_subs", "needs_review", "needs_pick", "needs_details", "needs_order", "ordered")
 NEEDS_LABELS = {
     "needs_subs": "Needs subs",
     "needs_review": "Needs review",
     "needs_pick": "Needs pick",
+    "needs_details": "Needs details",  # a pick without a vendor or UOM: the Materials Manager's
     "needs_order": "Needs order",
     "ordered": "Ordered",
 }
@@ -103,8 +104,9 @@ def subs_status(subs) -> dict[str, int]:
     return counts
 
 
-def needs_flags(counts: dict[str, int], *, has_pick: bool, ordered: bool) -> list[str]:
-    """Design §5 Needs filter. An item can need more than one thing (e.g. review and order)."""
+def needs_flags(counts: dict[str, int], *, has_pick: bool, ordered: bool, details_missing: bool = False) -> list[str]:
+    """Design §5 Needs filter. An item can need more than one thing (e.g. review and order).
+    ``details_missing``: a pick still has no vendor or UOM (2026-10-19); once ordered, it's done."""
     flags = []
     if counts.get("pending_review", 0) + counts.get("approved", 0) + counts.get("hold", 0) == 0:
         flags.append("needs_subs")
@@ -112,6 +114,8 @@ def needs_flags(counts: dict[str, int], *, has_pick: bool, ordered: bool) -> lis
         flags.append("needs_review")
     if counts.get("approved", 0) > 0 and not has_pick:
         flags.append("needs_pick")
+    if has_pick and details_missing and not ordered:  # an order took a vendor and a UOM
+        flags.append("needs_details")
     if has_pick and not ordered:
         flags.append("needs_order")
     if ordered:
@@ -304,7 +308,8 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
             "approved_other_packagings": list(elsewhere.values()),
             "orders": row_orders,  # since the range's first day, newest first
             "ordering_status": "ordered" if ordered else "no order",
-            "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered),
+            "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered,
+                                 details_missing=any(not p.get("vendor") or not p.get("uom") for p in picks)),
         })
     rows.sort(key=sort_key)
     return rows

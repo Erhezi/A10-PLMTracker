@@ -247,6 +247,8 @@ Trends and analytics live on a separate Dashboard page (section 7).
   - *needs subs*: no sub that is pending review, approved or on hold
   - *needs review*: at least one sub pending review
   - *needs pick*: at least one approved sub, none picked
+  - *needs details*: a pick without a vendor or UOM, not ordered yet (2026-10-19): the Materials
+    Manager's to-do list
   - *needs order*: at least one pick, and no order in the range
   - *ordered*: an order in the range
 - **Search:** every word typed must appear in the Infor item, a packaging's Medline or customer

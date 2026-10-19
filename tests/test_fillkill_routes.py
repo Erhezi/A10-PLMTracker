@@ -171,7 +171,8 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
-    assert row["needs"] == ["needs_order"]
+    assert row["needs"] == ["needs_details", "needs_order"]  # the Materials Manager's to fill in
+    assert main["counts"]["needs_details"] == 1
 
     # The Materials Manager fills in the vendor details with the order.
     status, data = post(finder_manager, "/fillkill/api/orders", {"sub_id": sub_id, "quantity": 30})

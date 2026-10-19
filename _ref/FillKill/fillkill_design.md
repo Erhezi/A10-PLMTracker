@@ -502,6 +502,8 @@ dashboard, health). The pages' scripts are ES modules in `app/static/js/fillkill
 shared by the three pages (formatting, fetching, status badges, the link to an item on Main);
 `subs.js`; `dashboard.js`; and Main in `main/`, started by `main/index.js`, whose header maps its
 modules (state and page link, controls, table, panel and its tabs, modal forms, orders, refresh).
+To try the pages locally and check them after a change: `tools/fillkill_ui/` (a dev server on
+sample or read-only O2 data, and a smoke walkthrough in headless Edge; see its README).
 
 ## 8. For stakeholders
 

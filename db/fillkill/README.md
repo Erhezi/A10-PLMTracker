@@ -61,15 +61,16 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 - **`14`: O2 has an older `usp_SyncPboSubs`. Re-run `14`.**
 - `09`'s "every sub and order has a created History row" says `FAIL` for one sub: the Medline PBO
   sub MMO2329H → 2329RH from 10/14. History was emptied after it was added (its ids restart on
-  10/19), so its row went with it. That's test data; it goes away if the UAT subs are reset at
-  go-live.
+  10/19), so its row went with it. That's test data: step 11 of the checklist fixes it, whether
+  the UAT subs are kept or reset.
 - `PLMPreprocessorShared.infor.CONTRACTLINE` is empty, so the contract search finds nothing. That
   table is loaded upstream; PLM's contract item search reads it too.
 
 ## Go-live checklist
 
 One release brings deploy #1 (navigation, unified users and roles, CSRF, daily login reset) and
-deploy #2 (Fill/Kill: Main, Subs, Dashboard).
+deploy #2 (Fill/Kill: Main, Subs, Dashboard); as of 2026-10-19 it isn't deployed. Each step that
+runs a script or query has its command under **Commands** below.
 
 **Before the deploy**
 
@@ -96,7 +97,9 @@ put the code in place and recycle the app pool.
 
 **After the deploy**
 
-6. `04_after_deploy.sql`, then `09`: all `PASS`.
+6. `04_after_deploy.sql`, once the release is live (not before: the old release would let
+   `view-only` accounts edit). Then `09`: all `PASS`, except the History check if step 11's
+   query hasn't run.
 7. Everyone logs in once more: logins from before this release have no recorded login time.
 8. An admin opens Fill/Kill's Main page: no "The database needs an update" warning.
 9. In User Control, give the Fill/Kill roles: nursing Sub Approver, Materials Managers Materials
@@ -104,13 +107,52 @@ put the code in place and recycle the app pool.
 
 **When the team starts using it**
 
-10. `TRUNCATE TABLE [FillKill].[TestFillKillLine];` to remove the test lines.
-11. Decide on the subs and orders entered during UAT: keep them (the default), or run
-    `90_reset_workflow.sql`, edited to confirm.
+10. Remove the test lines: `TRUNCATE TABLE [FillKill].[TestFillKillLine];`
+11. Decide on the subs and orders entered during UAT:
+    - keep them (the default), and give any that lost its "created" History row one, so `09`'s
+      History check passes (today: the PBO sub MMO2329H → 2329RH); or
+    - empty them with `90_reset_workflow.sql`, edited to confirm.
+
+    Then `09`: all `PASS`.
 
 **Rollback:** just before putting the previous release back, run `rollback_deploy1.sql`.
 
+### Commands
+
+Before the deploy (steps 1 and 4):
+
 ```bash
-sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -i db/fillkill/14_pbo_sync.sql
+for s in 01_schema 02_user_module_role 03_unify_roles 10_kill_lines 11_item_qty_views \
+         12_workflow_tables 13_contract_search 14_pbo_sync 09_verify; do
+  sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i "db/fillkill/$s.sql" || break
+done
+flask fillkill check-db        # on the web server, with its .env
+```
+
+After the deploy (step 6):
+
+```bash
+sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i db/fillkill/04_after_deploy.sql
 sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -i db/fillkill/09_verify.sql
 ```
+
+When the team starts using it (steps 10 and 11):
+
+```sql
+TRUNCATE TABLE [FillKill].[TestFillKillLine];
+
+-- Keeping the UAT subs and orders: a "created" History row for each that has none, dated when it
+-- was made, by who made it. Adds nothing once every row has one.
+INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [actor], [acted_at])
+SELECT 'sub', s.[sub_id], s.[medline_item], 'created', s.[entered_by], s.[create_dt]
+FROM [FillKill].[Sub] AS s
+WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
+                  WHERE h.[entity] = 'sub' AND h.[entity_id] = s.[sub_id] AND h.[action] = 'created')
+UNION ALL
+SELECT 'order', o.[order_id], o.[medline_item], 'created', o.[ordered_by], o.[create_dt]
+FROM [FillKill].[SubOrder] AS o
+WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
+                  WHERE h.[entity] = 'order' AND h.[entity_id] = o.[order_id] AND h.[action] = 'created');
+```
+
+Then `09_verify.sql` once more.

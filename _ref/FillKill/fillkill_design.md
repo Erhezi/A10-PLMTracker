@@ -194,7 +194,8 @@ gather options from suppliers by email and phone, and nursing filters them. So:
 
 1. Nursing (Sub Approver) enters only the vendor part, with a note if they like; it's **approved on
    entry**, and **picked** if it's the Medline item's only approved sub. They can still Hold or
-   Reject it later. The Sub Approver's comments stay.
+   Reject it later. The Sub Approver's comments stay. When the pick is held or rejected and one
+   approved sub is left, that one becomes the pick (2026-10-19); a manual unpick picks nothing.
 2. The **Materials Manager** determines and fills in the vendor details (vendor, Infor's vendor ID,
    description, UOM, QOE), with the contract search if they like, then records the order; both can
    happen in the order form. An order needs a vendor and a UOM.

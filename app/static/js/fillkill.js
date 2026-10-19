@@ -967,7 +967,8 @@
     if (!select || !select.value) return;
     await act(subUrl(select.dataset.sub, 'status'), { status: select.value, expected_status: select.dataset.expected },
       (data) => `Status set to ${config.statusLabels[select.value]}.${data.sub.is_picked && select.value === 'approved'
-        ? ' Picked too: it is the only approved sub.' : ''}`);
+        ? ' Picked too: it is the only approved sub.' : ''}${data.picked_instead
+        ? ` ${data.picked_instead} is the pick now: the only approved sub left.` : ''}`);
   });
 
   // What happened to a new sub: approved on entry (and maybe picked), or waiting for review.

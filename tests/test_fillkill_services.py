@@ -133,6 +133,30 @@ def test_status_changes_and_leaving_approved_unpicks(ctx):
     ]
 
 
+def test_holding_or_rejecting_the_pick_picks_the_one_approved_sub_left(ctx):
+    first = approved_and_picked()
+    second = nurse_sub(vendor_part="B1")  # approved, not picked
+    held = services().set_status(first.sub_id, "hold", APPROVER)
+    assert (held.is_picked, held.picked_instead) == (False, "B1")
+    from app import db
+    from app.models.fillkill import Sub
+    assert db.session.get(Sub, second.sub_id).is_picked
+    assert history("sub", second.sub_id)[-1][0] == "pick"
+    # Rejecting that pick with none approved left: nothing is picked.
+    rejected = services().set_status(second.sub_id, "rejected", APPROVER)
+    assert (rejected.is_picked, rejected.picked_instead) == (False, None)
+    # Two approved left: the Sub Approver chooses.
+    a = services().set_status(first.sub_id, "approved", APPROVER)  # the only approved one: picked
+    b = nurse_sub(vendor_part="C1")
+    c = nurse_sub(vendor_part="D1")
+    assert a.is_picked and not b.is_picked and not c.is_picked
+    assert services().set_status(first.sub_id, "rejected", APPROVER).picked_instead is None
+    # A manual unpick doesn't move the pick.
+    services().pick(b.sub_id, APPROVER)
+    services().unpick(b.sub_id, APPROVER)
+    assert not db.session.get(Sub, c.sub_id).is_picked
+
+
 def test_a_stale_status_is_refused_and_names_who_changed_it(ctx):
     sub = new_sub()
     services().set_status(sub.sub_id, "rejected", OTHER_APPROVER)

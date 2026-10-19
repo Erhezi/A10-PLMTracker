@@ -312,7 +312,8 @@ def api_vendor():
 # --- actions --------------------------------------------------------------------------------
 
 def _sub_payload(sub):
-    return {"sub": queries.sub_dict(sub)}
+    # picked_instead: the sub that became the pick when this one stopped being approved.
+    return {"sub": queries.sub_dict(sub), "picked_instead": getattr(sub, "picked_instead", None)}
 
 
 @bp.post("/api/subs")

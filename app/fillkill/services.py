@@ -154,6 +154,23 @@ def _auto_pick(sub: Sub, actor: str, now: datetime) -> None:
                  comment="Picked automatically: the only approved sub.")
 
 
+def _pick_the_one_left(sub: Sub, actor: str, now: datetime) -> Sub | None:
+    """The pick was held or rejected: when one approved sub is left on the Medline item, it becomes
+    the pick (2026-10-19). With several left, the Sub Approver picks. Returns the one picked."""
+    left = db.session.execute(
+        select(Sub).where(Sub.medline_item == sub.medline_item, Sub.sub_id != sub.sub_id,
+                          Sub.status == "approved", Sub.deleted_at.is_(None))
+    ).scalars().all()
+    if len(left) != 1 or left[0].is_picked:
+        return None
+    other = left[0]
+    other.is_picked = True
+    other.update_dt = now
+    _history("sub", other.sub_id, other.medline_item, "pick", actor, now,
+             comment=f"Picked automatically: the only approved sub left after {sub.label()} was put on {rules.STATUS_LABELS[sub.status]}.")
+    return other
+
+
 def _apply_details(sub: Sub, data: dict, actor: str, now: datetime, *, required: bool) -> dict:
     """The Materials Manager's vendor details, each change in History."""
     changes = rules.check_sub_changes(sub, data, rules.SUB_DETAIL_FIELDS, required=required)
@@ -254,7 +271,8 @@ def delete_sub(sub_id: int, reason, actor: str, *, expected_status: str | None =
 # --- subs (Sub Approver) -------------------------------------------------------------
 
 def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str | None = None) -> Sub:
-    """S1, S2: leaving 'approved' unpicks the sub, recorded as its own History row."""
+    """S1, S2: leaving 'approved' unpicks the sub, recorded as its own History row; the one
+    approved sub left, if there's just one, becomes the pick. ``sub.picked_instead`` names it."""
     def action():
         sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
@@ -262,14 +280,19 @@ def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str
         now = now_ny_naive()
         _history("sub", sub.sub_id, sub.medline_item, "status", actor, now,
                  field="status", from_value=sub.status, to_value=status)
-        if sub.is_picked and status != "approved":
+        was_picked = bool(sub.is_picked)
+        if was_picked and status != "approved":
             sub.is_picked = False
             _history("sub", sub.sub_id, sub.medline_item, "unpick", actor, now,
                      comment="Unpicked automatically: no longer approved.")
         sub.status = status
         sub.update_dt = now
+        sub.picked_instead = None
         if status == "approved":
             _auto_pick(sub, actor, now)
+        elif was_picked:
+            other = _pick_the_one_left(sub, actor, now)
+            sub.picked_instead = other.label() if other else None
         return sub
 
     return _run(action)

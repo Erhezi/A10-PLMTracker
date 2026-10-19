@@ -31,7 +31,8 @@ COLUMNS = {
     ("FillKill", "History"): (("entity", "entity_id", "action", "comment"), "12_workflow_tables.sql"),
     ("FillKill", "vw_ContractLineSearch"): (("vendor_id", "vendor_name", "infor_item", "item_type", "is_mhs"),
                                              "13_contract_search.sql"),
-    ("FillKill", "vw_Vendor"): (("vendor_id", "vendor_name", "vendor_status"), "13_contract_search.sql"),
+    ("FillKill", "vw_Vendor"): (("vendor_id", "vendor_name", "legal_name", "search_name", "vendor_status"),
+                                 "13_contract_search.sql"),
     ("PLM", "UserModuleRole"): (("user_id", "module", "role"), "02_user_module_role.sql"),
 }
 

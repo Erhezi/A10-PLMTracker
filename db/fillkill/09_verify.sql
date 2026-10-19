@@ -203,8 +203,9 @@ UNION ALL
 SELECT 'view FillKill.vw_ContractLineSearch has is_mhs (13)',
        CASE WHEN COL_LENGTH(N'FillKill.vw_ContractLineSearch', N'is_mhs') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'view FillKill.vw_Vendor exists (13)',
-       CASE WHEN OBJECT_ID(N'[FillKill].[vw_Vendor]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+SELECT 'view FillKill.vw_Vendor has the legal and search names (13, 2026-10-19)',
+       CASE WHEN COL_LENGTH(N'FillKill.vw_Vendor', N'legal_name') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_Vendor', N'search_name') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 -- The version line near the top of 14; change both together.
 SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-15 version (14)',

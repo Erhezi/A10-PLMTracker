@@ -22,8 +22,8 @@ from .rules import RuleError
 log = logging.getLogger(__name__)
 
 VENDOR_LOOKUP_DOWN = (
-    "Vendor IDs can't be checked against Infor right now, so nothing was saved. "
-    "Leave Vendor ID empty to add the sub, or ask the Item Management admin."
+    "Infor's vendor list can't be read right now, so nothing was saved. "
+    "Try again later, or ask the Item Management admin."
 )
 
 
@@ -108,10 +108,22 @@ def find_vendor(vendor_id: str) -> dict | None:
         raise RuleError(VENDOR_LOOKUP_DOWN, 503) from None
 
 
+def search_vendors(q: str) -> list[dict]:
+    """Infor's vendors whose names match ``q`` (queries.search_vendors), or a message instead of a
+    server error when vw_Vendor can't be read."""
+    try:
+        return queries.search_vendors(q)
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("FillKill.vw_Vendor search failed; has 13_contract_search.sql been run?")
+        raise RuleError(VENDOR_LOOKUP_DOWN, 503) from None
+
+
 def _check_vendor_id(vendor_id: str | None) -> None:
-    """A vendor ID, when given, must be one Infor knows."""
-    if vendor_id and find_vendor(vendor_id) is None:
-        raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list. Fix it or leave it empty.")
+    """A vendor ID, when given, must be one Infor knows, or 000000 (Vendor not available in system)."""
+    if vendor_id and vendor_id != rules.NO_VENDOR_ID and find_vendor(vendor_id) is None:
+        raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list. Fix it, or use "
+                        f"{rules.NO_VENDOR_ID} ({rules.NO_VENDOR_LABEL}).")
 
 
 def _commit():
@@ -239,10 +251,12 @@ def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
 
 
 def set_details(sub_id: int, data: dict, actor: str) -> Sub:
-    """The Materials Manager fills in or corrects the vendor details, any time."""
+    """The Materials Manager fills in or corrects the vendor details, any time. Saved, they include
+    the vendor, its vendor ID (or 000000) and the UOM (2026-10-19)."""
     def action():
         sub = _live_sub(sub_id)
         _apply_details(sub, data, actor, now_ny_naive(), required=True)
+        rules.check_details_complete(sub)
         return sub
 
     return _run(action)

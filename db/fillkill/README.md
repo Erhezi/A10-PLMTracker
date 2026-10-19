@@ -34,7 +34,7 @@ The design is in `_ref/FillKill/fillkill_design.md`; the build plans are
 | `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines plus the test lines, with `Reason`, `Reason Date`, `Is Test`, `Test Purpose`), `vw_FillKillLastLoad` ("data as of"), and the test lines in `FillKill.TestFillKillLine`. | Any time; re-running reloads the test lines. |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (so the test site shows), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
 | `12_workflow_tables.sql` | `Sub`, `SubOrder`, `History`, and the steps that bring older ones up to date (listed at its top). | Whenever it changes, before running that code. |
-| `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`) and `vw_Vendor` (Infor's vendors). | Whenever it changes, before running that code. |
+| `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`) and `vw_Vendor` (Infor's vendors, with their legal and search names). | Whenever it changes, before running that code. |
 | `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes. Its version line is what `09` and the app check. |
 | `90_reset_workflow.sql` | Empties `Sub`, `SubOrder` and `History`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
 | `rollback_deploy1.sql` | Sets `users.user_role` back to `admin` / `user` / `view-only` from each person's PLM role, which is all the previous release reads. | Only just before putting the previous release back. Leave the new tables and columns in place. |
@@ -56,15 +56,18 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 
 ## On O2 now (checked 2026-10-19, read-only)
 
-- `01`-`03`, `10`-`13`: run and current.
+- `01`-`03`, `10`-`12`: run and current.
 - `04`: not yet (deploy #1 isn't live).
+- **`13`: re-run it.** Its `vw_Vendor` now has Infor's legal and search names (2026-10-19), for
+  finding a vendor ID by name; O2's has neither yet.
 - **`14`: O2 has an older `usp_SyncPboSubs`. Re-run `14`.**
 - `09`'s "every sub and order has a created History row" says `FAIL` for one sub: the Medline PBO
   sub MMO2329H → 2329RH from 10/14. History was emptied after it was added (its ids restart on
   10/19), so its row went with it. That's test data: step 11 of the checklist fixes it, whether
   the UAT subs are kept or reset.
-- `PLMPreprocessorShared.infor.CONTRACTLINE` is empty, so the contract search finds nothing. That
-  table is loaded upstream; PLM's contract item search reads it too.
+- `PLMPreprocessorShared.infor.CONTRACTLINE` was empty earlier on 10/19 and is loaded again
+  (631,677 lines that afternoon). It is loaded upstream; when it's empty, the contract search, and
+  PLM's contract item search, find nothing.
 
 ## Go-live checklist
 

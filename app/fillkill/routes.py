@@ -18,7 +18,7 @@ from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import SUB_SOURCES, SUB_STATUSES
-from .rules import STATUS_LABELS, RuleError
+from .rules import NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
@@ -123,6 +123,8 @@ def index():
         # Lists, not objects: the JSON encoder sorts object keys, and these orders matter.
         "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
         "needs": [[key, rollup.NEEDS_LABELS[key]] for key in rollup.NEEDS],
+        # The vendor ID that says Infor has no such vendor (2026-10-19).
+        "noVendor": {"id": NO_VENDOR_ID, "label": NO_VENDOR_LABEL},
         "api": {
             "main": url_for("fillkill.api_main"),
             "item": url_for("fillkill.api_item"),
@@ -130,6 +132,7 @@ def index():
             "orders": url_for("fillkill.api_orders"),
             "contractLines": url_for("fillkill.api_contract_lines"),
             "vendor": url_for("fillkill.api_vendor"),
+            "vendors": url_for("fillkill.api_vendors"),
             "addSub": url_for("fillkill.api_add_sub"),
             "subAction": url_for("fillkill.api_sub_action", sub_id=0, action="ACTION"),
             "recordOrder": url_for("fillkill.api_record_order"),
@@ -166,6 +169,8 @@ def subs_page():
         "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
         "sources": [[code, SOURCE_LABELS.get(code, code)] for code in SUB_SOURCES],
         "limit": queries.LIBRARY_LIMIT,
+        # The vendor ID that says Infor has no such vendor (2026-10-19).
+        "noVendor": {"id": NO_VENDOR_ID, "label": NO_VENDOR_LABEL},
         "api": {"subs": url_for("fillkill.api_subs"), "export": url_for("fillkill.export_subs")},
         "mainPage": url_for("fillkill.index"),
     }
@@ -310,24 +315,40 @@ def api_dashboard():
     return ok(dashboard.build(scope_from_request(DASHBOARD_DAYS)))
 
 
+# The vendor details' lookups: theirs who fill the details in (Materials Managers, Sub Finders).
+
 @bp.get("/api/contract-lines")
 @login_required
-@require_module(FILLKILL, "add_sub")
+@require_module(FILLKILL, "details")
 def api_contract_lines():
+    """Contract lines for the vendor details; ``more`` when there are more than shown."""
     q = (request.args.get("q") or "").strip()
     if len(q.replace(" ", "")) < 3:
         return ok({"lines": [], "message": "Type at least 3 characters."})
-    return ok({"lines": queries.contract_lines(q)})
+    lines = queries.contract_lines(q, limit=queries.CONTRACT_LIMIT + 1)
+    return ok({"lines": lines[:queries.CONTRACT_LIMIT], "more": len(lines) > queries.CONTRACT_LIMIT})
 
 
 @bp.get("/api/vendor")
 @login_required
-@require_module(FILLKILL, "add_sub")
+@require_module(FILLKILL, "details")
 def api_vendor():
-    """Infor's vendor for an ID, so the add-sub form can check it and fill in the name."""
+    """Infor's vendor for an ID, so the vendor details can check it and fill in the name."""
     vendor_id = (request.args.get("id") or "").strip()
-    found = services.find_vendor(vendor_id) if vendor_id.isdigit() else None
+    found = services.find_vendor(vendor_id) if vendor_id.isdigit() and vendor_id != NO_VENDOR_ID else None
     return ok({"vendor": found})
+
+
+@bp.get("/api/vendors")
+@login_required
+@require_module(FILLKILL, "details")
+def api_vendors():
+    """Infor's vendors matching a typed name (2026-10-19), to find the vendor ID."""
+    q = (request.args.get("q") or "").strip()
+    if len(q.replace(" ", "").replace("*", "")) < 2:
+        return ok({"vendors": [], "more": False})
+    found = services.search_vendors(q)
+    return ok({"vendors": found, "more": len(found) >= queries.VENDOR_LIMIT})
 
 
 # --- actions --------------------------------------------------------------------------------

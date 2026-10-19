@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from conftest import CARDINAL, OWENS, add_view_rows, csrf_from, login, make_user
+from conftest import CARDINAL, MEDLINE, OWENS, add_view_rows, csrf_from, login, make_user
 
 WP, TEST = "0001795146", "test site"
 
@@ -186,7 +186,7 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
 
     # The Materials Manager fills in the vendor details with the order.
     status, data = post(finder_manager, "/fillkill/api/orders", {"sub_id": sub_id, "quantity": 30})
-    assert status == 400 and "Vendor and UOM are required" in data["message"]
+    assert status == 400 and "Vendor, Vendor ID (or 000000: Vendor not available in system) and UOM are required" in data["message"]
     status, data = post(finder_manager, "/fillkill/api/orders", {
         "sub_id": sub_id, "quantity": 30, "ordered_dt": "2026-09-29T15:00", "expected_status": "approved",
         "vendor": "Cardinal Health", "vendor_id": CARDINAL, "description": "Denture cup", "uom": "bx", "qoe": "100",
@@ -243,7 +243,7 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
     ("finder_approver", "/fillkill/api/subs/{sub}/comments", {"comment": "hi"}, True),
     ("finder_approver", "/fillkill/api/subs/{sub}/edit", {"vendor_part": "OM2"}, True),
     ("viewer", "/fillkill/api/subs/{sub}/details", {"vendor": "Owens"}, False),
-    ("finder_manager", "/fillkill/api/subs/{sub}/details", {"vendor": "Owens & Minor"}, True),
+    ("finder_manager", "/fillkill/api/subs/{sub}/details", {"vendor": "Owens & Minor", "vendor_id": OWENS, "uom": "CS"}, True),
     ("finder_approver", "/fillkill/api/orders", {"sub_id": "{sub}", "quantity": 1, "uom": "EA"}, False),
     ("viewer", "/fillkill/api/subs/{sub}/pick", {}, False),
     ("viewer", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, False),
@@ -291,8 +291,16 @@ def test_actions_need_the_csrf_token(app, finder_approver):
 
 # --- contract search ------------------------------------------------------------------------
 
-def test_contract_search_for_sub_finders(app, viewer, finder_approver):
+def test_contract_search_for_whoever_fills_in_the_vendor_details(app, viewer, finder_approver):
     assert get(viewer, "/fillkill/api/contract-lines", q="88885")[0] == 403
+    # The vendor details are the Materials Manager's and the Sub Finder's (2026-10-15): theirs
+    # are the lookups, not nursing's (2026-10-19).
+    manager = client(app, "mm4@example.org", plm=None, fillkill=("materials_manager",))
+    nurse = client(app, "nurse4@example.org", plm=None, fillkill=("sub_approver",))
+    for path, params in (("/fillkill/api/contract-lines", {"q": "88885"}), ("/fillkill/api/vendor", {"id": CARDINAL}),
+                         ("/fillkill/api/vendors", {"q": "cardinal"})):
+        assert get(manager, path, **params)[0] == 200, path
+        assert get(nurse, path, **params)[0] == 403, path
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="88")
     assert data["lines"] == [] and "at least 3" in data["message"]
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="888-85")
@@ -307,6 +315,51 @@ def test_contract_search_for_sub_finders(app, viewer, finder_approver):
     assert [r["vendor_item"] for r in data["lines"]] == ["88885"]
     _, data = get(finder_approver, "/fillkill/api/contract-lines", q="glove 7.5%")
     assert data["lines"] == []
+    assert data["more"] is False
+
+
+def test_contract_search_by_several_words_and_by_infor_item(app, finder_approver):
+    lines = lambda q: [(r["vendor_name"], r["vendor_item"]) for r in get(finder_approver, "/fillkill/api/contract-lines", q=q)[1]["lines"]]
+    # Every word somewhere in the line: its part number, description or vendor (2026-10-19).
+    assert lines("88885 nitrile") == lines("NITRILE 888-85") == lines("cardinal 88885") == [("CARDINAL HEALTH", "88885")]
+    assert lines("88885 owens") == []
+    assert lines("DYNJ AA04") == [("MEDLINE INDUSTRIES INC", "DYNJAA04")]  # read as one part number
+    # The Infor item number finds its lines.
+    assert lines("200001") == [("CARDINAL HEALTH", "88885")]
+
+
+def test_vendor_search_finds_the_vendor_id_from_a_name(app, viewer, finder_approver):
+    assert get(viewer, "/fillkill/api/vendors", q="cardinal")[0] == 403
+    found = lambda q: [v["vendor_id"] for v in get(finder_approver, "/fillkill/api/vendors", q=q)[1]["vendors"]]
+    assert found("c") == []  # two characters at least
+    assert found("cardinal") == found("CARD HEALTH") == [CARDINAL]
+    # Infor's legal name and search name count too, and * stands for anything inside a word.
+    assert found("distribution") == found("owens and") == [OWENS]
+    assert found("card*prod") == [CARDINAL]
+    # A number also finds vendor IDs starting with it; active vendors first.
+    assert found("1000") == [CARDINAL, MEDLINE, OWENS, "1000099"]
+    [old] = get(finder_approver, "/fillkill/api/vendors", q="old supply")[1]["vendors"]
+    assert (old["vendor_name"], old["legal_name"], old["vendor_status"]) == ("OLD SUPPLY CO", "OLD SUPPLY COMPANY", "Inactive")
+
+
+def test_vendor_details_without_infor_vendor_use_000000(app, viewer, finder_approver, finder_manager):
+    # Nursing's pick with a vendor and UOM but no vendor ID still needs details.
+    _, data = post(finder_approver, "/fillkill/api/subs",
+                   {"medline_item": "DYND70294BH", "vendor_part": "LS-1", "vendor": "Local Supply", "uom": "EA"})
+    sub_id = data["sub"]["sub_id"]
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
+    assert row["needs"] == ["needs_details", "needs_order"]
+    assert [s["vendor_part"] for s in get(viewer, "/fillkill/api/subs", needs_details="1")[1]["subs"]] == ["LS-1"]
+    # Infor has no such vendor: 000000 says so, on purpose; Infor isn't asked about it.
+    assert get(finder_approver, "/fillkill/api/vendor", id="000000")[1]["vendor"] is None
+    status, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor_id": "000000"})
+    assert (status, data["sub"]["vendor_id"]) == (200, "000000"), data
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
+    assert row["needs"] == ["needs_order"]
+    page = viewer.get("/fillkill/").get_data(as_text=True)
+    assert '"noVendor": {"id": "000000", "label": "Vendor not available in system"}' in page
 
 
 def test_without_the_vendor_view_a_vendor_id_is_refused_with_a_message_not_a_server_error(app, finder_approver):
@@ -316,10 +369,12 @@ def test_without_the_vendor_view_a_vendor_id_is_refused_with_a_message_not_a_ser
         with db.engine.begin() as conn:
             conn.exec_driver_sql('DROP TABLE "FillKill"."vw_Vendor"')
     status, data = get(finder_approver, "/fillkill/api/vendor", id=CARDINAL)
-    assert status == 503 and "can't be checked" in data["message"]
+    assert status == 503 and "can't be read right now" in data["message"]
+    status, data = get(finder_approver, "/fillkill/api/vendors", q="cardinal")
+    assert status == 503 and "can't be read right now" in data["message"]
     status, data = post(finder_approver, "/fillkill/api/subs",
                         {"medline_item": "MDS2585H", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "vendor_part": "88885"})
-    assert status == 503 and "Leave Vendor ID empty" in data["message"]
+    assert status == 503 and "Try again later" in data["message"]
     # Without a vendor ID the sub is added as usual.
     status, data = post(finder_approver, "/fillkill/api/subs",
                         {"medline_item": "MDS2585H", "vendor": "CARDINAL HEALTH", "vendor_part": "88885"})
@@ -405,7 +460,9 @@ def test_nursing_and_the_materials_manager_each_do_their_part(app):
     status, data = post(nurse, f"/fillkill/api/subs/{sub_id}/details", {"vendor": "Owens"})
     assert status == 403 and "vendor details" in data["message"]
     status, data = post(manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor": "Owens", "uom": "bx"})
-    assert (status, data["sub"]["vendor"], data["sub"]["uom"]) == (200, "Owens", "BX")
+    assert status == 400 and "Vendor ID (or 000000" in data["message"]  # 2026-10-19
+    status, data = post(manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor": "Owens", "vendor_id": OWENS, "uom": "bx"})
+    assert (status, data["sub"]["vendor"], data["sub"]["vendor_id"], data["sub"]["uom"]) == (200, "Owens", OWENS, "BX")
     assert post(manager, f"/fillkill/api/subs/{sub_id}/edit", {"vendor_part": "OM-1"})[0] == 403
     status, data = post(nurse, f"/fillkill/api/subs/{sub_id}/edit", {"vendor_part": "OM-1"})
     assert (status, data["sub"]["vendor_part"]) == (200, "OM-1")
@@ -447,7 +504,8 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     _, data = post(finder_approver, "/fillkill/api/subs",
                    {"medline_item": "DYND70294BH", "vendor_part": "88885", "comment": "=SUM(A1)"})
     post(finder_manager, "/fillkill/api/orders", {"sub_id": data["sub"]["sub_id"], "quantity": 2,
-                                                  "ordered_dt": "2026-09-29T10:00", "vendor": "Cardinal", "uom": "BX"})
+                                                  "ordered_dt": "2026-09-29T10:00", "vendor": "Cardinal",
+                                                  "vendor_id": CARDINAL, "uom": "BX"})
     post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor_part": "OM1"})
     _, data = post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "vendor_part": "GONE"})
     post(finder_manager, f"/fillkill/api/subs/{data['sub']['sub_id']}/delete", {"reason": "duplicate"})

@@ -1,9 +1,10 @@
-/* Main: the forms in the modal: vendor details (with the contract search and the vendor ID check),
- * record, correct and void an order, correct a sub's vendor part, delete a sub.
+/* Main: the forms in the modal: vendor details (with the contract search, the vendor search by
+ * name and the vendor ID check), record, correct and void an order, correct a sub's vendor part,
+ * delete a sub.
  */
 
 import {
-  $, alertBox, debounce, esc, fmtNumber, getJSON, needsDetails, postJSON, subText,
+  $, NO_VENDOR, alertBox, debounce, esc, fmtNumber, getJSON, needsDetails, postJSON, subText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
@@ -82,7 +83,12 @@ const searchContracts = debounce(async (q) => {
     if (!$('fk-contract-q') || $('fk-contract-q').value !== q) return;
     if (!data.lines.length) { box.innerHTML = '<span class="text-muted">No active contract line found; fill in the details below.</span>'; return; }
     state.contractLines = data.lines;
-    box.innerHTML = `<div class="list-group">${data.lines.map((line, i) => {
+    // A short scrolling list (about 3-4 lines show); more words narrow it down.
+    const count = data.more
+      ? `The first ${data.lines.length} lines: add a word to narrow them down, e.g. a description word.`
+      : `${data.lines.length} line${data.lines.length === 1 ? '' : 's'}`;
+    box.innerHTML = `<div class="text-muted mb-1">${count}</div>
+      <div class="list-group fk-pick-list fk-contract-list">${data.lines.map((line, i) => {
       const facts = [
         line.infor_item ? `Infor item ${esc(line.infor_item)}` : 'No Infor item',
         `${esc(line.uom)}${line.qoe ? ` × ${fmtNumber(line.qoe)}` : ''}`,
@@ -116,19 +122,71 @@ function fillFromContract(line) {
   vendorNote($('fk-m-vendor_id'), '');
   $('fk-m-vendor').value = line.vendor_name || '';
   $('fk-m-vendor').dataset.autofilled = '1';
+  $('fk-vendor-results').innerHTML = '';
   $('fk-m-description').value = line.description || '';
   $('fk-m-uom').value = line.uom || '';
   $('fk-m-qoe').value = plainNumber(line.qoe);
 }
 
-// --- the vendor ID check ---------------------------------------------------------------------
+// --- the vendor: by name, and its ID ---------------------------------------------------------
 
-// An optional vendor ID box (data-vendor-name names its vendor name box) is checked against
-// Infor as it's typed. Infor's name goes into the name box when that is empty or was filled in
-// for them (from a contract line or an earlier ID); a name they typed stays.
+// The vendor ID is needed (2026-10-19): Infor's, or 000000 when Infor has no such vendor. Typing
+// the vendor's name lists Infor's vendors it matches (their names, legal names and search names);
+// choosing one fills in its ID and Infor's name. A typed ID is checked against Infor, and Infor's
+// name goes into the name box when that is empty or was filled in for them (from a contract line,
+// the list or an earlier ID); a name they typed stays.
 function vendorInput(target) {
-  if (target.dataset.vendorName) lookupVendor(target);
-  else if (target.name === 'vendor') delete target.dataset.autofilled;
+  if (target.dataset.vendorName) {
+    lookupVendor(target);
+  } else if (target.name === 'vendor') {
+    delete target.dataset.autofilled;
+    searchVendors(target.value.trim());
+  }
+}
+
+const searchVendors = debounce(async (q) => {
+  const box = $('fk-vendor-results');
+  if (!box) return;
+  if (q.replace(/[\s*]/g, '').length < 2) { box.innerHTML = ''; return; }
+  try {
+    const data = await getJSON(api.vendors, { q });
+    if (!$('fk-m-vendor') || $('fk-m-vendor').value.trim() !== q) return;  // typed on meanwhile
+    state.vendorResults = data.vendors;
+    const none = `<div class="text-muted">No Infor vendor has "${esc(q)}" in its name. Try part of it,
+      or use ${esc(NO_VENDOR.id)} if Infor doesn't have the vendor.</div>`;
+    box.innerHTML = data.vendors.length ? `
+      <div class="text-muted mb-1">Infor's vendors${data.more ? ` (the first ${data.vendors.length}: type more of the name)` : ''}:</div>
+      <div class="list-group fk-pick-list fk-vendor-list">${data.vendors.map((v, i) => {
+        // Infor's other names for it, when they differ: what may have matched.
+        const others = [...new Set([v.legal_name, v.search_name])].filter((name) => name && name !== v.vendor_name);
+        return `
+        <button type="button" class="list-group-item list-group-item-action py-1" data-vendor-pick="${i}">
+          <div class="text-truncate"><span class="fw-semibold">${esc(v.vendor_id)}</span> · ${esc(v.vendor_name)}
+            ${v.vendor_status && v.vendor_status !== 'Active' ? `<span class="badge text-bg-secondary ms-1">${esc(v.vendor_status)}</span>` : ''}</div>
+          ${others.length ? `<div class="text-muted text-truncate" title="${esc(others.join('\n'))}">${esc(others.join(' · '))}</div>` : ''}
+        </button>`;
+      }).join('')}</div>` : none;
+  } catch (error) {
+    box.innerHTML = alertBox(error.message);
+  }
+}, 300);
+
+function pickVendor(vendor) {
+  const idBox = $('fk-m-vendor_id');
+  idBox.value = vendor.vendor_id;
+  vendorNote(idBox, `Infor: ${vendor.vendor_name}${vendor.vendor_status && vendor.vendor_status !== 'Active' ? ` (${vendor.vendor_status})` : ''}`);
+  $('fk-m-vendor').value = vendor.vendor_name || '';
+  $('fk-m-vendor').dataset.autofilled = '1';
+  $('fk-vendor-results').innerHTML = '';
+}
+
+// Infor has no such vendor: said on purpose, with 000000; the name they typed stays.
+function noInforVendor() {
+  const idBox = $('fk-m-vendor_id');
+  idBox.value = NO_VENDOR.id;
+  vendorNote(idBox, NO_VENDOR.label);
+  $('fk-vendor-results').innerHTML = '';
+  $('fk-m-vendor').focus();
 }
 
 function vendorNote(input, text, problem) {
@@ -145,6 +203,7 @@ const lookupVendor = debounce(async (input) => {
   const id = input.value.trim();
   if (!id) { vendorNote(input, ''); return; }
   if (!/^\d+$/.test(id)) { vendorNote(input, "Infor's vendor ID is digits only", true); return; }
+  if (id === NO_VENDOR.id) { vendorNote(input, NO_VENDOR.label); return; }
   try {
     const data = await getJSON(api.vendor, { id });
     if (input.value.trim() !== id) return;  // typed on meanwhile
@@ -168,15 +227,20 @@ function detailFields(sub) {
   return `
     <div class="col-12"><label class="form-label small mb-0" for="fk-contract-q">Search Infor's active contracts to fill these in</label>
       <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
-             placeholder="Vendor item, manufacturer number, or description words" value="${esc(sub.vendor_part)}"
-             data-part="${esc(sub.vendor_part)}">
+             placeholder="Vendor item, manufacturer number, Infor item, or words, e.g. 930103 chloraprep"
+             value="${esc(sub.vendor_part)}" data-part="${esc(sub.vendor_part)}">
       <div id="fk-contract-results" class="small mt-1"></div>
       <div id="fk-contract-note" class="small text-warning-emphasis mt-1"></div></div>
-    <div class="col-4"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID</label>
+    <div class="col-7"><label class="form-label small mb-0" for="fk-m-vendor">Vendor *</label>
+      <input class="form-control form-control-sm" id="fk-m-vendor" name="vendor" value="${esc(sub.vendor || '')}"
+             maxlength="255" required autocomplete="off" placeholder="Type the name to find Infor's vendor ID"></div>
+    <div class="col-5"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID *</label>
       <input class="form-control form-control-sm" id="fk-m-vendor_id" name="vendor_id" value="${esc(sub.vendor_id || '')}"
-             maxlength="20" inputmode="numeric" placeholder="Optional" data-vendor-name="fk-m-vendor">
-      <div class="form-text small mt-0" id="fk-m-vendor_id-note"></div></div>
-    ${field('vendor', 'Vendor *', sub.vendor, 'maxlength="255" required', 8)}
+             maxlength="20" inputmode="numeric" required placeholder="Infor's" data-vendor-name="fk-m-vendor">
+      <div class="form-text small mt-0" id="fk-m-vendor_id-note">${sub.vendor_id === NO_VENDOR.id ? esc(NO_VENDOR.label) : ''}</div>
+      <button type="button" class="btn btn-link btn-sm p-0 text-nowrap" data-no-vendor
+              title="${esc(NO_VENDOR.label)}">Not in Infor? Use ${esc(NO_VENDOR.id)}</button></div>
+    <div class="col-12"><div id="fk-vendor-results" class="small"></div></div>
     ${field('description', 'Description', sub.description, 'maxlength="255"', 12)}
     ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 4)}
     ${field('qoe', 'QOE', plainNumber(sub.qoe), 'inputmode="decimal"', 4)}`;
@@ -271,6 +335,9 @@ export function setupForms() {
   modalForm.addEventListener('click', (event) => {
     const contract = event.target.closest('[data-contract]');
     if (contract) fillFromContract(state.contractLines[Number(contract.dataset.contract)]);
+    const vendor = event.target.closest('[data-vendor-pick]');
+    if (vendor) pickVendor(state.vendorResults[Number(vendor.dataset.vendorPick)]);
+    if (event.target.closest('[data-no-vendor]')) noInforVendor();
   });
 
   modalForm.addEventListener('submit', async (event) => {

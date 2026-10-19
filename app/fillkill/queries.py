@@ -434,10 +434,10 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
                  needs_details: bool = False, deleted: bool = False, limit: int | None = LIBRARY_LIMIT) -> list[dict]:
     """Every sub across all items (the Subs page), newest change first, with its Infor item, who
     approved it, and its orders. ``deleted`` shows the deleted ones instead (who, when, why);
-    ``needs_details`` keeps those still without a vendor or UOM; ``limit`` None means all."""
+    ``needs_details`` keeps those still without a vendor, vendor ID or UOM; ``limit`` None means all."""
     query = select(Sub).where(Sub.deleted_at.is_not(None) if deleted else Sub.deleted_at.is_(None))
     if needs_details:
-        query = query.where(or_(Sub.vendor.is_(None), Sub.uom.is_(None)))
+        query = query.where(or_(Sub.vendor.is_(None), Sub.vendor_id.is_(None), Sub.uom.is_(None)))
     if status:
         query = query.where(Sub.status == status)
     if source:
@@ -510,33 +510,59 @@ def _contract_rows(where: str, params: dict) -> list[dict]:
     return rows
 
 
-def contract_lines(q: str, limit: int = CONTRACT_LIMIT) -> list[dict]:
-    """Active contract lines for "Add sub" (13_contract_search.sql).
+def _contract_key(row: dict) -> tuple:
+    return (row["vendor_id"], row["vendor_item"], row["uom"], row["qoe"])
 
-    First by part number: the search without spaces or dashes, inside the stripped vendor item or
-    manufacturer number (exact vendor item first). If that finds fewer than ``limit`` and a word has
-    no digits, then by description: every word must appear. Two simple searches are much faster
-    than one with OR. Parameters are cast to VARCHAR: as NVARCHAR, SQL Server would convert every
-    row's VARCHAR column before comparing (about 1 s instead of 0.2 s on 632k lines).
+
+def contract_lines(q: str, limit: int = CONTRACT_LIMIT) -> list[dict]:
+    """Active contract lines for the vendor details (13_contract_search.sql), at most ``limit``.
+
+    Several words, e.g. "930103 chloraprep" (2026-10-19): every word must be in the line's vendor
+    item or manufacturer number (without dashes), its Infor item number, its description or its
+    vendor's name. Descriptions often run words together ("APPLICATORCHLORAPREP10.5ML"), so a word
+    matches anywhere in them. If no line has them all, the words are read as one part number.
+
+    One word: by part number, the word without dashes inside the stripped vendor item or
+    manufacturer number, or the Infor item number (exact vendor item first); and if that finds fewer
+    than ``limit`` and the word has no digits, by description.
+
+    Parameters are cast to VARCHAR: as NVARCHAR, SQL Server would convert every row's VARCHAR
+    column before comparing (about 1 s instead of 0.2 s on 632k lines). Measured 2026-10-19 on
+    632k lines: one word 0.2-0.3 s, two words 0.4 s.
     """
     words = _search_terms(q)
     if not words:
         return []
     raw = " ".join(words)
+    like = "CAST(:{} AS VARCHAR(120))"
+    if len(words) > 1:
+        params = {"raw": raw}
+        where = []
+        for i, word in enumerate(words):
+            params[f"p{i}"] = f"%{word.replace('-', '').upper()}%"
+            params[f"w{i}"] = f"%{word.upper()}%"
+            params[f"i{i}"] = word
+            p, w = like.format(f"p{i}"), like.format(f"w{i}")
+            where.append(f"([vendor_item_stripped] LIKE {p} OR [manufacturer_number_stripped] LIKE {p}"
+                         f" OR UPPER([description]) LIKE {w} OR UPPER([vendor_name]) LIKE {w}"
+                         f" OR [infor_item] = {like.format(f'i{i}')})")
+        found = _contract_rows(" AND ".join(where), params)[:limit]
+        if found:
+            return found
     compact = "".join(words).replace("-", "").upper()
-    like = "CAST(:like AS VARCHAR(120))"
+    part = like.format("like")
     found = _contract_rows(
-        f"[vendor_item_stripped] LIKE {like} OR [manufacturer_number_stripped] LIKE {like}",
+        f"[vendor_item_stripped] LIKE {part} OR [manufacturer_number_stripped] LIKE {part}"
+        f" OR [infor_item] = {like.format('raw')}",
         {"raw": raw, "like": f"%{compact}%"},
     )[:limit]
-    if len(found) < limit and any(not any(ch.isdigit() for ch in word) for word in words):
-        params = {"raw": raw, **{f"w{i}": f"%{word.upper()}%" for i, word in enumerate(words)}}
-        where = " AND ".join(f"UPPER([description]) LIKE CAST(:w{i} AS VARCHAR(120))" for i in range(len(words)))
-        seen = {(r["vendor_id"], r["vendor_item"], r["uom"], r["qoe"]) for r in found}
-        for row in _contract_rows(where, params):
+    if len(found) < limit and len(words) == 1 and not any(ch.isdigit() for ch in words[0]):
+        seen = {_contract_key(r) for r in found}
+        for row in _contract_rows(f"UPPER([description]) LIKE {like.format('w')}",
+                                  {"raw": raw, "w": f"%{words[0].upper()}%"}):
             if len(found) >= limit:
                 break
-            if (row["vendor_id"], row["vendor_item"], row["uom"], row["qoe"]) not in seen:
+            if _contract_key(row) not in seen:
                 found.append(row)
     return found
 
@@ -550,6 +576,40 @@ def vendor(vendor_id: str) -> dict | None:
         {"id": vendor_id},
     )
     return rows[0] if rows else None
+
+
+VENDOR_LIMIT = 20
+
+
+def search_vendors(q: str, limit: int = VENDOR_LIMIT) -> list[dict]:
+    """Infor's vendors for a name typed in the vendor details (2026-10-19), at most ``limit``:
+    every word must be in the vendor's name, legal name or search name (``*`` inside a word
+    stands for anything, e.g. "card*med"); digits alone also find the vendor IDs starting with
+    them. Active vendors first, then names starting with the first word."""
+    words = [word.upper() for word in _search_terms(q)]
+    words = [word for word in words if word.strip("*")]
+    if not words:
+        return []
+    like = "CAST(:{} AS VARCHAR(255))"
+    params = {"first": words[0].replace("*", "%") + "%"}
+    where = []
+    for i, word in enumerate(words):
+        params[f"w{i}"] = f"%{word.replace('*', '%')}%"
+        w = like.format(f"w{i}")
+        where.append(f"(UPPER(vendor_name) LIKE {w} OR UPPER(legal_name) LIKE {w} OR UPPER(search_name) LIKE {w})")
+    condition = " AND ".join(where)
+    if len(words) == 1 and words[0].isdigit():
+        params["id"] = words[0] + "%"
+        condition = f"({condition}) OR vendor_id LIKE {like.format('id')}"
+    top, tail = (f"TOP ({int(limit)}) ", "") if _is_mssql() else ("", f" LIMIT {int(limit)}")
+    return _rows(
+        f"""SELECT {top}vendor_id, vendor_name, legal_name, search_name, vendor_status FROM {VENDORS}
+            WHERE {condition}
+            ORDER BY CASE WHEN vendor_status = 'Active' THEN 0 ELSE 1 END,
+                     CASE WHEN UPPER(vendor_name) LIKE {like.format('first')} THEN 0 ELSE 1 END,
+                     vendor_name, vendor_id{tail}""",
+        params,
+    )
 
 
 def item_exists(medline_item: str) -> bool:

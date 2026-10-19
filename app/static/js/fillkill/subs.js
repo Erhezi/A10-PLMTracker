@@ -4,7 +4,8 @@
  */
 
 import {
-  $, config, debounce, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, itemLink, statusBadge, url,
+  $, NO_VENDOR, config, debounce, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, itemLink, needsDetails, statusBadge,
+  url,
 } from './common.js';
 
 const sourceLabels = Object.fromEntries(config.sources);
@@ -43,8 +44,10 @@ function render(subs, limit, deleted) {
     : `${subs.length} sub${subs.length === 1 ? '' : 's'}${deleted ? ' deleted' : ''}`;
   if (!subs.length) { message('<span class="text-muted">No subs match.</span>'); return; }
   $('fk-subs-rows').innerHTML = subs.map((s) => {
-    const vendor = s.vendor ? esc(s.vendor)
-      : '<span class="badge text-bg-warning" title="The Materials Manager fills in the vendor details">Vendor details needed</span>';
+    const needed = needsDetails(s) ? ` <span class="badge text-bg-warning"
+      title="The Materials Manager fills in the vendor, its vendor ID and the UOM">Vendor details needed</span>` : '';
+    const vendorId = s.vendor_id === NO_VENDOR.id ? `${esc(s.vendor_id)} · not in Infor` : esc(s.vendor_id);
+    const vendor = `${esc(s.vendor || '')}${needed}`;
     const unit = s.uom ? `<div class="text-muted">${esc(s.uom)}${s.qoe ? ` · QOE ${fmtNumber(s.qoe)}` : ''}</div>` : '';
     const removed = deleted
       ? `<div class="small text-danger">Deleted by ${esc(s.deleted_by)} ${fmtDateTime(s.deleted_at)}: ${esc(s.delete_reason)}</div>` : '';
@@ -53,7 +56,7 @@ function render(subs, limit, deleted) {
       <td><a href="${esc(itemLink(s.medline_item))}" title="Open the item on Main">${esc(s.medline_item)}</a>
         ${s.infor_item ? `<div class="small text-muted">${esc(s.infor_item)}</div>` : ''}</td>
       <td class="fw-semibold">${esc(s.vendor_part)}</td>
-      <td>${vendor}${s.vendor_id ? `<div class="small text-muted">${esc(s.vendor_id)}</div>` : ''}</td>
+      <td>${vendor}${s.vendor_id ? `<div class="small text-muted">${vendorId}</div>` : ''}</td>
       <td class="small">${esc(s.description || '')}${unit}</td>
       <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}${removed}</td>
       <td class="small text-nowrap">${s.orders ? `${s.orders} · last ${fmtDate(s.last_ordered)}` : '<span class="text-muted">—</span>'}</td>

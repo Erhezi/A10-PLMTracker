@@ -136,6 +136,42 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
              "vendor_item_stripped": "88885CS", "description": "GLOVE EXAM NITRILE MEDIUM CASE", "uom": "CS", "qoe": 1000,
              "infor_item": "200002", "contract": "C-OTHER-3", "contract_name": "Sample other contract", "base_cost": 70,
              "is_mhs": "No"},
+            # ChloraPrep lines as O2 has them (descriptions often run words together): more than
+            # the list shows at once, and "930103 chloraprep" finds one.
+            *[{"vendor_id": vid, "vendor_name": vname, "vendor_item": part, "vendor_item_stripped": part.replace("-", ""),
+               "manufacturer_number": None, "manufacturer_number_stripped": None, "description": desc, "uom": uom,
+               "qoe": qoe, "infor_item": infor, "item_type": "Itemmast" if infor else "Special",
+               "contract": "C-CHG", "contract_name": "Sample prep contract", "base_cost": 1, "is_mhs": mhs}
+              for vid, vname, part, desc, uom, qoe, infor, mhs in [
+                  ("1000931", "MEDLINE INDUSTRIES INC", "B-D930700", "APPLICATORCHLORAPREP10.5ML", "CA", 100, "108304", "Yes"),
+                  ("1000931", "MEDLINE INDUSTRIES INC", "B-D930415", "APPLICATOR SKIN PREP CHLORAPREP HI-LITE SWAB 3ML",
+                   "CA", 100, None, "Yes"),
+                  ("1017968", "MEDLINE INDUSTRIES INC-PHYSICIAN OFFICE-LUM", "B-D930103CS",
+                   "MBO-SWABSTICKSTRIPLE5.25MLCHLORAPREP", "CA", 400, None, "No"),
+                  ("1037888", "MEDLINE INDUSTRIES-JIT HOSPITAL TOTE PROGRAM (WPH-SLC-MMC)", "B-D930400",
+                   "MBO-APPLICATORCHLORAPREP3ML", "CA", 100, "107896", "No"),
+                  ("1000307", "BECTON DICKINSON COMPANY INC", "260815", "CHLORAPREP ONE-STEP 26ML", "CS", 25, None, "Yes"),
+              ]],
+        ],
+        # Infor's vendors: the tests' four and a few more, several Cardinal Health ones among them.
+        "vw_Vendor": TEST_VENDORS + [
+            {"vendor_id": vid, "vendor_name": name, "legal_name": legal, "search_name": search, "vendor_status": status}
+            for vid, name, legal, search, status in [
+                ("1000307", "BECTON DICKINSON COMPANY INC", "BECTON DICKINSON AND COMPANY", "BD BECTON DICKINSON", "Active"),
+                ("1000367", "CARDINAL HEALTH 414 INC DBA NUCLEAR PHARMACY", "CARDINAL HEALTH 414 INC",
+                 "CARDINAL HEALTH 414 INC DBA NUCLEAR PHARMACY SERVICES", "Active"),
+                ("1000385", "CARDINAL HEALTH DBA CARDINAL PHARMACEUTICAL", "CARDINAL HEALTH 110 LLC", "CARDINAL HEALTH PHARMA",
+                 "Active"),
+                ("1000557", "CARDINAL HEALTH MEDICAL PRODUCTS", "CARDINAL HEALTH MEDICAL PRODUCTS",
+                 "CARDINAL HEALTH MEDICAL PRODUCTS", "Active"),
+                ("1001206", "CARDINAL HEALTH -340B", "CARDINAL HEALTH 110 LLC", "CARDINAL HEALTH -340B CARDINAL HEALTH 110 LLC",
+                 "Active"),
+                ("1000732", "3M HEALTH CARE", "3M COMPANY", "3M HEALTH CARE", "Active"),
+                ("1017968", "MEDLINE INDUSTRIES INC-PHYSICIAN OFFICE-LUM", "MEDLINE INDUSTRIES LP",
+                 "MEDLINE PHYSICIAN OFFICE", "Active"),
+                ("1037888", "MEDLINE INDUSTRIES-JIT HOSPITAL TOTE PROGRAM (WPH-SLC-MMC)", "MEDLINE INDUSTRIES LP",
+                 "MEDLINE JIT", "Active"),
+            ]
         ],
     }
 
@@ -171,8 +207,9 @@ def o2_rows() -> dict[str, list[dict]]:
         "vw_FillKillLastLoad": "SELECT {cols} FROM FillKill.vw_FillKillLastLoad",
         "vw_ContractLineSearch": ("SELECT TOP 2000 {cols} FROM (" + contract_sql + ") AS v WHERE vendor_item IN "
                                   "(SELECT DISTINCT Item FROM FillKill.vw_MedlineFillKill) OR description LIKE '%GLOVE%NITRILE%'"),
-        "vw_Vendor": ("SELECT {cols} FROM (SELECT Vendor AS vendor_id, VendorName AS vendor_name, "
-                      "VendorStatus AS vendor_status FROM PLMPreprocessorShared.infor.MDM_VENDOR) AS v"),
+        "vw_Vendor": ("SELECT {cols} FROM (SELECT Vendor AS vendor_id, VendorName AS vendor_name, LegalName AS legal_name, "
+                      "VendorSearchName AS search_name, VendorStatus AS vendor_status "
+                      "FROM PLMPreprocessorShared.infor.MDM_VENDOR) AS v"),
     }
     found = {}
     conn = pyodbc.connect(O2, readonly=True)
@@ -211,14 +248,11 @@ def main(argv=None) -> None:
 
     app = make_app()
     rows = o2_rows() if args.data == "o2" else sample_rows(now_ny_naive().date())
-    if "vw_Vendor" in rows:  # Infor's vendors instead of the tests' four
-        with app.app_context(), db.engine.begin() as conn:
-            conn.exec_driver_sql('DELETE FROM "FillKill"."vw_Vendor"')
+    with app.app_context(), db.engine.begin() as conn:  # these vendors instead of the tests' four
+        conn.exec_driver_sql('DELETE FROM "FillKill"."vw_Vendor"')
     for name, view_rows in rows.items():
         add_view_rows(app, name, view_rows)
         print(f"{name}: {len(view_rows)} rows")
-    if args.data == "sample":
-        print(f"vw_Vendor: {len(TEST_VENDORS)} rows (the tests')")
 
     user_ids = {who: make_user(app, f"{who}@example.org", role=role, plm=None, fillkill=roles)
                 for who, (role, roles) in USERS.items()}

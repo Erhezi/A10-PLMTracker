@@ -42,8 +42,10 @@ Then open http://127.0.0.1:5099/dev-login. Add `?as=` to sign in with fewer role
 The sample data has kill lines from the last three days: an item with one UOM (DYND70294BH), an
 Infor item with two (999999: MDS2585H by the box, whose Medline customer item isn't the Infor item,
 and MDS2585HC by the case), and an item that isn't in Infor (SAMPLE0001). The contract search finds
-vendor item 88885 on an MHS contract and another vendor's 88885-CS on a non-MHS one. The vendor IDs
-are the tests' four (1000001 Cardinal, 1000002 Owens & Minor, 1000931 Medline, 1000099 inactive).
+vendor item 88885 on an MHS contract and another vendor's 88885-CS on a non-MHS one, and five
+ChloraPrep lines as O2 has them ("930103 chloraprep" finds one). The vendors are the tests' four
+(1000001 Cardinal, 1000002 Owens & Minor, 1000931 Medline, 1000099 inactive) and a few of Infor's,
+several Cardinal Health ones among them, so the vendor search has a list to scroll.
 
 With `--data o2`, the contract search reads Infor's contract lines through this repo's
 `db/fillkill/13_contract_search.sql`, limited to the vendor items Medline has killed plus nitrile

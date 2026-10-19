@@ -21,6 +21,7 @@ export const state = {
   panelScope: 'medline',  // 'infor': the whole Infor item; 'medline': only panelItem (one UOM)
   panelData: null,
   contractLines: [],  // the contract search's latest results
+  vendorResults: [],  // the vendor search's latest results
 };
 
 // The page link keeps what's shown, so it can be shared or bookmarked (2026-10-19): ?dates=today

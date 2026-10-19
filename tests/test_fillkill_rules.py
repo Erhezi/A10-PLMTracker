@@ -108,7 +108,7 @@ def test_an_order_needs_a_picked_sub():
 
 
 def test_an_order_takes_uom_qoe_and_vendor_from_the_sub_unless_given():
-    picked = sub(status="approved", is_picked=True, uom="CS", qoe=Decimal("4"))
+    picked = sub(status="approved", is_picked=True, vendor_id="1000931", uom="CS", qoe=Decimal("4"))
     clean = rules.check_new_order(picked, {"quantity": "15"}, now=NOW)
     assert (clean["quantity"], clean["uom"], clean["qoe"], clean["vendor"]) == (15, "CS", Decimal("4"), "Medline")
     assert clean["ordered_dt"] is None  # "now", set when saved
@@ -117,19 +117,34 @@ def test_an_order_takes_uom_qoe_and_vendor_from_the_sub_unless_given():
     assert (clean["uom"], clean["qoe"], clean["vendor"]) == ("EA", None, "Owens")
 
 
-def test_an_order_needs_a_uom_from_somewhere():
-    refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True), {"quantity": 1}, now=NOW),
-            says="UOM is required")
+def test_an_order_needs_the_vendor_id_and_a_uom():
+    refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True, vendor_id="1000931"), {"quantity": 1},
+                                          now=NOW), says="UOM is required")
+    # The vendor ID is needed too (2026-10-19), unless Infor has no such vendor: 000000, on purpose.
+    refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True, uom="BX"), {"quantity": 1}, now=NOW),
+            says="Vendor ID (or 000000: Vendor not available in system) is required")
+    no_vendor = sub(status="approved", is_picked=True, uom="BX", vendor_id=rules.NO_VENDOR_ID)
+    assert rules.check_new_order(no_vendor, {"quantity": 1}, now=NOW)["vendor"] == "Medline"
+
+
+def test_complete_vendor_details_have_the_vendor_its_id_and_the_uom():
+    assert rules.details_missing({"vendor": None, "vendor_id": None, "uom": None}) == ["Vendor", "Vendor ID", "UOM"]
+    assert rules.details_missing(sub(vendor="Owens", vendor_id="000000", uom="CS")) == []
+    refused(lambda: rules.check_details_complete(sub(vendor="Owens", uom="CS")),
+            says="Vendor ID (or 000000: Vendor not available in system) is required")
+    refused(lambda: rules.check_details_complete(sub(vendor=None)),
+            says="Vendor, Vendor ID (or 000000: Vendor not available in system) and UOM are required")
+    assert rules.clean_vendor_id(" 000000 ") == "000000"
 
 
 @pytest.mark.parametrize("quantity", [0, -3, "2.5", "", None])
 def test_quantity_is_a_whole_number_above_zero(quantity):
-    refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True, uom="BX"),
+    refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True, vendor_id="1000931", uom="BX"),
                                           {"quantity": quantity}, now=NOW))
 
 
 def test_ordered_date_can_be_earlier_but_not_in_the_future():
-    picked = sub(status="approved", is_picked=True, uom="BX")
+    picked = sub(status="approved", is_picked=True, vendor_id="1000931", uom="BX")
     clean = rules.check_new_order(picked, {"quantity": 1, "ordered_dt": "2026-10-12T09:15"}, now=NOW)
     assert clean["ordered_dt"] == datetime(2026, 10, 12, 9, 15)
     refused(lambda: rules.check_new_order(picked, {"quantity": 1, "ordered_dt": "2026-10-14"}, now=NOW),

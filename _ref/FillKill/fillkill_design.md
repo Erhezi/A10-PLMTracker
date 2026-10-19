@@ -247,8 +247,8 @@ Trends and analytics live on a separate Dashboard page (section 7).
   - *needs subs*: no sub that is pending review, approved or on hold
   - *needs review*: at least one sub pending review
   - *needs pick*: at least one approved sub, none picked
-  - *needs details*: a pick without a vendor or UOM, not ordered yet (2026-10-19): the Materials
-    Manager's to-do list
+  - *needs details*: a pick without a vendor, vendor ID or UOM, not ordered yet (2026-10-19): the
+    Materials Manager's to-do list
   - *needs order*: at least one pick, and no order in the range
   - *ordered*: an order in the range
 - **Search:** every word typed must appear in the Infor item, a packaging's Medline or customer
@@ -338,8 +338,8 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 
 | Field | Notes |
 |---|---|
-| Vendor | the vendor's **name**, required. Picking a contract line fills it with Infor's name |
-| Vendor ID | Infor's vendor ID (e.g. 1000931), **optional** (2026-10-15): filled in when the Sub Finder picks a contract line. Typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO subs get 1000931 (MEDLINE INDUSTRIES INC). Fixed after the first review, like vendor and vendor part |
+| Vendor | the vendor's **name**, required. Picking a contract line fills it with Infor's name. Typing it searches Infor's vendors (2026-10-19): every word anywhere in the vendor name, legal name or search name (`MDM_VENDOR`'s VendorName, LegalName, VendorSearchName, through `vw_Vendor`), `*` inside a word for anything, digits also matching IDs; active vendors first, at most 20. Choosing one fills in its vendor ID and Infor's name |
+| Vendor ID | Infor's vendor ID (e.g. 1000931), **required with the vendor details** (2026-10-19; optional from 10-15): the details can't be saved, nor an order recorded, without it. When Infor has no such vendor, the Materials Manager says so on purpose with **000000**, "Vendor not available in system" (Infor has no vendor 000000). Filled in from a contract line or the vendor search; typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO subs get 1000931 (MEDLINE INDUSTRIES INC). Nursing's entry has none until the Materials Manager's details |
 | Vendor Part | the vendor's part number; searchable, and what future LLM sub-finding will use |
 | Description | optional; pre-filled for PBO subs from contract data when found (9.4) |
 | Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |
@@ -379,8 +379,14 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   - Suggesting the other packaging itself as a sub was considered and not done: whether it helps
     depends on why it's killed too (e.g. it may be on backorder or allocation as well), which
     nursing and the Materials Manager judge from the reasons. **Decided.**
-- **Contract search** (9.4): when adding a sub, a search over Infor's active contract lines, like
-  PLM's contract-item search, fills vendor ID and name, vendor part, description, UOM and QOE. **Decided.**
+- **Contract search** (9.4): in the vendor details (Materials Managers and Sub Finders; it was in
+  "Add sub" before 2026-10-15), a search over Infor's active contract lines, like PLM's
+  contract-item search, fills vendor ID and name, description, UOM and QOE. **Decided.** One word is
+  a part number (vendor item or manufacturer number, without dashes) or an Infor item number, or
+  description words; several words (2026-10-19, e.g. "930103 chloraprep") must each be somewhere in
+  the line: part number, Infor item, description or vendor name (descriptions often run words
+  together, so a word matches anywhere). At most 15 lines, in a list about 3-4 lines tall that
+  scrolls, with "add a word" when there are more.
   Each result also shows the vendor ID next to the vendor name, the 6-digit Infor item number when
   the line is an item-master line ("Special" lines have none), and **MHS / Non-MHS**: whether any of
   its contracts is MHS's (`[Contract.MMAHSOrganizationEID] = '105188574'`). Non-MHS lines can still

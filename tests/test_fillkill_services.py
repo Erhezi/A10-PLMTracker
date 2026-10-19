@@ -46,7 +46,7 @@ def nurse_sub(**data):
 
 def approved_and_picked():
     """Nursing's only sub for the item, with the Materials Manager's details."""
-    sub = nurse_sub(vendor="Cardinal", uom="BX", qoe="100")
+    sub = nurse_sub(vendor="Cardinal", vendor_id=CARDINAL, uom="BX", qoe="100")
     assert sub.is_picked
     return sub
 
@@ -111,7 +111,22 @@ def test_the_vendor_details_are_the_materials_managers(ctx):
     refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "Cardinal"}, MANAGER), says="digits")
     refused(lambda: services().set_details(sub.sub_id, {"uom": "BX"}, MANAGER), says="Nothing to change")
     services().set_status(sub.sub_id, "hold", APPROVER)  # whatever the status
-    assert services().set_details(sub.sub_id, {"vendor_id": "", "vendor": "OWENS & MINOR"}, MANAGER).vendor_id is None
+    # Saved details always have a vendor ID (2026-10-19); 000000 says Infor has no such vendor.
+    refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "", "vendor": "LOCAL SUPPLY CO"}, MANAGER),
+            says="Vendor ID (or 000000: Vendor not available in system) is required")
+    sub = services().set_details(sub.sub_id, {"vendor_id": "000000", "vendor": "LOCAL SUPPLY CO"}, MANAGER)
+    assert (sub.vendor_id, sub.vendor) == ("000000", "LOCAL SUPPLY CO")
+
+
+def test_details_saved_for_the_first_time_need_the_vendor_id(ctx):
+    sub = nurse_sub()
+    refused(lambda: services().set_details(sub.sub_id, {"vendor": "OWENS & MINOR", "uom": "CS"}, MANAGER),
+            says="Vendor ID (or 000000")
+    from app import db
+    from app.models.fillkill import Sub
+    assert db.session.get(Sub, sub.sub_id).vendor is None  # nothing saved
+    assert services().set_details(sub.sub_id, {"vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "CS"},
+                                  MANAGER).vendor_id == OWENS
 
 
 def test_nursing_corrects_the_vendor_part_until_the_sub_has_an_order(ctx):
@@ -213,7 +228,10 @@ def test_an_order_is_recorded_against_a_pick_with_the_sub_defaults(ctx):
 
 def test_the_materials_manager_fills_in_the_vendor_details_with_the_order(ctx):
     sub = nurse_sub()  # just the vendor part
-    refused(lambda: services().record_order(sub.sub_id, {"quantity": 2, "uom": "CS"}, MANAGER), says="Vendor is required")
+    refused(lambda: services().record_order(sub.sub_id, {"quantity": 2, "uom": "CS"}, MANAGER),
+            says="Vendor and Vendor ID (or 000000")
+    refused(lambda: services().record_order(sub.sub_id, {"quantity": 2, "vendor": "OWENS & MINOR", "uom": "CS"}, MANAGER),
+            says="Vendor ID (or 000000: Vendor not available in system) is required")
     details = {"vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "cs", "qoe": "12"}
     refused(lambda: services().record_order(sub.sub_id, {**details, "quantity": 0}, MANAGER), says="more than 0")
     from app import db
@@ -236,7 +254,7 @@ def test_no_order_without_a_pick(ctx):
 
 def test_two_orders_for_one_item(ctx):
     first = approved_and_picked()
-    second = nurse_sub(vendor="Owens", vendor_part="OM-1", uom="CS")
+    second = nurse_sub(vendor="Owens", vendor_id=OWENS, vendor_part="OM-1", uom="CS")
     services().pick(second.sub_id, APPROVER)
     services().record_order(first.sub_id, {"quantity": 10}, MANAGER)
     services().record_order(second.sub_id, {"quantity": 5}, MANAGER)

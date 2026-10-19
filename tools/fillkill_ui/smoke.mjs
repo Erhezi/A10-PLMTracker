@@ -159,6 +159,9 @@ const steps = [
     expect(await text('#fk-date-mode') === 'Select a range', 'the dates are not on today');
     expect(await count('#fk-main tbody.fk-item') === 2, `${await count('#fk-main tbody.fk-item')} items today, not 2`);
     expect((await text('#fk-data-as-of')).includes('Data as of') || (await text('#fk-data-as-of')).includes('Latest line update'), 'no data date');
+    // At most 600px tall, scrolling inside, its header staying on top.
+    expect(await evaluate(`getComputedStyle(document.querySelector('.fk-main-scroll')).maxHeight`) === '600px', 'the table is not capped at 600px');
+    expect(await evaluate(`getComputedStyle(document.querySelector('#fk-main thead th')).position`) === 'sticky', 'the header does not stay on top');
   }],
   ['A range of dates, kept in the page link', async () => {
     await click('#fk-date-mode');
@@ -209,6 +212,20 @@ const steps = [
     await modalClosed();
     await panelSays('Vendor details saved.');
   }],
+  ['The contract search: a short scrolling list, narrowed by more words', async () => {
+    await click('#fk-panel-content [data-act="details"]');
+    await modalOpen();
+    await setValue('#fk-contract-q', 'chloraprep', 'input');
+    await waitFor(`document.querySelectorAll('[data-contract]').length === 5`, 'five ChloraPrep lines');
+    const list = await evaluate(`(() => { const l = document.querySelector('.fk-contract-list');
+      return { shown: l.clientHeight, all: l.scrollHeight, rem: parseFloat(getComputedStyle(document.documentElement).fontSize) }; })()`);
+    expect(list.all > list.shown && list.shown <= 15 * list.rem + 1, `the list doesn't scroll within 15rem (${JSON.stringify(list)})`);
+    await setValue('#fk-contract-q', '930103 chloraprep', 'input');
+    await waitFor(`document.querySelectorAll('[data-contract]').length === 1`, 'one line for "930103 chloraprep"');
+    expect((await text('#fk-contract-results')).includes('B-D930103CS'), 'not B-D930103CS');
+    await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
+    await modalClosed();
+  }],
   ['Recording an order', async () => {
     await click('#fk-panel-content [data-act="order"]');
     await modalOpen();
@@ -247,6 +264,34 @@ const steps = [
     expect(await count('#fk-panel-content [data-act="details"]') === 0, 'a nurse sees "Vendor details"');
     expect(await count('#fk-panel-content [data-act="order"]') === 0, 'a nurse sees "Record order"');
   }],
+  ['A Materials Manager finds the vendor ID by name, or uses 000000', async () => {
+    await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
+    await click('#fk-panel-content [data-act="details"]');
+    await modalOpen();
+    // Without a vendor ID nothing is saved.
+    await setValue('#fk-m-vendor', 'Local Supply Co', 'input');
+    await setValue('#fk-m-uom', 'EA', 'input');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await waitFor(`(document.getElementById('fk-modal-message') || {}).innerText?.includes('Vendor ID (or 000000')`, 'the vendor ID required');
+    // The name finds Infor's vendors: the list scrolls, and choosing one fills in its ID.
+    await setValue('#fk-m-vendor', 'cardinal', 'input');
+    await waitFor(`document.querySelectorAll('[data-vendor-pick]').length === 5`, "five Cardinal vendors");
+    expect(await evaluate(`(() => { const l = document.querySelector('.fk-vendor-list'); return l.scrollHeight > l.clientHeight; })()`),
+      "the vendor list doesn't scroll");
+    await evaluate(`[...document.querySelectorAll('[data-vendor-pick]')].find((b) => b.innerText.trim().startsWith('1000557')).click()`);
+    expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '1000557', 'the vendor ID not filled in');
+    expect(await evaluate(`document.getElementById('fk-m-vendor').value`) === 'CARDINAL HEALTH MEDICAL PRODUCTS', "Infor's name not filled in");
+    // Infor doesn't have the vendor: 000000, on purpose.
+    await setValue('#fk-m-vendor', 'Local Supply Co', 'input');
+    await click('[data-no-vendor]');
+    expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '000000', 'not 000000');
+    expect((await text('#fk-m-vendor_id-note')) === 'Vendor not available in system', 'no "Vendor not available in system"');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    await panelSays('Vendor details saved.');
+    await panelSays('Local Supply Co (not in Infor)');
+  }, { refusals: [/\/details$/] }],  // the save without a vendor ID
   ['A viewer: nothing to change', async () => {
     await go('/dev-login?as=viewer', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
@@ -263,11 +308,14 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, de
 
 let failed = 0;
 try {
-  for (const [name, run] of steps) {
+  for (const [name, run, { refusals = [] } = {}] of steps) {
     const before = browserErrors.length;
     try {
       await run();
-      if (browserErrors.length > before) throw new Error(`browser errors:\n    ${browserErrors.slice(before).join('\n    ')}`);
+      // A step may make the server refuse something on purpose: the browser logs that as an error.
+      const refused = (error) => /status of 4\d\d/.test(error) && refusals.some((path) => path.test(error.split(' ').pop()));
+      const errors = browserErrors.slice(before).filter((error) => !refused(error));
+      if (errors.length) throw new Error(`browser errors:\n    ${errors.join('\n    ')}`);
       console.log(`ok    ${name}`);
     } catch (error) {
       failed += 1;

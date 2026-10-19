@@ -93,16 +93,20 @@ FILLKILL_VIEWS = {
         "manufacturer_number_stripped", "description", "uom", "qoe", "infor_item", "item_type", "contract",
         "contract_name", "base_cost", "is_mhs",
     ],
-    "vw_Vendor": ["vendor_id", "vendor_name", "vendor_status"],
+    "vw_Vendor": ["vendor_id", "vendor_name", "legal_name", "search_name", "vendor_status"],
 }
 
 # Infor vendors every Fill/Kill test can use as a sub's vendor ID.
 CARDINAL, OWENS, MEDLINE = "1000001", "1000002", "1000931"
 TEST_VENDORS = [
-    {"vendor_id": CARDINAL, "vendor_name": "CARDINAL HEALTH", "vendor_status": "Active"},
-    {"vendor_id": OWENS, "vendor_name": "OWENS & MINOR", "vendor_status": "Active"},
-    {"vendor_id": MEDLINE, "vendor_name": "MEDLINE INDUSTRIES INC", "vendor_status": "Active"},
-    {"vendor_id": "1000099", "vendor_name": "OLD SUPPLY CO", "vendor_status": "Inactive"},
+    {"vendor_id": CARDINAL, "vendor_name": "CARDINAL HEALTH", "legal_name": "CARDINAL HEALTH 110 LLC",
+     "search_name": "CARDINAL HEALTH MEDICAL PRODUCTS", "vendor_status": "Active"},
+    {"vendor_id": OWENS, "vendor_name": "OWENS & MINOR", "legal_name": "OWENS & MINOR DISTRIBUTION INC",
+     "search_name": "OWENS AND MINOR", "vendor_status": "Active"},
+    {"vendor_id": MEDLINE, "vendor_name": "MEDLINE INDUSTRIES INC", "legal_name": "MEDLINE INDUSTRIES LP",
+     "search_name": "MEDLINE INDUSTRIES INC", "vendor_status": "Active"},
+    {"vendor_id": "1000099", "vendor_name": "OLD SUPPLY CO", "legal_name": "OLD SUPPLY COMPANY",
+     "search_name": "OLD SUPPLY CO", "vendor_status": "Inactive"},
 ]
 
 

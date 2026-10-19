@@ -28,6 +28,11 @@ ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "ordered_dt")
 
 LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "description": 255, "uom": 10}
 
+# A sub's vendor details need Infor's vendor ID (2026-10-19). When Infor has no such vendor, the
+# Materials Manager says so on purpose with this one; Infor has no vendor 000000.
+NO_VENDOR_ID = "000000"
+NO_VENDOR_LABEL = "Vendor not available in system"
+
 
 class RuleError(Exception):
     """An action that isn't allowed. ``status`` is the HTTP status to answer with."""
@@ -105,11 +110,33 @@ def clean_ordered_dt(value, *, now: datetime | None = None) -> datetime | None:
 
 
 def clean_vendor_id(value) -> str | None:
-    """Infor's vendor ID, optional: digits only (e.g. 1000931). Filled in from a contract line."""
+    """Infor's vendor ID: digits only (e.g. 1000931), or 000000 when Infor has no such vendor."""
     text = clean_text(value, label="Vendor ID", max_len=LIMITS["vendor_id"])
     if text is not None and not text.isdigit():
-        raise RuleError("Vendor ID must be Infor's vendor ID (digits, like 1000931), or left empty.")
+        raise RuleError(f"Vendor ID must be Infor's vendor ID (digits, like 1000931), or {NO_VENDOR_ID} "
+                        f"({NO_VENDOR_LABEL}).")
     return text
+
+
+def details_missing(sub) -> list[str]:
+    """What a sub still lacks for an order: its vendor, Infor's vendor ID (or 000000) and its UOM.
+    ``sub`` is a Sub or a dict with those keys."""
+    get = sub.get if isinstance(sub, dict) else lambda name: getattr(sub, name)
+    return [label for name, label in (("vendor", "Vendor"), ("vendor_id", "Vendor ID"), ("uom", "UOM"))
+            if not get(name)]
+
+
+def _missing_message(missing: list[str]) -> str:
+    labels = [f"{name} (or {NO_VENDOR_ID}: {NO_VENDOR_LABEL})" if name == "Vendor ID" else name for name in missing]
+    names = ", ".join(labels[:-1]) + (" and " if len(labels) > 1 else "") + labels[-1]
+    return f"{names} {'are' if len(labels) > 1 else 'is'} required: fill in the sub's vendor details."
+
+
+def check_details_complete(sub) -> None:
+    """Saved vendor details always include the vendor, its vendor ID and the UOM (2026-10-19)."""
+    missing = details_missing(sub)
+    if missing:
+        raise RuleError(_missing_message(missing))
 
 
 def clean_comment(value, *, label: str = "Comment") -> str:
@@ -195,14 +222,14 @@ def check_orderable(sub) -> None:
 
 def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
     """An order against a picked sub (S3). UOM, QOE and vendor default to the sub's details,
-    which the Materials Manager fills in (with the order or before)."""
+    which the Materials Manager fills in (with the order or before); the sub needs its vendor ID
+    too (2026-10-19)."""
     check_orderable(sub)
     uom = clean_field("uom", data.get("uom")) or sub.uom
     vendor = clean_field("vendor", data.get("vendor")) or sub.vendor
-    missing = [name for name, value in (("Vendor", vendor), ("UOM", uom)) if not value]
+    missing = details_missing({"vendor": vendor, "vendor_id": sub.vendor_id, "uom": uom})
     if missing:
-        raise RuleError(f"{' and '.join(missing)} {'are' if len(missing) > 1 else 'is'} required: "
-                        "fill in the sub's vendor details.")
+        raise RuleError(_missing_message(missing))
     qoe = clean_qoe(data["qoe"]) if "qoe" in data else (Decimal(sub.qoe) if sub.qoe is not None else None)
     return {
         "quantity": clean_quantity(data.get("quantity")),

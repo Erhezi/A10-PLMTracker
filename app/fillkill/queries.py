@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import and_, bindparam, func, or_, select, text
 
@@ -562,6 +562,26 @@ def item_exists(medline_item: str) -> bool:
 
 
 # --- the Dashboard ---------------------------------------------------------------------------
+
+def first_kills(scope: Scope) -> dict[str, datetime]:
+    """Per Medline item killed in the scope: when its first kill line in the scope was ordered."""
+    where, params, binds = scope.where("[Order Date]", "[Sold-To]")
+    rows = _rows(
+        f"""SELECT [Item] AS item, [Order Date] AS day, MIN([Order Time]) AS at FROM {LINES}
+            WHERE {where} GROUP BY [Item], [Order Date]""",
+        params, binds,
+    )
+    found: dict[str, datetime] = {}
+    for row in rows:
+        day = _as_date(row["day"])
+        at = row["at"]
+        if isinstance(at, str):
+            at = time.fromisoformat(at[:8])
+        moment = datetime.combine(day, at or time())
+        if row["item"] not in found or moment < found[row["item"]]:
+            found[row["item"]] = moment
+    return found
+
 
 def lines_by_day(scope: Scope, by: str) -> list[dict]:
     """Kill lines per order date and reason (by='reason') or site (by='site')."""

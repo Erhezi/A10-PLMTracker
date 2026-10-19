@@ -106,6 +106,47 @@ def rejected_groups(subs, history) -> list[dict]:
     ]
 
 
+def _hours(earlier: datetime, later: datetime) -> float:
+    return max(0.0, (later - earlier).total_seconds() / 3600)
+
+
+def _median(values) -> float | None:
+    return round(median(values), 1) if values else None
+
+
+def flow_hours(first_kill: dict, subs, orders) -> dict:
+    """How fast killed items move (2026-10-19), as medians in hours over the Medline items killed
+    in the dates: from the first kill to a sub (0 when one was already on file), from that sub to
+    the item's first order since the kill, and from the kill to that order. Items still waiting
+    aren't in a median; the counts say how many are."""
+    first_sub: dict[str, datetime] = {}
+    for sub in subs:
+        created = _moment(sub["create_dt"])
+        if sub["medline_item"] not in first_sub or created < first_sub[sub["medline_item"]]:
+            first_sub[sub["medline_item"]] = created
+    order_times: dict[str, list[datetime]] = defaultdict(list)
+    for order in orders:
+        order_times[order["medline_item"]].append(_moment(order["ordered_dt"]))
+    kill_to_sub, sub_to_order, kill_to_order = [], [], []
+    for item, killed in first_kill.items():
+        killed = _moment(killed)
+        if item not in first_sub:
+            continue
+        entered = max(first_sub[item], killed)  # a sub already on file counts from the kill
+        kill_to_sub.append(_hours(killed, entered))
+        after = [moment for moment in order_times.get(item, []) if moment >= killed]
+        if after:
+            ordered = min(after)
+            sub_to_order.append(_hours(entered, ordered))
+            kill_to_order.append(_hours(killed, ordered))
+    return {
+        "items": len(first_kill),
+        "kill_to_sub": _median(kill_to_sub), "items_with_sub": len(kill_to_sub),
+        "sub_to_order": _median(sub_to_order), "kill_to_order": _median(kill_to_order),
+        "items_ordered": len(kill_to_order),
+    }
+
+
 def headline(rows, subs, hours, start: date, end: date) -> dict:
     items = len(rows)
     with_approved = sum(1 for r in rows if r["subs_status"].get("approved"))
@@ -129,9 +170,11 @@ def build(scope: queries.Scope) -> dict:
     history = queries.sub_history(("status", "comment"))
     hours = review_hours(subs, history, scope.start, scope.end)
     status_counts = rollup.subs_status(subs)
+    killed = queries.first_kills(scope)
     return {
         "scope": {"start": scope.start, "end": scope.end, "sites": scope.sites},
         "headline": headline(rows, subs, hours, scope.start, scope.end),
+        "flow": flow_hours(killed, subs, queries.orders_since_start(scope, killed)),
         "by_reason": series_by_day(queries.lines_by_day(scope, "reason"), scope.start, scope.end),
         "by_site": series_by_day(queries.lines_by_day(scope, "site"), scope.start, scope.end),
         "top_items": rollup.most_killed(rows, TOP_ITEMS),

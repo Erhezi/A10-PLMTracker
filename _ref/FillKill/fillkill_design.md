@@ -485,7 +485,11 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
   approved it, and its orders (count, last date). **Export CSV** gives everything the filters match.
   Read-only; a row's Medline item opens the panel on Main.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
-  coverage, time to review, and rejected subs with their comments, grouped by vendor and item. Read-only for every Fill/Kill role. Separate from
+  coverage, time to review, and rejected subs with their comments, grouped by vendor and item.
+  **Flow** (2026-10-19): for the Medline items killed in the dates, the median time from the first
+  kill to a sub (0 when one was already on file), from that sub to the first order since the kill,
+  and from the kill to that order, each with how many items it covers; the share of killed items
+  with an order is the "Items ordered" card. Read-only for every Fill/Kill role. Separate from
   PLM Tracker's dashboard.
 
 `/orders` is not a page (2026-10-13); `/subs` came back as the Subs page (2026-10-16).

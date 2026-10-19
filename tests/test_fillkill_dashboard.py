@@ -90,3 +90,21 @@ def test_dashboard_page_and_api(sqlite_app):
     assert len(data["by_reason"]["days"]) == 30 and data["by_reason"]["series"]["MBO"] == [1] * 30
     assert data["by_site"]["series"] == {"WHITE PLAINS": [1] * 30}
     assert data["subs_by_status"] == {"approved": 0, "hold": 0, "pending_review": 0, "rejected": 0}
+    assert data["flow"] == {"items": 1, "kill_to_sub": None, "items_with_sub": 0, "sub_to_order": None,
+                            "kill_to_order": None, "items_ordered": 0}
+
+
+def test_flow_medians_from_kill_to_sub_to_order():
+    first_kill = {"A": datetime(2026, 9, 28, 8), "B": datetime(2026, 9, 28, 8), "C": datetime(2026, 9, 29, 8),
+                  "D": datetime(2026, 9, 29, 8)}
+    subs = [{**sub(1, "approved", datetime(2026, 9, 28, 12), item="A")},   # A: 4 h to a sub
+            {**sub(2, "approved", datetime(2026, 9, 28, 20), item="A")},   # (a later one doesn't count)
+            {**sub(3, "approved", datetime(2026, 9, 1, 8), item="B")},     # B: one already on file: 0 h
+            {**sub(4, "approved", datetime(2026, 9, 30, 8), item="C")}]    # C: 24 h; D: no sub yet
+    orders = [{"medline_item": "A", "ordered_dt": datetime(2026, 9, 28, 18)},  # A: 6 h after its sub, 10 after the kill
+              {"medline_item": "B", "ordered_dt": datetime(2026, 9, 27, 8)},   # before B's kill: not this one
+              {"medline_item": "B", "ordered_dt": datetime(2026, 9, 28, 10)}]  # B: 2 h
+    assert dashboard.flow_hours(first_kill, subs, orders) == {
+        "items": 4, "kill_to_sub": 4.0, "items_with_sub": 3,
+        "sub_to_order": 4.0, "kill_to_order": 6.0, "items_ordered": 2,
+    }

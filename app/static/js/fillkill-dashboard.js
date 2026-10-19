@@ -134,6 +134,24 @@ document.addEventListener('DOMContentLoaded', () => {
       </div></div></div>`).join('');
   }
 
+  // How fast killed items move: medians, in hours under two days and in days above.
+  const duration = (hours) => (hours == null ? '—' : hours < 48 ? `${hours} h` : `${(hours / 24).toFixed(1)} d`);
+
+  function flow(f) {
+    const items = (n) => `${n} of ${f.items} Medline item${f.items === 1 ? '' : 's'}`;
+    const cards = [
+      ['Kill to first sub', duration(f.kill_to_sub), `median, ${items(f.items_with_sub)} (a sub on file counts as 0)`],
+      ['Sub to order', duration(f.sub_to_order), `median, ${items(f.items_ordered)}`],
+      ['Kill to order', duration(f.kill_to_order), `median, ${items(f.items_ordered)}`],
+    ];
+    $('fk-dash-flow').innerHTML = cards.map(([label, value, note]) => `
+      <div class="col-12 col-md-4"><div class="card shadow-sm border-0 h-100"><div class="card-body py-2">
+        <div class="small text-muted">${esc(label)}</div>
+        <div class="fs-4 fw-semibold">${esc(value)}</div>
+        <div class="small text-muted">${esc(note)}</div>
+      </div></div></div>`).join('');
+  }
+
   function topItems(rows) {
     $('fk-dash-top').innerHTML = rows.length ? rows.map((row) => {
       const subs = Object.entries(row.subs_status).filter(([, n]) => n)
@@ -194,6 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
         [{ data: statuses.map((s) => data.subs_by_status[s]), backgroundColor: statuses.map((s) => STATUS_COLOR[s]) }]);
       draw('fk-chart-new-subs', 'bar', data.new_subs.weeks.map((w) => `Week of ${fmtDate(w)}`),
         seriesDatasets(data.new_subs.series, (name) => SOURCE_LABEL[name] || name), stacked);
+      flow(data.flow);
       topItems(data.top_items);
       rejected(data.rejected);
     } catch (error) {

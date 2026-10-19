@@ -116,6 +116,15 @@ def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer)
     assert 'aria-current="page">Main</a>' in page
 
 
+def test_only_admins_see_what_the_database_lacks(app, viewer, monkeypatch):
+    from app.fillkill import health
+    monkeypatch.setattr(health, "check", lambda: [{"what": "FillKill.vw_Vendor is missing", "script": "13_contract_search.sql"}])
+    admin = client(app, "boss@example.org", role="admin", plm=None, fillkill=("viewer",))
+    page = admin.get("/fillkill/").get_data(as_text=True)
+    assert "The database needs an update" in page and "db/fillkill/13_contract_search.sql" in page
+    assert "The database needs an update" not in viewer.get("/fillkill/").get_data(as_text=True)
+
+
 def test_a_user_without_a_fillkill_role_is_turned_away(app):
     plm_only = client(app, "plm@example.org")
     status, data = get(plm_only, "/fillkill/api/main")

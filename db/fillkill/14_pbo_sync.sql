@@ -17,6 +17,7 @@ GO
 CREATE OR ALTER PROCEDURE [FillKill].[usp_SyncPboSubs]
 AS
 BEGIN
+    -- version 2026-10-15: app/fillkill/health.py looks for this line; change both together.
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 

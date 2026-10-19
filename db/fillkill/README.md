@@ -4,6 +4,11 @@ Run on O2 (`YNBBSTVWP02\PROCDATASRVPROD`), database `PLM`, in order. Every scrip
 The design is in `_ref/FillKill/fillkill_design.md`; the build plan is in
 `_ref/FillKill/fillkill_implementation_plan_v1.md`.
 
+**Is the database up to date for this version of the app?** Admins see a warning on Fill/Kill's
+Main page listing anything missing, with the script to run; before a deploy, run
+`flask fillkill check-db` with the server's settings. `app/fillkill/health.py` holds the list of
+what the app needs: change it with the scripts.
+
 ## Deploy #1 (navigation, unified users and roles, CSRF, daily login reset)
 
 Access has two levels:

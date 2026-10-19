@@ -13,6 +13,19 @@
   <span class="ms-auto small" id="fk-data-as-of" aria-live="polite"></span>
 </div>
 
+{% if health %}
+{# Only admins see this (app/fillkill/health.py): what the database lacks for this version. #}
+<div class="alert alert-warning small" role="alert">
+  <div class="fw-semibold mb-1"><i class="bi bi-database-exclamation"></i> The database needs an update for this
+    version of Fill/Kill (only admins see this):</div>
+  <ul class="mb-0">
+    {% for problem in health %}
+    <li>{{ problem.what }}{% if problem.script %}: run <code>db/fillkill/{{ problem.script }}</code>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="card shadow-sm border-0 mb-3">
   <div class="card-body">
     <div class="row g-3 align-items-end">

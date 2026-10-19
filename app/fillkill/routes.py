@@ -15,8 +15,8 @@ from flask import Blueprint, Response, jsonify, render_template, request, url_fo
 from flask_login import current_user, login_required
 
 from ..models import now_ny_naive
-from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, require_module, roles_in
-from . import dashboard, queries, rollup, services
+from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
+from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import SUB_SOURCES, SUB_STATUSES
 from .rules import STATUS_LABELS, RuleError
 
@@ -140,7 +140,18 @@ def index():
         "fillkill/index.html",
         roles=[label for code, label in module.roles if code in held],
         config=plain(config),
+        # Admins see what the database is missing for this version (each item names its script).
+        health=health.check() if is_admin(current_user) else [],
     )
+
+
+@bp.cli.command("check-db")
+def check_db():
+    """flask fillkill check-db: what the database is missing for this version of the app."""
+    found = health.check()
+    for problem in found:
+        print(f"- {problem['what']}" + (f"  -> run db/fillkill/{problem['script']}" if problem["script"] else ""))
+    print("The database has everything this version needs." if not found else f"{len(found)} to fix.")
 
 
 SOURCE_LABELS = {"manual": "Entered by hand", "medline_pbo": "Medline PBO", "llm": "AI finder"}

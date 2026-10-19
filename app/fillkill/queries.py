@@ -467,11 +467,11 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
     } for s in subs]
 
 
-def orders_log(scope: Scope) -> list[dict]:
-    """Orders dated on or after the scope's first day, voided ones included: the orders the main
-    table's Ordering column counts (2026-10-16; it listed only orders inside the dates)."""
+def orders_log(start: date, end: date) -> list[dict]:
+    """Orders dated from ``start`` to ``end``, voided ones included: the orders section on Main,
+    whose dates are its own (2026-10-19), so past orders can be looked up there."""
     orders = db.session.execute(
-        select(SubOrder).where(SubOrder.ordered_dt >= scope.start)
+        select(SubOrder).where(SubOrder.ordered_dt >= start, SubOrder.ordered_dt < end + timedelta(days=1))
         .order_by(SubOrder.ordered_dt.desc(), SubOrder.order_id.desc())
     ).scalars().all()
     comments = _latest_comments("order", [o.order_id for o in orders])

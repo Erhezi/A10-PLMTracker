@@ -116,6 +116,7 @@ def index():
         "bounds": {"first": first, "last": last},
         "default": {"start": last, "end": last},
         "today": now_ny_naive().date(),  # for "View today"
+        "ordersDays": ORDERS_DAYS,
         "sites": queries.sites(),
         "can": capabilities(current_user),
         "me": current_user.email,
@@ -274,12 +275,20 @@ def export_subs():
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
+ORDERS_DAYS = 30  # the orders section's default: the last 30 days, today included
+
+
 @bp.get("/api/orders")
 @login_required
 @require_module(FILLKILL, "view")
 def api_orders():
-    scope = scope_from_request()
-    return ok({"orders": queries.orders_log(scope)})
+    """Orders by their own date, ?start&end (default: the last ORDERS_DAYS days); not the main
+    table's dates."""
+    end = _parse_date(request.args.get("end"), now_ny_naive().date())
+    start = _parse_date(request.args.get("start"), end - timedelta(days=ORDERS_DAYS - 1))
+    if start > end:
+        start, end = end, start
+    return ok({"orders": queries.orders_log(start, end), "start": start, "end": end})
 
 
 @bp.get("/api/dashboard")

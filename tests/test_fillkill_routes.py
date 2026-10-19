@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import re
+from datetime import date, timedelta
 
 import pytest
 
@@ -216,11 +217,13 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
 
     _, library = get(viewer, "/fillkill/api/subs", status="approved")
     assert [s["vendor_part"] for s in library["subs"]] == ["88885"]
-    # The orders under the main table: placed since the first selected day, like the Ordering column.
-    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-28", end="2026-09-28")
+    # The orders section on Main: by the order's own date, with dates of its own.
+    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-29", end="2026-09-29")
     assert [o["quantity"] for o in orders["orders"]] == [30]
-    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-09-30")
+    _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-10-01")
     assert orders["orders"] == []
+    _, orders = get(viewer, "/fillkill/api/orders")  # default: the last 30 days, today included
+    assert date.fromisoformat(orders["end"]) - date.fromisoformat(orders["start"]) == timedelta(days=29)
 
 
 @pytest.mark.parametrize("who, path, payload, allowed", [

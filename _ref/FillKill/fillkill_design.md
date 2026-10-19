@@ -470,9 +470,11 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
 - **Main** (`/`): the one operating page for every role (section 5).
   - The main table with its controls. **View subs** opens a panel for that item: the sub list, add
     sub, status, pick, history, and recording orders against picks.
-  - **Orders:** the orders placed since the first selected day (the ones the Ordering column counts),
-    voided ones included (2026-10-16; it listed only orders dated inside the dates, so it was empty
-    whenever orders were recorded after the kills shown).
+  - **Orders:** the orders recorded, voided ones included, by their own date, with **date controls of
+    their own** (default: the last 30 days; Today / 7 / 30 days), independent of the table's, so a
+    Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
+    rather than a page). Before, it followed the table's dates and was empty whenever orders were
+    recorded after the kills shown.
   - A link `?item=<Medline item>[&scope=infor][&tab=…]` opens that item's panel (from Subs and the
     Dashboard).
 - **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data

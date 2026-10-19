@@ -18,6 +18,8 @@
     sites: [],
     needs: 'all',
     search: '',
+    ordersStart: '',  // the orders section's own dates
+    ordersEnd: '',
     dateMode: 'range',  // 'today' or 'range'
     rows: [],
     counts: {},
@@ -1209,12 +1211,49 @@
     if (opener) openPanel(opener.dataset.open, 'orders');
   });
 
-  // Orders placed since the first selected day: the ones the Ordering column counts.
+  // Orders by their own date, with dates of their own (the table's dates don't change them), so
+  // a Materials Manager can look up past orders right here. Default: the last 30 days.
+  const shiftDay = (iso, days) => {
+    const day = new Date(`${iso}T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() + days);
+    return day.toISOString().slice(0, 10);
+  };
+
+  function setOrdersDays(days) {
+    state.ordersEnd = config.today;
+    state.ordersStart = shiftDay(config.today, 1 - days);
+  }
+
+  function setupOrders() {
+    const startInput = $('fk-orders-start');
+    const endInput = $('fk-orders-end');
+    if (!state.ordersStart || !state.ordersEnd) setOrdersDays(config.ordersDays);
+    [startInput, endInput].forEach((input) => { input.max = config.today; });
+    const show = () => {
+      startInput.value = state.ordersStart;
+      endInput.value = state.ordersEnd;
+    };
+    const fromInputs = () => {
+      if (!startInput.value || !endInput.value) return;
+      [state.ordersStart, state.ordersEnd] = startInput.value <= endInput.value
+        ? [startInput.value, endInput.value] : [endInput.value, startInput.value];
+      show();
+      loadOrders();
+    };
+    startInput.addEventListener('change', fromInputs);
+    endInput.addEventListener('change', fromInputs);
+    document.querySelectorAll('[data-orders-days]').forEach((button) => button.addEventListener('click', () => {
+      setOrdersDays(Number(button.dataset.ordersDays));
+      show();
+      loadOrders();
+    }));
+    show();
+  }
+
   async function loadOrders() {
     const body = $('fk-orders-rows');
-    $('fk-orders-title').textContent = state.start ? `Orders since ${fmtDate(state.start)}` : 'Orders';
     try {
-      const data = await getJSON(api.orders, scopeParams());
+      const data = await getJSON(api.orders, { start: state.ordersStart, end: state.ordersEnd });
       body.innerHTML = data.orders.length ? data.orders.map((o) => `<tr class="${o.voided_at ? 'text-muted' : ''}">
           <td class="small text-nowrap">${fmtDateTime(o.ordered_dt)}</td>
           <td><button type="button" class="btn btn-link p-0" data-open="${esc(o.medline_item)}">${esc(o.medline_item)}</button></td>
@@ -1224,7 +1263,7 @@
           <td class="small">${esc(o.ordered_by)}${o.voided_at ? ' <span class="badge text-bg-secondary">Voided</span>' : ''}</td>
           <td class="small">${o.latest_comment ? esc(o.latest_comment.comment) : ''}</td>
         </tr>`).join('')
-        : `<tr><td colspan="7" class="text-muted small">No orders recorded since ${fmtDate(state.start)}.</td></tr>`;
+        : '<tr><td colspan="7" class="text-muted small">No orders recorded in these dates.</td></tr>';
     } catch (error) {
       body.innerHTML = `<tr><td colspan="7">${alertBox(error.message)}</td></tr>`;
     }
@@ -1232,9 +1271,9 @@
 
   // --- start ---------------------------------------------------------------------------------------
 
+  // The table's dates or sites changed (the orders section keeps its own dates).
   function reloadAll() {
     loadMain();
-    loadOrders();
     if (state.panelItem && panelEl.classList.contains('show')) loadPanel();
   }
 
@@ -1246,6 +1285,7 @@
   setupDates();
   setupSites();
   setupSearch();
+  setupOrders();
   renderNeeds();
   loadMain();
   loadOrders();

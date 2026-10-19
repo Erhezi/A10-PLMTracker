@@ -2,7 +2,11 @@
 -- Read-only; run after every script run. Every row should say PASS, except
 -- 'users.user_role is admin or user', which says PENDING until 04 runs after the deploy. The
 -- later result sets say FAIL until their scripts have run: kill lines (10, 11) and the
--- workflow (12-14).
+-- workflow (12-14); each check names its script.
+--
+-- The Fill/Kill checks are the ones the app makes on its Main page for admins and in
+-- `flask fillkill check-db` (app/fillkill/health.py): change them together. This script can't
+-- check the app's own account (its read grants, EXECUTE on usp_SyncPboSubs); check-db can.
 
 SET NOCOUNT ON;
 
@@ -32,7 +36,7 @@ SELECT 'UserModuleRole accepts only known roles for plm and fillkill',
            SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
              AND definition LIKE '%editor%' AND definition LIKE '%sub[_]approver%'
-             AND definition NOT LIKE '%''app''%'
+             AND definition LIKE '%materials[_]manager%' AND definition NOT LIKE '%''app''%'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'a user holds at most one PLM role',
@@ -101,15 +105,23 @@ ORDER BY u.[email];
 
 -- Kill lines (10, 11) ------------------------------------------------------------
 
-SELECT 'view FillKill.vw_MedlineFillKill exists' AS [check],
+SELECT 'view FillKill.vw_MedlineFillKill exists (10)' AS [check],
        CASE WHEN OBJECT_ID(N'[FillKill].[vw_MedlineFillKill]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
 UNION ALL
-SELECT 'vw_MedlineFillKill has Reason and Reason Date',
+SELECT 'vw_MedlineFillKill has Reason, Reason Date, Is Test, Test Purpose (10)',
        CASE WHEN COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason Date') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason Date') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Is Test') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Test Purpose') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'view FillKill.vw_FillKillLastLoad exists',
+SELECT 'view FillKill.vw_FillKillLastLoad exists (10)',
        CASE WHEN OBJECT_ID(N'[FillKill].[vw_FillKillLastLoad]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'vw_MedlineFillKillItemCollection has Infor Item, its consistency and Item.UOMConversion (11)',
+       CASE WHEN COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Infor Item') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Infor Item Consistency') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Item.UOMConversion') IS NOT NULL
+            THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 -- They must read kill lines through vw_MedlineFillKill, not Medline's table directly.
 SELECT 'item and quantity views read FillKill.vw_MedlineFillKill',
@@ -142,17 +154,38 @@ IF COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
 
 -- Workflow (12-14) ----------------------------------------------------------------
 
-SELECT 'tables FillKill.Sub, SubOrder, History exist' AS [check],
+SELECT 'tables FillKill.Sub, SubOrder, History exist (12)' AS [check],
        CASE WHEN OBJECT_ID(N'[FillKill].[Sub]', N'U') IS NOT NULL
              AND OBJECT_ID(N'[FillKill].[SubOrder]', N'U') IS NOT NULL
              AND OBJECT_ID(N'[FillKill].[History]', N'U') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
 UNION ALL
+SELECT 'Sub has vendor_id, deleted_at, deleted_by, delete_reason (12, 2026-10-15)',
+       CASE WHEN COL_LENGTH(N'FillKill.Sub', N'vendor_id') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.Sub', N'deleted_by') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.Sub', N'delete_reason') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+-- Nursing enters only the vendor part; the Materials Manager fills in the vendor.
+SELECT 'Sub.vendor can wait for the Materials Manager (12, 2026-10-15)',
+       CASE WHEN EXISTS (SELECT 1 FROM sys.columns
+                         WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'vendor' AND is_nullable = 1)
+            THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'one live sub per Medline item and vendor part: UX_Sub_item_vendor_part (12, 2026-10-15)',
+       CASE WHEN (SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
+                  FROM sys.indexes AS i
+                  JOIN sys.index_columns AS ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                  JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                  WHERE i.object_id = OBJECT_ID(N'[FillKill].[Sub]') AND i.name = N'UX_Sub_item_vendor_part'
+                    AND i.is_unique = 1 AND i.has_filter = 1 AND ic.is_included_column = 0) = 'medline_item,vendor_part'
+            THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
 -- The names app/models/fillkill.py uses; if the app created a table first, its constraints match.
-SELECT 'workflow constraints have their standard names',
+SELECT 'workflow constraints have their standard names (12)',
        CASE WHEN (
            SELECT COUNT(*) FROM sys.objects
-           WHERE name IN (N'PK_Sub', N'UQ_Sub_item_vendor_part', N'CK_Sub_status', N'CK_Sub_source',
-                          N'CK_Sub_pick_needs_approved', N'CK_Sub_qoe',
+           WHERE name IN (N'PK_Sub', N'CK_Sub_status', N'CK_Sub_source', N'CK_Sub_pick_needs_approved',
+                          N'CK_Sub_qoe', N'CK_Sub_delete',
                           N'PK_SubOrder', N'FK_SubOrder_Sub', N'CK_SubOrder_quantity', N'CK_SubOrder_qoe',
                           N'CK_SubOrder_void',
                           N'PK_History', N'CK_History_entity', N'CK_History_action',
@@ -161,14 +194,28 @@ SELECT 'workflow constraints have their standard names',
              AND SCHEMA_NAME(schema_id) = N'FillKill'
        ) = 21 THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'view FillKill.vw_ContractLineSearch exists',
-       CASE WHEN OBJECT_ID(N'[FillKill].[vw_ContractLineSearch]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+SELECT 'History can record a deleted sub: CK_History_action allows ''delete'' (12, 2026-10-15)',
+       CASE WHEN EXISTS (SELECT 1 FROM sys.check_constraints
+                         WHERE parent_object_id = OBJECT_ID(N'[FillKill].[History]') AND name = N'CK_History_action'
+                           AND definition LIKE N'%''delete''%')
+            THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'procedure FillKill.usp_SyncPboSubs exists',
-       CASE WHEN OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]', N'P') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END;
+SELECT 'view FillKill.vw_ContractLineSearch has is_mhs (13)',
+       CASE WHEN COL_LENGTH(N'FillKill.vw_ContractLineSearch', N'is_mhs') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'view FillKill.vw_Vendor exists (13)',
+       CASE WHEN OBJECT_ID(N'[FillKill].[vw_Vendor]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+-- The version line near the top of 14; change both together.
+SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-15 version (14)',
+       CASE WHEN OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]', N'P') IS NULL THEN 'FAIL: run 14'
+            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) IS NULL
+                THEN 'CHECK: no VIEW DEFINITION permission to read it'
+            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-10-15%' THEN 'PASS'
+            ELSE 'FAIL: an older version; re-run 14' END;
 
--- Workflow data, once the tables exist.
-IF OBJECT_ID(N'[FillKill].[History]', N'U') IS NOT NULL
+-- Workflow data, once the tables exist and 12 is current.
+IF COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NOT NULL
     EXEC (N'
         SELECT ''every order is for its sub''''s Medline item'' AS [check],
                CASE WHEN NOT EXISTS (

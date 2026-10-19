@@ -10,8 +10,25 @@
 -- app/models/fillkill.py carries the same constraint names, so a table the app's startup
 -- (db.create_all) creates matches this script. Only the defaults differ (the app always sets
 -- every value); the end of this script adds any that are missing.
+--
+-- What it does, in order (each step only when needed, so re-running changes nothing):
+--   1. Creates Sub, SubOrder and History in their current shape.
+--   2. Brings a Sub and History made by an earlier version up to date:
+--      2a. 2026-10-15  Sub.vendor_id; Medline PBO subs get vendor 1000931 and Infor's name for it,
+--                      with History rows
+--      2b. 2026-10-15  Sub.deleted_at, deleted_by, delete_reason and CK_Sub_delete: a sub is
+--                      deleted with a reason, and its row stays
+--      2c. 2026-10-15  (stakeholder review) Sub.vendor may wait for the Materials Manager; one live
+--                      sub per (item, vendor part): the index UX_Sub_item_vendor_part replaces the
+--                      key UQ_Sub_item_vendor_part; CK_History_action allows 'delete'
+--   3. Adds any default a table made by the app's startup lacks.
+--
+-- A change to what the app needs from these tables goes in step 1 (the shape) and as a new step
+-- 2x (bringing an older table up to it), and in app/fillkill/health.py and 09_verify.sql.
 
 SET NOCOUNT ON;
+
+-- 1. The tables --------------------------------------------------------------------------
 
 IF OBJECT_ID(N'[FillKill].[Sub]', N'U') IS NULL
 BEGIN
@@ -109,9 +126,9 @@ BEGIN
 END;
 GO
 
--- 2026-10-15: [vendor_id], Infor's vendor ID, when the sub has one (filled in when the Sub Finder
--- picks a contract line; optional otherwise). Medline PBO subs get Medline's (1000931) and
--- Infor's name for it, with History rows.
+-- 2a. 2026-10-15 --------------------------------------------------------------------------
+-- [vendor_id], Infor's vendor ID, when the sub has one (filled in from a contract line; optional
+-- otherwise). Medline PBO subs get Medline's (1000931) and Infor's name for it, with History rows.
 IF COL_LENGTH(N'FillKill.Sub', N'vendor_id') IS NULL
 BEGIN
     ALTER TABLE [FillKill].[Sub] ADD [vendor_id] VARCHAR(20) NULL;
@@ -149,10 +166,11 @@ PRINT CONCAT('Medline PBO subs given vendor ID ', @medline_vendor, ': ', @moved_
 COMMIT TRANSACTION;
 GO
 
--- 2026-10-15: a sub can be deleted, with a reason. The row stays (deleted_at, deleted_by,
--- delete_reason) so its history stays and the PBO sync doesn't add it back; the unique key becomes
--- a unique index over live subs only, so the same vendor part can be added again; History gets
--- the 'delete' action.
+-- 2b. 2026-10-15 --------------------------------------------------------------------------
+-- A sub can be deleted, with a reason. The row stays (deleted_at, deleted_by, delete_reason) so its
+-- history stays and the PBO sync doesn't add it back; the unique key becomes a unique index over
+-- live subs only (2c), so the same vendor part can be added again; History gets the 'delete'
+-- action (2c).
 IF COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NULL
 BEGIN
     ALTER TABLE [FillKill].[Sub] ADD [deleted_at] DATETIME NULL, [deleted_by] VARCHAR(255) NULL,
@@ -170,9 +188,10 @@ BEGIN
     PRINT 'Added CK_Sub_delete';
 END;
 
--- 2026-10-15, after the stakeholder review: nursing enters only the vendor part, so the vendor
--- waits for the Materials Manager ([vendor] allows NULL), and a live sub is one vendor part per
--- Medline item: the unique index moves from (item, vendor, vendor part) to (item, vendor part).
+-- 2c. 2026-10-15, after the stakeholder review -------------------------------------------
+-- Nursing enters only the vendor part, so the vendor waits for the Materials Manager ([vendor]
+-- allows NULL), and a live sub is one vendor part per Medline item: the unique index moves from
+-- (item, vendor, vendor part) to (item, vendor part).
 IF OBJECT_ID(N'[FillKill].[UQ_Sub_item_vendor_part]', N'UQ') IS NOT NULL
 BEGIN
     EXEC (N'ALTER TABLE [FillKill].[Sub] DROP CONSTRAINT UQ_Sub_item_vendor_part');
@@ -217,7 +236,7 @@ BEGIN
 END;
 GO
 
--- Defaults, in case the app's startup created a table before this script ran.
+-- 3. Defaults, in case the app's startup created a table before this script ran -------------
 DECLARE @defaults TABLE ([tbl] SYSNAME, [col] SYSNAME, [name] SYSNAME, [expr] NVARCHAR(100));
 INSERT INTO @defaults VALUES
     (N'Sub', N'status', N'DF_Sub_status', N'(''pending_review'')'),

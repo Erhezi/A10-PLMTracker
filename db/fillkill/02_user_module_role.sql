@@ -84,6 +84,7 @@ END;
 -- rows). It now lives in users.user_role, so move any such rows there before the CHECK.
 IF EXISTS (SELECT 1 FROM [PLM].[UserModuleRole] WHERE [module] = 'app')
 BEGIN
+    SET XACT_ABORT ON;  -- an error rolls the transaction back instead of leaving it open
     BEGIN TRANSACTION;
     UPDATE u SET u.[user_role] = 'admin'
     FROM [PLM].[users] AS u
@@ -167,3 +168,12 @@ BEGIN
 END;
 GO
 
+-- Still in a transaction here? (SSMS's "SET IMPLICIT_TRANSACTIONS" option, or a BEGIN TRAN run
+-- earlier in this window.) Then what this script changed isn't saved yet, and other sessions wait
+-- on the tables it changed (SSMS's Object Explorer too: "Lock request time out period exceeded").
+IF @@TRANCOUNT > 0
+BEGIN
+    DECLARE @open_transactions INT = @@TRANCOUNT;
+    RAISERROR('%d transaction(s) still open in this window: the changes made in it are not saved yet, and other sessions wait on those tables. Run COMMIT to keep them (ROLLBACK undoes them).', 16, 1, @open_transactions);
+END;
+GO

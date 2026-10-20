@@ -22,6 +22,14 @@ The design is in `_ref/FillKill/fillkill_design.md`; the build plans are
 - `app/fillkill/health.py` holds what the app needs. When a script changes that, change
   `health.py` and `09` with it.
 
+**"Lock request time out period exceeded" after a script** (SSMS error 1222, e.g. in Object
+Explorer): the window that ran it still has a transaction open, so nothing it changed is saved and
+other sessions wait on those tables. It happens when SSMS's *Tools > Options > Query Execution >
+SQL Server > ANSI > SET IMPLICIT_TRANSACTIONS* is on, or after a `BEGIN TRAN` earlier in the window.
+In that window, `SELECT @@TRANCOUNT;` says how many; `COMMIT;` (once per transaction) keeps the
+changes, `ROLLBACK;` undoes them. Closing the window asks the same question. Every script that
+changes something now ends with a red error when a transaction is still open (2026-10-20).
+
 ## The scripts
 
 | Script | What it does | When to re-run |

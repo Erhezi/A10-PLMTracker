@@ -107,9 +107,12 @@ export function vendorText(v) {
   return `${v.vendor || ''}${id ? ` (${id})` : ''}`;
 }
 
-// A vendor item as text: the vendor part, its vendor, and the UOM (with its QOE).
+// A UOM with its QOE, as "CA/400" (2026-10-20; "CA × 400" read like a quantity).
+export const uomQoe = (v) => `${v.uom || ''}${v.qoe ? `/${fmtNumber(v.qoe)}` : ''}`;
+
+// A vendor item as text: the vendor part, its vendor, and the UOM with its QOE.
 export function vendorItemText(v) {
-  return `${v.vendor_part} · ${vendorText(v)} · ${v.uom}${v.qoe ? ` × ${fmtNumber(v.qoe)}` : ''}`;
+  return `${v.vendor_part} · ${vendorText(v)} · ${uomQoe(v)}`;
 }
 
 // A sub needs a vendor item to be ordered (2026-10-20); nursing leaves them to the Materials Manager.

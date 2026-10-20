@@ -3,7 +3,7 @@
  */
 
 import {
-  REASON_LABEL, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails, statusBadge, vendorText,
+  REASON_LABEL, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails, statusBadge, uomQoe, vendorText,
 } from '../common.js';
 import { can, state } from './state.js';
 import { customerFlag } from './table.js';
@@ -72,7 +72,7 @@ function vendorItemList(sub) {
     }
     return `<li class="d-flex flex-wrap gap-2 align-items-center py-1">
       <div class="me-auto"><span class="fw-semibold">${esc(v.vendor_part)}</span> <span class="text-muted">${esc(vendorText(v))}</span>
-        · ${esc(v.uom)}${v.qoe ? ` × ${fmtNumber(v.qoe)}` : ''}${v.description ? ` <span class="text-muted">· ${esc(v.description)}</span>` : ''}
+        · ${esc(uomQoe(v))}${v.description ? ` <span class="text-muted">· ${esc(v.description)}</span>` : ''}
         <div class="text-muted">${facts}</div></div>
       ${actions.join('')}
     </li>`;

@@ -4,7 +4,7 @@
  */
 
 import {
-  $, NO_VENDOR, alertBox, debounce, esc, fmtNumber, getJSON, postJSON, vendorItemText,
+  $, NO_VENDOR, alertBox, debounce, esc, fmtNumber, getJSON, postJSON, uomQoe, vendorItemText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
@@ -120,7 +120,7 @@ const searchContracts = debounce(async (q) => {
       <div class="list-group fk-pick-list fk-contract-list">${data.lines.map((line, i) => {
       const facts = [
         line.infor_item ? `Infor item ${esc(line.infor_item)}` : 'No Infor item',
-        `${esc(line.uom)}${line.qoe ? ` × ${fmtNumber(line.qoe)}` : ''}`,
+        esc(uomQoe(line)),
         line.contracts > 1 ? `${line.contracts} contracts${line.mhs_contracts && line.mhs_contracts < line.contracts
           ? ` (${line.mhs_contracts} MHS)` : ''}` : '',
       ].filter(Boolean).join(' · ');

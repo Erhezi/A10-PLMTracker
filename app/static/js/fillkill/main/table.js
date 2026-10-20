@@ -4,7 +4,7 @@
 
 import {
   $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
-  statusBadge, vendorItemText,
+  statusBadge, uomQoe, vendorItemText,
 } from '../common.js';
 import { renderNeeds } from './controls.js';
 import { openOrderForm, openVendorItemForm } from './forms.js';
@@ -136,8 +136,8 @@ function vendorItemsCell(picks) {
     const items = (pick.vendor_items || []).map((v) => {
       // The vendor ID first: a long vendor name is cut short, never the ID.
       const id = v.vendor_id === NO_VENDOR.id ? 'Not in Infor' : v.vendor_id;
-      const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(v.uom)}${v.qoe
-        ? ` × ${fmtNumber(v.qoe)}` : ''}</div><div class="fk-vi-vendor text-truncate">${esc(id)} · ${esc(v.vendor)}</div>`;
+      const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(uomQoe(v))}</div>
+        <div class="fk-vi-vendor text-truncate">${esc(id)} · ${esc(v.vendor)}</div>`;
       const title = [vendorItemText(v), v.description, picks.length > 1 ? `For ${pick.reference_sku}` : '']
         .filter(Boolean).join('\n');
       return can.order

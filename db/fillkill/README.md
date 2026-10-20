@@ -71,8 +71,8 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
   - gives each sub its Reference SKU, what was entered;
   - merges sub 11 into sub 10: both are 930103 on B-D930299Z, entered twice to get a second vendor
     part. Sub 11 is deleted, saying so; its orders move to sub 10;
-  - makes sub 10's two vendor items, B-D930103CS (Medline 1000931, CA × 400) and B-D930103CSZ
-    (Medline 1000931, BX × 40), and links orders 2-4 to them. Order 1 (930103 from 1017968, BX,
+  - makes sub 10's two vendor items, B-D930103CS (Medline 1000931, CA/400) and B-D930103CSZ
+    (Medline 1000931, BX/40), and links orders 2-4 to them. Order 1 (930103 from 1017968, BX,
     recorded before the vendor part was set) keeps what it was placed with, without a vendor item;
   - leaves subs 1 (PBO 2329RH) and 9 (CUR250383Z) without a vendor item: neither had a vendor, its
     vendor ID and a UOM. They show "Vendor item needed" until a Materials Manager adds one;

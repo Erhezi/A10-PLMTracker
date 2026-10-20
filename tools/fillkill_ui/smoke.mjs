@@ -240,7 +240,7 @@ const steps = [
   ['Recording an order from a vendor item tile', async () => {
     await click('#fk-main [data-order-vi]');
     await modalOpen();
-    expect((await text('.fk-form-summary')).includes('88885 · CARDINAL HEALTH (1000001) · BX × 100'), 'the vendor item is not shown');
+    expect((await text('.fk-form-summary')).includes('88885 · CARDINAL HEALTH (1000001) · BX/100'), 'the vendor item is not shown');
     expect(await evaluate(`document.querySelector('#fk-modal-form [name="quantity"]').value`) === '8', 'the quantity is not the 8 killed');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
@@ -269,7 +269,7 @@ const steps = [
   }],
   ['The Subs page', async () => {
     await go('/fillkill/subs', `document.querySelectorAll('#fk-subs-rows tr').length && !document.getElementById('fk-subs-rows').innerText.includes('Loading')`, 'the subs');
-    expect((await text('#fk-subs-rows')).includes('88885 BX × 100 · CARDINAL HEALTH (1000001)'), 'the sub and its vendor item are not listed');
+    expect((await text('#fk-subs-rows')).includes('88885 BX/100 · CARDINAL HEALTH (1000001)'), 'the sub and its vendor item are not listed');
     const cap = await evaluate(`getComputedStyle(document.getElementById('fk-subs-rows').closest('.fk-scroll')).maxHeight`);
     expect(cap === '600px', `the subs table is capped at ${cap}, not 600px`);
     await setValue('#fk-subs-q', '88885', 'input');
@@ -359,7 +359,7 @@ const steps = [
       await panelSays('Vendor item added.');
     }
     const items = await evaluate(`${card}.querySelector('.fk-vendor-items').innerText`);
-    expect(items.includes('B-D930103CSZ') && items.includes('BX × 40') && items.includes('B-D930103CS ') && items.includes('CA × 400'),
+    expect(items.includes('B-D930103CSZ') && items.includes('BX/40') && items.includes('B-D930103CS ') && items.includes('CA/400'),
       `the vendor items: ${items}`);
     // Main: the pick is 930103, with a tile for each.
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('930103')

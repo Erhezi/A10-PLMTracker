@@ -296,7 +296,7 @@ rest:
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
 | Approver's Pick | per UOM: each pick's **Reference SKU**, as entered (2026-10-20). A pencil when it has no vendor item yet, so nothing can be ordered; for Materials Managers and Sub Finders it opens the vendor item form |
-| Vendor Item Detail | per UOM (2026-10-20): a tile for each vendor item of the picks (vendor part, UOM × QOE, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
+| Vendor Item Detail | per UOM (2026-10-20): a tile for each vendor item of the picks (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
 | Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT on or after the range's first day (9.3, changed 2026-10-15), listing each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab |
 
 The **Needs filter** counts Infor items, over all their Medline items' subs, picks and orders.
@@ -536,7 +536,7 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
   asset. Filters: text (item, Reference SKU, or a vendor item's vendor part, manufacturer part,
   Infor item, vendor, vendor ID or description), status, source, "no vendor item yet", and deleted
   subs (with who, when, why). Columns: the Medline item and its Infor item, the **Reference SKU**,
-  the **Vendor Items** (each: vendor part, UOM × QOE, vendor and vendor ID, with manufacturer part,
+  the **Vendor Items** (each: vendor part, UOM/QOE, vendor and vendor ID, with manufacturer part,
   Infor item and description under it; 2026-10-20), status, orders (count, last date), who entered
   and approved it, and the latest comment. **Export CSV** gives everything the filters match, **one
   row per vendor item** (a sub without one has a row of its own): Reference SKU, then the vendor

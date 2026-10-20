@@ -4,7 +4,7 @@
  */
 
 import {
-  $, config, debounce, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, itemLink, needsDetails, statusBadge, url, vendorText,
+  $, config, debounce, esc, fmtDate, fmtDateTime, getJSON, itemLink, needsDetails, statusBadge, uomQoe, url, vendorText,
 } from './common.js';
 
 const sourceLabels = Object.fromEntries(config.sources);
@@ -50,8 +50,8 @@ function render(subs, limit, deleted) {
       : s.vendor_items.map((v) => {
         const more = [v.manufacturer_part ? `mfr ${esc(v.manufacturer_part)}` : '', v.infor_item ? `Infor item ${esc(v.infor_item)}` : '',
           esc(v.description || '')].filter(Boolean).join(' · ');
-        return `<div class="mb-1"><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(v.uom)}${v.qoe
-          ? ` × ${fmtNumber(v.qoe)}` : ''} <span class="text-muted">· ${esc(vendorText(v))}</span>
+        return `<div class="mb-1"><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(uomQoe(v))}
+          <span class="text-muted">· ${esc(vendorText(v))}</span>
           ${more ? `<div class="small text-muted">${more}</div>` : ''}</div>`;
       }).join('');
     const removed = deleted

@@ -249,11 +249,13 @@ def api_subs():
 
 
 # The Subs page's export: every sub the filters match, not just the first LIBRARY_LIMIT.
+# The Medline item killed, then the sub (2026-10-20: every column about the sub says so).
 EXPORT_COLUMNS = (
     ("Sub ID", "sub_id"), ("Medline Item", "medline_item"), ("Medline Item's Infor Item", "medline_infor_item"),
-    ("Vendor Part", "vendor_part"), ("Entered As", "entered_part"), ("Manufacturer Part", "manufacturer_part"),
-    ("Sub's Infor Item", "infor_item"), ("Vendor", "vendor"), ("Vendor ID", "vendor_id"),
-    ("Description", "description"), ("UOM", "uom"), ("QOE", "qoe"), ("Status", "status"),
+    ("Sub Vendor Part", "vendor_part"), ("Sub Entered As", "entered_part"),
+    ("Sub Manufacturer Part", "manufacturer_part"), ("Sub Infor Item", "infor_item"),
+    ("Sub Vendor ID", "vendor_id"), ("Sub Vendor Name", "vendor"), ("Sub Description", "description"),
+    ("Sub UOM", "uom"), ("Sub QOE", "qoe"), ("Status", "status"),
     ("Picked", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
     ("Approved By", "approved_by"), ("Approved", "approved_at"), ("Orders", "orders"),
     ("Last Ordered", "last_ordered"), ("Updated", "update_dt"), ("Latest Comment", "latest_comment"),

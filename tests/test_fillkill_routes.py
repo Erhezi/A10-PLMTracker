@@ -534,13 +534,14 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     response = viewer.get("/fillkill/subs/export", query_string={"status": "approved"})
     assert response.mimetype == "text/csv" and "attachment" in response.headers["Content-Disposition"]
     text = response.get_data(as_text=True)
-    assert text.startswith("\ufeffSub ID,Medline Item,Medline Item's Infor Item,Vendor Part,Entered As,Manufacturer Part")
+    assert text.startswith("\ufeffSub ID,Medline Item,Medline Item's Infor Item,Sub Vendor Part,Sub Entered As,"
+                           "Sub Manufacturer Part,Sub Infor Item,Sub Vendor ID,Sub Vendor Name,Sub Description,Sub UOM,Sub QOE,")
     header, *lines = list(csv.reader(io.StringIO(text.lstrip("\ufeff"))))
     [cup_line] = lines
     line = dict(zip(header, cup_line))
-    assert (line["Medline Item"], line["Medline Item's Infor Item"], line["Vendor"], line["Status"], line["Picked"],
+    assert (line["Medline Item"], line["Medline Item's Infor Item"], line["Sub Vendor Name"], line["Status"], line["Picked"],
             line["Orders"]) == ("DYND70294BH", "100339", "Cardinal", "Approved", "Yes", "1")
-    assert (line["Vendor Part"], line["Entered As"], line["Manufacturer Part"], line["Sub's Infor Item"]) == (
-        "88885", "88885", "", "")
+    assert (line["Sub Vendor Part"], line["Sub Entered As"], line["Sub Manufacturer Part"], line["Sub Infor Item"],
+            line["Sub Vendor ID"], line["Sub UOM"]) == ("88885", "88885", "", "", CARDINAL, "BX")
     assert line["Last Ordered"] == "2026-09-29 10:00"
     assert line["Latest Comment"] == "'=SUM(A1)"  # kept as text: Excel won't run it

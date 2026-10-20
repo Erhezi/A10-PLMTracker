@@ -4,8 +4,7 @@
  */
 
 import {
-  $, NO_VENDOR, config, debounce, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, itemLink, needsDetails, statusBadge,
-  url,
+  $, NO_VENDOR, config, debounce, esc, fmtDate, fmtDateTime, getJSON, itemLink, needsDetails, statusBadge, url,
 } from './common.js';
 
 const sourceLabels = Object.fromEntries(config.sources);
@@ -48,13 +47,11 @@ function render(subs, limit, deleted) {
       title="The Materials Manager fills in the vendor, its vendor ID and the UOM">Vendor details needed</span>` : '';
     const vendorId = s.vendor_id === NO_VENDOR.id ? `${esc(s.vendor_id)} · not in Infor` : esc(s.vendor_id);
     const vendor = `${esc(s.vendor || '')}${needed}`;
-    // What was entered when the vendor part ordered differs, the manufacturer's part, Infor's item.
+    // The manufacturer's part and Infor's item number for the sub, when it has them.
     const parts = [
-      s.entered_part && s.entered_part !== s.vendor_part ? `entered as ${esc(s.entered_part)}` : '',
       s.manufacturer_part ? `mfr ${esc(s.manufacturer_part)}` : '',
       s.infor_item ? `Infor item ${esc(s.infor_item)}` : '',
     ].filter(Boolean).map((text) => `<div class="small text-muted">${text}</div>`).join('');
-    const unit = s.uom ? `<div class="text-muted">${esc(s.uom)}${s.qoe ? ` · QOE ${fmtNumber(s.qoe)}` : ''}</div>` : '';
     const removed = deleted
       ? `<div class="small text-danger">Deleted by ${esc(s.deleted_by)} ${fmtDateTime(s.deleted_at)}: ${esc(s.delete_reason)}</div>` : '';
     const entered = s.source === 'manual' ? esc(s.entered_by) : esc(sourceLabels[s.source] || s.source);
@@ -63,7 +60,7 @@ function render(subs, limit, deleted) {
         ${s.medline_infor_item ? `<div class="small text-muted">${esc(s.medline_infor_item)}</div>` : ''}</td>
       <td><span class="fw-semibold">${esc(s.vendor_part)}</span>${parts}</td>
       <td>${vendor}${s.vendor_id ? `<div class="small text-muted">${vendorId}</div>` : ''}</td>
-      <td class="small">${esc(s.description || '')}${unit}</td>
+      <td class="small">${esc(s.description || '')}</td>
       <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}${removed}</td>
       <td class="small text-nowrap">${s.orders ? `${s.orders} · last ${fmtDate(s.last_ordered)}` : '<span class="text-muted">—</span>'}</td>
       <td class="small">${entered}<div class="text-muted text-nowrap">${fmtDateTime(s.create_dt)}</div></td>

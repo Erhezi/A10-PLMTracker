@@ -83,8 +83,6 @@ function renderOrders() {
   }
   body.innerHTML = orders.map((o) => {
     const voided = Boolean(o.voided_at);
-    const entered = o.sub_entered_part && o.sub_entered_part !== o.sub_label
-      ? `<div class="small text-muted">entered as ${esc(o.sub_entered_part)}</div>` : '';
     const vendorId = o.vendor_id === NO_VENDOR.id
       ? `${esc(o.vendor_id)}<div class="small text-muted">not in Infor</div>` : esc(o.vendor_id || '');
     return `<tr class="${voided ? 'text-muted' : ''}">
@@ -92,7 +90,7 @@ function renderOrders() {
       <td><button type="button" class="btn btn-link btn-sm p-0" data-open="${esc(o.medline_item)}">${esc(o.medline_item)}</button></td>
       <td>${o.medline_infor_item ? `<button type="button" class="btn btn-link btn-sm p-0" data-open="${esc(o.medline_item)}"
           data-scope="infor" title="All UOMs of this Infor item">${esc(o.medline_infor_item)}</button>` : '<span class="text-muted">—</span>'}</td>
-      <td>${esc(o.sub_label)}${entered}</td>
+      <td>${esc(o.sub_label)}</td>
       <td class="text-end">${o.qoe != null ? fmtNumber(o.qoe) : '<span class="text-muted">—</span>'}</td>
       <td class="text-end text-nowrap ${voided ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)}
         <span class="text-muted small">${esc(o.uom)}</span></td>

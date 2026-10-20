@@ -492,7 +492,7 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
     recorded after the kills shown. Columns (2026-10-20): Order Date, Medline Item, its Infor Item,
-    Sub (the vendor part, and as entered when it differs), QOE, Ordered (`21 BX`, the UOM grey as
+    Sub (its vendor part), QOE, Ordered (`21 BX`, the UOM grey as
     in the main table), Vendor (its vendor ID), Vendor Name, Ordered By, Latest Comment. A search
     box keeps the orders whose numbers have every word typed: the Medline item, its Infor item, or
     the sub's vendor part, part as entered, manufacturer part or Infor item (dashes optional). An
@@ -509,7 +509,11 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
 - **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data
   asset. Filters: text (item, vendor part, vendor, vendor ID, description), status, source,
   "vendor details needed", and deleted subs (with who, when, why). Columns add the Infor item, who
-  approved it, and its orders (count, last date). **Export CSV** gives everything the filters match.
+  approved it, and its orders (count, last date). The sub's column is **Sub Vendor Part**, with its
+  manufacturer part and Infor item under it (2026-10-20; what was entered, UOM and QOE are in the
+  export, not the table). **Export CSV** gives everything the filters match; its columns about the
+  sub all start with "Sub" (Sub Vendor Part, Sub Entered As, Sub Manufacturer Part, Sub Infor Item,
+  Sub Vendor ID, Sub Vendor Name, Sub Description, Sub UOM, Sub QOE), apart from the Medline item's.
   Read-only; a row's Medline item opens the panel on Main.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
   coverage, time to review, and rejected subs with their comments, grouped by vendor and item.

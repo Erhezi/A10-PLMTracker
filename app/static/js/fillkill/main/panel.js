@@ -5,7 +5,8 @@
 
 import { $, alertBox, config, debounce, esc, fmtNumber, getJSON, postJSON } from '../common.js';
 import {
-  openDetailsForm, openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm, openVoidForm,
+  openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm, openVendorItemDeleteForm, openVendorItemForm,
+  openVoidForm,
 } from './forms.js';
 import { afterChange } from './refresh.js';
 import { api, historyUrl, orderUrl, scopeParams, state, subUrl, syncLink } from './state.js';
@@ -178,28 +179,30 @@ async function onClick(event) {
   const { act: what } = button.dataset;
   const subId = Number(button.dataset.sub);
   const sub = () => panelSubs().find((s) => s.sub_id === subId);
-  if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-part').focus(); return; }
+  const vendorItem = () => (sub() ? sub().vendor_items.find((v) => v.vendor_item_id === Number(button.dataset.vi)) : null);
+  if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-sku').focus(); return; }
   if (what === 'hide-add') { $('fk-add-sub').classList.add('d-none'); return; }
   if (what === 'pick' || what === 'unpick') {
     await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Picked.' : 'Unpicked.');
     return;
   }
-  if (what === 'order') { openOrderForm(subId, button.dataset.item); return; }
+  if (what === 'order') { openOrderForm(Number(button.dataset.vi)); return; }
   if (what === 'copy-sub') {
     const target = button.dataset.item;
     const pack = state.panelData.packagings.find((p) => p.medline_item === target);
     const o = pack && pack.other_subs.find((x) => x.sub_id === subId);
     if (!o) return;
+    // The Reference SKU only: vendor items are for a UOM, the Materials Manager's to add here.
     await act(api.addSub, {
-      medline_item: target, vendor: o.vendor || '', vendor_id: o.vendor_id || '', vendor_part: o.vendor_part,
-      manufacturer_part: o.manufacturer_part || '', infor_item: o.infor_item || '',
-      description: o.description || '', uom: o.uom || '', qoe: o.qoe != null ? String(o.qoe) : '',
+      medline_item: target, reference_sku: o.reference_sku,
       comment: `Added from ${o.medline_item}${o.um ? ` (${o.um})` : ''}, where it is ${config.statusLabels[o.status]}.`,
     }, (data) => `Sub added to ${target}. ${addedMessage(data.sub)}`);
     return;
   }
   if (what === 'edit-sub') { openSubEditForm(sub()); return; }
-  if (what === 'details') { openDetailsForm(sub()); return; }
+  if (what === 'add-vi') { openVendorItemForm(sub()); return; }
+  if (what === 'edit-vi') { openVendorItemForm(sub(), vendorItem()); return; }
+  if (what === 'delete-vi') { openVendorItemDeleteForm(sub(), vendorItem()); return; }
   if (what === 'delete-sub') { openSubDeleteForm(sub()); return; }
   if (what === 'edit-order') { openOrderEditForm(state.panelData.orders.find((o) => o.order_id === Number(button.dataset.order))); return; }
   if (what === 'void-order') { openVoidForm(Number(button.dataset.order)); return; }

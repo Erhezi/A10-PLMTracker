@@ -101,22 +101,19 @@ export function alertBox(message, kind) {
 // The vendor ID that says Infor has no such vendor (2026-10-19; rules.NO_VENDOR_ID).
 export const NO_VENDOR = config.noVendor || { id: '0000000', label: 'Vendor not available in system' };
 
-// A sub's vendor: its name, with Infor's vendor ID when it has one; empty until the Materials
-// Manager fills it in.
-export function vendorText(s) {
-  const id = s.vendor_id === NO_VENDOR.id ? 'not in Infor' : s.vendor_id;
-  return `${s.vendor || ''}${id ? ` (${id})` : ''}`;
+// A vendor item's or an order's vendor: its name, with Infor's vendor ID.
+export function vendorText(v) {
+  const id = v.vendor_id === NO_VENDOR.id ? 'not in Infor' : v.vendor_id;
+  return `${v.vendor || ''}${id ? ` (${id})` : ''}`;
 }
 
-// A sub as text: its vendor part, and its vendor when known.
-export function subText(s) {
-  const vendor = vendorText(s);
-  return vendor ? `${s.vendor_part} · ${vendor}` : s.vendor_part;
+// A vendor item as text: the vendor part, its vendor, and the UOM (with its QOE).
+export function vendorItemText(v) {
+  return `${v.vendor_part} · ${vendorText(v)} · ${v.uom}${v.qoe ? ` × ${fmtNumber(v.qoe)}` : ''}`;
 }
 
-// The vendor, its vendor ID (or 0000000) and the UOM are what an order needs (rules.details_missing);
-// nursing leaves them to the Materials Manager.
-export const needsDetails = (s) => !s.vendor || !s.vendor_id || !s.uom;
+// A sub needs a vendor item to be ordered (2026-10-20); nursing leaves them to the Materials Manager.
+export const needsDetails = (s) => !(s.vendor_items || []).length;
 
 // An item's panel on Main, from the Subs page or the Dashboard: ?item=<Medline item>, with
 // scope 'infor' for all its UOMs and a tab (subs, lines, picks, orders).

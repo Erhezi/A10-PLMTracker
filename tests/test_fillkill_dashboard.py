@@ -9,7 +9,8 @@ D = date(2026, 9, 28)
 
 
 def sub(sub_id, status, created, source="manual", vendor="Owens", item="A"):
-    return {"sub_id": sub_id, "medline_item": item, "vendor": vendor, "vendor_part": f"P{sub_id}",
+    items = [{"vendor": name} for name in (vendor if isinstance(vendor, tuple) else (vendor,)) if name]
+    return {"sub_id": sub_id, "medline_item": item, "vendor_items": items, "reference_sku": f"P{sub_id}",
             "status": status, "source": source, "create_dt": created}
 
 
@@ -54,6 +55,11 @@ def test_rejected_subs_grouped_by_vendor_with_who_and_comments():
     assert [(g["vendor"], g["count"]) for g in groups] == [("Owens", 2), ("Cardinal", 1)]
     assert [s["rejected_by"] for s in groups[0]["subs"]] == ["b@x", "a@x"]  # newest first
     assert groups[0]["subs"][1]["comments"][0]["comment"] == "latex"
+    assert groups[0]["subs"][0]["reference_sku"] == "P2"
+    # A sub's vendors are its vendor items' (2026-10-20): none yet, or several.
+    groups = dashboard.rejected_groups([sub(5, "rejected", datetime(2026, 9, 28), vendor=None),
+                                        sub(6, "rejected", datetime(2026, 9, 28), vendor=("Owens", "Cardinal"))], [])
+    assert [g["vendor"] for g in groups] == ["Cardinal / Owens", "No vendor item"]
 
 
 def test_headline():

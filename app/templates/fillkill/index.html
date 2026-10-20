@@ -77,11 +77,12 @@
             <th scope="col">Latest Reason</th>
             <th scope="col">Subs Status</th>
             <th scope="col">Approver's Pick</th>
+            <th scope="col">Vendor Item Detail</th>
             <th scope="col">Ordering</th>
           </tr>
         </thead>
         <tbody id="fk-rows">
-          <tr><td colspan="12" class="text-muted small p-3">Loading…</td></tr>
+          <tr><td colspan="13" class="text-muted small p-3">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -96,7 +97,7 @@
       <h2 class="h6 fw-semibold mb-0" id="fk-orders-title">Orders</h2>
       <input type="search" id="fk-orders-q" class="form-control form-control-sm fk-orders-search me-auto" autocomplete="off"
              placeholder="Medline item, sub part or Infor item" aria-label="Find an order by Medline item, sub part or Infor item"
-             title="Every word must be part of the Medline item, its Infor item, or the sub's vendor part, part as entered, manufacturer part or Infor item (dashes optional)" />
+             title="Every word must be part of the Medline item, its Infor item, the vendor part ordered, the sub's Reference SKU, or the vendor item's manufacturer part or Infor item (dashes optional)" />
       <span class="small text-muted" id="fk-orders-label">Ordered</span>
       <div class="d-flex gap-2 align-items-center" role="group" aria-labelledby="fk-orders-label">
         <input type="date" id="fk-orders-start" class="form-control form-control-sm" aria-label="First order date" />

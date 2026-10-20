@@ -62,10 +62,10 @@ export async function loadOrders() {
 }
 
 // Every word must be one of the order's numbers, or part of one: the Medline item, its Infor item,
-// the sub's vendor part (and as entered), manufacturer part or Infor item. Dashes, spaces, dots and
-// slashes don't count, so "bd930" finds B-D930299Z.
+// the vendor part ordered, the sub's Reference SKU, the vendor item's manufacturer part or Infor item.
+// Dashes, spaces, dots and slashes don't count, so "bd930" finds B-D930299Z.
 const compact = (value) => String(value || '').toLowerCase().replace(/[\s\-./]/g, '');
-const ORDER_NUMBERS = ['medline_item', 'medline_infor_item', 'sub_label', 'sub_entered_part', 'sub_manufacturer_part', 'sub_infor_item'];
+const ORDER_NUMBERS = ['medline_item', 'medline_infor_item', 'vendor_part', 'reference_sku', 'manufacturer_part', 'infor_item'];
 
 function matches(order, words) {
   const numbers = ORDER_NUMBERS.map((key) => compact(order[key])).join(' ');
@@ -90,7 +90,7 @@ function renderOrders() {
       <td><button type="button" class="btn btn-link btn-sm p-0" data-open="${esc(o.medline_item)}">${esc(o.medline_item)}</button></td>
       <td>${o.medline_infor_item ? `<button type="button" class="btn btn-link btn-sm p-0" data-open="${esc(o.medline_item)}"
           data-scope="infor" title="All UOMs of this Infor item">${esc(o.medline_infor_item)}</button>` : '<span class="text-muted">—</span>'}</td>
-      <td>${esc(o.sub_label)}</td>
+      <td>${esc(o.vendor_part)}</td>
       <td class="text-end">${o.qoe != null ? fmtNumber(o.qoe) : '<span class="text-muted">—</span>'}</td>
       <td class="text-end text-nowrap ${voided ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)}
         <span class="text-muted small">${esc(o.uom)}</span></td>

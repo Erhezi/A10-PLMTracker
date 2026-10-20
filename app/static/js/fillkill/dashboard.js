@@ -155,7 +155,7 @@ function rejected(groups) {
     <div class="mb-3">
       <div class="fw-semibold">${esc(g.vendor)} <span class="badge text-bg-danger">${g.count}</span></div>
       <ul class="list-unstyled small mb-0 ms-2">${g.subs.map((s) => `
-        <li class="mb-1"><span class="fw-semibold">${esc(s.vendor_part)}</span> for
+        <li class="mb-1"><span class="fw-semibold">${esc(s.reference_sku)}</span> for
           <a href="${esc(itemLink(s.medline_item, '', 'subs'))}" title="Open the item on Main">${esc(s.medline_item)}</a>
           <span class="text-muted">· rejected${s.rejected_by ? ` by ${esc(s.rejected_by)}` : ''}${s.rejected_at ? ` ${fmtDateTime(s.rejected_at)}` : ''}</span>
           ${s.comments.map((c) => `<div class="border-start border-2 ps-2 text-muted">${esc(c.actor)}: ${esc(c.comment)}</div>`).join('')}

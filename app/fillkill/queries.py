@@ -14,7 +14,7 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import and_, bindparam, func, or_, select, text
 
 from .. import db
-from ..models.fillkill import History, Sub, SubOrder
+from ..models.fillkill import History, Sub, SubOrder, VendorItem
 from . import rollup
 
 log = logging.getLogger(__name__)
@@ -146,30 +146,49 @@ def latest_reasons(scope: Scope, items=None) -> dict[str, dict]:
     return {row.pop("medline_item"): row for row in rows}
 
 
-def sub_dict(sub: Sub) -> dict:
+def vendor_item_dict(item: VendorItem) -> dict:
     return {
-        "sub_id": sub.sub_id, "medline_item": sub.medline_item, "vendor": sub.vendor,
-        "vendor_id": sub.vendor_id, "vendor_part": sub.vendor_part,
-        # as entered (nursing's reference, or Medline's PBO number); subs from before 12's 2d have none
-        "entered_part": sub.entered_part or sub.vendor_part,
-        "manufacturer_part": sub.manufacturer_part, "infor_item": sub.infor_item,
-        "description": sub.description, "uom": sub.uom, "qoe": sub.qoe,
-        "status": sub.status, "is_picked": bool(sub.is_picked), "source": sub.source,
-        "entered_by": sub.entered_by, "create_dt": sub.create_dt, "update_dt": sub.update_dt,
+        "vendor_item_id": item.vendor_item_id, "sub_id": item.sub_id, "vendor_part": item.vendor_part,
+        "vendor": item.vendor, "vendor_id": item.vendor_id, "uom": item.uom, "qoe": item.qoe,
+        "manufacturer_part": item.manufacturer_part, "infor_item": item.infor_item, "description": item.description,
+        "entered_by": item.entered_by, "create_dt": item.create_dt, "update_dt": item.update_dt,
     }
 
 
+def sub_dict(sub: Sub, vendor_items=()) -> dict:
+    """A sub, with its live vendor items (what can be ordered for it, 2026-10-20)."""
+    return {
+        "sub_id": sub.sub_id, "medline_item": sub.medline_item, "reference_sku": sub.reference_sku,
+        "status": sub.status, "is_picked": bool(sub.is_picked), "source": sub.source,
+        "entered_by": sub.entered_by, "create_dt": sub.create_dt, "update_dt": sub.update_dt,
+        "vendor_items": list(vendor_items),
+    }
+
+
+def vendor_items_of(sub_ids) -> dict[int, list[dict]]:
+    """Per sub: its live vendor items, oldest first."""
+    found: dict[int, list[dict]] = {}
+    for chunk in _chunks(sorted(set(sub_ids))):
+        for item in db.session.execute(
+            select(VendorItem).where(VendorItem.sub_id.in_(chunk), VendorItem.deleted_at.is_(None))
+            .order_by(VendorItem.create_dt, VendorItem.vendor_item_id)
+        ).scalars():
+            found.setdefault(item.sub_id, []).append(vendor_item_dict(item))
+    return found
+
+
+def _sub_dicts(subs) -> list[dict]:
+    items = vendor_items_of(s.sub_id for s in subs)
+    return [sub_dict(s, items.get(s.sub_id, [])) for s in subs]
+
+
 def subs_for_items(items) -> list[dict]:
-    items = sorted(set(items))
-    if not items:
-        return []
     subs = []
-    for start in range(0, len(items), 1000):  # stay well under SQL Server's 2,100 parameters
-        chunk = items[start:start + 1000]
+    for chunk in _chunks(sorted(set(items))):  # stay well under SQL Server's 2,100 parameters
         subs += db.session.execute(
             select(Sub).where(Sub.medline_item.in_(chunk), Sub.deleted_at.is_(None))
         ).scalars().all()
-    return [sub_dict(sub) for sub in subs]
+    return _sub_dicts(subs)
 
 
 def _range_condition(column, scope: Scope):
@@ -245,31 +264,38 @@ def _latest_comments(entity: str, ids) -> dict[int, dict]:
 
 
 def order_dict(order: SubOrder) -> dict:
-    sub = order.sub
+    """An order as placed: its vendor part, vendor, vendor ID, UOM and QOE are its own. The sub's
+    Reference SKU and the vendor item's other numbers are there to find it by (2026-10-20)."""
+    sub, item = order.sub, order.vendor_item
     return {
-        "order_id": order.order_id, "sub_id": order.sub_id, "medline_item": order.medline_item,
-        "sub_label": sub.vendor_part if sub else None,  # the order has its own vendor
-        "sub_vendor": sub.vendor if sub else None,
-        # the sub's other numbers, to find the order by (2026-10-20)
-        "sub_entered_part": (sub.entered_part or sub.vendor_part) if sub else None,
-        "sub_manufacturer_part": sub.manufacturer_part if sub else None,
-        "sub_infor_item": sub.infor_item if sub else None,
+        "order_id": order.order_id, "sub_id": order.sub_id, "vendor_item_id": order.vendor_item_id,
+        "medline_item": order.medline_item, "reference_sku": sub.reference_sku if sub else None,
+        "vendor_part": order.vendor_part,
+        "manufacturer_part": item.manufacturer_part if item else None,
+        "infor_item": item.infor_item if item else None,
         "quantity": order.quantity, "uom": order.uom, "qoe": order.qoe, "vendor": order.vendor,
-        # kept with the order since 2026-10-20 (12's 2e filled in the older ones from their sub)
-        "vendor_id": order.vendor_id if order.vendor_id or not sub else sub.vendor_id,
+        "vendor_id": order.vendor_id,
         "ordered_by": order.ordered_by, "ordered_dt": order.ordered_dt,
         "voided_by": order.voided_by, "voided_at": order.voided_at, "void_reason": order.void_reason,
     }
 
 
-def _history_dict(row: History, labels: dict[int, str]) -> dict:
+def _history_dict(row: History, labels: dict[tuple, str]) -> dict:
+    """``labels``: what to call each sub or vendor item, by (entity, entity_id)."""
     return {
         "history_id": row.history_id, "entity": row.entity, "entity_id": row.entity_id,
         "medline_item": row.medline_item,
-        "label": labels.get(row.entity_id), "action": row.action, "field": row.field,
+        "label": labels.get((row.entity, row.entity_id)), "action": row.action, "field": row.field,
         "from_value": row.from_value, "to_value": row.to_value, "comment": row.comment,
         "actor": row.actor, "acted_at": row.acted_at,
     }
+
+
+def _vendor_item_labels(items, *, with_sub: bool = True) -> dict[tuple, str]:
+    """A vendor item's History rows are labelled with it, after its sub's Reference SKU when they
+    may be read beside other subs'."""
+    return {("vendoritem", i.vendor_item_id): f"{i.sub.reference_sku}: {i.label()}" if with_sub else i.label()
+            for i in items}
 
 
 def item_panel(medline_item: str, scope: Scope) -> dict:
@@ -294,12 +320,16 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     every_sub = db.session.execute(
         select(Sub).where(Sub.medline_item.in_(members)).order_by(Sub.create_dt, Sub.sub_id)
     ).scalars().all()
-    sub_labels = {s.sub_id: s.label() for s in every_sub}  # deleted ones too, for the history
+    every_item = db.session.execute(
+        select(VendorItem).where(VendorItem.sub_id.in_([s.sub_id for s in every_sub] or [0]))
+    ).scalars().all()
+    # Deleted ones too, for the history.
+    labels = {("sub", s.sub_id): s.label() for s in every_sub} | _vendor_item_labels(every_item)
     subs = [s for s in every_sub if s.deleted_at is None]
     comments = _latest_comments("sub", [s.sub_id for s in subs])
     approvals = _latest_approvals([s.sub_id for s in subs])
-    all_subs = [{**sub_dict(s), "latest_comment": comments.get(s.sub_id), **approvals.get(s.sub_id, {})}
-                for s in subs]
+    all_subs = [{**d, "latest_comment": comments.get(d["sub_id"]), **approvals.get(d["sub_id"], {})}
+                for d in _sub_dicts(subs)]
 
     where, params, binds = scope.where("[Order Date]", "[Sold-To]")
     params["members"] = members
@@ -345,10 +375,12 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     # Killed in the range first, then the Infor item's other packagings.
     packagings.sort(key=lambda p: (not p["killed_in_range"], p["medline_item"]))
 
+    # Subs added, reviewed, picked, unpicked and deleted, and vendor items added and deleted.
     picks = db.session.execute(
         select(History).where(
-            History.medline_item.in_(members), History.entity == "sub",
-            History.action.in_(("created", "status", "pick", "unpick", "delete")),
+            History.medline_item.in_(members), History.action.in_(("created", "status", "pick", "unpick", "delete")),
+            History.entity.in_(("sub", "vendoritem")),
+            or_(History.entity == "sub", History.action.in_(("created", "delete"))),
         ).order_by(History.acted_at.desc(), History.history_id.desc())
     ).scalars().all()
     orders = db.session.execute(
@@ -369,7 +401,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
         },
         "packagings": packagings,
         "lines": lines,
-        "pick_history": [_history_dict(row, sub_labels) for row in picks],
+        "pick_history": [_history_dict(row, labels) for row in picks],
         "orders": [{**order_dict(o), "latest_comment": order_comments.get(o.order_id)} for o in orders],
         "latest_reason": rollup.latest_of(latest_reasons(scope, members).values()),
     }
@@ -388,12 +420,22 @@ def _latest_approvals(sub_ids) -> dict[int, dict]:
 
 
 def history(entity: str, entity_id: int) -> list[dict]:
-    """One sub's or order's timeline, newest first."""
+    """One sub's, vendor item's or order's timeline, newest first. A sub's includes its vendor items'
+    (2026-10-20), each labelled with the vendor item."""
+    condition = and_(History.entity == entity, History.entity_id == entity_id)
+    labels = {}
+    if entity in ("sub", "vendoritem"):
+        items = db.session.execute(select(VendorItem).where(
+            VendorItem.sub_id == entity_id if entity == "sub" else VendorItem.vendor_item_id == entity_id
+        )).scalars().all()
+        labels = _vendor_item_labels(items, with_sub=False)
+        if entity == "sub" and items:
+            condition = or_(condition, and_(History.entity == "vendoritem",
+                                            History.entity_id.in_([i.vendor_item_id for i in items])))
     rows = db.session.execute(
-        select(History).where(History.entity == entity, History.entity_id == entity_id)
-        .order_by(History.acted_at.desc(), History.history_id.desc())
+        select(History).where(condition).order_by(History.acted_at.desc(), History.history_id.desc())
     ).scalars().all()
-    return [_history_dict(row, {}) for row in rows]
+    return [_history_dict(row, labels) for row in rows]
 
 
 # --- the tables under the main table -----------------------------------------------------
@@ -442,27 +484,31 @@ def _order_stats(sub_ids) -> dict[int, dict]:
 
 def subs_library(*, status: str | None = None, source: str | None = None, q: str | None = None,
                  needs_details: bool = False, deleted: bool = False, limit: int | None = LIBRARY_LIMIT) -> list[dict]:
-    """Every sub across all items (the Subs page), newest change first, with its Infor item, who
-    approved it, and its orders. ``deleted`` shows the deleted ones instead (who, when, why);
-    ``needs_details`` keeps those still without a vendor, vendor ID or UOM; ``limit`` None means all."""
+    """Every sub across all items (the Subs page), newest change first, with its vendor items, its
+    Infor item, who approved it, and its orders. ``deleted`` shows the deleted ones instead (who,
+    when, why); ``needs_details`` keeps those without a vendor item yet; ``limit`` None means all."""
     query = select(Sub).where(Sub.deleted_at.is_not(None) if deleted else Sub.deleted_at.is_(None))
+    live_items = select(VendorItem.vendor_item_id).where(VendorItem.sub_id == Sub.sub_id, VendorItem.deleted_at.is_(None))
     if needs_details:
-        query = query.where(or_(Sub.vendor.is_(None), Sub.vendor_id.is_(None), Sub.uom.is_(None)))
+        query = query.where(~live_items.exists())
     if status:
         query = query.where(Sub.status == status)
     if source:
         query = query.where(Sub.source == source)
     if q:
         like = f"%{q.strip().lower()}%"
-        conditions = [
-            func.lower(Sub.medline_item).like(like), func.lower(Sub.vendor).like(like),
-            func.coalesce(Sub.vendor_id, "").like(like), func.coalesce(Sub.infor_item, "").like(like),
-            func.lower(Sub.vendor_part).like(like), func.lower(func.coalesce(Sub.description, "")).like(like),
+        conditions = [func.lower(Sub.medline_item).like(like), func.lower(Sub.reference_sku).like(like)]
+        item_conditions = [
+            func.lower(VendorItem.vendor).like(like), VendorItem.vendor_id.like(like),
+            func.coalesce(VendorItem.infor_item, "").like(like), func.lower(VendorItem.vendor_part).like(like),
+            func.lower(func.coalesce(VendorItem.description, "")).like(like),
         ]
         bare = _compact(q)
         if bare:  # item numbers also match without dashes, spaces, dots and slashes ("bd930")
-            conditions += [_compact_column(column).like(f"%{bare}%") for column in (
-                Sub.medline_item, Sub.vendor_part, Sub.entered_part, Sub.manufacturer_part)]
+            conditions += [_compact_column(column).like(f"%{bare}%") for column in (Sub.medline_item, Sub.reference_sku)]
+            item_conditions += [_compact_column(column).like(f"%{bare}%")
+                                for column in (VendorItem.vendor_part, VendorItem.manufacturer_part)]
+        conditions.append(live_items.where(or_(*item_conditions)).exists())
         query = query.where(or_(*conditions))
     query = query.order_by(Sub.update_dt.desc(), Sub.sub_id.desc())
     subs = db.session.execute(query.limit(limit) if limit else query).scalars().all()
@@ -470,12 +516,12 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
     comments, approvals, orders = _latest_comments("sub", ids), _latest_approvals(ids), _order_stats(ids)
     infor = infor_items_of(s.medline_item for s in subs)
     return [{
-        # medline_infor_item: the killed Medline item's Infor item (infor_item is the sub's own)
-        **sub_dict(s), "medline_infor_item": infor.get(s.medline_item), "latest_comment": comments.get(s.sub_id),
+        # medline_infor_item: the killed Medline item's Infor item (a vendor item's infor_item is its own)
+        **d, "medline_infor_item": infor.get(s.medline_item), "latest_comment": comments.get(s.sub_id),
         "approved_by": None, "approved_at": None, **approvals.get(s.sub_id, {}),
         "orders": 0, "last_ordered": None, **orders.get(s.sub_id, {}),
         "deleted_at": s.deleted_at, "deleted_by": s.deleted_by, "delete_reason": s.delete_reason,
-    } for s in subs]
+    } for s, d in zip(subs, _sub_dicts(subs))]
 
 
 def orders_log(start: date, end: date) -> list[dict]:
@@ -670,8 +716,8 @@ def lines_by_day(scope: Scope, by: str) -> list[dict]:
 
 
 def all_subs() -> list[dict]:
-    """Every sub that isn't deleted (the Dashboard)."""
-    return [sub_dict(s) for s in db.session.execute(select(Sub).where(Sub.deleted_at.is_(None))).scalars()]
+    """Every sub that isn't deleted, with its vendor items (the Dashboard)."""
+    return _sub_dicts(db.session.execute(select(Sub).where(Sub.deleted_at.is_(None))).scalars().all())
 
 
 def sub_history(actions) -> list[dict]:

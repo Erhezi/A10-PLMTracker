@@ -9,7 +9,7 @@ Inputs, all plain dicts:
                medline_item, um, ordered, filled, killed, lines (any granularity)
   item_rows    vw_MedlineFillKillItemCollection rows of the Medline items in the range
   subs         subs of those Medline items and of their Infor items' other Medline items:
-               sub_id, medline_item, vendor, vendor_part, status, is_picked, uom, qoe
+               sub_id, medline_item, reference_sku, status, is_picked, vendor_items
   orders       non-voided orders dated on or after the range's first day, for the same Medline
                items: medline_item, order_id, quantity, uom, ordered_dt
   reasons      {medline_item: {comment, reason, reason_date, order_date, order_time}}: the latest
@@ -22,14 +22,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from . import rules
-
 NEEDS = ("needs_subs", "needs_review", "needs_pick", "needs_details", "needs_order", "ordered")
 NEEDS_LABELS = {
     "needs_subs": "Needs subs",
     "needs_review": "Needs review",
     "needs_pick": "Needs pick",
-    "needs_details": "Needs details",  # a pick without a vendor, vendor ID or UOM: the Materials Manager's
+    "needs_details": "Needs details",  # a pick without a vendor item yet: the Materials Manager's
     "needs_order": "Needs order",
     "ordered": "Ordered",
 }
@@ -108,8 +106,8 @@ def subs_status(subs) -> dict[str, int]:
 
 def needs_flags(counts: dict[str, int], *, has_pick: bool, ordered: bool, details_missing: bool = False) -> list[str]:
     """Design §5 Needs filter. An item can need more than one thing (e.g. review and order).
-    ``details_missing``: a pick still has no vendor, vendor ID or UOM (2026-10-19); once ordered,
-    it's done."""
+    ``details_missing``: a pick has no vendor item yet, nothing to order (2026-10-20); once
+    ordered, it's done."""
     flags = []
     if counts.get("pending_review", 0) + counts.get("approved", 0) + counts.get("hold", 0) == 0:
         flags.append("needs_subs")
@@ -140,9 +138,8 @@ def sort_key(row) -> tuple:
 
 
 def _sub_key(sub) -> str:
-    """The vendor part, ignoring case: the same sub on two Medline items (the vendor may not be
-    filled in yet)."""
-    return str(sub.get("vendor_part") or "").strip().lower()
+    """The Reference SKU, ignoring case: the same sub on two Medline items."""
+    return str(sub.get("reference_sku") or "").strip().lower()
 
 
 def each_factors(item_rows) -> dict[tuple[str, str], float]:
@@ -185,8 +182,7 @@ def approved_on_other_packagings(item, subs_by_item, infor_of, members, *, skip=
             key = _sub_key(s)
             if s["status"] == "approved" and key not in approved_here and (sibling, key) not in seen:
                 seen.add((sibling, key))
-                found.append({"medline_item": sibling, "um": uom, "vendor": s["vendor"],
-                              "vendor_id": s.get("vendor_id"), "vendor_part": s["vendor_part"],
+                found.append({"medline_item": sibling, "um": uom, "reference_sku": s["reference_sku"],
                               "sub_id": s["sub_id"]})
     return found
 
@@ -194,7 +190,7 @@ def approved_on_other_packagings(item, subs_by_item, infor_of, members, *, skip=
 def sibling_signals(subs_here, sibling_subs, sibling_uoms) -> tuple[list[dict], list[dict]]:
     """For one packaging in the item panel.
 
-    Returns its subs, each with ``approved_elsewhere`` (the same vendor part approved on another
+    Returns its subs, each with ``approved_elsewhere`` (the same Reference SKU approved on another
     packaging), and the other packagings' subs that aren't on it yet, approved first.
     """
     by_key: dict[tuple, list] = defaultdict(list)
@@ -208,7 +204,7 @@ def sibling_signals(subs_here, sibling_subs, sibling_uoms) -> tuple[list[dict], 
     rank = {status: i for i, status in enumerate(STATUS_ORDER)}
     others = sorted(
         (o for key, found in by_key.items() if key not in here_keys for o in found),
-        key=lambda o: (rank.get(o["status"], 9), o["medline_item"], o["vendor"], o["vendor_part"]),
+        key=lambda o: (rank.get(o["status"], 9), o["medline_item"], o["reference_sku"]),
     )
     return annotated, others
 
@@ -312,7 +308,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
             "orders": row_orders,  # since the range's first day, newest first
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered,
-                                 details_missing=any(rules.details_missing(p) for p in picks)),
+                                 details_missing=any(not p.get("vendor_items") for p in picks)),
         })
     rows.sort(key=sort_key)
     return rows

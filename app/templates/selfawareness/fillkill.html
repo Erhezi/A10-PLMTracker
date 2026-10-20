@@ -20,7 +20,7 @@
     <p class="mb-0">
       The main table rolls those lines up <strong>per Infor item</strong> for the dates and sites you
       choose. For each item, nursing (Sub Approver) enters the substitute to use, approved on entry, and
-      a Materials Manager fills in its vendor details and records what was ordered.
+      a Materials Manager adds the ways to order it (its vendor items) and records what was ordered.
     </p>
   </section>
 
@@ -33,9 +33,9 @@
         </thead>
         <tbody>
           <tr><td class="text-nowrap">Viewer</td><td>Seeing everything in the module.</td></tr>
-          <tr><td class="text-nowrap">Sub Approver</td><td>Usually nursing. Entering the vendor part of a substitute found through suppliers, with a note if useful: it's approved as soon as it's entered, and picked if it's the item's only approved one. Holding or rejecting substitutes later, reviewing proposed ones, picking and unpicking, adding comments, correcting a vendor part, and deleting a substitute with a reason.</td></tr>
-          <tr><td class="text-nowrap">Materials Manager</td><td>Filling in each substitute's vendor details (vendor, Infor's vendor ID, description, UOM, QOE), helped by the search of Infor's active contracts, and recording what was ordered against the Approver's Pick; adding comments to orders.</td></tr>
-          <tr><td class="text-nowrap">Sub Finder</td><td>Proposing substitutes, which wait for a Sub Approver's review; filling in vendor details. Kept for a future AI agent that finds substitutes.</td></tr>
+          <tr><td class="text-nowrap">Sub Approver</td><td>Usually nursing. Entering the Reference SKU of a substitute found through suppliers, with a note if useful: it's approved as soon as it's entered, and picked if it's the item's only approved one. Holding or rejecting substitutes later, reviewing proposed ones, picking and unpicking, adding comments, correcting a Reference SKU, and deleting a substitute with a reason.</td></tr>
+          <tr><td class="text-nowrap">Materials Manager</td><td>Adding each substitute's vendor items, the ways to order it (vendor part, vendor, Infor's vendor ID, UOM, QOE), helped by the search of Infor's active contracts, and recording what was ordered from the Approver's Pick's vendor items; adding comments to orders.</td></tr>
+          <tr><td class="text-nowrap">Sub Finder</td><td>Proposing substitutes, which wait for a Sub Approver's review; adding vendor items. Kept for a future AI agent that finds substitutes.</td></tr>
           <tr><td class="text-nowrap">Admin</td><td>Assigns these roles in User Control. Inside the module, admins have only the roles they hold, like everyone else.</td></tr>
         </tbody>
       </table>
@@ -53,17 +53,18 @@
       you get follow your roles.</p>
     <ul class="mb-3">
       <li class="mb-1"><strong>One row per Infor item.</strong> Its Medline items, one per UOM (such as each and box),
-        are listed inside the row, each with its QOE (eaches per unit, from Infor), quantities, reason, substitutes
-        and pick. A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
+        are listed inside the row, each with its QOE (eaches per unit, from Infor), quantities, reason, substitutes,
+        pick (its <em>Reference SKU</em>) and <em>Vendor Item Detail</em>: a tile for each way to order the pick, which a
+        Materials Manager clicks to record an order. A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
         <em>Not in Infor</em>.</li>
       <li class="mb-1"><strong>Choose what to look at:</strong> click <em>View today</em>, or <em>Select a range</em> and pick the first
         and last order dates (it opens on today, or on the latest day with kill lines), pick sites, and type part of an item number or description.</li>
       <li class="mb-1"><strong>Needs filter:</strong> <em>Needs subs</em> (no live substitute), <em>Needs review</em>
-        (one is pending review), <em>Needs pick</em> (approved but nothing picked), <em>Needs details</em> (the pick still has no vendor,
-        vendor ID or UOM: the Materials Manager's to fill in), <em>Needs order</em> (picked, no
+        (one is pending review), <em>Needs pick</em> (approved but nothing picked), <em>Needs details</em> (the pick has no vendor item
+        yet, so nothing to order: the Materials Manager's to add; a pencil beside the pick says so), <em>Needs order</em> (picked, no
         order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
       <li class="mb-1"><strong>Click an item</strong> to open its panel: the Infor item's details, the substitutes,
-        the kill lines behind them, the Sub History (every substitute added, reviewed, picked or unpicked before),
+        the kill lines behind them, the Sub History (every substitute added, reviewed, picked or unpicked before, and every vendor item added or deleted),
         and every order. Click the <em>Infor item</em> to see all its UOMs together, or a <em>Medline item</em> to
         see only that UOM; the panel switches between the two. Drag the panel's left edge to
         make it wider or narrower; your browser remembers the width, and a double-click on the edge resets it.</li>
@@ -71,12 +72,12 @@
         filter and the open item, so copying it gives someone else the same view.</li>
       <li class="mb-1"><strong>Below the table:</strong> the orders recorded, with their own dates (the last 30 days
         unless you change them), so past orders can be looked up without changing the table's dates. Each shows its Infor item,
-        the sub's vendor part, the QOE, what was ordered, and the vendor's ID and name. The search box beside them finds an order by
-        the Medline item, its Infor item, or the sub's part numbers.</li>
+        the vendor part ordered, the QOE, what was ordered, and the vendor's ID and name. The search box beside them finds an order by
+        the Medline item, its Infor item, the vendor part, or the substitute's Reference SKU.</li>
     </ul>
-    <p class="mb-2"><strong>Subs</strong> lists every substitute on file, as a reference: search it, filter by status,
-      source, vendor details still needed, or deleted ones, and export what you see as a spreadsheet. Click an item to
-      open it on Main.</p>
+    <p class="mb-2"><strong>Subs</strong> lists every substitute on file, as a reference, with its Reference SKU and
+      vendor items: search it, filter by status, source, no vendor item yet, or deleted ones, and export what you see
+      as a spreadsheet (a row per vendor item). Click an item to open it on Main.</p>
     <p class="mb-0"><strong>Dashboard</strong> shows trends for the chosen dates and sites: kill lines by reason and
       by site, the most killed items, how substitutes are being reviewed, and which were rejected. It also shows how
       fast killed items move: the median time from a kill to a substitute, from the substitute to an order, and from
@@ -88,16 +89,17 @@
     <ol class="mb-0">
       <li class="mb-2"><strong>Killed.</strong> The item appears in the main table with its total ordered, killed and filled quantities.</li>
       <li class="mb-2"><strong>Substitute entered.</strong> Nursing gathers options from suppliers (emails, calls) and enters the part number of the one they choose, with a note if useful.
-        It's their approved reference: the manufacturer's part or a vendor's, whichever they have; the Materials Manager sorts out which vendor part is ordered. It's <em>approved</em> right away, and <em>picked</em> if it's the item's only approved substitute; with several, the Sub Approver picks. Substitutes stay with the item, so the next time it's killed they're already there.</li>
+        It's the <em>Reference SKU</em>, their approved reference: often the manufacturer's part, which several vendors may sell. It stays as entered; the Materials Manager works out how to order it. It's <em>approved</em> right away, and <em>picked</em> if it's the item's only approved substitute; with several, the Sub Approver picks. Substitutes stay with the item, so the next time it's killed they're already there.</li>
       <li class="mb-2"><strong>Proposed substitutes.</strong> Medline's backorder substitutes appear automatically (and, later, an AI finder's). They're <em>pending review</em> until a Sub Approver approves, holds or rejects them; approving one picks it if it's the only approved one.</li>
       <li class="mb-2"><strong>Changed later.</strong> The Sub Approver can still hold or reject a substitute, pick or unpick, and comment. Leaving <em>approved</em> unpicks it. Click a substitute's History to see every change, with who made it and when.</li>
-      <li><strong>Ordered.</strong> A Materials Manager clicks the pick, fills in or checks its vendor details (vendor, vendor ID, description, UOM, QOE; the search of Infor's active contracts can fill them in) and records the order.
-        The vendor part becomes the one ordered (choosing a contract line sets it, with the manufacturer's part and Infor's item number); what nursing entered stays,
-        shown as <em>Entered as</em>.
+      <li><strong>Ordered.</strong> A Materials Manager adds the pick's <em>vendor items</em>, one for each way to order it: a vendor part, its vendor and vendor ID, and a UOM
+        (and QOE, manufacturer part, Infor item, description). The search of Infor's active contracts starts from the Reference SKU and fills one in; for 930103,
+        for example, Medline's B-D930103CSZ (a box of 40) and B-D930103CS (a case of 400) are two vendor items of the same substitute. Then they click a vendor
+        item's tile on Main to record an order, which keeps that vendor item's part, vendor, UOM and QOE.
         The vendor ID is required: typing the vendor's name lists Infor's vendors (by their name, legal name or search name) to choose
         it from, and when Infor doesn't have the vendor, <strong>0000000</strong> (<em>Vendor not available in system</em>) says so: the vendor name then empties for you to type it in.
         The contract search takes a part number, an Infor item number or words; several words, like <em>930103 chloraprep</em>, narrow
-        the lines to those having them all. The details stay with the substitute. An item can have more than one order. Orders can be corrected, or voided with a reason; both are kept in the order's history.</li>
+        the lines to those having them all. Vendor items stay with the substitute, for the next time; one that's no longer sold can be deleted with a reason. An item can have more than one order. Orders can be corrected, or voided with a reason; both are kept in the order's history.</li>
     </ol>
   </section>
 
@@ -130,7 +132,7 @@
       <li><strong>UOMs.</strong> One Infor item can be killed under several Medline items, for example by the
         each and by the box. They share the Infor item's row, with a last line that adds them up in eaches. A
         substitute approved for one UOM is flagged on the others; add it there from the item panel and approve it
-        to use it.</li>
+        to use it. Its vendor items aren't copied: they're for a UOM.</li>
       <li><strong>The <i class="bi bi-exclamation-triangle-fill text-warning"></i> beside a Medline item</strong> means
         Medline's customer item isn't the Infor item; point at it to see what Medline listed. The Infor item always
         comes from Infor's Medline vendor items, never from the customer item, which can be the Medline item

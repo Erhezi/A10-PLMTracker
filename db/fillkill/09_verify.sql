@@ -154,58 +154,65 @@ IF COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
 
 -- Workflow (12-14) ----------------------------------------------------------------
 
-SELECT 'tables FillKill.Sub, SubOrder, History exist (12)' AS [check],
+SELECT 'tables FillKill.Sub, SubVendorItem, SubOrder, History exist (12)' AS [check],
        CASE WHEN OBJECT_ID(N'[FillKill].[Sub]', N'U') IS NOT NULL
+             AND OBJECT_ID(N'[FillKill].[SubVendorItem]', N'U') IS NOT NULL
              AND OBJECT_ID(N'[FillKill].[SubOrder]', N'U') IS NOT NULL
              AND OBJECT_ID(N'[FillKill].[History]', N'U') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
 UNION ALL
-SELECT 'Sub has vendor_id, deleted_at, deleted_by, delete_reason (12, 2026-10-15)',
-       CASE WHEN COL_LENGTH(N'FillKill.Sub', N'vendor_id') IS NOT NULL
+-- A sub keeps what was entered; its vendor items keep the vendor details (12's step 2).
+SELECT 'Sub has reference_sku, deleted_at, deleted_by, delete_reason, and no vendor details (12, 2026-10-20)',
+       CASE WHEN COL_LENGTH(N'FillKill.Sub', N'reference_sku') IS NOT NULL
              AND COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NOT NULL
              AND COL_LENGTH(N'FillKill.Sub', N'deleted_by') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.Sub', N'delete_reason') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+             AND COL_LENGTH(N'FillKill.Sub', N'delete_reason') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.Sub', N'vendor_part') IS NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'SubOrder has vendor_id (12, 2026-10-20)',
-       CASE WHEN COL_LENGTH(N'FillKill.SubOrder', N'vendor_id') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+SELECT 'SubOrder has vendor_item_id, vendor_part, vendor_id (12, 2026-10-20)',
+       CASE WHEN COL_LENGTH(N'FillKill.SubOrder', N'vendor_item_id') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.SubOrder', N'vendor_part') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.SubOrder', N'vendor_id') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'Sub has entered_part, manufacturer_part, infor_item (12, 2026-10-19)',
-       CASE WHEN COL_LENGTH(N'FillKill.Sub', N'entered_part') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.Sub', N'manufacturer_part') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.Sub', N'infor_item') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
-UNION ALL
--- Nursing enters only the vendor part; the Materials Manager fills in the vendor.
-SELECT 'Sub.vendor can wait for the Materials Manager (12, 2026-10-15)',
-       CASE WHEN EXISTS (SELECT 1 FROM sys.columns
-                         WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'vendor' AND is_nullable = 1)
-            THEN 'PASS' ELSE 'FAIL' END
-UNION ALL
-SELECT 'one live sub per Medline item and vendor part: UX_Sub_item_vendor_part (12, 2026-10-15)',
+SELECT 'one live sub per Medline item and Reference SKU: UX_Sub_item_reference_sku (12, 2026-10-20)',
        CASE WHEN (SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
                   FROM sys.indexes AS i
                   JOIN sys.index_columns AS ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
                   JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-                  WHERE i.object_id = OBJECT_ID(N'[FillKill].[Sub]') AND i.name = N'UX_Sub_item_vendor_part'
-                    AND i.is_unique = 1 AND i.has_filter = 1 AND ic.is_included_column = 0) = 'medline_item,vendor_part'
+                  WHERE i.object_id = OBJECT_ID(N'[FillKill].[Sub]') AND i.name = N'UX_Sub_item_reference_sku'
+                    AND i.is_unique = 1 AND i.has_filter = 1 AND ic.is_included_column = 0) = 'medline_item,reference_sku'
+            THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'one live vendor item per sub, vendor ID, vendor part and UOM: UX_SubVendorItem_vendor_part_uom (12, 2026-10-20)',
+       CASE WHEN (SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
+                  FROM sys.indexes AS i
+                  JOIN sys.index_columns AS ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                  JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                  WHERE i.object_id = OBJECT_ID(N'[FillKill].[SubVendorItem]') AND i.name = N'UX_SubVendorItem_vendor_part_uom'
+                    AND i.is_unique = 1 AND i.has_filter = 1 AND ic.is_included_column = 0) = 'sub_id,vendor_id,vendor_part,uom'
             THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 -- The names app/models/fillkill.py uses; if the app created a table first, its constraints match.
 SELECT 'workflow constraints have their standard names (12)',
        CASE WHEN (
            SELECT COUNT(*) FROM sys.objects
-           WHERE name IN (N'PK_Sub', N'CK_Sub_status', N'CK_Sub_source', N'CK_Sub_pick_needs_approved',
-                          N'CK_Sub_qoe', N'CK_Sub_delete',
-                          N'PK_SubOrder', N'FK_SubOrder_Sub', N'CK_SubOrder_quantity', N'CK_SubOrder_qoe',
-                          N'CK_SubOrder_void',
+           WHERE name IN (N'PK_Sub', N'CK_Sub_status', N'CK_Sub_source', N'CK_Sub_pick_needs_approved', N'CK_Sub_delete',
+                          N'PK_SubVendorItem', N'FK_SubVendorItem_Sub', N'CK_SubVendorItem_qoe', N'CK_SubVendorItem_delete',
+                          N'PK_SubOrder', N'FK_SubOrder_Sub', N'FK_SubOrder_SubVendorItem', N'CK_SubOrder_quantity',
+                          N'CK_SubOrder_qoe', N'CK_SubOrder_void',
                           N'PK_History', N'CK_History_entity', N'CK_History_action',
                           N'DF_Sub_status', N'DF_Sub_is_picked', N'DF_Sub_create_dt', N'DF_Sub_update_dt',
+                          N'DF_SubVendorItem_create_dt', N'DF_SubVendorItem_update_dt',
                           N'DF_SubOrder_create_dt', N'DF_SubOrder_update_dt', N'DF_History_acted_at')
              AND SCHEMA_NAME(schema_id) = N'FillKill'
-       ) = 21 THEN 'PASS' ELSE 'FAIL' END
+       ) = 27 THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'History can record a deleted sub: CK_History_action allows ''delete'' (12, 2026-10-15)',
+SELECT 'History can record vendor items and deletes: CK_History_entity and CK_History_action (12, 2026-10-20)',
        CASE WHEN EXISTS (SELECT 1 FROM sys.check_constraints
                          WHERE parent_object_id = OBJECT_ID(N'[FillKill].[History]') AND name = N'CK_History_action'
                            AND definition LIKE N'%''delete''%')
+             AND EXISTS (SELECT 1 FROM sys.check_constraints
+                         WHERE parent_object_id = OBJECT_ID(N'[FillKill].[History]') AND name = N'CK_History_entity'
+                           AND definition LIKE N'%''vendoritem''%')
             THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'view FillKill.vw_ContractLineSearch has is_mhs (13)',
@@ -216,35 +223,50 @@ SELECT 'view FillKill.vw_Vendor has the legal and search names (13, 2026-10-19)'
              AND COL_LENGTH(N'FillKill.vw_Vendor', N'search_name') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 -- The version line near the top of 14; change both together.
-SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-19 version (14)',
+SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-20 version (14)',
        CASE WHEN OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]', N'P') IS NULL THEN 'FAIL: run 14'
             WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) IS NULL
                 THEN 'CHECK: no VIEW DEFINITION permission to read it'
-            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-10-19%' THEN 'PASS'
-            ELSE 'FAIL: an older version; re-run 14' END;
+            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-10-20%' THEN 'PASS'
+            ELSE 'FAIL: an older version; re-run 14' END
+UNION ALL
+-- 12's step 2 saves a copy of Sub before it drops the vendor details.
+SELECT 'copy of Sub from before vendor items (12, 2026-10-20)',
+       CASE WHEN OBJECT_ID(N'[FillKill].[Sub_before_vendor_items]', N'U') IS NULL THEN 'INFO: none'
+            ELSE 'INFO: FillKill.Sub_before_vendor_items is there; drop it once the subs look right' END;
 
 -- Workflow data, once the tables exist and 12 is current.
-IF COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NOT NULL
+IF COL_LENGTH(N'FillKill.Sub', N'reference_sku') IS NOT NULL AND OBJECT_ID(N'[FillKill].[SubVendorItem]', N'U') IS NOT NULL
     EXEC (N'
-        SELECT ''every order is for its sub''''s Medline item'' AS [check],
+        SELECT ''every order is for its sub''''s Medline item, and its vendor item is that sub''''s'' AS [check],
                CASE WHEN NOT EXISTS (
                    SELECT 1 FROM [FillKill].[SubOrder] AS o JOIN [FillKill].[Sub] AS s ON s.[sub_id] = o.[sub_id]
-                   WHERE o.[medline_item] <> s.[medline_item]
+                   LEFT JOIN [FillKill].[SubVendorItem] AS v ON v.[vendor_item_id] = o.[vendor_item_id]
+                   WHERE o.[medline_item] <> s.[medline_item] OR v.[sub_id] <> o.[sub_id]
                ) THEN ''PASS'' ELSE ''FAIL'' END AS [result]
         UNION ALL
-        SELECT ''every sub and order has a created History row'',
+        SELECT ''every sub, vendor item and order has a created History row'',
                CASE WHEN NOT EXISTS (
                    SELECT 1 FROM [FillKill].[Sub] AS s
                    WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
                                      WHERE h.[entity] = ''sub'' AND h.[entity_id] = s.[sub_id] AND h.[action] = ''created'')
+               ) AND NOT EXISTS (
+                   SELECT 1 FROM [FillKill].[SubVendorItem] AS v
+                   WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
+                                     WHERE h.[entity] = ''vendoritem'' AND h.[entity_id] = v.[vendor_item_id]
+                                       AND h.[action] = ''created'')
                ) AND NOT EXISTS (
                    SELECT 1 FROM [FillKill].[SubOrder] AS o
                    WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
                                      WHERE h.[entity] = ''order'' AND h.[entity_id] = o.[order_id] AND h.[action] = ''created'')
                ) THEN ''PASS'' ELSE ''FAIL'' END
         UNION ALL
-        SELECT ''workflow rows (subs / orders / history)'',
+        SELECT ''orders without a vendor item (recorded before vendor items, with details the sub no longer had)'',
+               CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[SubOrder] WHERE [vendor_item_id] IS NULL))
+        UNION ALL
+        SELECT ''workflow rows (subs / vendor items / orders / history)'',
                CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[Sub]), '' / '',
+                      (SELECT COUNT(*) FROM [FillKill].[SubVendorItem]), '' / '',
                       (SELECT COUNT(*) FROM [FillKill].[SubOrder]), '' / '',
                       (SELECT COUNT(*) FROM [FillKill].[History]));
     ');

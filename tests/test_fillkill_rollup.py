@@ -10,9 +10,9 @@ def qty(item, um, ordered, filled, lines=1):
             "killed": ordered - filled, "lines": lines}
 
 
-def sub(sub_id, item, status, picked=False):
-    return {"sub_id": sub_id, "medline_item": item, "vendor": "V", "vendor_part": f"P{sub_id}",
-            "status": status, "is_picked": picked, "uom": None, "qoe": None}
+def sub(sub_id, item, status, picked=False, vendor_items=()):
+    return {"sub_id": sub_id, "medline_item": item, "reference_sku": f"P{sub_id}", "status": status,
+            "is_picked": picked, "vendor_items": list(vendor_items)}
 
 
 def test_quantities_add_up_across_dates_and_sites_but_never_across_uoms():
@@ -57,10 +57,10 @@ def test_item_details_merge_and_say_when_rows_disagree():
     ({"pending_review": 1}, False, False, False, ["needs_review"]),
     ({"approved": 1}, False, False, False, ["needs_pick"]),
     ({"approved": 1}, True, False, False, ["needs_order"]),
-    ({"approved": 1}, True, False, True, ["needs_details", "needs_order"]),  # nursing's pick, no vendor yet
+    ({"approved": 1}, True, False, True, ["needs_details", "needs_order"]),  # nursing's pick, no vendor item yet
     ({"approved": 1, "pending_review": 1}, True, False, False, ["needs_review", "needs_order"]),
     ({"approved": 1}, True, True, False, ["ordered"]),
-    ({"approved": 1}, True, True, True, ["ordered"]),  # the order took a vendor and a UOM
+    ({"approved": 1}, True, True, True, ["ordered"]),  # ordered, whatever its vendor items
     ({"rejected": 1}, False, True, False, ["needs_subs", "ordered"]),  # ordered from a pick since rejected
 ])
 def test_needs_flags(counts, has_pick, ordered, missing, expected):
@@ -139,8 +139,8 @@ ITEM_ROWS = [
 ]
 
 
-def family_sub(sub_id, item, status, part="CARD-1", vendor="Cardinal"):
-    return {**sub(sub_id, item, status), "vendor": vendor, "vendor_part": part}
+def family_sub(sub_id, item, status, part="CARD-1"):
+    return {**sub(sub_id, item, status), "reference_sku": part}
 
 
 def test_one_row_per_infor_item_with_its_packagings_added_up_in_eaches():
@@ -204,13 +204,12 @@ def test_a_sub_approved_on_a_packaging_not_killed_in_the_range_is_signalled():
         item_rows=ITEM_ROWS,
         subs=[family_sub(1, "JLC-EA", "approved"),                    # approved on the EA packaging
               family_sub(2, "JLC-EA", "rejected", part="CARD-2"),     # rejected there: no signal
-              family_sub(3, "JLC-BX", "pending_review", part="card-1", vendor="CARDINAL")],  # same sub, here
+              family_sub(3, "JLC-BX", "pending_review", part="card-1")],  # same sub, here
         orders=[], reasons={}, family_rows=FAMILY,
     )
     [row] = rows
     assert row["approved_other_packagings"] == [
-        {"medline_item": "JLC-EA", "um": "EA", "vendor": "Cardinal", "vendor_id": None, "vendor_part": "CARD-1",
-         "sub_id": 1},
+        {"medline_item": "JLC-EA", "um": "EA", "reference_sku": "CARD-1", "sub_id": 1},
     ]
     assert row["needs"] == ["needs_review"]  # still needs its own review here
 

@@ -15,7 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .. import db
 from ..models import now_ny_naive
-from ..models.fillkill import History, Sub, SubOrder
+from ..models.fillkill import History, Sub, SubOrder, VendorItem
 from . import queries, rules
 from .rules import RuleError
 
@@ -45,7 +45,7 @@ def _locked(model, key):
         select(model).where(pk == key).with_for_update().execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if row is None:
-        noun = "sub" if model is Sub else "order"
+        noun = {Sub: "sub", VendorItem: "vendor item"}.get(model, "order")
         raise RuleError(f"That {noun} no longer exists; reload the page.", 404)
     return row
 
@@ -56,6 +56,14 @@ def _live_sub(sub_id: int) -> Sub:
     if sub.deleted_at is not None:
         raise RuleError(f"{sub.label()} was deleted by {sub.deleted_by}; reload the page.", 409)
     return sub
+
+
+def _live_vendor_item(vendor_item_id: int) -> tuple[VendorItem, Sub]:
+    """The vendor item and its sub, both locked; neither may be deleted."""
+    item = _locked(VendorItem, vendor_item_id)
+    if item.deleted_at is not None:
+        raise RuleError(f"Vendor item {item.label()} was deleted by {item.deleted_by}; reload the page.", 409)
+    return item, _live_sub(item.sub_id)
 
 
 def _last_change(entity: str, entity_id: int) -> History | None:
@@ -78,11 +86,11 @@ def _ensure_current(sub: Sub, expected_status: str | None) -> None:
     )
 
 
-def _ensure_unique(medline_item: str, vendor_part: str, *, except_id: int | None = None) -> None:
-    """One live sub per Medline item and vendor part, whatever its vendor."""
+def _ensure_unique(medline_item: str, reference_sku: str, *, except_id: int | None = None) -> None:
+    """One live sub per Medline item and Reference SKU."""
     query = select(Sub).where(
         Sub.medline_item == medline_item,
-        func.lower(Sub.vendor_part) == vendor_part.lower(),
+        func.lower(Sub.reference_sku) == reference_sku.lower(),
         Sub.deleted_at.is_(None),
     )
     if except_id is not None:
@@ -94,6 +102,20 @@ def _ensure_unique(medline_item: str, vendor_part: str, *, except_id: int | None
             f"({rules.STATUS_LABELS[existing.status]}).",
             409,
         )
+
+
+def _ensure_unique_vendor_item(sub: Sub, values: dict, *, except_id: int | None = None) -> None:
+    """One live vendor item per sub, vendor ID, vendor part and UOM."""
+    query = select(VendorItem).where(
+        VendorItem.sub_id == sub.sub_id, VendorItem.vendor_id == values["vendor_id"],
+        func.lower(VendorItem.vendor_part) == values["vendor_part"].lower(), VendorItem.uom == values["uom"],
+        VendorItem.deleted_at.is_(None),
+    )
+    if except_id is not None:
+        query = query.where(VendorItem.vendor_item_id != except_id)
+    existing = db.session.execute(query).scalars().first()
+    if existing is not None:
+        raise RuleError(f"{sub.label()} already has vendor item {existing.label()} (vendor ID {existing.vendor_id}).", 409)
 
 
 def find_vendor(vendor_id: str) -> dict | None:
@@ -183,42 +205,19 @@ def _pick_the_one_left(sub: Sub, actor: str, now: datetime) -> Sub | None:
     return other
 
 
-def _apply_details(sub: Sub, data: dict, actor: str, now: datetime, *, required: bool) -> dict:
-    """The Materials Manager's vendor details, each change in History. The vendor part among them
-    is the one ordered (2026-10-19); what was entered stays in ``entered_part``."""
-    changes = rules.check_sub_changes(sub, data, rules.SUB_DETAIL_FIELDS, required=required)
-    if changes.get("vendor_id"):
-        _check_vendor_id(changes["vendor_id"])
-    if "vendor_part" in changes:
-        _ensure_unique(sub.medline_item, changes["vendor_part"], except_id=sub.sub_id)
-        if not sub.entered_part:  # a sub from before 12's 2d: what was entered is the part until now
-            sub.entered_part = sub.vendor_part
-    for name, value in changes.items():
-        _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
-                 field=name, from_value=getattr(sub, name), to_value=value)
-        setattr(sub, name, value)
-    if changes:
-        sub.update_dt = now
-    return changes
-
-
 # --- subs: entering, correcting, deleting ------------------------------------------------------
 
 def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = False) -> Sub:
-    """A new sub. With ``approve`` (a Sub Approver entering it) it's approved on entry, and picked
-    when it's the item's only approved sub; otherwise it waits for review (a Sub Finder, Medline's
-    PBO subs, a future AI finder)."""
+    """A new sub: its Reference SKU. With ``approve`` (a Sub Approver entering it) it's approved on
+    entry, and picked when it's the item's only approved sub; otherwise it waits for review (a Sub
+    Finder, Medline's PBO subs, a future AI finder)."""
     clean = rules.check_new_sub(data)
 
     def action():
-        _ensure_unique(clean["medline_item"], clean["vendor_part"])
-        _check_vendor_id(clean["vendor_id"])
+        _ensure_unique(clean["medline_item"], clean["reference_sku"])
         now = now_ny_naive()
         sub = Sub(
-            medline_item=clean["medline_item"], vendor=clean["vendor"], vendor_id=clean["vendor_id"],
-            vendor_part=clean["vendor_part"], entered_part=clean["vendor_part"],
-            manufacturer_part=clean["manufacturer_part"], infor_item=clean["infor_item"],
-            description=clean["description"], uom=clean["uom"], qoe=clean["qoe"],
+            medline_item=clean["medline_item"], reference_sku=clean["reference_sku"],
             status="pending_review", is_picked=False, source=source, entered_by=actor,
             create_dt=now, update_dt=now,
         )
@@ -238,40 +237,21 @@ def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = F
 
 
 def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
-    """Nursing corrects the part they entered, until the sub has an order. While it's also the vendor
-    part (the Materials Manager hasn't set the one ordered), the vendor part changes with it; after,
-    only what was entered does (2026-10-19)."""
+    """Nursing corrects the Reference SKU they entered, until the sub has an order. Its vendor items
+    stay as they are: they're the Materials Manager's (2026-10-20)."""
     def action():
         sub = _live_sub(sub_id)
-        entered = sub.entered_part or sub.vendor_part
-        new = rules.clean_field("vendor_part", data.get("vendor_part"), required=True)
-        if new == entered:
+        new = rules.clean_field("reference_sku", data.get("reference_sku"), required=True)
+        if new == sub.reference_sku:
             raise RuleError("Nothing to change.")
         if _open_orders(sub):
-            raise RuleError(f"{sub.label()} has an order, so its vendor part can't change.", 409)
+            raise RuleError(f"{sub.label()} has an order, so its Reference SKU can't change.", 409)
+        _ensure_unique(sub.medline_item, new, except_id=sub.sub_id)
         now = now_ny_naive()
-        if sub.vendor_part == entered:
-            _ensure_unique(sub.medline_item, new, except_id=sub.sub_id)
-            _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
-                     field="vendor_part", from_value=sub.vendor_part, to_value=new)
-            sub.vendor_part = new
-        else:
-            _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
-                     field="entered_part", from_value=entered, to_value=new)
-        sub.entered_part = new
+        _history("sub", sub.sub_id, sub.medline_item, "edit", actor, now,
+                 field="reference_sku", from_value=sub.reference_sku, to_value=new)
+        sub.reference_sku = new
         sub.update_dt = now
-        return sub
-
-    return _run(action)
-
-
-def set_details(sub_id: int, data: dict, actor: str) -> Sub:
-    """The Materials Manager fills in or corrects the vendor details, any time. Saved, they include
-    the vendor, its vendor ID (or 0000000) and the UOM (2026-10-19)."""
-    def action():
-        sub = _live_sub(sub_id)
-        _apply_details(sub, data, actor, now_ny_naive(), required=True)
-        rules.check_details_complete(sub)
         return sub
 
     return _run(action)
@@ -368,22 +348,90 @@ def comment_on_sub(sub_id: int, text, actor: str) -> Sub:
     return _run(action)
 
 
-# --- orders (Materials Manager) -------------------------------------------------------
+# --- vendor items (Materials Manager, Sub Finder) ----------------------------------------------
 
-def record_order(sub_id: int, data: dict, actor: str, *, expected_status: str | None = None) -> SubOrder:
-    """An order against a pick. Vendor details sent with it are saved on the sub first (the
-    Materials Manager fills them in with the order); the order takes the sub's."""
+def _open_orders_of(item: VendorItem) -> int:
+    return db.session.execute(
+        select(func.count()).select_from(SubOrder).where(SubOrder.vendor_item_id == item.vendor_item_id,
+                                                         SubOrder.voided_at.is_(None))
+    ).scalar()
+
+
+def add_vendor_item(sub_id: int, data: dict, actor: str) -> VendorItem:
+    """A way to order the sub (2026-10-20): a vendor's part in a UOM, with Infor's vendor ID (or
+    0000000). Any sub can have them, whatever its status, as many as there are ways to order it."""
+    clean = rules.check_new_vendor_item(data)
+
     def action():
         sub = _live_sub(sub_id)
+        _ensure_unique_vendor_item(sub, clean)
+        _check_vendor_id(clean["vendor_id"])
+        now = now_ny_naive()
+        item = VendorItem(sub_id=sub.sub_id, **clean, entered_by=actor, create_dt=now, update_dt=now)
+        db.session.add(item)
+        db.session.flush()
+        sub.update_dt = now
+        _history("vendoritem", item.vendor_item_id, sub.medline_item, "created", actor, now)
+        return item
+
+    return _run(action)
+
+
+def edit_vendor_item(vendor_item_id: int, data: dict, actor: str) -> VendorItem:
+    """Corrects a vendor item, any time; its orders keep what they were placed with."""
+    def action():
+        item, sub = _live_vendor_item(vendor_item_id)
+        changes = rules.check_vendor_item_changes(item, data)
+        if changes.keys() & {"vendor_id", "vendor_part", "uom"}:
+            _ensure_unique_vendor_item(sub, {name: changes.get(name, getattr(item, name))
+                                             for name in ("vendor_id", "vendor_part", "uom")},
+                                       except_id=item.vendor_item_id)
+        if "vendor_id" in changes:
+            _check_vendor_id(changes["vendor_id"])
+        now = now_ny_naive()
+        for name, value in changes.items():
+            _history("vendoritem", item.vendor_item_id, sub.medline_item, "edit", actor, now,
+                     field=name, from_value=getattr(item, name), to_value=value)
+            setattr(item, name, value)
+        item.update_dt = sub.update_dt = now
+        return item
+
+    return _run(action)
+
+
+def delete_vendor_item(vendor_item_id: int, reason, actor: str) -> VendorItem:
+    """Takes a vendor item off its sub, with a reason; its row and history stay. Refused while it
+    has orders that aren't voided."""
+    def action():
+        item, sub = _live_vendor_item(vendor_item_id)
+        why = rules.clean_comment(reason, label="Reason")
+        orders = _open_orders_of(item)
+        if orders:
+            raise RuleError(f"Vendor item {item.label()} has {orders} order{'s' if orders > 1 else ''}; "
+                            "void {} before deleting it.".format("them" if orders > 1 else "it"), 409)
+        now = now_ny_naive()
+        item.deleted_at, item.deleted_by, item.delete_reason = now, actor, why
+        item.update_dt = sub.update_dt = now
+        _history("vendoritem", item.vendor_item_id, sub.medline_item, "delete", actor, now, comment=why)
+        return item
+
+    return _run(action)
+
+
+# --- orders (Materials Manager) -------------------------------------------------------
+
+def record_order(vendor_item_id: int, data: dict, actor: str, *, expected_status: str | None = None) -> SubOrder:
+    """An order for a vendor item of a pick (2026-10-20). It keeps the vendor item's vendor part,
+    vendor, vendor ID, UOM and QOE."""
+    def action():
+        item, sub = _live_vendor_item(vendor_item_id)
         _ensure_current(sub, expected_status)
         now = now_ny_naive()
-        rules.check_orderable(sub)
-        _apply_details(sub, data, actor, now, required=False)
-        order_data = {key: value for key, value in data.items() if key not in rules.SUB_DETAIL_FIELDS}
-        clean = rules.check_new_order(sub, order_data, now=now)
+        clean = rules.check_new_order(sub, item, data, now=now)
         order = SubOrder(
-            sub_id=sub.sub_id, medline_item=sub.medline_item, quantity=clean["quantity"],
-            uom=clean["uom"], qoe=clean["qoe"], vendor=clean["vendor"], vendor_id=clean["vendor_id"], ordered_by=actor,
+            sub_id=sub.sub_id, vendor_item_id=item.vendor_item_id, medline_item=sub.medline_item,
+            quantity=clean["quantity"], vendor_part=clean["vendor_part"], uom=clean["uom"], qoe=clean["qoe"],
+            vendor=clean["vendor"], vendor_id=clean["vendor_id"], ordered_by=actor,
             ordered_dt=clean["ordered_dt"] or now, create_dt=now, update_dt=now,
         )
         db.session.add(order)

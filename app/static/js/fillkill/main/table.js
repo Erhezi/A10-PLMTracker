@@ -3,11 +3,11 @@
  */
 
 import {
-  $, REASON_LABEL, STATUS_ORDER, alertBox, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
-  statusBadge, subText, vendorText,
+  $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
+  statusBadge, vendorItemText,
 } from '../common.js';
 import { renderNeeds } from './controls.js';
-import { openOrderForm } from './forms.js';
+import { openOrderForm, openVendorItemForm } from './forms.js';
 import { openPanel } from './panel.js';
 import { api, can, scopeParams, state, syncLink } from './state.js';
 
@@ -26,7 +26,7 @@ export async function loadMain() {
     renderRows();
   } catch (error) {
     if (ticket !== mainRequest) return;
-    setRows(`<tbody><tr><td colspan="12" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
+    setRows(`<tbody><tr><td colspan="13" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
   }
 }
 
@@ -72,7 +72,7 @@ export function renderRows() {
   const rows = state.rows.filter((row) => (state.needs === 'all' || row.needs.includes(state.needs)) && matchesSearch(row));
   if (!rows.length) {
     const why = state.rows.length ? 'No item matches these filters.' : 'No kill lines for these dates and sites.';
-    setRows(`<tbody><tr><td colspan="12" class="text-muted small p-3">${why}</td></tr></tbody>`);
+    setRows(`<tbody><tr><td colspan="13" class="text-muted small p-3">${why}</td></tr></tbody>`);
     return;
   }
   setRows(rows.map(itemRows).join(''));
@@ -108,22 +108,50 @@ function subsStatusCell(counts) {
 function otherPackagingNote(approved) {
   if (!approved || !approved.length) return '';
   const items = [...new Set(approved.map((a) => `${a.medline_item}${a.um ? ` (${a.um})` : ''}`))];
-  const subs = approved.map((a) => `${subText(a)} on ${a.medline_item}`).join('\n');
+  const subs = approved.map((a) => `${a.reference_sku} on ${a.medline_item}`).join('\n');
   return `<div class="small text-success mt-1" title="${esc(subs)}"><i class="bi bi-box-seam"></i>
     ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
 }
 
+// The Approver's Pick is always the Reference SKU nursing entered (2026-10-20). With no vendor item
+// yet there's nothing to order: a pencil says so, and for whoever adds them it opens the form.
 function picksCell(picks) {
   if (!picks.length) return '<span class="text-muted small">—</span>';
   return picks.map((pick) => {
-    const vendor = vendorText(pick);
-    const label = `${esc(pick.vendor_part)}${vendor ? ` <span class="text-muted">· ${esc(vendor)}</span>` : ''}${needsDetails(pick)
-      ? ' <i class="bi bi-pencil-square text-warning" title="Vendor details to fill in"></i>' : ''}`;
-    return can.order
-      ? `<button type="button" class="btn btn-sm btn-outline-primary py-0 mb-1 text-start" data-order-sub="${pick.sub_id}"
-           data-item="${esc(pick.medline_item)}" title="Record an order for this pick">${label}</button>`
-      : `<div class="small">${label}</div>`;
+    const title = `No vendor item yet: nothing to order for ${pick.reference_sku}`;
+    const pencil = !needsDetails(pick) ? ''
+      : can.details
+        ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-add-vi="${pick.sub_id}"
+             title="${esc(title)}. Add one." aria-label="Add a vendor item for ${esc(pick.reference_sku)}"><i
+             class="bi bi-pencil-square text-warning"></i></button>`
+        : ` <i class="bi bi-pencil-square text-warning" title="${esc(title)}" role="img" aria-label="${esc(title)}"></i>`;
+    return `<div class="mb-1 text-nowrap"><span class="fw-semibold">${esc(pick.reference_sku)}</span>${pencil}</div>`;
   }).join('');
+}
+
+// Vendor Item Detail: a tile per vendor ID, vendor part and UOM of the picks (2026-10-20). A
+// Materials Manager records an order from one; whoever adds vendor items can add another here.
+function vendorItemsCell(picks) {
+  const tiles = picks.map((pick) => {
+    const items = (pick.vendor_items || []).map((v) => {
+      // The vendor ID first: a long vendor name is cut short, never the ID.
+      const id = v.vendor_id === NO_VENDOR.id ? 'Not in Infor' : v.vendor_id;
+      const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(v.uom)}${v.qoe
+        ? ` × ${fmtNumber(v.qoe)}` : ''}</div><div class="fk-vi-vendor text-truncate">${esc(id)} · ${esc(v.vendor)}</div>`;
+      const title = [vendorItemText(v), v.description, picks.length > 1 ? `For ${pick.reference_sku}` : '']
+        .filter(Boolean).join('\n');
+      return can.order
+        ? `<button type="button" class="btn btn-sm btn-outline-primary fk-vi-tile" data-order-vi="${v.vendor_item_id}"
+             title="${esc(`${title}\nRecord an order for it`)}">${body}</button>`
+        : `<div class="fk-vi-tile" title="${esc(title)}">${body}</div>`;
+    });
+    if (can.details) {
+      items.push(`<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none" data-add-vi="${pick.sub_id}"><i
+        class="bi bi-plus-lg"></i> Vendor item${picks.length > 1 ? ` for ${esc(pick.reference_sku)}` : ''}</button>`);
+    }
+    return items.join('');
+  }).join('');
+  return tiles || '<span class="text-muted small">—</span>';
 }
 
 function reasonCell(reason) {
@@ -188,6 +216,7 @@ function itemRows(row) {
     <td>${reasonCell(p.latest_reason)}</td>
     <td role="button" data-open="${esc(p.medline_item)}">${subsStatusCell(p.subs_status)}${many ? '' : note}</td>
     <td>${picksCell(p.picks)}</td>
+    <td>${vendorItemsCell(p.picks)}</td>
     ${i ? '' : `<td${span} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
         title="Open the orders">${ordering}</td>`}
   </tr>`);
@@ -210,14 +239,21 @@ function totalRow(row, note) {
     <td></td>
     <td>${note}</td>
     <td></td>
+    <td></td>
   </tr>`;
 }
 
 export function setupTable() {
   mainTable.addEventListener('click', (event) => {
-    const orderButton = event.target.closest('[data-order-sub]');
+    const orderButton = event.target.closest('[data-order-vi]');
     if (orderButton) {
-      openOrderForm(Number(orderButton.dataset.orderSub), orderButton.dataset.item);
+      openOrderForm(Number(orderButton.dataset.orderVi));
+      return;
+    }
+    const addButton = event.target.closest('[data-add-vi]');
+    if (addButton) {
+      const subId = Number(addButton.dataset.addVi);
+      openVendorItemForm(state.rows.flatMap((row) => row.picks).find((s) => s.sub_id === subId));
       return;
     }
     const opener = event.target.closest('[data-open]');

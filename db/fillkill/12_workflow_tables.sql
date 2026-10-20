@@ -1,34 +1,37 @@
--- Fill/Kill workflow tables: subs, orders, and the history of every change and comment.
--- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
+-- Fill/Kill workflow tables: subs, their vendor items, orders, and the history of every change and
+-- comment. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
 --
---   Sub       a sub of a Medline item: the part nursing entered, the vendor details the
---             Materials Manager fills in (the vendor part ordered, vendor, Infor's vendor ID,
---             manufacturer part, Infor item, description, UOM, QOE), status, pick
---   SubOrder  an order a Materials Manager recorded against a picked sub
---   History   one row per change or comment on a sub or an order (comments live only here)
+--   Sub            a sub of a Medline item: the Reference SKU nursing (or a Sub Finder) entered,
+--                  its status, and whether it's the Approver's Pick
+--   SubVendorItem  what can be ordered for a sub: a vendor's part in a UOM, with Infor's vendor ID
+--                  (the Materials Manager's or a Sub Finder's); one per vendor ID, vendor part and UOM
+--   SubOrder       an order a Materials Manager recorded for a vendor item of a picked sub; it keeps
+--                  the vendor part, vendor, vendor ID, UOM and QOE it was placed with
+--   History        one row per change or comment on a sub, a vendor item or an order (comments
+--                  live only here)
 --
 -- app/models/fillkill.py carries the same constraint names, so a table the app's startup
 -- (db.create_all) creates matches this script. Only the defaults differ (the app always sets
 -- every value); the end of this script adds any that are missing.
 --
 -- What it does, in order (each step only when needed, so re-running changes nothing):
---   1. Creates Sub, SubOrder and History in their current shape.
---   2. Brings a Sub and History made by an earlier version up to date:
---      2a. 2026-10-15  Sub.vendor_id; Medline PBO subs get vendor 1000931 and Infor's name for it,
---                      with History rows
---      2b. 2026-10-15  Sub.deleted_at, deleted_by, delete_reason and CK_Sub_delete: a sub is
---                      deleted with a reason, and its row stays
---      2c. 2026-10-15  (stakeholder review) Sub.vendor may wait for the Materials Manager; one live
---                      sub per (item, vendor part): the index UX_Sub_item_vendor_part replaces the
---                      key UQ_Sub_item_vendor_part; CK_History_action allows 'delete'
---      2d. 2026-10-19  Sub.entered_part (the part as entered, kept when the Materials Manager sets
---                      the vendor part ordered), manufacturer_part, infor_item
---      2e. 2026-10-20  SubOrder.vendor_id, the vendor ID ordered from, kept with the order like its
---                      vendor's name; filled in from the sub for the orders already there
+--   1. Creates Sub, SubVendorItem, SubOrder and History in their current shape.
+--   2. 2026-10-20, vendor items: brings the tables O2 has had since 2026-10-20 up to date. Until then
+--      a sub carried one set of vendor details (the vendor part ordered, vendor, vendor ID, UOM, QOE,
+--      manufacturer part, Infor item, description). Nursing often enters the manufacturer's part,
+--      which several vendors sell in several UOMs, so a sub now keeps what was entered (its
+--      Reference SKU) and has a vendor item for each way to order it.
+--      2a. Sub.reference_sku; SubOrder.vendor_item_id and vendor_part; CK_History_entity allows
+--          'vendoritem'
+--      2b. Moves the data, in one transaction, and saves a copy of Sub as it was first
+--          (Sub_before_vendor_items); then Sub's vendor details are dropped
 --   3. Adds any default a table made by the app's startup lacks.
 --
+-- Its earlier steps 2a-2e (2026-10-15 to 10-20) brought older tables to the shape step 2 starts
+-- from. O2 has had that shape since 2026-10-20, so they're gone; git history has them.
+--
 -- A change to what the app needs from these tables goes in step 1 (the shape) and as a new step
--- 2x (bringing an older table up to it), and in app/fillkill/health.py and 09_verify.sql.
+-- (bringing an older table up to it), and in app/fillkill/health.py and 09_verify.sql.
 
 SET NOCOUNT ON;
 
@@ -37,64 +40,92 @@ SET NOCOUNT ON;
 IF OBJECT_ID(N'[FillKill].[Sub]', N'U') IS NULL
 BEGIN
     CREATE TABLE [FillKill].[Sub] (
-        [sub_id]       INT IDENTITY(1, 1) NOT NULL,
-        [medline_item] VARCHAR(50)    NOT NULL,
-        [vendor]       VARCHAR(255)   NULL,      -- the vendor's name; the Materials Manager fills it in
-        [vendor_id]    VARCHAR(20)    NULL,      -- Infor's vendor ID, when known (e.g. 1000931)
-        [vendor_part]  VARCHAR(100)   NOT NULL,  -- as entered, then the one ordered (the Materials Manager's)
-        [entered_part] VARCHAR(100)   NULL,      -- as entered: nursing's approved reference, or Medline's PBO number
-        [manufacturer_part] VARCHAR(100) NULL,
-        [infor_item]   VARCHAR(50)    NULL,      -- Infor's item number for the sub, when it has one
-        [description]  VARCHAR(255)   NULL,
-        [uom]          VARCHAR(10)    NULL,
-        [qoe]          DECIMAL(12, 4) NULL,
-        [status]       VARCHAR(20)    NOT NULL CONSTRAINT [DF_Sub_status] DEFAULT ('pending_review'),
-        [is_picked]    BIT            NOT NULL CONSTRAINT [DF_Sub_is_picked] DEFAULT (0),
-        [source]       VARCHAR(20)    NOT NULL,
-        [entered_by]   VARCHAR(255)   NOT NULL,
-        [create_dt]    DATETIME       NOT NULL CONSTRAINT [DF_Sub_create_dt] DEFAULT (GETDATE()),
-        [update_dt]    DATETIME       NOT NULL CONSTRAINT [DF_Sub_update_dt] DEFAULT (GETDATE()),
-        [deleted_at]   DATETIME       NULL,      -- a deleted sub keeps its row: who, when and why
-        [deleted_by]   VARCHAR(255)   NULL,
-        [delete_reason] VARCHAR(400)  NULL,
+        [sub_id]        INT IDENTITY(1, 1) NOT NULL,
+        [medline_item]  VARCHAR(50)    NOT NULL,
+        [reference_sku] VARCHAR(100)   NOT NULL,  -- as entered: nursing's approved reference, or Medline's PBO number
+        [status]        VARCHAR(20)    NOT NULL CONSTRAINT [DF_Sub_status] DEFAULT ('pending_review'),
+        [is_picked]     BIT            NOT NULL CONSTRAINT [DF_Sub_is_picked] DEFAULT (0),
+        [source]        VARCHAR(20)    NOT NULL,
+        [entered_by]    VARCHAR(255)   NOT NULL,
+        [create_dt]     DATETIME       NOT NULL CONSTRAINT [DF_Sub_create_dt] DEFAULT (GETDATE()),
+        [update_dt]     DATETIME       NOT NULL CONSTRAINT [DF_Sub_update_dt] DEFAULT (GETDATE()),
+        [deleted_at]    DATETIME       NULL,      -- a deleted sub keeps its row: who, when and why
+        [deleted_by]    VARCHAR(255)   NULL,
+        [delete_reason] VARCHAR(400)   NULL,
         CONSTRAINT [PK_Sub] PRIMARY KEY CLUSTERED ([sub_id]),
         CONSTRAINT [CK_Sub_status] CHECK ([status] IN ('pending_review', 'approved', 'hold', 'rejected')),
         CONSTRAINT [CK_Sub_source] CHECK ([source] IN ('manual', 'medline_pbo', 'llm')),
         CONSTRAINT [CK_Sub_pick_needs_approved] CHECK ([is_picked] = 0 OR [status] = 'approved'),
-        CONSTRAINT [CK_Sub_qoe] CHECK ([qoe] IS NULL OR [qoe] > 0),
         CONSTRAINT [CK_Sub_delete] CHECK (
        ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
     OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL AND [is_picked] = 0)
         )
     );
-    -- One live sub per item and vendor part; deleted ones don't count. In EXEC, so this batch
-    -- still compiles where Sub exists without deleted_at (the block further down adds it).
-    EXEC (N'CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor_part])
-        WHERE [deleted_at] IS NULL;');
+    -- One live sub per item and Reference SKU; deleted ones don't count.
+    CREATE UNIQUE INDEX [UX_Sub_item_reference_sku] ON [FillKill].[Sub] ([medline_item], [reference_sku])
+        WHERE [deleted_at] IS NULL;
     PRINT 'Created FillKill.Sub';
+END;
+GO
+
+IF OBJECT_ID(N'[FillKill].[SubVendorItem]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [FillKill].[SubVendorItem] (
+        [vendor_item_id]    INT IDENTITY(1, 1) NOT NULL,
+        [sub_id]            INT            NOT NULL,
+        [vendor_part]       VARCHAR(100)   NOT NULL,  -- the vendor's part number: the one ordered
+        [vendor]            VARCHAR(255)   NOT NULL,  -- the vendor's name
+        [vendor_id]         VARCHAR(20)    NOT NULL,  -- Infor's vendor ID (e.g. 1000931), or 0000000: not in Infor
+        [uom]               VARCHAR(10)    NOT NULL,
+        [qoe]               DECIMAL(12, 4) NULL,
+        [manufacturer_part] VARCHAR(100)   NULL,
+        [infor_item]        VARCHAR(50)    NULL,      -- Infor's item number for it, when it has one
+        [description]       VARCHAR(255)   NULL,
+        [entered_by]        VARCHAR(255)   NOT NULL,
+        [create_dt]         DATETIME       NOT NULL CONSTRAINT [DF_SubVendorItem_create_dt] DEFAULT (GETDATE()),
+        [update_dt]         DATETIME       NOT NULL CONSTRAINT [DF_SubVendorItem_update_dt] DEFAULT (GETDATE()),
+        [deleted_at]        DATETIME       NULL,      -- a deleted vendor item keeps its row and its orders
+        [deleted_by]        VARCHAR(255)   NULL,
+        [delete_reason]     VARCHAR(400)   NULL,
+        CONSTRAINT [PK_SubVendorItem] PRIMARY KEY CLUSTERED ([vendor_item_id]),
+        CONSTRAINT [FK_SubVendorItem_Sub] FOREIGN KEY ([sub_id]) REFERENCES [FillKill].[Sub] ([sub_id]),
+        CONSTRAINT [CK_SubVendorItem_qoe] CHECK ([qoe] IS NULL OR [qoe] > 0),
+        CONSTRAINT [CK_SubVendorItem_delete] CHECK (
+               ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
+            OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL)
+        )
+    );
+    -- One live vendor item per sub, vendor ID, vendor part and UOM.
+    CREATE UNIQUE INDEX [UX_SubVendorItem_vendor_part_uom]
+        ON [FillKill].[SubVendorItem] ([sub_id], [vendor_id], [vendor_part], [uom]) WHERE [deleted_at] IS NULL;
+    PRINT 'Created FillKill.SubVendorItem';
 END;
 GO
 
 IF OBJECT_ID(N'[FillKill].[SubOrder]', N'U') IS NULL
 BEGIN
     CREATE TABLE [FillKill].[SubOrder] (
-        [order_id]     INT IDENTITY(1, 1) NOT NULL,
-        [sub_id]       INT            NOT NULL,
-        [medline_item] VARCHAR(50)    NOT NULL,
-        [quantity]     INT            NOT NULL,
-        [uom]          VARCHAR(10)    NOT NULL,
-        [qoe]          DECIMAL(12, 4) NULL,
-        [vendor]       VARCHAR(255)   NOT NULL,
-        [vendor_id]    VARCHAR(20)    NULL,      -- the sub's when ordered (2026-10-20)
-        [ordered_by]   VARCHAR(255)   NOT NULL,
-        [ordered_dt]   DATETIME       NOT NULL,
-        [voided_by]    VARCHAR(255)   NULL,
-        [voided_at]    DATETIME       NULL,
-        [void_reason]  VARCHAR(400)   NULL,
-        [create_dt]    DATETIME       NOT NULL CONSTRAINT [DF_SubOrder_create_dt] DEFAULT (GETDATE()),
-        [update_dt]    DATETIME       NOT NULL CONSTRAINT [DF_SubOrder_update_dt] DEFAULT (GETDATE()),
+        [order_id]       INT IDENTITY(1, 1) NOT NULL,
+        [sub_id]         INT            NOT NULL,
+        [vendor_item_id] INT            NULL,      -- the vendor item ordered; step 2 links the older orders it can
+        [medline_item]   VARCHAR(50)    NOT NULL,
+        [quantity]       INT            NOT NULL,
+        [vendor_part]    VARCHAR(100)   NOT NULL,  -- what it was placed with, as the four below
+        [uom]            VARCHAR(10)    NOT NULL,
+        [qoe]            DECIMAL(12, 4) NULL,
+        [vendor]         VARCHAR(255)   NOT NULL,
+        [vendor_id]      VARCHAR(20)    NULL,
+        [ordered_by]     VARCHAR(255)   NOT NULL,
+        [ordered_dt]     DATETIME       NOT NULL,
+        [voided_by]      VARCHAR(255)   NULL,
+        [voided_at]      DATETIME       NULL,
+        [void_reason]    VARCHAR(400)   NULL,
+        [create_dt]      DATETIME       NOT NULL CONSTRAINT [DF_SubOrder_create_dt] DEFAULT (GETDATE()),
+        [update_dt]      DATETIME       NOT NULL CONSTRAINT [DF_SubOrder_update_dt] DEFAULT (GETDATE()),
         CONSTRAINT [PK_SubOrder] PRIMARY KEY CLUSTERED ([order_id]),
         CONSTRAINT [FK_SubOrder_Sub] FOREIGN KEY ([sub_id]) REFERENCES [FillKill].[Sub] ([sub_id]),
+        CONSTRAINT [FK_SubOrder_SubVendorItem] FOREIGN KEY ([vendor_item_id])
+            REFERENCES [FillKill].[SubVendorItem] ([vendor_item_id]),
         CONSTRAINT [CK_SubOrder_quantity] CHECK ([quantity] > 0),
         CONSTRAINT [CK_SubOrder_qoe] CHECK ([qoe] IS NULL OR [qoe] > 0),
         CONSTRAINT [CK_SubOrder_void] CHECK (
@@ -104,6 +135,7 @@ BEGIN
     );
     CREATE INDEX [IX_SubOrder_item_ordered] ON [FillKill].[SubOrder] ([medline_item], [ordered_dt]);
     CREATE INDEX [IX_SubOrder_sub] ON [FillKill].[SubOrder] ([sub_id]);
+    CREATE INDEX [IX_SubOrder_vendor_item] ON [FillKill].[SubOrder] ([vendor_item_id]);
     PRINT 'Created FillKill.SubOrder';
 END;
 GO
@@ -112,7 +144,7 @@ IF OBJECT_ID(N'[FillKill].[History]', N'U') IS NULL
 BEGIN
     CREATE TABLE [FillKill].[History] (
         [history_id]   BIGINT IDENTITY(1, 1) NOT NULL,
-        [entity]       VARCHAR(10)    NOT NULL,
+        [entity]       VARCHAR(10)    NOT NULL,  -- sub, vendoritem or order
         [entity_id]    INT            NOT NULL,
         [medline_item] VARCHAR(50)    NOT NULL,
         [action]       VARCHAR(20)    NOT NULL,
@@ -123,7 +155,7 @@ BEGIN
         [actor]        VARCHAR(255)   NOT NULL,
         [acted_at]     DATETIME       NOT NULL CONSTRAINT [DF_History_acted_at] DEFAULT (GETDATE()),
         CONSTRAINT [PK_History] PRIMARY KEY CLUSTERED ([history_id]),
-        CONSTRAINT [CK_History_entity] CHECK ([entity] IN ('sub', 'order')),
+        CONSTRAINT [CK_History_entity] CHECK ([entity] IN ('sub', 'vendoritem', 'order')),
         CONSTRAINT [CK_History_action] CHECK (
             [action] IN ('created', 'status', 'pick', 'unpick', 'comment', 'edit', 'void', 'delete')
         )
@@ -134,149 +166,203 @@ BEGIN
 END;
 GO
 
--- 2a. 2026-10-15 --------------------------------------------------------------------------
--- [vendor_id], Infor's vendor ID, when the sub has one (filled in from a contract line; optional
--- otherwise). Medline PBO subs get Medline's (1000931) and Infor's name for it, with History rows.
-IF COL_LENGTH(N'FillKill.Sub', N'vendor_id') IS NULL
+-- 2. 2026-10-20: vendor items -------------------------------------------------------------
+-- 2a. The new columns, empty for now (only while Sub still has its vendor details), the order's
+-- link to its vendor item, and History's new entity.
+IF COL_LENGTH(N'FillKill.Sub', N'vendor_part') IS NOT NULL
 BEGIN
-    ALTER TABLE [FillKill].[Sub] ADD [vendor_id] VARCHAR(20) NULL;
-    PRINT 'Added Sub.vendor_id';
+    IF COL_LENGTH(N'FillKill.Sub', N'reference_sku') IS NULL
+        ALTER TABLE [FillKill].[Sub] ADD [reference_sku] VARCHAR(100) NULL;
+    IF COL_LENGTH(N'FillKill.SubOrder', N'vendor_part') IS NULL
+        ALTER TABLE [FillKill].[SubOrder] ADD [vendor_part] VARCHAR(100) NULL;
+    PRINT 'Sub.reference_sku and SubOrder.vendor_part are there, to be filled in';
+END;
+
+IF COL_LENGTH(N'FillKill.SubOrder', N'vendor_item_id') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[SubOrder] ADD [vendor_item_id] INT NULL;
+    PRINT 'Added SubOrder.vendor_item_id';
 END;
 GO
 
-DECLARE @medline_vendor VARCHAR(20) = '1000931';  -- MEDLINE INDUSTRIES INC; the same in 14 (usp_SyncPboSubs)
-DECLARE @medline_name VARCHAR(255) = COALESCE(
-    (SELECT TOP (1) [VendorName] FROM [PLMPreprocessorShared].[infor].[MDM_VENDOR] WHERE [Vendor] = @medline_vendor),
-    'MEDLINE INDUSTRIES INC');
-DECLARE @moved TABLE ([sub_id] INT, [medline_item] VARCHAR(50), [old_vendor] VARCHAR(255));
-
-SET XACT_ABORT ON;  -- an error rolls the transaction back instead of leaving it open
-
-BEGIN TRANSACTION;
-
-UPDATE s SET s.[vendor_id] = @medline_vendor, s.[vendor] = @medline_name
-OUTPUT inserted.[sub_id], inserted.[medline_item], deleted.[vendor] INTO @moved
-FROM [FillKill].[Sub] AS s
-WHERE s.[source] = 'medline_pbo' AND s.[vendor] = 'Medline' AND s.[vendor_id] IS NULL
-  AND NOT EXISTS (SELECT 1 FROM [FillKill].[Sub] AS o
-                  WHERE o.[medline_item] = s.[medline_item] AND o.[vendor] = @medline_name
-                    AND o.[vendor_part] = s.[vendor_part]);
-
-INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [field], [from_value],
-                                  [to_value], [actor], [acted_at])
-SELECT 'sub', m.[sub_id], m.[medline_item], 'edit', f.[field], f.[from_value], f.[to_value],
-       '12_workflow_tables.sql', GETDATE()
-FROM @moved AS m
-CROSS APPLY (VALUES ('vendor', m.[old_vendor], @medline_name),
-                    ('vendor_id', NULL, @medline_vendor)) AS f ([field], [from_value], [to_value]);
-
-DECLARE @moved_count INT = (SELECT COUNT(*) FROM @moved);
-PRINT CONCAT('Medline PBO subs given vendor ID ', @medline_vendor, ': ', @moved_count);
-
-COMMIT TRANSACTION;
-GO
-
--- 2b. 2026-10-15 --------------------------------------------------------------------------
--- A sub can be deleted, with a reason. The row stays (deleted_at, deleted_by, delete_reason) so its
--- history stays and the PBO sync doesn't add it back; the unique key becomes a unique index over
--- live subs only (2c), so the same vendor part can be added again; History gets the 'delete'
--- action (2c).
-IF COL_LENGTH(N'FillKill.Sub', N'deleted_at') IS NULL
+-- In EXEC, so this batch compiles before the column exists (a first run checked with NOEXEC).
+IF OBJECT_ID(N'[FillKill].[FK_SubOrder_SubVendorItem]', N'F') IS NULL
 BEGIN
-    ALTER TABLE [FillKill].[Sub] ADD [deleted_at] DATETIME NULL, [deleted_by] VARCHAR(255) NULL,
-                                     [delete_reason] VARCHAR(400) NULL;
-    PRINT 'Added Sub.deleted_at, deleted_by, delete_reason';
-END;
-GO
-
-IF OBJECT_ID(N'[FillKill].[CK_Sub_delete]', N'C') IS NULL
-BEGIN
-    ALTER TABLE [FillKill].[Sub] ADD CONSTRAINT [CK_Sub_delete] CHECK (
-       ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
-    OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL AND [is_picked] = 0)
-    );
-    PRINT 'Added CK_Sub_delete';
-END;
-
--- 2c. 2026-10-15, after the stakeholder review -------------------------------------------
--- Nursing enters only the vendor part, so the vendor waits for the Materials Manager ([vendor]
--- allows NULL), and a live sub is one vendor part per Medline item: the unique index moves from
--- (item, vendor, vendor part) to (item, vendor part).
-IF OBJECT_ID(N'[FillKill].[UQ_Sub_item_vendor_part]', N'UQ') IS NOT NULL
-BEGIN
-    EXEC (N'ALTER TABLE [FillKill].[Sub] DROP CONSTRAINT UQ_Sub_item_vendor_part');
-    PRINT 'Dropped the old unique key UQ_Sub_item_vendor_part';
-END;
-
-IF EXISTS (SELECT 1 FROM sys.index_columns AS ic
-           JOIN sys.indexes AS i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
-           JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-           WHERE i.object_id = OBJECT_ID(N'[FillKill].[Sub]') AND i.name = N'UX_Sub_item_vendor_part'
-             AND c.name = N'vendor')
-BEGIN
-    EXEC (N'DROP INDEX UX_Sub_item_vendor_part ON [FillKill].[Sub]');
-    PRINT 'Dropped UX_Sub_item_vendor_part on (item, vendor, vendor part)';
-END;
-
-IF EXISTS (SELECT 1 FROM sys.columns
-           WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'vendor' AND is_nullable = 0)
-BEGIN
-    ALTER TABLE [FillKill].[Sub] ALTER COLUMN [vendor] VARCHAR(255) NULL;
-    PRINT 'Sub.vendor can now wait for the Materials Manager';
+    EXEC (N'ALTER TABLE [FillKill].[SubOrder] ADD CONSTRAINT [FK_SubOrder_SubVendorItem] FOREIGN KEY ([vendor_item_id])
+            REFERENCES [FillKill].[SubVendorItem] ([vendor_item_id]);');
+    PRINT 'Added FK_SubOrder_SubVendorItem';
 END;
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes
-               WHERE object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'UX_Sub_item_vendor_part')
+               WHERE object_id = OBJECT_ID(N'[FillKill].[SubOrder]') AND name = N'IX_SubOrder_vendor_item')
 BEGIN
-    CREATE UNIQUE INDEX [UX_Sub_item_vendor_part] ON [FillKill].[Sub] ([medline_item], [vendor_part])
-        WHERE [deleted_at] IS NULL;
-    PRINT 'Created UX_Sub_item_vendor_part (item, vendor part; live subs only)';
+    EXEC (N'CREATE INDEX [IX_SubOrder_vendor_item] ON [FillKill].[SubOrder] ([vendor_item_id]);');
+    PRINT 'Created IX_SubOrder_vendor_item';
 END;
 
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
-               WHERE parent_object_id = OBJECT_ID(N'[FillKill].[History]') AND name = N'CK_History_action'
-                 AND [definition] LIKE N'%''delete''%')
+               WHERE parent_object_id = OBJECT_ID(N'[FillKill].[History]') AND name = N'CK_History_entity'
+                 AND [definition] LIKE N'%''vendoritem''%')
 BEGIN
-    IF OBJECT_ID(N'[FillKill].[CK_History_action]', N'C') IS NOT NULL
-        EXEC (N'ALTER TABLE [FillKill].[History] DROP CONSTRAINT CK_History_action');
-    ALTER TABLE [FillKill].[History] ADD CONSTRAINT [CK_History_action] CHECK (
-            [action] IN ('created', 'status', 'pick', 'unpick', 'comment', 'edit', 'void', 'delete')
-    );
-    PRINT 'CK_History_action now allows delete';
+    IF OBJECT_ID(N'[FillKill].[CK_History_entity]', N'C') IS NOT NULL
+        EXEC (N'ALTER TABLE [FillKill].[History] DROP CONSTRAINT CK_History_entity');
+    ALTER TABLE [FillKill].[History] ADD CONSTRAINT [CK_History_entity] CHECK ([entity] IN ('sub', 'vendoritem', 'order'));
+    PRINT 'CK_History_entity now allows vendoritem';
 END;
 GO
 
--- 2d. 2026-10-19 --------------------------------------------------------------------------
--- Nursing enters the part they approved, which may be the manufacturer's part or another vendor's;
--- the Materials Manager sets the vendor part ordered. [entered_part] keeps what was entered (filled
--- in here for existing subs), and the sub gets the manufacturer's part and Infor's item number.
-IF COL_LENGTH(N'FillKill.Sub', N'entered_part') IS NULL
-BEGIN
-    ALTER TABLE [FillKill].[Sub] ADD [entered_part] VARCHAR(100) NULL, [manufacturer_part] VARCHAR(100) NULL,
-                                     [infor_item] VARCHAR(50) NULL;
-    PRINT 'Added Sub.entered_part, manufacturer_part, infor_item';
-END;
-GO
+-- 2b. The data, in one transaction (all of it, or nothing):
+--   - A copy of Sub as it was: [FillKill].[Sub_before_vendor_items]. Drop it once the subs look right.
+--   - Each sub's Reference SKU is what was entered (entered_part; its vendor part for a sub older
+--     than that column).
+--   - Each order's vendor part is the sub's when the order was recorded, from the sub's History.
+--   - Subs of a Medline item with the same Reference SKU become one: the picked one, else an
+--     approved, held or pending one, else the first. Before vendor items, the same part entered twice
+--     was how a sub got a second vendor part (on O2: subs 10 and 11 of B-D930299Z, both 930103).
+--     The others are deleted, saying so; their vendor details and orders go to the one kept, which
+--     gets a comment about it.
+--   - Each sub's vendor details, when they have the vendor, its vendor ID and the UOM, become a
+--     vendor item (on the sub kept); the same vendor ID, vendor part and UOM only once. Its History
+--     row names who filled the details in, and when.
+--   - An order is linked to the vendor item with its vendor ID, vendor part and UOM, if there is one.
+--     The others (placed with details the sub no longer has) keep what they were placed with.
+--   - Sub's vendor details are dropped; the vendor items have them.
+-- In EXEC: these columns are dropped at the end, so a later run must not compile this batch.
+IF COL_LENGTH(N'FillKill.Sub', N'vendor_part') IS NOT NULL
+EXEC (N'
+SET XACT_ABORT ON;  -- an error rolls the transaction back instead of leaving it open
 
--- In EXEC, so this batch compiles before the column exists (a first run checked with NOEXEC).
-EXEC (N'UPDATE [FillKill].[Sub] SET [entered_part] = [vendor_part] WHERE [entered_part] IS NULL;
-       IF @@ROWCOUNT > 0 PRINT ''Sub.entered_part filled in for the subs already there'';');
-GO
+DECLARE @now DATETIME = GETDATE();
+DECLARE @by VARCHAR(255) = ''12_workflow_tables.sql'';
+DECLARE @merged TABLE ([sub_id] INT PRIMARY KEY, [keeper] INT NOT NULL, [medline_item] VARCHAR(50) NOT NULL,
+                       [was_picked] BIT NOT NULL);
+DECLARE @items TABLE ([vendor_item_id] INT NOT NULL, [sub_id] INT NOT NULL, [entered_by] VARCHAR(255) NOT NULL,
+                      [create_dt] DATETIME NOT NULL);
+DECLARE @detail_fields TABLE ([field] VARCHAR(30) PRIMARY KEY);
+INSERT INTO @detail_fields VALUES (''vendor_part''), (''vendor''), (''vendor_id''), (''manufacturer_part''),
+    (''infor_item''), (''description''), (''uom''), (''qoe'');
 
--- 2e. 2026-10-20 --------------------------------------------------------------------------
--- An order keeps the vendor ID it was placed with, as it keeps the vendor's name.
-IF COL_LENGTH(N'FillKill.SubOrder', N'vendor_id') IS NULL
-BEGIN
-    ALTER TABLE [FillKill].[SubOrder] ADD [vendor_id] VARCHAR(20) NULL;
-    PRINT 'Added SubOrder.vendor_id';
-END;
-GO
+BEGIN TRANSACTION;
 
--- In EXEC, so this batch compiles before the column exists (a first run checked with NOEXEC).
-EXEC (N'UPDATE o SET o.[vendor_id] = s.[vendor_id]
-       FROM [FillKill].[SubOrder] AS o JOIN [FillKill].[Sub] AS s ON s.[sub_id] = o.[sub_id]
-       WHERE o.[vendor_id] IS NULL AND s.[vendor_id] IS NOT NULL;
-       IF @@ROWCOUNT > 0 PRINT ''SubOrder.vendor_id filled in from the subs'';');
+IF OBJECT_ID(N''[FillKill].[Sub_before_vendor_items]'', N''U'') IS NULL
+    SELECT * INTO [FillKill].[Sub_before_vendor_items] FROM [FillKill].[Sub];
+
+UPDATE [FillKill].[Sub]
+SET [reference_sku] = COALESCE(NULLIF(LTRIM(RTRIM([entered_part])), ''''), [vendor_part])
+WHERE [reference_sku] IS NULL;
+
+UPDATE o
+SET o.[vendor_part] = COALESCE(
+        (SELECT TOP (1) h.[to_value] FROM [FillKill].[History] AS h
+         WHERE h.[entity] = ''sub'' AND h.[entity_id] = o.[sub_id] AND h.[action] = ''edit''
+           AND h.[field] = ''vendor_part'' AND h.[acted_at] <= o.[create_dt]
+         ORDER BY h.[acted_at] DESC, h.[history_id] DESC),
+        (SELECT TOP (1) h.[from_value] FROM [FillKill].[History] AS h
+         WHERE h.[entity] = ''sub'' AND h.[entity_id] = o.[sub_id] AND h.[action] = ''edit''
+           AND h.[field] = ''vendor_part'' AND h.[acted_at] > o.[create_dt]
+         ORDER BY h.[acted_at], h.[history_id]),
+        s.[vendor_part])
+FROM [FillKill].[SubOrder] AS o
+JOIN [FillKill].[Sub] AS s ON s.[sub_id] = o.[sub_id]
+WHERE o.[vendor_part] IS NULL;
+
+INSERT INTO @merged ([sub_id], [keeper], [medline_item], [was_picked])
+SELECT [sub_id], [keeper], [medline_item], [is_picked]
+FROM (
+    SELECT [sub_id], [medline_item], [is_picked],
+           FIRST_VALUE([sub_id]) OVER (
+               PARTITION BY [medline_item], [reference_sku]
+               ORDER BY [is_picked] DESC,
+                        CASE [status] WHEN ''approved'' THEN 0 WHEN ''hold'' THEN 1 WHEN ''pending_review'' THEN 2 ELSE 3 END,
+                        [sub_id]) AS [keeper]
+    FROM [FillKill].[Sub]
+    WHERE [deleted_at] IS NULL
+) AS ranked
+WHERE [sub_id] <> [keeper];
+
+WITH details AS (
+    SELECT COALESCE(m.[keeper], s.[sub_id]) AS [sub_id], s.[vendor_part], s.[vendor], s.[vendor_id], s.[uom],
+           s.[qoe], s.[manufacturer_part], s.[infor_item], s.[description],
+           COALESCE(who.[actor], s.[entered_by]) AS [entered_by],
+           COALESCE(span.[first_at], s.[create_dt]) AS [create_dt],
+           COALESCE(span.[last_at], s.[create_dt]) AS [update_dt],
+           ROW_NUMBER() OVER (PARTITION BY COALESCE(m.[keeper], s.[sub_id]), s.[vendor_id], s.[vendor_part], s.[uom]
+                              ORDER BY s.[sub_id]) AS [rk]
+    FROM [FillKill].[Sub] AS s
+    LEFT JOIN @merged AS m ON m.[sub_id] = s.[sub_id]
+    OUTER APPLY (SELECT MIN(h.[acted_at]) AS [first_at], MAX(h.[acted_at]) AS [last_at]
+                 FROM [FillKill].[History] AS h JOIN @detail_fields AS f ON f.[field] = h.[field]
+                 WHERE h.[entity] = ''sub'' AND h.[entity_id] = s.[sub_id] AND h.[action] = ''edit'') AS span
+    OUTER APPLY (SELECT TOP (1) h.[actor]
+                 FROM [FillKill].[History] AS h JOIN @detail_fields AS f ON f.[field] = h.[field]
+                 WHERE h.[entity] = ''sub'' AND h.[entity_id] = s.[sub_id] AND h.[action] = ''edit''
+                 ORDER BY h.[acted_at] DESC, h.[history_id] DESC) AS who
+    WHERE s.[vendor] IS NOT NULL AND s.[vendor_id] IS NOT NULL AND s.[uom] IS NOT NULL
+)
+INSERT INTO [FillKill].[SubVendorItem] ([sub_id], [vendor_part], [vendor], [vendor_id], [uom], [qoe],
+                                        [manufacturer_part], [infor_item], [description], [entered_by],
+                                        [create_dt], [update_dt])
+OUTPUT inserted.[vendor_item_id], inserted.[sub_id], inserted.[entered_by], inserted.[create_dt] INTO @items
+SELECT [sub_id], [vendor_part], [vendor], [vendor_id], [uom], [qoe], [manufacturer_part], [infor_item],
+       [description], [entered_by], [create_dt], [update_dt]
+FROM details
+WHERE [rk] = 1;
+
+INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [comment], [actor], [acted_at])
+SELECT ''vendoritem'', i.[vendor_item_id], s.[medline_item], ''created'',
+       ''From the vendor details of the sub (12_workflow_tables.sql, 2026-10-20).'', i.[entered_by], i.[create_dt]
+FROM @items AS i
+JOIN [FillKill].[Sub] AS s ON s.[sub_id] = i.[sub_id];
+
+UPDATE o SET o.[sub_id] = m.[keeper]
+FROM [FillKill].[SubOrder] AS o
+JOIN @merged AS m ON m.[sub_id] = o.[sub_id];
+
+UPDATE o SET o.[vendor_item_id] = v.[vendor_item_id]
+FROM [FillKill].[SubOrder] AS o
+JOIN [FillKill].[SubVendorItem] AS v
+  ON v.[sub_id] = o.[sub_id] AND v.[vendor_id] = o.[vendor_id] AND v.[vendor_part] = o.[vendor_part]
+ AND v.[uom] = o.[uom] AND v.[deleted_at] IS NULL
+WHERE o.[vendor_item_id] IS NULL;
+
+INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [comment], [actor], [acted_at])
+SELECT ''sub'', [sub_id], [medline_item], ''unpick'', CONCAT(''Unpicked: merged into sub '', [keeper], ''.''), @by, @now
+FROM @merged WHERE [was_picked] = 1;
+
+INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [comment], [actor], [acted_at])
+SELECT ''sub'', [sub_id], [medline_item], ''delete'',
+       CONCAT(''Merged into sub '', [keeper], '': the same Reference SKU (2026-10-20).''), @by, @now
+FROM @merged;
+
+INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [comment], [actor], [acted_at])
+SELECT ''sub'', [keeper], [medline_item], ''comment'',
+       CONCAT(''Sub '', [sub_id], '', the same Reference SKU, merged into this one (2026-10-20): ''
+              , ''its vendor details are a vendor item here, and its orders are here.''), @by, @now
+FROM @merged;
+
+UPDATE s
+SET s.[is_picked] = 0, s.[deleted_at] = @now, s.[deleted_by] = @by,
+    s.[delete_reason] = CONCAT(''Merged into sub '', m.[keeper], '': the same Reference SKU (2026-10-20).''),
+    s.[update_dt] = @now
+FROM [FillKill].[Sub] AS s
+JOIN @merged AS m ON m.[sub_id] = s.[sub_id];
+
+DROP INDEX UX_Sub_item_vendor_part ON [FillKill].[Sub];
+ALTER TABLE [FillKill].[Sub] DROP CONSTRAINT CK_Sub_qoe;
+ALTER TABLE [FillKill].[Sub] DROP COLUMN [vendor], [vendor_id], [vendor_part], [entered_part], [manufacturer_part],
+                                         [infor_item], [description], [uom], [qoe];
+ALTER TABLE [FillKill].[Sub] ALTER COLUMN [reference_sku] VARCHAR(100) NOT NULL;
+ALTER TABLE [FillKill].[SubOrder] ALTER COLUMN [vendor_part] VARCHAR(100) NOT NULL;
+CREATE UNIQUE INDEX [UX_Sub_item_reference_sku] ON [FillKill].[Sub] ([medline_item], [reference_sku])
+    WHERE [deleted_at] IS NULL;
+
+COMMIT TRANSACTION;
+
+DECLARE @merged_count INT = (SELECT COUNT(*) FROM @merged);
+DECLARE @item_count INT = (SELECT COUNT(*) FROM @items);
+PRINT CONCAT(''Vendor items: '', @item_count, '' made from the subs; '', @merged_count,
+             '' sub(s) merged into another with the same Reference SKU. Sub as it was: FillKill.Sub_before_vendor_items.'');
+');
 GO
 
 -- 3. Defaults, in case the app's startup created a table before this script ran -------------
@@ -286,6 +372,8 @@ INSERT INTO @defaults VALUES
     (N'Sub', N'is_picked', N'DF_Sub_is_picked', N'(0)'),
     (N'Sub', N'create_dt', N'DF_Sub_create_dt', N'(GETDATE())'),
     (N'Sub', N'update_dt', N'DF_Sub_update_dt', N'(GETDATE())'),
+    (N'SubVendorItem', N'create_dt', N'DF_SubVendorItem_create_dt', N'(GETDATE())'),
+    (N'SubVendorItem', N'update_dt', N'DF_SubVendorItem_update_dt', N'(GETDATE())'),
     (N'SubOrder', N'create_dt', N'DF_SubOrder_create_dt', N'(GETDATE())'),
     (N'SubOrder', N'update_dt', N'DF_SubOrder_update_dt', N'(GETDATE())'),
     (N'History', N'acted_at', N'DF_History_acted_at', N'(GETDATE())');

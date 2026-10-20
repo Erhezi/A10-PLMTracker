@@ -26,15 +26,15 @@ def test_each_gap_names_the_script_that_fills_it():
     catalog = complete_catalog()
     del catalog["columns"][("FillKill", "vw_Vendor")]
     catalog["columns"][("FillKill", "Sub")].pop("deleted_at")
-    catalog["columns"][("FillKill", "Sub")]["vendor"] = False
-    catalog["indexes"][("FillKill", "Sub", "UX_Sub_item_vendor_part")] = ["medline_item", "vendor", "vendor_part"]
+    catalog["columns"][("FillKill", "SubOrder")]["vendor_item_id"] = False
+    catalog["indexes"][("FillKill", "Sub", "UX_Sub_item_reference_sku")] = ["medline_item", "vendor_part"]
     catalog["checks"][("FillKill", "CK_History_action")] = "([action]='void')"
     catalog["procedures"][("FillKill", "usp_SyncPboSubs")] = "CREATE PROCEDURE ... an older one"
     assert [(p["what"], p["script"]) for p in health.problems(catalog)] == [
         ("FillKill.Sub has no deleted_at", "12_workflow_tables.sql"),
         ("FillKill.vw_Vendor is missing", "13_contract_search.sql"),
-        ("FillKill.Sub.vendor doesn't allow empty values", "12_workflow_tables.sql"),
-        ("index UX_Sub_item_vendor_part is on (medline_item, vendor, vendor_part), not (medline_item, vendor_part)",
+        ("FillKill.SubOrder.vendor_item_id doesn't allow empty values", "12_workflow_tables.sql"),
+        ("index UX_Sub_item_reference_sku is on (medline_item, vendor_part), not (medline_item, reference_sku)",
          "12_workflow_tables.sql"),
         ("FillKill.CK_History_action is an older version", "12_workflow_tables.sql"),
         ("FillKill.usp_SyncPboSubs is an older version", "14_pbo_sync.sql"),
@@ -47,7 +47,7 @@ def test_grants_and_definitions_it_cant_read_are_reported_without_a_script():
     catalog["unreadable"][("FillKill", "vw_MedlineFillKill")] = "The SELECT permission was denied on MedlineFillKill"
     catalog["checks"] = {key: None for key in catalog["checks"]}
     found = health.problems(catalog)
-    assert [p["script"] for p in found] == [None, None, None]
+    assert [p["script"] for p in found] == [None, None, None]  # three CHECKs unreadable: one line for them
     assert "VIEW DEFINITION" in found[0]["what"] and "09_verify.sql" in found[0]["what"]
     assert "grant it EXECUTE" in found[1]["what"]
     assert "can't read FillKill.vw_MedlineFillKill (The SELECT permission was denied" in found[2]["what"]

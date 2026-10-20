@@ -20,17 +20,20 @@ STATUS_LABELS = {
     "rejected": "Rejected",
 }
 
-# Who fills in what on a sub (2026-10-15): nursing enters the part they approved; the Materials
-# Manager fills in the vendor details, the vendor part ordered among them (2026-10-19: what nursing
-# entered may be the manufacturer's part, or another vendor's).
-SUB_DETAIL_FIELDS = ("vendor_part", "vendor", "vendor_id", "manufacturer_part", "infor_item", "description", "uom", "qoe")
-ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "vendor_id", "ordered_dt")
+# Who fills in what (2026-10-20): nursing (or a Sub Finder) enters a sub's Reference SKU, the part
+# they approved, often the manufacturer's; the Materials Manager or a Sub Finder adds its vendor
+# items, each a vendor's part in a UOM that can be ordered.
+VENDOR_ITEM_FIELDS = ("vendor_part", "vendor", "vendor_id", "manufacturer_part", "infor_item", "description", "uom", "qoe")
+VENDOR_ITEM_REQUIRED = ("vendor_part", "vendor", "vendor_id", "uom")
+ORDER_FIELDS = ("quantity", "vendor_part", "uom", "qoe", "vendor", "vendor_id", "ordered_dt")
 
-LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "manufacturer_part": 100,
-          "infor_item": 50, "description": 255, "uom": 10}
+LIMITS = {"medline_item": 50, "reference_sku": 100, "vendor": 255, "vendor_id": 20, "vendor_part": 100,
+          "manufacturer_part": 100, "infor_item": 50, "description": 255, "uom": 10}
+LABELS = {"medline_item": "Medline item", "reference_sku": "Reference SKU", "vendor_id": "Vendor ID", "uom": "UOM",
+          "qoe": "QOE"}
 
-# A sub's vendor details need Infor's vendor ID (2026-10-19). When Infor has no such vendor, the
-# Materials Manager says so on purpose with this one; Infor has no vendor 0000000.
+# A vendor item needs Infor's vendor ID (2026-10-19). When Infor has no such vendor, the Materials
+# Manager says so on purpose with this one; Infor has no vendor 0000000.
 NO_VENDOR_ID = "0000000"
 NO_VENDOR_LABEL = "Vendor not available in system"
 
@@ -46,6 +49,10 @@ class RuleError(Exception):
 
 # --- values --------------------------------------------------------------------
 
+def label(name: str) -> str:
+    return LABELS.get(name) or name.replace("_", " ").capitalize()
+
+
 def clean_text(value, *, label: str, max_len: int, required: bool = False) -> str | None:
     text = (str(value).strip() if value is not None else "")
     if not text:
@@ -58,15 +65,20 @@ def clean_text(value, *, label: str, max_len: int, required: bool = False) -> st
 
 
 def clean_field(name: str, value, *, required: bool = False):
-    """A sub or order field by name; uom is upper-cased, qoe and quantity are numbers."""
+    """A sub, vendor item or order field by name; uom is upper-cased, the vendor ID is Infor's, qoe
+    and quantity are numbers."""
     if name == "qoe":
         return clean_qoe(value)
     if name == "quantity":
         return clean_quantity(value)
     if name == "ordered_dt":
         return clean_ordered_dt(value)
-    label = name.replace("_", " ").capitalize()
-    text = clean_text(value, label=label, max_len=LIMITS[name], required=required)
+    if name == "vendor_id":
+        text = clean_vendor_id(value)
+        if text is None and required:
+            raise RuleError(_missing_message(["Vendor ID"]))
+        return text
+    text = clean_text(value, label=label(name), max_len=LIMITS[name], required=required)
     return text.upper() if (text and name == "uom") else text
 
 
@@ -119,25 +131,18 @@ def clean_vendor_id(value) -> str | None:
     return text
 
 
-def details_missing(sub) -> list[str]:
-    """What a sub still lacks for an order: its vendor, Infor's vendor ID (or 0000000) and its UOM.
-    ``sub`` is a Sub or a dict with those keys."""
-    get = sub.get if isinstance(sub, dict) else lambda name: getattr(sub, name)
-    return [label for name, label in (("vendor", "Vendor"), ("vendor_id", "Vendor ID"), ("uom", "UOM"))
-            if not get(name)]
-
-
 def _missing_message(missing: list[str]) -> str:
     labels = [f"{name} (or {NO_VENDOR_ID}: {NO_VENDOR_LABEL})" if name == "Vendor ID" else name for name in missing]
     names = ", ".join(labels[:-1]) + (" and " if len(labels) > 1 else "") + labels[-1]
-    return f"{names} {'are' if len(labels) > 1 else 'is'} required: fill in the sub's vendor details."
+    return f"{names} {'are' if len(labels) > 1 else 'is'} required."
 
 
-def check_details_complete(sub) -> None:
-    """Saved vendor details always include the vendor, its vendor ID and the UOM (2026-10-19)."""
-    missing = details_missing(sub)
-    if missing:
-        raise RuleError(_missing_message(missing))
+def _same(name: str, value, current) -> bool:
+    if name == "qoe":
+        return (value is None and current is None) or (
+            value is not None and current is not None and Decimal(current) == value
+        )
+    return (value or None) == (current or None)
 
 
 def clean_comment(value, *, label: str = "Comment") -> str:
@@ -147,46 +152,13 @@ def clean_comment(value, *, label: str = "Comment") -> str:
 # --- subs ----------------------------------------------------------------------
 
 def check_new_sub(data: dict) -> dict:
-    """A new sub: the vendor part is required. The vendor details (vendor, vendor ID, manufacturer
-    part, Infor item, description, UOM, QOE) and a first comment are optional: the Materials Manager
-    fills the details in."""
+    """A new sub: its Reference SKU (2026-10-20) and, if they like, a first comment. What can be
+    ordered for it, its vendor items, is the Materials Manager's or a Sub Finder's."""
     return {
         "medline_item": clean_field("medline_item", data.get("medline_item"), required=True),
-        "vendor": clean_field("vendor", data.get("vendor")),
-        "vendor_id": clean_vendor_id(data.get("vendor_id")),
-        "vendor_part": clean_field("vendor_part", data.get("vendor_part"), required=True),
-        "manufacturer_part": clean_field("manufacturer_part", data.get("manufacturer_part")),
-        "infor_item": clean_field("infor_item", data.get("infor_item")),
-        "description": clean_field("description", data.get("description")),
-        "uom": clean_field("uom", data.get("uom")),
-        "qoe": clean_qoe(data.get("qoe")),
+        "reference_sku": clean_field("reference_sku", data.get("reference_sku"), required=True),
         "comment": clean_text(data.get("comment"), label="Comment", max_len=TEXT_MAX),
     }
-
-
-def check_sub_changes(sub, data: dict, fields, *, required: bool = True) -> dict:
-    """The fields of ``fields`` in ``data`` that differ from the sub's, cleaned. With ``required``,
-    nothing to change is refused."""
-    changes = {}
-    for name in fields:
-        if name not in data:
-            continue
-        if name == "vendor_id":
-            value = clean_vendor_id(data[name])
-        else:
-            value = clean_field(name, data[name], required=name == "vendor_part")
-        current = getattr(sub, name)
-        if name == "qoe":
-            same = (value is None and current is None) or (
-                value is not None and current is not None and Decimal(current) == value
-            )
-        else:
-            same = (value or None) == (current or None)
-        if not same:
-            changes[name] = value
-    if not changes and required:
-        raise RuleError("Nothing to change.")
-    return changes
 
 
 def check_status_change(sub, new_status) -> str:
@@ -217,6 +189,33 @@ def check_delete(sub, reason) -> str:
     return clean_comment(reason, label="Reason")
 
 
+# --- vendor items --------------------------------------------------------------
+
+def check_new_vendor_item(data: dict) -> dict:
+    """A vendor item (2026-10-20): its vendor part, vendor, Infor's vendor ID (or 0000000) and UOM
+    are required; its manufacturer part, Infor item, description and QOE are optional."""
+    clean = {name: clean_field(name, data.get(name)) for name in VENDOR_ITEM_FIELDS}
+    missing = [label(name) for name in VENDOR_ITEM_REQUIRED if not clean[name]]
+    if missing:
+        raise RuleError(_missing_message(missing))
+    return clean
+
+
+def check_vendor_item_changes(item, data: dict) -> dict:
+    """The fields in ``data`` that differ from the vendor item's, cleaned; a required one can't be
+    emptied, and nothing to change is refused."""
+    changes = {}
+    for name in VENDOR_ITEM_FIELDS:
+        if name not in data:
+            continue
+        value = clean_field(name, data[name], required=name in VENDOR_ITEM_REQUIRED)
+        if not _same(name, value, getattr(item, name)):
+            changes[name] = value
+    if not changes:
+        raise RuleError("Nothing to change.")
+    return changes
+
+
 # --- orders --------------------------------------------------------------------
 
 def check_orderable(sub) -> None:
@@ -224,23 +223,17 @@ def check_orderable(sub) -> None:
         raise RuleError("Orders are recorded against a picked sub, and this one isn't picked.", 409)
 
 
-def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
-    """An order against a picked sub (S3). UOM, QOE and vendor default to the sub's details,
-    which the Materials Manager fills in (with the order or before); the sub needs its vendor ID
-    too (2026-10-19)."""
+def check_new_order(sub, item, data: dict, *, now: datetime | None = None) -> dict:
+    """An order for a vendor item of a picked sub (S3; 2026-10-20). It keeps the vendor item's vendor
+    part, vendor, vendor ID, UOM and QOE."""
     check_orderable(sub)
-    uom = clean_field("uom", data.get("uom")) or sub.uom
-    vendor = clean_field("vendor", data.get("vendor")) or sub.vendor
-    missing = details_missing({"vendor": vendor, "vendor_id": sub.vendor_id, "uom": uom})
-    if missing:
-        raise RuleError(_missing_message(missing))
-    qoe = clean_qoe(data["qoe"]) if "qoe" in data else (Decimal(sub.qoe) if sub.qoe is not None else None)
     return {
         "quantity": clean_quantity(data.get("quantity")),
-        "uom": uom,
-        "qoe": qoe,
-        "vendor": vendor,
-        "vendor_id": sub.vendor_id,  # the order keeps it, as it keeps the vendor's name (2026-10-20)
+        "vendor_part": item.vendor_part,
+        "uom": item.uom,
+        "qoe": Decimal(item.qoe) if item.qoe is not None else None,
+        "vendor": item.vendor,
+        "vendor_id": item.vendor_id,
         "ordered_dt": clean_ordered_dt(data.get("ordered_dt"), now=now),
         "comment": clean_text(data.get("comment"), label="Comment", max_len=TEXT_MAX),
     }
@@ -258,20 +251,10 @@ def check_order_edit(order, data: dict, *, now: datetime | None = None) -> dict:
             value = clean_ordered_dt(data[name], now=now)
             if value is None:
                 raise RuleError("Ordered date is required.")
-        elif name == "vendor_id":
-            value = clean_vendor_id(data[name])
-            if value is None:
-                raise RuleError(f"Vendor ID (or {NO_VENDOR_ID}: {NO_VENDOR_LABEL}) is required.")
         else:
-            value = clean_field(name, data[name], required=name in ("quantity", "uom", "vendor"))
+            value = clean_field(name, data[name], required=name in ("quantity", "vendor_part", "uom", "vendor", "vendor_id"))
         current = getattr(order, name)
-        if name == "qoe":
-            same = (value is None and current is None) or (
-                value is not None and current is not None and Decimal(current) == value
-            )
-        else:
-            same = value == current
-        if not same:
+        if not (_same(name, value, current) if name == "qoe" else value == current):
             changes[name] = value
     if not changes:
         raise RuleError("Nothing to change.")

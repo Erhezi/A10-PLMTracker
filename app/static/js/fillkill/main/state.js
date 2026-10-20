@@ -62,5 +62,7 @@ export function scopeParams() {
 }
 
 export const subUrl = (subId, action) => api.subAction.replace('/0/', `/${subId}/`).replace('ACTION', action);
+export const addVendorItemUrl = (subId) => api.addVendorItem.replace('/0/', `/${subId}/`);
+export const vendorItemUrl = (id, action) => api.vendorItemAction.replace('/0/', `/${id}/`).replace('ACTION', action);
 export const orderUrl = (orderId, action) => api.orderAction.replace('/0/', `/${orderId}/`).replace('ACTION', action);
 export const historyUrl = (entity, id) => api.history.replace('ENTITY', entity).replace(/\/0$/, `/${id}`);

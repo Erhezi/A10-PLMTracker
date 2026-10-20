@@ -40,7 +40,7 @@ function otherSubs(p) {
   return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review and pick it here:</div>
     <ul class="list-group list-group-flush small mb-2">${p.other_subs.map((o) => `
       <li class="list-group-item px-0 d-flex flex-wrap gap-2 align-items-center">
-        <span class="fw-semibold">${esc(o.vendor_part)}</span><span class="text-muted">${esc(vendorText(o))}</span>
+        <span class="fw-semibold">${esc(o.reference_sku)}</span>
         ${statusBadge(o.status)}
         <span class="text-muted">on ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}${o.approved_by
           ? `, approved by ${esc(o.approved_by)} ${fmtDateTime(o.approved_at)}` : ''}</span>
@@ -49,19 +49,39 @@ function otherSubs(p) {
       </li>`).join('')}</ul>`;
 }
 
+// A sub's vendor items (2026-10-20): each a way to order it, the Materials Manager's or a Sub
+// Finder's. A Materials Manager records an order for one of the pick's.
+function vendorItemList(sub) {
+  const items = sub.vendor_items || [];
+  if (!items.length) return '';
+  return `<ul class="list-unstyled small mb-0 mt-1 fk-vendor-items">${items.map((v) => {
+    const facts = [
+      v.manufacturer_part ? `Mfr part ${esc(v.manufacturer_part)}` : '',
+      v.infor_item ? `Infor item ${esc(v.infor_item)}` : '',
+      `added by ${esc(v.entered_by)} ${fmtDateTime(v.create_dt)}`,
+    ].filter(Boolean).join(' · ');
+    const actions = [];
+    if (can.order && sub.is_picked) {
+      actions.push(`<button type="button" class="btn btn-sm btn-primary py-0" data-act="order" data-vi="${v.vendor_item_id}">Record order</button>`);
+    }
+    if (can.details) {
+      actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-act="edit-vi" data-sub="${sub.sub_id}"
+        data-vi="${v.vendor_item_id}">Correct</button>`);
+      actions.push(`<button type="button" class="btn btn-sm btn-outline-danger py-0" data-act="delete-vi" data-sub="${sub.sub_id}"
+        data-vi="${v.vendor_item_id}">Delete</button>`);
+    }
+    return `<li class="d-flex flex-wrap gap-2 align-items-center py-1">
+      <div class="me-auto"><span class="fw-semibold">${esc(v.vendor_part)}</span> <span class="text-muted">${esc(vendorText(v))}</span>
+        · ${esc(v.uom)}${v.qoe ? ` × ${fmtNumber(v.qoe)}` : ''}${v.description ? ` <span class="text-muted">· ${esc(v.description)}</span>` : ''}
+        <div class="text-muted">${facts}</div></div>
+      ${actions.join('')}
+    </li>`;
+  }).join('')}</ul>`;
+}
+
 function subCard(sub) {
-  const meta = [
-    sub.description ? esc(sub.description) : '',
-    sub.uom ? `UOM ${esc(sub.uom)}${sub.qoe ? ` · QOE ${fmtNumber(sub.qoe)}` : ''}` : '',
-  ].filter(Boolean).join(' · ');
-  // What was entered, when the vendor part ordered differs; the manufacturer's part; Infor's item.
-  const parts = [
-    sub.entered_part && sub.entered_part !== sub.vendor_part ? `Entered as ${esc(sub.entered_part)}` : '',
-    sub.manufacturer_part ? `Mfr part ${esc(sub.manufacturer_part)}` : '',
-    sub.infor_item ? `Infor item ${esc(sub.infor_item)}` : '',
-  ].filter(Boolean).join(' · ');
   const detailsNeeded = needsDetails(sub)
-    ? ' <span class="badge text-bg-warning" title="The Materials Manager fills in the vendor, vendor ID, description, UOM and QOE">Vendor details needed</span>' : '';
+    ? ' <span class="badge text-bg-warning" title="Nothing to order yet: the Materials Manager adds what can be ordered for it">Vendor item needed</span>' : '';
   const source = sub.source === 'medline_pbo' ? 'Medline PBO' : esc(sub.entered_by);
   const comment = sub.latest_comment
     ? `<div class="small border-start border-3 ps-2 my-2"><span class="text-muted">${esc(sub.latest_comment.actor)},
@@ -80,14 +100,11 @@ function subCard(sub) {
     }
   }
   if (can.details) {
-    actions.push(`<button type="button" class="btn btn-sm btn-outline-primary" data-act="details" data-sub="${sub.sub_id}">Vendor details</button>`);
-  }
-  if (can.order && sub.is_picked) {
-    actions.push(`<button type="button" class="btn btn-sm btn-primary" data-act="order" data-sub="${sub.sub_id}"
-      data-item="${esc(sub.medline_item)}">Record order</button>`);
+    actions.push(`<button type="button" class="btn btn-sm btn-outline-primary" data-act="add-vi" data-sub="${sub.sub_id}"><i
+      class="bi bi-plus-lg"></i> Vendor item</button>`);
   }
   if (can.add_sub) {
-    actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Edit part</button>`);
+    actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Correct Reference SKU</button>`);
     // The Approver's Pick can't be deleted until it's unpicked (the server refuses it too).
     actions.push(sub.is_picked
       ? `<span class="d-inline-block" tabindex="0" title="It's the Approver's Pick: unpick it first">
@@ -105,15 +122,14 @@ function subCard(sub) {
   return `<div class="card mb-2 ${sub.is_picked ? 'border-success' : ''}">
     <div class="card-body p-2">
       <div class="d-flex flex-wrap gap-2 align-items-center">
-        <span class="fw-semibold">${esc(sub.vendor_part)}</span><span class="text-muted">${esc(vendorText(sub))}</span>
+        <span><span class="fw-semibold">${esc(sub.reference_sku)}</span> <span class="small text-muted">Reference SKU</span></span>
         ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-check2"></i> Picked</span>' : ''}${detailsNeeded}
         ${(sub.approved_elsewhere || []).map((o) => `<span class="badge text-success border border-success bg-white"
             title="Approved by ${esc(o.approved_by || '')} ${fmtDateTime(o.approved_at)}"><i class="bi bi-box-seam"></i>
             Approved for ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}</span>`).join(' ')}
       </div>
-      ${parts ? `<div class="small text-muted">${parts}</div>` : ''}
-      ${meta ? `<div class="small text-muted">${meta}</div>` : ''}
       <div class="small text-muted">Added by ${source}, ${fmtDateTime(sub.create_dt)} · updated ${fmtDateTime(sub.update_dt)}</div>
+      ${vendorItemList(sub)}
       ${comment}
       <div class="d-flex flex-wrap gap-2 align-items-center mt-2">${actions.join('')}</div>
       ${commentBox}
@@ -122,9 +138,9 @@ function subCard(sub) {
   </div>`;
 }
 
-// Nursing enters the vendor part, and a note if they like (2026-10-15). A Sub Approver's entry is
-// approved on entry, and picked when it's the only approved sub; the Materials Manager fills in
-// the vendor details.
+// Nursing enters the Reference SKU, and a note if they like (2026-10-15, 10-20). A Sub Approver's
+// entry is approved on entry, and picked when it's the only approved sub; the Materials Manager adds
+// its vendor items.
 function addSubForm(packs) {
   // Several UOMs: which Medline item the sub is for (the one clicked, unless changed).
   const target = packs.length > 1 ? `
@@ -133,13 +149,14 @@ function addSubForm(packs) {
             <option value="${esc(p.medline_item)}" ${p.medline_item === state.panelItem ? 'selected' : ''}>${esc(p.medline_item)} (${esc(p.um)})</option>`).join('')}
           </select></div>` : '';
   const what = can.review
-    ? "It's approved as soon as it's added, and picked if it's the only approved sub. The Materials Manager fills in the vendor details."
+    ? "It's approved as soon as it's added, and picked if it's the only approved sub. The Materials Manager adds what can be ordered for it."
     : "It waits for a Sub Approver's review.";
   return `
     <div class="border rounded p-2 bg-light">
       <form id="fk-add-form" class="row g-2" novalidate>${target}
-        <div class="col-6"><label class="form-label small mb-0" for="fk-add-part">Vendor part *</label>
-          <input class="form-control form-control-sm" id="fk-add-part" name="vendor_part" maxlength="100" required></div>
+        <div class="col-6"><label class="form-label small mb-0" for="fk-add-sku">Reference SKU *</label>
+          <input class="form-control form-control-sm" id="fk-add-sku" name="reference_sku" maxlength="100" required
+                 placeholder="The part you approved, e.g. the manufacturer's"></div>
         <div class="col-12"><label class="form-label small mb-0" for="fk-add-comment">Note</label>
           <input class="form-control form-control-sm" id="fk-add-comment" name="comment" maxlength="400"
                  placeholder="Optional: what you know about it, e.g. from the supplier"></div>
@@ -168,32 +185,39 @@ function linesTab(lines, many) {
     </tr>`).join('')}</tbody></table></div>`;
 }
 
+const FIELD_LABELS = { reference_sku: 'Reference SKU', vendor_part: 'vendor part', vendor_id: 'vendor ID', uom: 'UOM', qoe: 'QOE',
+  manufacturer_part: 'manufacturer part', infor_item: 'Infor item', entered_part: 'part as entered', ordered_dt: 'ordered date' };
+
 function describe(h) {
   const labels = config.statusLabels;
+  const vendorItem = h.entity === 'vendoritem';
   switch (h.action) {
-    case 'created': return h.entity === 'order' ? 'Recorded the order' : 'Added the sub';
+    case 'created': return { order: 'Recorded the order', vendoritem: 'Added the vendor item' }[h.entity] || 'Added the sub';
     case 'status': return `Status ${esc(labels[h.from_value] || h.from_value)} → ${statusBadge(h.to_value)}`;
     case 'pick': return h.comment ? esc(h.comment) : 'Picked';
     case 'unpick': return h.comment ? esc(h.comment) : 'Unpicked';
     case 'comment': return `Comment: ${esc(h.comment)}`;
-    case 'edit': return `Changed ${esc(String(h.field || '').replace('_', ' '))}: ${esc(h.from_value || '—')} → ${esc(h.to_value || '—')}`;
+    case 'edit': return `Changed ${vendorItem ? "the vendor item's " : ''}${esc(FIELD_LABELS[h.field] || String(h.field || '').replace(/_/g, ' '))}:
+      ${esc(h.from_value || '—')} → ${esc(h.to_value || '—')}`;
     case 'void': return `Voided: ${esc(h.comment)}`;
-    case 'delete': return `Deleted: ${esc(h.comment)}`;
+    case 'delete': return `Deleted${vendorItem ? ' the vendor item' : ''}: ${esc(h.comment)}`;
     default: return esc(h.action);
   }
 }
 
-// History entries, newest first; a sub's or an order's own History button shows them too.
+// History entries, newest first; a sub's or an order's own History button shows them too. A vendor
+// item's entries always say which vendor item.
 export function timeline(entries, withLabel, withItem) {
   if (!entries.length) return '<p class="text-muted small">Nothing yet.</p>';
   return `<ul class="list-unstyled small mb-0 fk-timeline">${entries.map((h) => `
     <li class="mb-1"><span class="text-muted text-nowrap">${fmtDateTime(h.acted_at)}</span> ·
-      ${esc(h.actor)}${withLabel && h.label ? ` · <span class="fw-semibold">${esc(h.label)}</span>` : ''}${withItem && h.medline_item
+      ${esc(h.actor)}${(withLabel || h.entity === 'vendoritem') && h.label ? ` · <span class="fw-semibold">${esc(h.label)}</span>` : ''}${withItem && h.medline_item
         ? ` <span class="text-muted">on ${esc(h.medline_item)}</span>` : ''} · ${describe(h)}</li>`).join('')}</ul>`;
 }
 
 function picksTab(history, many) {
-  return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for ${many ? 'these Medline items' : 'this Medline item'}, newest first.</p>
+  return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for ${many ? 'these Medline items' : 'this Medline item'},
+    and every vendor item added and deleted, newest first.</p>
     ${timeline(history, true, many)}`;
 }
 
@@ -214,7 +238,8 @@ function ordersTab(orders, many) {
     return `<div class="card mb-2 ${o.voided_at ? 'opacity-75' : ''}"><div class="card-body p-2 small">
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span class="fw-semibold ${o.voided_at ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)} ${esc(o.uom)}${o.qoe ? ` (QOE ${fmtNumber(o.qoe)})` : ''}</span>
-        <span>${esc(o.sub_label)}</span><span class="text-muted">from ${esc(o.vendor)}${many ? ` for ${esc(o.medline_item)}` : ''}</span>
+        <span>${esc(o.vendor_part)}</span><span class="text-muted">from ${esc(vendorText(o))}, for ${esc(o.reference_sku)}${many
+          ? ` on ${esc(o.medline_item)}` : ''}</span>
         ${o.voided_at ? `<span class="badge text-bg-secondary">Voided</span>` : ''}
       </div>
       <div class="text-muted">Ordered ${fmtDateTime(o.ordered_dt)} by ${esc(o.ordered_by)}${o.voided_at ? ` · voided by ${esc(o.voided_by)}: ${esc(o.void_reason)}` : ''}</div>

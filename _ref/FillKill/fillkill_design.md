@@ -184,9 +184,9 @@ Fill/Kill roles (named 2026-10-13; earlier drafts called them A, B and C):
 | Role | Code | Responsible for |
 |---|---|---|
 | Viewer | `viewer` | Seeing everything in the module, without changing anything |
-| Sub Approver | `sub_approver` | Nursing. Entering a sub's vendor part (approved on entry; picked when it's the item's only approved sub); holding, rejecting and approving subs; picking and unpicking; comments on subs; correcting a vendor part; deleting a sub |
-| Materials Manager | `materials_manager` | Filling in each sub's vendor details (vendor, vendor ID, description, UOM, QOE), with the contract search; recording orders against the picks; comments on orders |
-| Sub Finder | `sub_finder` | Proposing subs, pending review; filling in vendor details. Kept for a future AI finder |
+| Sub Approver | `sub_approver` | Nursing. Entering a sub's Reference SKU (approved on entry; picked when it's the item's only approved sub); holding, rejecting and approving subs; picking and unpicking; comments on subs; correcting a Reference SKU; deleting a sub |
+| Materials Manager | `materials_manager` | Adding each sub's vendor items (vendor part, vendor, vendor ID, UOM, QOE, ...), with the contract search; recording orders for the picks' vendor items; comments on orders |
+| Sub Finder | `sub_finder` | Proposing subs, pending review; adding vendor items. Kept for a future AI finder |
 
 **Revised 2026-10-15 after the stakeholder review.** Nursing should do as little as possible, and
 there is no team to collect and enter every candidate: nursing, supply chain and Materials Managers
@@ -196,22 +196,25 @@ gather options from suppliers by email and phone, and nursing filters them. So:
    entry**, and **picked** if it's the Medline item's only approved sub. They can still Hold or
    Reject it later. The Sub Approver's comments stay. When the pick is held or rejected and one
    approved sub is left, that one becomes the pick (2026-10-19); a manual unpick picks nothing.
-2. The **Materials Manager** determines and fills in the vendor details (the vendor part ordered,
-   vendor, Infor's vendor ID, manufacturer part, Infor item, description, UOM, QOE), with the
-   contract search if they like, then records the order; both can happen in the order form. An
-   order needs a vendor, its vendor ID and a UOM.
-   **The part nursing enters is their approved reference** (2026-10-19): it may be the
-   manufacturer's part (e.g. BD's 930103) or another vendor's, since the same product can come from
-   the manufacturer or a distributor. The Materials Manager sets the vendor part actually ordered
-   (e.g. Medline's B-D930103CSZ; choosing a contract line does it); what nursing entered stays as
-   **Entered as**, shown when it differs. Nursing's own correction changes the vendor part too only
-   while the Materials Manager hasn't set another.
+2. The **Materials Manager** adds the sub's **vendor items**, each a way to order it: a vendor
+   part, its vendor, Infor's vendor ID and a UOM (required), with QOE, manufacturer part, Infor item
+   and description, from the contract search if they like. Then they record orders against them.
+   **What nursing enters is the Reference SKU** (2026-10-20; "vendor part" until then, and
+   2026-10-19's "approved reference"): often the manufacturer's part (e.g. BD's 930103), which
+   several vendors sell in several UOMs (Medline's B-D930103CSZ, a box of 40, and B-D930103CS, a
+   case of 400). The Reference SKU never changes with the vendor items, so who decided what stays
+   clear: the Sub Approver approved the Reference SKU; the Materials Manager chose what to order.
+   Each vendor ID, vendor part and UOM is a vendor item of its own, as many as a sub needs. Until
+   2026-10-20 a sub had one set of vendor details, and setting the vendor part ordered replaced
+   what was entered ("Entered as"); entering the same part twice was the only way to a second
+   vendor part. `12`'s step 2 turned those into vendor items, merging such subs.
 3. Subs proposed by the system (Medline PBO, a future AI agent) stay **pending review**; the Sub
    Approver approves (picked when it's the only approved one), holds or rejects them.
-4. A sub is one vendor part per Medline item: its vendor can wait for the Materials Manager.
+4. A sub is one Reference SKU per Medline item; its vendor items can wait for the Materials Manager.
 
-Capabilities: `add_sub` = Sub Approver, Sub Finder (enter, correct the part, delete); `review` =
-Sub Approver; `details` = Materials Manager, Sub Finder; `order` = Materials Manager.
+Capabilities: `add_sub` = Sub Approver, Sub Finder (enter, correct the Reference SKU, delete);
+`review` = Sub Approver; `details` = Materials Manager, Sub Finder (add, correct and delete vendor
+items, with the contract and vendor searches); `order` = Materials Manager.
 
 - **The Sub Approver decides what is clinically acceptable and which sub to use; the Materials
   Manager records what was ordered.** Today the Sub Approver is usually nursing. **Decided.**
@@ -236,8 +239,8 @@ Sub Approver; `details` = Materials Manager, Sub Finder; `order` = Materials Man
 
 **One operating page for every role** (2026-10-13). **Decided.** Everyone works on the Main page
 and sees the same thing; what they can do on it follows their roles. Nursing enters subs (approved
-on entry) and reviews and picks right there, and Materials Managers fill in vendor details and
-record orders from the picks (revised 2026-10-15, section 4).
+on entry) and reviews and picks right there, and Materials Managers add vendor items and record
+orders from the picks' vendor items (revised 2026-10-15 and 2026-10-20, section 4).
 The full sub list and the order log are tables (or cards) on the same page, not pages of their own.
 Trends and analytics live on a separate Dashboard page (section 7).
 
@@ -292,7 +295,8 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Approver's Pick | per UOM. A Materials Manager clicks one to record an order |
+| Approver's Pick | per UOM: each pick's **Reference SKU**, as entered (2026-10-20). A pencil when it has no vendor item yet, so nothing can be ordered; for Materials Managers and Sub Finders it opens the vendor item form |
+| Vendor Item Detail | per UOM (2026-10-20): a tile for each vendor item of the picks (vendor part, UOM × QOE, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
 | Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT on or after the range's first day (9.3, changed 2026-10-15), listing each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab |
 
 The **Needs filter** counts Infor items, over all their Medline items' subs, picks and orders.
@@ -326,12 +330,15 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   description, its commodity code and description, and the manufacturer (2026-10-14).
 - **UOMs:** each Medline item with its UOM and QOE, the ⚠ where Medline's customer item isn't the
   Infor item, and *not killed in these dates*.
-- **Subs:** one section per Medline item, with status, pick and comments; under each, the other
-  UOMs' subs not on it yet, with "Add to <Medline item>". Add a sub, choosing the Medline item
-  (the one clicked by default); click a sub for its timeline.
+- **Subs:** one section per Medline item; each sub's card has its Reference SKU, status, pick,
+  comments and its vendor items (each with Record order, Correct, Delete), and "+ Vendor item".
+  Under each section, the other UOMs' subs not on it yet, with "Add to <Medline item>" (the
+  Reference SKU only: vendor items are per UOM). Add a sub, choosing the Medline item (the one
+  clicked by default); a sub's History includes its vendor items'.
 - **Sub History** (was "Pick history"; renamed 2026-10-15, since "pick" means something specific to
   Materials Managers): every sub added, every status change, pick and unpick on the item's subs,
-  across all days, so the Sub Approver sees what they decided before (9.2).
+  and every vendor item added and deleted (2026-10-20), across all days, so the Sub Approver sees
+  what they decided before (9.2).
 - **Width:** drag the panel's left edge (or arrow keys on it) to resize; remembered per browser,
   double-click resets (2026-10-15).
 - **Order history:** every order for the item across all days and subs, with edits and voids
@@ -341,32 +348,45 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 
 ### Subs — per Medline item, across all sites
 
-**Fields**
+**Fields of a sub** (2026-10-20: what the Sub Approver or a Sub Finder enters, and its review)
+
+| Field | Notes |
+|---|---|
+| Reference SKU | what was entered: nursing's approved reference, often the manufacturer's part, or Medline's PBO number; searchable, and what future LLM sub-finding will use. It doesn't change with the vendor items; nursing can correct it until the sub has an order |
+| Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |
+| Entered By | email, `Medline` for PBO subs, or `system` (reserved for future LLM subs) |
+| Create DT, Update DT | a vendor item added, corrected or deleted updates its sub too |
+| Comments | entries of up to 400 characters each, with who and when; none is ever overwritten. The Sub Finder can add one when adding the sub; Sub Approvers add more later (9.7). |
+
+**Fields of a vendor item** (2026-10-20: what can be ordered for the sub, the Materials Manager's or
+a Sub Finder's; until then these were the sub's own "vendor details", one set per sub)
 
 | Field | Notes |
 |---|---|
 | Vendor | the vendor's **name**, required. Picking a contract line fills it with Infor's name. Typing it searches Infor's vendors (2026-10-19): every word anywhere in the vendor name, legal name or search name (`MDM_VENDOR`'s VendorName, LegalName, VendorSearchName, through `vw_Vendor`), `*` inside a word for anything, digits also matching IDs; active vendors first, at most 20. Choosing one fills in its vendor ID and Infor's name |
-| Vendor ID | Infor's vendor ID (e.g. 1000931), **required with the vendor details** (2026-10-19; optional from 10-15): the details can't be saved, nor an order recorded, without it. When Infor has no such vendor, the Materials Manager says so on purpose with **0000000**, "Vendor not available in system" (seven digits like Infor's vendor IDs, 0000000 from 2026-10-20; Infor has no vendor 0000000): choosing it clears the vendor name and asks for the one they know, which isn't looked up in Infor (2026-10-20). Filled in from a contract line or the vendor search; typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO subs get 1000931 (MEDLINE INDUSTRIES INC). Nursing's entry has none until the Materials Manager's details |
-| Vendor Part | the vendor's part number: as entered, then the one ordered, set by the Materials Manager (2026-10-19); searchable, and what future LLM sub-finding will use |
-| Entered As | what was entered (2026-10-19): nursing's approved reference, or Medline's PBO number; kept when the vendor part ordered differs |
+| Vendor ID | Infor's vendor ID (e.g. 1000931), **required** (2026-10-19; optional from 10-15): a vendor item can't be saved without it. When Infor has no such vendor, the Materials Manager says so on purpose with **0000000**, "Vendor not available in system" (seven digits like Infor's vendor IDs, 0000000 from 2026-10-20; Infor has no vendor 0000000): choosing it clears the vendor name and asks for the one they know, which isn't looked up in Infor (2026-10-20). Filled in from a contract line or the vendor search; typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO vendor items get 1000931 (MEDLINE INDUSTRIES INC) |
+| Vendor Part | the vendor's part number, required: the one ordered (e.g. B-D930103CSZ for the Reference SKU 930103) |
+| UOM, QOE | the UOM, required, and its eaches (QOE, optional). The same vendor part in another UOM is another vendor item |
 | Manufacturer Part | the manufacturer's part number (2026-10-19), from the contract line's manufacturer number or typed |
-| Infor Item | Infor's item number for the sub (2026-10-19), when it has one: item-master contract lines only ("Special" lines have none) |
-| Description | optional; pre-filled for PBO subs from contract data when found (9.4) |
-| Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |
-| Entered By | email, `Medline` for PBO subs, or `system` (reserved for future LLM subs) |
-| Create DT, Update DT | |
-| Comments | entries of up to 400 characters each, with who and when; none is ever overwritten. The Sub Finder can add one when adding the sub; Sub Approvers add more later (9.7). |
+| Infor Item | Infor's item number for it (2026-10-19), when it has one: item-master contract lines only ("Special" lines have none) |
+| Description | optional; from the contract line when chosen (9.4) |
+| Entered By, Create DT, Update DT | who added it and when; corrections are in its History |
 
 **Rules**
 
 - **Keyed on the Medline item**, not the Infor item: Medline's substitute data uses that key, and
   the Infor number is meaningless outside Infor. **Decided.**
-- An item can have any number of subs. There is one live sub per (Medline item, vendor part),
-  whatever the vendor (2026-10-15); the vendor part ordered counts once set.
+- An item can have any number of subs. There is one live sub per (Medline item, Reference SKU)
+  (2026-10-20; per vendor part from 2026-10-15). A sub can have any number of vendor items, one
+  live one per (vendor ID, vendor part, UOM).
+- **Vendor items** (2026-10-20) can be added to any sub, whatever its status, by Materials Managers
+  and Sub Finders. Correcting one never changes its orders, which keep what they were placed with.
+  Deleting one needs a reason and is refused while it has orders that aren't voided; its row stays.
+  Main's Needs details counts picks without a vendor item.
 - **Deleting a sub** (2026-10-15): a Sub Finder can delete one, with a required reason. It leaves the
   item, the library, the counts and the Dashboard, but its row stays (who, when, why) and Sub History
   shows "Deleted: <reason>"; Medline's PBO sync doesn't add a deleted PBO sub back, and the same
-  vendor part can be added again as a new sub. Refused for the Approver's Pick (unpick first) and
+  Reference SKU can be added again as a new sub. Refused for the Approver's Pick (unpick first) and
   for a sub with orders that aren't voided.
 - **Every sub needs the Sub Approver's approval**, including the same product from another vendor
   or in another UOM. Those usually mean buying on a different contract, so the Sub Approver should
@@ -375,7 +395,8 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   "not now", so it's told apart from subs nobody has looked at yet. Rejecting needs no comment; the
   history records who rejected it and when (9.9). **Decided.**
 - **History:** clicking a sub shows its history as an audit-log timeline, with who and when:
-  creation, every status change, pick and unpick, and comments. **Decided.**
+  creation, every status change, pick and unpick, comments, and its vendor items added, corrected
+  and deleted (2026-10-20). **Decided.**
 - **Picking:** approved subs light up a **Pick** button. The Sub Approver can pick one or more
   (usually one), and picked subs appear under Approver's Pick. A pick stays, across days, until the
   Sub Approver unpicks it or changes the sub's status (9.2); a sub that stops being *approved* is
@@ -390,9 +411,10 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   - Suggesting the other packaging itself as a sub was considered and not done: whether it helps
     depends on why it's killed too (e.g. it may be on backorder or allocation as well), which
     nursing and the Materials Manager judge from the reasons. **Decided.**
-- **Contract search** (9.4): in the vendor details (Materials Managers and Sub Finders; it was in
+- **Contract search** (9.4): in the vendor item form (Materials Managers and Sub Finders; it was in
   "Add sub" before 2026-10-15), a search over Infor's active contract lines, like PLM's
-  contract-item search, fills vendor ID and name, description, UOM and QOE. **Decided.** One word is
+  contract-item search, starting from the Reference SKU, fills the vendor item: vendor part,
+  vendor ID and name, manufacturer part, Infor item, description, UOM and QOE. **Decided.** One word is
   a part number (vendor item or manufacturer number, without dashes) or an Infor item number, or
   description words; several words (2026-10-19, e.g. "930103 chloraprep") must each be somewhere in
   the line: part number, Infor item, description or vendor name (descriptions often run words
@@ -404,8 +426,9 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   be chosen (2026-10-15). These aren't stored on the sub.
 - **Where subs come from:**
   - **Medline PBO** substitutes (`SCSFileIngestor.MedlinePBO.MedlineSubCollection`) are added
-    automatically: Vendor *Medline*, Vendor Part = the substitute number, Entered By *Medline*,
-    status *Pending Review*.
+    automatically: Reference SKU = the substitute number, Entered By *Medline*, status *Pending
+    Review*; and a vendor item (Medline 1000931, the substitute number as the vendor part) when
+    Medline's contract lines for it agree on one UOM and QOE (2026-10-20).
   - **Manual entry** by Sub Finders is the main source. PBO coverage is expected to stay low; only
     1 of the 31 killed White Plains items has one.
   - Subs persist, so the library builds up through daily work: when an item is killed again, its
@@ -413,13 +436,14 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 
 ### Ordering (Materials Manager)
 
-- **Recording an order:** the Materials Manager clicks a sub under Approver's Pick and enters:
+- **Recording an order** (2026-10-20): the Materials Manager clicks a vendor item tile under Vendor
+  Item Detail (or Record order on the vendor item in the panel). The order keeps the vendor item's
+  vendor part, vendor, vendor ID, UOM and QOE (9.6: QOE is eaches per UOM, e.g. a BX of 100 →
+  100), and they enter:
 
   | Field | Notes |
   |---|---|
-  | Quantity, UOM | UOM pre-filled from the sub when known |
-  | QOE | quantity of each: eaches per UOM, e.g. a BX of 100 → 100 (9.6); pre-filled from the sub when known |
-  | Vendor | pre-filled with the sub's vendor name; free text |
+  | Quantity | in the vendor item's UOM; pre-filled with the quantity killed when the Medline item has one UOM |
   | Ordered By | the user |
   | Ordered DT | defaults to now; editable |
   | Comments | entries of up to 400 characters each, with who and when; Materials Managers add more later (9.7) |
@@ -429,9 +453,10 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   another, when one alternative can't cover the need. **Decided.**
 - **UOM-mismatch kills** (NONSTOCK UOM): ordering the same item in Medline's stocked UOM goes
   through a sub like everything else, e.g. Medline + the same or the case-pack part number. The
-  Sub Approver approves it, and the Materials Manager records the order with the new UOM and QOE.
-- **Corrections:** the Materials Manager can correct or void an order. Every change is kept in
-  the same audit-log history.
+  Sub Approver approves it, and the Materials Manager adds a vendor item in the new UOM and records
+  the order with it.
+- **Corrections:** the Materials Manager can correct or void an order, its vendor part, vendor,
+  vendor ID, UOM and QOE included. Every change is kept in the same audit-log history.
 - **Period:** not recorded (stakeholder item 8.5).
 
 ### Dropped from the 2026-10-06 design
@@ -462,9 +487,10 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
 | `vw_MedlineFillKillItemCollection` (view) | Medline item (and UM) | description, Infor UOM conversion for the item and for the contract vendor item, Medline PBO sub, Infor item matched through vendor items, and a consistency flag. Written by the module owner. (`11_item_qty_views.sql`) |
 | `vw_MedlineFillKillQtyAgg` (view) | order date × Sold-To × Medline item | ordered, filled and killed quantities, PO line count. Written by the module owner. (`11_item_qty_views.sql`) |
 | `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied at go-live (`10_kill_lines.sql`) |
-| `Sub` | sub of a Medline item | medline_item, vendor, vendor_part, description, uom, qoe, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt |
-| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, quantity, uom, qoe, vendor, ordered_by, ordered_dt, voided by/at/reason |
-| `History` | change or comment on a sub or an order | entity, id, medline_item, action, from → to, comment (≤400), by, at; drives the timelines and the pick and order histories. Comments are rows here, so none is ever overwritten. |
+| `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
+| `SubVendorItem` | way to order a sub (2026-10-20) | sub_id, vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom) |
+| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, vendor_item_id, quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
+| `History` | change or comment on a sub, a vendor item or an order | entity (sub / vendoritem / order), id, medline_item, action, from → to, comment (≤400), by, at; drives the timelines and the pick and order histories. Comments are rows here, so none is ever overwritten. |
 
 **Notes on the item and quantity views**
 
@@ -492,29 +518,32 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
     recorded after the kills shown. Columns (2026-10-20): Order Date, Medline Item, its Infor Item,
-    Sub (its vendor part), QOE, Ordered (`21 BX`, the UOM grey as
+    Sub (the vendor part ordered), QOE, Ordered (`21 BX`, the UOM grey as
     in the main table), Vendor (its vendor ID), Vendor Name, Ordered By, Latest Comment. A search
-    box keeps the orders whose numbers have every word typed: the Medline item, its Infor item, or
-    the sub's vendor part, part as entered, manufacturer part or Infor item (dashes optional). An
-    order keeps the vendor ID it was placed with (`SubOrder.vendor_id`), as it keeps the vendor's
-    name, UOM and QOE; a correction can change it.
+    box keeps the orders whose numbers have every word typed: the Medline item, its Infor item, the
+    vendor part ordered, the sub's Reference SKU, or the vendor item's manufacturer part or Infor
+    item (dashes optional). An order keeps what it was placed with (vendor part, vendor ID, vendor
+    name, UOM, QOE); a correction can change them.
   - **Sizes** (2026-10-20): the tables' text is a little smaller, Infor's long descriptions smaller
     still. The main table and the orders scroll inside 450px, the Subs page's table inside 600px,
-    each with its header in view. The vendor details and order forms open wide, in sections: what's
-    ordered and why, the contract search, the vendor details, the order.
+    each with its header in view. The vendor item and order forms open wide, in sections: the sub
+    (and vendor item) they're for, the contract search, the vendor item, the order.
   - **The page link keeps the view** (2026-10-19): `?dates=today` or `?start=&end=`, `?sites=a,b`,
     `?q=`, `?needs=`, and the open panel's `?item=<Medline item>[&scope=infor][&tab=…]`, updated as
     the user works (no new history entries), so a copied link reopens the same view. Subs and the
     Dashboard link to `?item=`.
 - **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data
-  asset. Filters: text (item, vendor part, vendor, vendor ID, description), status, source,
-  "vendor details needed", and deleted subs (with who, when, why). Columns add the Infor item, who
-  approved it, and its orders (count, last date). The sub's column is **Sub Vendor Part**, with its
-  manufacturer part and Infor item under it (2026-10-20; what was entered, UOM and QOE are in the
-  export, not the table). **Export CSV** gives everything the filters match; its columns about the
-  sub all start with "Sub" (Sub Vendor Part, Sub Entered As, Sub Manufacturer Part, Sub Infor Item,
-  Sub Vendor ID, Sub Vendor Name, Sub Description, Sub UOM, Sub QOE), apart from the Medline item's.
-  Read-only; a row's Medline item opens the panel on Main.
+  asset. Filters: text (item, Reference SKU, or a vendor item's vendor part, manufacturer part,
+  Infor item, vendor, vendor ID or description), status, source, "no vendor item yet", and deleted
+  subs (with who, when, why). Columns: the Medline item and its Infor item, the **Reference SKU**,
+  the **Vendor Items** (each: vendor part, UOM × QOE, vendor and vendor ID, with manufacturer part,
+  Infor item and description under it; 2026-10-20), status, orders (count, last date), who entered
+  and approved it, and the latest comment. **Export CSV** gives everything the filters match, **one
+  row per vendor item** (a sub without one has a row of its own): Reference SKU, then the vendor
+  item's columns, which all start with "Sub" (Sub Vendor Part, Sub Manufacturer Part, Sub Infor
+  Item, Sub Vendor ID, Sub Vendor Name, Sub Description, Sub UOM, Sub QOE), apart from the Medline
+  item's; Orders and Last Ordered are the sub's. Read-only; a row's Medline item opens the panel on
+  Main.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
   coverage, time to review, and rejected subs with their comments, grouped by vendor and item.
   Read-only for every Fill/Kill role. Separate from PLM Tracker's dashboard.

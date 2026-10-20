@@ -41,10 +41,10 @@ changes something now ends with a red error when a transaction is still open (20
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
 | `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines plus the test lines, with `Reason`, `Reason Date`, `Is Test`, `Test Purpose`), `vw_FillKillLastLoad` ("data as of"), and the test lines in `FillKill.TestFillKillLine`. | Any time; re-running reloads the test lines. |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (so the test site shows), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
-| `12_workflow_tables.sql` | `Sub` (with the part as entered, the vendor part ordered, the manufacturer part and Infor item), `SubOrder`, `History`, and the steps that bring older ones up to date (listed at its top). | Whenever it changes, before running that code. |
+| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each), `SubOrder`, `History`, and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`) and `vw_Vendor` (Infor's vendors, with their legal and search names). | Whenever it changes, before running that code. |
-| `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes. Its version line is what `09` and the app check. |
-| `90_reset_workflow.sql` | Empties `Sub`, `SubOrder` and `History`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
+| `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review, with a vendor item when Medline's contract lines give one UOM. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes, after `12`. Its version line is what `09` and the app check. |
+| `90_reset_workflow.sql` | Empties `Sub`, `SubVendorItem`, `SubOrder` and `History`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
 | `rollback_deploy1.sql` | Sets `users.user_role` back to `admin` / `user` / `view-only` from each person's PLM role, which is all the previous release reads. | Only just before putting the previous release back. Leave the new tables and columns in place. |
 
 ### Test lines (`10`)
@@ -62,20 +62,29 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 - **Contract search, MHS or not** (9/30): BXT2D0737H (EA, Infor item 112057), on Medline JIT
   contracts 1412 and 2421 (not MHS) and 2680 (MHS).
 
-## On O2 now (checked 2026-10-19, read-only)
+## On O2 now (checked 2026-10-20, read-only)
 
-- `01`-`03`, `10`, `11`: run and current.
-- **`12`: re-run it.** Its step 2d (2026-10-19) adds `Sub.entered_part` (what nursing entered, kept
-  when the Materials Manager sets the vendor part ordered), `manufacturer_part` and `infor_item`;
-  step 2e (2026-10-20) adds `SubOrder.vendor_id` and fills it in from the subs.
+- `01`-`03`, `10`, `11`, `13`: run and current.
 - `04`: not yet (deploy #1 isn't live).
-- Sub 10 on B-D930299Z has vendor part 930103, BD's part nursing entered, though its order was
-  Medline's B-D930103CSZ (BX of 40). Once this release is in, its **Vendor details** with the
-  B-D930103CSZ contract line set the vendor part ordered; 930103 stays as entered.
-- **`13`: re-run it.** Its `vw_Vendor` now has Infor's legal and search names (2026-10-19), for
-  finding a vendor ID by name; O2's has neither yet.
-- **`14`: O2 has an older `usp_SyncPboSubs`. Re-run `14`, after `12`** (its 2026-10-19 version fills
-  in the new columns).
+- **`12`: re-run it** for vendor items (its step 2, 2026-10-20). O2's subs still carry one set of
+  vendor details each. On O2's data, tried on a copy of its subs, orders and History, step 2:
+  - gives each sub its Reference SKU, what was entered;
+  - merges sub 11 into sub 10: both are 930103 on B-D930299Z, entered twice to get a second vendor
+    part. Sub 11 is deleted, saying so; its orders move to sub 10;
+  - makes sub 10's two vendor items, B-D930103CS (Medline 1000931, CA × 400) and B-D930103CSZ
+    (Medline 1000931, BX × 40), and links orders 2-4 to them. Order 1 (930103 from 1017968, BX,
+    recorded before the vendor part was set) keeps what it was placed with, without a vendor item;
+  - leaves subs 1 (PBO 2329RH) and 9 (CUR250383Z) without a vendor item: neither had a vendor, its
+    vendor ID and a UOM. They show "Vendor item needed" until a Materials Manager adds one;
+  - keeps a copy of `Sub` as it was, `FillKill.Sub_before_vendor_items`. Drop it once the subs look
+    right (step 11 below).
+
+  `FillKill.SubVendorItem` is already there, empty: a local `run.py` on this code made it at 12:46
+  on 10/20 (the app's startup creates missing tables). It matches `12`, which adds its defaults.
+  Until `12` runs, this code's Fill/Kill pages fail on O2's `Sub`: keep a local `run.py` off O2.
+- **`14`: re-run it, after `12`.** O2's `usp_SyncPboSubs` is the 2026-10-19 version, which writes
+  the columns `12` takes off `Sub`: until `14` runs, Main still loads but adds no PBO subs (the app
+  logs the error, and admins see "an older version").
 - `09`'s "every sub and order has a created History row" says `FAIL` for one sub: the Medline PBO
   sub MMO2329H → 2329RH from 10/14. History was emptied after it was added (its ids restart on
   10/19), so its row went with it. That's test data: step 11 of the checklist fixes it, whether
@@ -131,7 +140,8 @@ put the code in place and recycle the app pool.
       History check passes (today: the PBO sub MMO2329H → 2329RH); or
     - empty them with `90_reset_workflow.sql`, edited to confirm.
 
-    Then `09`: all `PASS`.
+    Either way, drop `FillKill.Sub_before_vendor_items` (`12`'s copy of `Sub` from before vendor
+    items) once the subs look right. Then `09`: all `PASS`.
 
 **Rollback:** just before putting the previous release back, run `rollback_deploy1.sql`.
 
@@ -167,10 +177,18 @@ FROM [FillKill].[Sub] AS s
 WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
                   WHERE h.[entity] = 'sub' AND h.[entity_id] = s.[sub_id] AND h.[action] = 'created')
 UNION ALL
+SELECT 'vendoritem', v.[vendor_item_id], s.[medline_item], 'created', v.[entered_by], v.[create_dt]
+FROM [FillKill].[SubVendorItem] AS v JOIN [FillKill].[Sub] AS s ON s.[sub_id] = v.[sub_id]
+WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
+                  WHERE h.[entity] = 'vendoritem' AND h.[entity_id] = v.[vendor_item_id] AND h.[action] = 'created')
+UNION ALL
 SELECT 'order', o.[order_id], o.[medline_item], 'created', o.[ordered_by], o.[create_dt]
 FROM [FillKill].[SubOrder] AS o
 WHERE NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS h
                   WHERE h.[entity] = 'order' AND h.[entity_id] = o.[order_id] AND h.[action] = 'created');
+
+-- Once the subs look right after 12's vendor items (2026-10-20): its copy of Sub from before.
+DROP TABLE IF EXISTS [FillKill].[Sub_before_vendor_items];
 ```
 
 Then `09_verify.sql` once more.

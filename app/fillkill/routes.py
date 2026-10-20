@@ -135,6 +135,8 @@ def index():
             "vendors": url_for("fillkill.api_vendors"),
             "addSub": url_for("fillkill.api_add_sub"),
             "subAction": url_for("fillkill.api_sub_action", sub_id=0, action="ACTION"),
+            "addVendorItem": url_for("fillkill.api_add_vendor_item", sub_id=0),
+            "vendorItemAction": url_for("fillkill.api_vendor_item_action", vendor_item_id=0, action="ACTION"),
             "recordOrder": url_for("fillkill.api_record_order"),
             "orderAction": url_for("fillkill.api_order_action", order_id=0, action="ACTION"),
         },
@@ -226,8 +228,8 @@ def api_item():
 @login_required
 @require_module(FILLKILL, "view")
 def api_history(entity, entity_id):
-    if entity not in ("sub", "order"):
-        raise RuleError("History is kept for subs and orders.", 404)
+    if entity not in ("sub", "vendoritem", "order"):
+        raise RuleError("History is kept for subs, vendor items and orders.", 404)
     return ok({"entity": entity, "entity_id": entity_id, "history": queries.history(entity, entity_id)})
 
 
@@ -248,19 +250,32 @@ def api_subs():
     return ok({"subs": queries.subs_library(**_library_filters()), "limit": queries.LIBRARY_LIMIT})
 
 
-# The Subs page's export: every sub the filters match, not just the first LIBRARY_LIMIT.
-# The Medline item killed, then the sub (2026-10-20: every column about the sub says so).
+# The Subs page's export: every sub the filters match, not just the first LIBRARY_LIMIT, one row per
+# vendor item (a sub without one has a row of its own). The Medline item killed, the sub's Reference
+# SKU, then its vendor item (2026-10-20: every column about what's ordered says "Sub"). Orders and
+# Last Ordered are the sub's, all its vendor items together.
 EXPORT_COLUMNS = (
     ("Sub ID", "sub_id"), ("Medline Item", "medline_item"), ("Medline Item's Infor Item", "medline_infor_item"),
-    ("Sub Vendor Part", "vendor_part"), ("Sub Entered As", "entered_part"),
-    ("Sub Manufacturer Part", "manufacturer_part"), ("Sub Infor Item", "infor_item"),
+    ("Reference SKU", "reference_sku"), ("Vendor Item ID", "vendor_item_id"),
+    ("Sub Vendor Part", "vendor_part"), ("Sub Manufacturer Part", "manufacturer_part"), ("Sub Infor Item", "infor_item"),
     ("Sub Vendor ID", "vendor_id"), ("Sub Vendor Name", "vendor"), ("Sub Description", "description"),
     ("Sub UOM", "uom"), ("Sub QOE", "qoe"), ("Status", "status"),
     ("Picked", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
-    ("Approved By", "approved_by"), ("Approved", "approved_at"), ("Orders", "orders"),
+    ("Approved By", "approved_by"), ("Approved", "approved_at"),
+    ("Vendor Item By", "vendor_item_by"), ("Vendor Item Added", "vendor_item_added"), ("Orders", "orders"),
     ("Last Ordered", "last_ordered"), ("Updated", "update_dt"), ("Latest Comment", "latest_comment"),
     ("Deleted By", "deleted_by"), ("Deleted", "deleted_at"), ("Delete Reason", "delete_reason"),
 )
+VENDOR_ITEM_COLUMNS = ("vendor_item_id", "vendor_part", "manufacturer_part", "infor_item", "vendor_id", "vendor",
+                       "description", "uom", "qoe")
+
+
+def _export_rows(subs):
+    """One row per vendor item; a sub without one has a row with those columns empty."""
+    for sub in subs:
+        for item in sub["vendor_items"] or [{}]:
+            yield {**sub, **{key: item.get(key) for key in VENDOR_ITEM_COLUMNS},
+                   "vendor_item_by": item.get("entered_by"), "vendor_item_added": item.get("create_dt")}
 
 
 def _csv_cell(key: str, value):
@@ -288,7 +303,7 @@ def export_subs():
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow([label for label, _ in EXPORT_COLUMNS])
-    for row in rows:
+    for row in _export_rows(rows):
         writer.writerow([_csv_cell(key, row.get(key)) for _, key in EXPORT_COLUMNS])
     name = f"fillkill-subs-{now_ny_naive():%Y%m%d}.csv"
     return Response("\ufeff" + out.getvalue(), mimetype="text/csv",  # the BOM: Excel reads it as UTF-8
@@ -382,7 +397,6 @@ SUB_ACTIONS = {
     "unpick": "review",
     "comments": "review",
     "delete": "add_sub",
-    "details": "details",
 }
 
 
@@ -408,11 +422,36 @@ def api_sub_action(sub_id, action):
         sub = services.unpick(sub_id, me, expected_status=expected)
     elif action == "delete":
         sub = services.delete_sub(sub_id, data.get("reason"), me, expected_status=expected)
-    elif action == "details":
-        sub = services.set_details(sub_id, data, me)
     else:
         sub = services.comment_on_sub(sub_id, data.get("comment"), me)
     return ok(_sub_payload(sub))
+
+
+# Vendor items: what can be ordered for a sub (2026-10-20), the Materials Manager's and the Sub Finder's.
+
+@bp.post("/api/subs/<int:sub_id>/vendor-items")
+@login_required
+@require_module(FILLKILL, "details")
+def api_add_vendor_item(sub_id):
+    item = services.add_vendor_item(sub_id, body(), current_user.email)
+    return ok({"vendor_item": queries.vendor_item_dict(item)}, 201)
+
+
+VENDOR_ITEM_ACTIONS = ("edit", "delete")
+
+
+@bp.post("/api/vendor-items/<int:vendor_item_id>/<action>")
+@login_required
+@require_module(FILLKILL, "details")
+def api_vendor_item_action(vendor_item_id, action):
+    if action not in VENDOR_ITEM_ACTIONS:
+        raise RuleError("Unknown action.", 404)
+    data = body()
+    if action == "edit":
+        item = services.edit_vendor_item(vendor_item_id, data, current_user.email)
+    else:
+        item = services.delete_vendor_item(vendor_item_id, data.get("reason"), current_user.email)
+    return ok({"vendor_item": queries.vendor_item_dict(item)})
 
 
 @bp.post("/api/orders")
@@ -421,10 +460,10 @@ def api_sub_action(sub_id, action):
 def api_record_order():
     data = body()
     try:
-        sub_id = int(data.get("sub_id"))
+        vendor_item_id = int(data.get("vendor_item_id"))
     except (TypeError, ValueError):
-        raise RuleError("Which pick is this order for?") from None
-    order = services.record_order(sub_id, data, current_user.email, expected_status=data.get("expected_status"))
+        raise RuleError("Which vendor item is this order for?") from None
+    order = services.record_order(vendor_item_id, data, current_user.email, expected_status=data.get("expected_status"))
     return ok({"order": queries.order_dict(order)}, 201)
 
 

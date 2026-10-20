@@ -85,7 +85,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None, config_ove
     from .models.auth import User, UserModuleRole  # noqa: F401
     from .models.relations import ItemLink  # noqa: F401
     from .models.inventory import Item, ContractItem  # noqa: F401
-    from .models.fillkill import Sub, SubOrder, History  # noqa: F401
+    from .models.fillkill import Sub, VendorItem, SubOrder, History  # noqa: F401
 
     # Register blueprints
     from .auth.routes import bp as auth_bp

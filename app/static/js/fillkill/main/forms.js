@@ -1,14 +1,14 @@
-/* Main: the forms in the modal: vendor details (with the contract search, the vendor search by
- * name and the vendor ID check), record, correct and void an order, correct a sub's vendor part,
- * delete a sub.
+/* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
+ * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
+ * a sub or a vendor item.
  */
 
 import {
-  $, NO_VENDOR, alertBox, debounce, esc, fmtNumber, getJSON, needsDetails, postJSON, subText,
+  $, NO_VENDOR, alertBox, debounce, esc, fmtNumber, getJSON, postJSON, vendorItemText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
-import { api, orderUrl, state, subUrl } from './state.js';
+import { addVendorItemUrl, api, orderUrl, state, subUrl, vendorItemUrl } from './state.js';
 
 const modalEl = $('fk-modal');
 const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
@@ -35,7 +35,7 @@ function hideModal() {
 }
 
 // ``body`` is the form's HTML; ``onSubmit`` gets the form's values and returns a promise of the
-// message to show. ``wide``: the vendor details and the orders get the room they need (2026-10-20).
+// message to show. ``wide``: the vendor item and order forms get the room they need (2026-10-20).
 function showModal(title, body, submitLabel, onSubmit, { wide = false } = {}) {
   modalEl.querySelector('.modal-dialog').classList.toggle('modal-lg', wide);
   modalForm.innerHTML = `
@@ -69,9 +69,27 @@ function nowLocal() {
   return d.toISOString().slice(0, 16);
 }
 
-// A pick from the panel (any UOM) or from the main table.
-function findSub(subId) {
-  return panelSubs().concat(...state.rows.map((row) => row.picks)).find((s) => s.sub_id === subId) || null;
+// Subs from the panel (any UOM) and the main table's picks.
+const knownSubs = () => panelSubs().concat(...state.rows.map((row) => row.picks));
+
+// A vendor item and its sub, from the panel or the main table.
+function findVendorItem(id) {
+  for (const sub of knownSubs()) {
+    const item = (sub.vendor_items || []).find((v) => v.vendor_item_id === id);
+    if (item) return { sub, item };
+  }
+  return { sub: null, item: null };
+}
+
+// What a form is about, at its top: the sub (its Reference SKU) and, when there is one, the vendor item.
+function summary(sub, item, more) {
+  return `
+    <div class="fk-form-summary small">
+      <div><span class="text-muted">Reference SKU</span> <span class="fw-semibold">${esc(sub.reference_sku)}</span>
+        <span class="text-muted">on ${esc(sub.medline_item)}${sub.source === 'medline_pbo' ? ' (Medline PBO)' : ''}</span></div>
+      ${item ? `<div><span class="text-muted">Vendor item</span> <span class="fw-semibold">${esc(vendorItemText(item))}</span>${item.description
+        ? ` <span class="text-muted">· ${esc(item.description)}</span>` : ''}</div>` : ''}${more || ''}
+    </div>`;
 }
 
 // --- the contract search ---------------------------------------------------------------------
@@ -92,7 +110,7 @@ const searchContracts = debounce(async (q) => {
   try {
     const data = await getJSON(api.contractLines, { q });
     if (!$('fk-contract-q') || $('fk-contract-q').value !== q) return;
-    if (!data.lines.length) { box.innerHTML = '<span class="text-muted">No active contract line found; fill in the details below.</span>'; return; }
+    if (!data.lines.length) { box.innerHTML = '<span class="text-muted">No active contract line found; fill in the vendor item below.</span>'; return; }
     state.contractLines = data.lines;
     // A short scrolling list (about 3-4 lines show); more words narrow it down.
     const count = data.more
@@ -122,14 +140,9 @@ const searchContracts = debounce(async (q) => {
   }
 }, 350);
 
-// A contract line fills in the vendor details, the vendor part ordered among them: what nursing
-// entered may be the manufacturer's part or another vendor's (2026-10-19). What they entered stays
-// with the sub, and a change of part is pointed out.
+// A contract line fills in the vendor item: its vendor part, vendor, vendor ID, UOM and the rest.
+// The sub's Reference SKU stays as entered (2026-10-20).
 function fillFromContract(line) {
-  const entered = $('fk-contract-q').dataset.part || '';
-  const bare = (value) => String(value || '').toUpperCase().replace(/[\s\-./]/g, '');
-  $('fk-contract-note').textContent = entered && bare(line.vendor_item) !== bare(entered)
-    ? `The vendor part becomes ${line.vendor_item}, this contract line's; ${entered}, as entered, stays with the sub.` : '';
   $('fk-m-vendor_part').value = line.vendor_item || '';
   $('fk-m-manufacturer_part').value = line.manufacturer_number || '';
   $('fk-m-infor_item').value = line.infor_item || '';
@@ -280,7 +293,7 @@ const lookupVendor = debounce(async (input) => {
 // --- the forms -------------------------------------------------------------------------------
 
 // The vendor: its name (typing it searches Infor's vendors) and its vendor ID, with 0000000 when
-// Infor has no such vendor. In the vendor details and an order's correction.
+// Infor has no such vendor. In a vendor item and an order's correction.
 function vendorFields(v) {
   return `
     <div class="col-12 col-md-8"><label class="form-label small mb-0" for="fk-m-vendor">Vendor *</label>
@@ -296,81 +309,81 @@ function vendorFields(v) {
     <div class="col-12"><div id="fk-vendor-results" class="small"></div></div>`;
 }
 
-// The contract search and the vendor details it fills in (the Materials Manager's), each a section:
-// the vendor part ordered, the manufacturer's part and Infor's item number among them (2026-10-19).
-function detailSections(sub) {
-  const entered = sub.entered_part || sub.vendor_part;
+// The contract search and the vendor item it fills in, each a section (the Materials Manager's or a
+// Sub Finder's): a vendor's part in a UOM, with its manufacturer part and Infor item (2026-10-20).
+function vendorItemSections(sub, item) {
+  const v = item || {};
   return section("Find it on Infor's contracts", `
     <div class="col-12">
       <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
              aria-label="Search Infor's active contracts"
              placeholder="Vendor item, manufacturer number, Infor item, or words, e.g. 930103 chloraprep bx"
-             value="${esc(sub.vendor_part)}" data-part="${esc(entered)}">
-      <div id="fk-contract-results" class="small mt-1"></div>
-      <div id="fk-contract-note" class="small text-warning-emphasis mt-1"></div></div>`,
-  'optional: choosing a line fills in the details below')
-  + section('Vendor details', `
-    ${field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 'col-12 col-md-4')}
-    ${field('manufacturer_part', 'Manufacturer part', sub.manufacturer_part, 'maxlength="100"', 'col-6 col-md-4')}
-    ${field('infor_item', 'Infor item', sub.infor_item, 'maxlength="50"', 'col-6 col-md-4')}
-    <div class="col-12 form-text mt-0">Entered as <span class="fw-semibold">${esc(entered)}</span>${sub.source === 'medline_pbo'
-      ? ' (Medline PBO)' : ''}: the vendor part is the one ordered, which may differ.</div>
-    ${vendorFields(sub)}
-    ${field('description', 'Description', sub.description, 'maxlength="255"', 'col-12 col-md-6')}
-    ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 'col-6 col-md-3')}
-    ${field('qoe', 'QOE', plainNumber(sub.qoe), 'inputmode="decimal"', 'col-6 col-md-3')}`);
+             value="${esc(item ? item.vendor_part : sub.reference_sku)}">
+      <div id="fk-contract-results" class="small mt-1"></div></div>`,
+  'optional: choosing a line fills in the vendor item below')
+  + section('Vendor item', `
+    ${field('vendor_part', 'Vendor part *', v.vendor_part, 'maxlength="100" required', 'col-12 col-md-4')}
+    ${field('manufacturer_part', 'Manufacturer part', v.manufacturer_part, 'maxlength="100"', 'col-6 col-md-4')}
+    ${field('infor_item', 'Infor item', v.infor_item, 'maxlength="50"', 'col-6 col-md-4')}
+    ${vendorFields(v)}
+    ${field('description', 'Description', v.description, 'maxlength="255"', 'col-12 col-md-6')}
+    ${field('uom', 'UOM *', v.uom, 'maxlength="10" required', 'col-6 col-md-3')}
+    ${field('qoe', 'QOE', plainNumber(v.qoe), 'inputmode="decimal"', 'col-6 col-md-3')}`,
+  'one per vendor ID, vendor part and UOM');
 }
 
-// Search the contracts for nursing's vendor part as soon as the form opens.
-// What's in the search box then: the sub's vendor part, unless they've started typing already.
-function searchForTheSub() {
+// Search the contracts for what's in the search box as soon as the form opens: the Reference SKU
+// (or the vendor part being corrected), unless they've started typing already.
+function searchForIt() {
   whenModal('shown', () => { if ($('fk-contract-q')) searchContracts($('fk-contract-q').value); });
 }
 
-export function openDetailsForm(sub) {
+// A vendor item: added to a sub, or corrected (2026-10-20). The sub's Reference SKU stays as entered.
+export function openVendorItemForm(sub, item) {
   if (!sub) return;
-  showModal(`Vendor details · ${esc(sub.vendor_part)}`, detailSections(sub), 'Save details',
-    (values) => postJSON(subUrl(sub.sub_id, 'details'), values).then(() => 'Vendor details saved.'), { wide: true });
-  searchForTheSub(sub);
+  const note = item ? '' : `<div class="text-muted">A way to order it: each vendor ID, vendor part and UOM is a vendor item
+    of its own.</div>`;
+  showModal(item ? `Correct a vendor item · ${esc(item.vendor_part)}` : `Add a vendor item · ${esc(sub.reference_sku)}`,
+    summary(sub, item, note) + vendorItemSections(sub, item), item ? 'Save correction' : 'Add vendor item',
+    (values) => (item
+      ? postJSON(vendorItemUrl(item.vendor_item_id, 'edit'), values).then(() => 'Vendor item corrected.')
+      : postJSON(addVendorItemUrl(sub.sub_id), values).then(() => 'Vendor item added.')),
+    { wide: true });
+  searchForIt();
 }
 
-// Recording an order: the Materials Manager fills in (or checks) the sub's vendor details, which
-// are saved on the sub, and the order takes them; then the quantity.
-export function openOrderForm(subId, item) {
-  const sub = findSub(subId);
-  if (!sub) return;
-  const medline = sub.medline_item || item;
+// Recording an order for a vendor item of a pick: it's placed with the vendor item's vendor part,
+// vendor, vendor ID, UOM and QOE (2026-10-20).
+export function openOrderForm(vendorItemId) {
+  const { sub, item } = findVendorItem(vendorItemId);
+  if (!item) return;
+  const medline = sub.medline_item;
   const row = state.rows.find((r) => r.medline_items.includes(medline));
   const pack = row ? row.packagings.find((p) => p.medline_item === medline) : null;
   const killed = pack && pack.quantities.length === 1 ? pack.quantities[0].killed : '';
   // Materials Managers may order for the whole Infor item: its UOMs added up in eaches.
   const combined = row && row.packagings.length > 1 && row.quantities_each
     ? `<div>All ${row.packagings.length} UOMs of Infor item ${esc(row.infor_item)} killed
-        <span class="fw-semibold">${fmtNumber(row.quantities_each.killed)} EA</span> in these dates${sub.qoe
-        ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} × ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
-  // What's ordered and why, then the vendor details, then the order itself.
-  const summary = `
-    <div class="fk-form-summary small">
-      <div><span class="text-muted">Pick</span> <span class="fw-semibold">${esc(subText(sub))}</span></div>
-      ${killed ? `<div><span class="text-muted">${esc(medline)} killed in these dates</span>
-        <span class="fw-semibold">${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}</span></div>` : ''}${combined}
-    </div>`;
-  showModal(`Record an order · ${esc(medline)}`, summary + detailSections(sub) + section('Order', `
-    ${field('quantity', 'Quantity *', killed, 'type="number" min="1" step="1" required', 'col-6 col-md-3')}
+        <span class="fw-semibold">${fmtNumber(row.quantities_each.killed)} EA</span> in these dates${item.qoe
+        ? ` (${fmtNumber(row.quantities_each.killed / item.qoe)} × ${esc(item.uom)} of ${fmtNumber(item.qoe)})` : ''}.</div>` : '';
+  const kills = `${killed ? `<div><span class="text-muted">${esc(medline)} killed in these dates</span>
+    <span class="fw-semibold">${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}</span></div>` : ''}${combined}`;
+  showModal(`Record an order · ${esc(medline)}`, summary(sub, item, kills) + section('Order', `
+    ${field('quantity', `Quantity (${esc(item.uom)}) *`, killed, 'type="number" min="1" step="1" required', 'col-6 col-md-3')}
     ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 'col-6 col-md-4')}
     ${field('comment', 'Comment', '', 'maxlength="400"', 'col-12 col-md-5')}`),
-  'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { sub_id: subId, expected_status: 'approved' }))
+  'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { vendor_item_id: vendorItemId, expected_status: 'approved' }))
     .then(() => 'Order recorded.'), { wide: true });
-  if (needsDetails(sub)) searchForTheSub(sub);
 }
 
-// An order keeps its vendor, vendor ID, UOM and QOE (its vendor ID since 2026-10-20): corrected here.
+// An order keeps what it was placed with (vendor part, vendor, vendor ID, UOM, QOE): corrected here.
 export function openOrderEditForm(order) {
   if (!order) return;
-  showModal(`Correct an order · ${esc(order.sub_label)}`, fields(`
+  showModal(`Correct an order · ${esc(order.vendor_part)}`, fields(`
     ${field('quantity', 'Quantity', order.quantity, 'type="number" min="1" step="1"', 'col-4')}
     ${field('uom', 'UOM', order.uom, 'maxlength="10"', 'col-4')}
     ${field('qoe', 'QOE', plainNumber(order.qoe), 'inputmode="decimal"', 'col-4')}
+    ${field('vendor_part', 'Vendor part', order.vendor_part, 'maxlength="100"', 'col-12')}
     ${vendorFields(order)}
     ${field('ordered_dt', 'Ordered', String(order.ordered_dt || '').slice(0, 16), 'type="datetime-local"', 'col-12 col-md-6')}`),
   'Save correction', (values) => postJSON(orderUrl(order.order_id, 'edit'), values).then(() => 'Order corrected.'), { wide: true });
@@ -379,12 +392,23 @@ export function openOrderEditForm(order) {
 // Deleting a sub needs a reason; the sub's row and history stay.
 export function openSubDeleteForm(sub) {
   if (!sub) return;
-  showModal(`Delete a sub · ${esc(sub.vendor_part)}`, fields(`
-    <div class="col-12 small text-muted">${esc(subText(sub))} on ${esc(sub.medline_item)}. It leaves the item and the
-      library; who deleted it, when and why stay in its history.</div>
+  showModal(`Delete a sub · ${esc(sub.reference_sku)}`, fields(`
+    <div class="col-12 small text-muted">${esc(sub.reference_sku)} on ${esc(sub.medline_item)}. It leaves the item and the
+      library, with its vendor items; who deleted it, when and why stay in its history.</div>
     ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`),
   'Delete sub', (values) => postJSON(subUrl(sub.sub_id, 'delete'), { reason: values.reason, expected_status: sub.status })
     .then(() => 'Sub deleted.'));
+}
+
+// Deleting a vendor item needs a reason too; refused while it has orders that aren't voided.
+export function openVendorItemDeleteForm(sub, item) {
+  if (!item) return;
+  showModal(`Delete a vendor item · ${esc(item.vendor_part)}`, fields(`
+    <div class="col-12 small text-muted">${esc(vendorItemText(item))}, for ${esc(sub.reference_sku)}. It can't be ordered
+      any more; its orders, and who deleted it, when and why, stay.</div>
+    ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`),
+  'Delete vendor item', (values) => postJSON(vendorItemUrl(item.vendor_item_id, 'delete'), { reason: values.reason })
+    .then(() => 'Vendor item deleted.'));
 }
 
 export function openVoidForm(orderId) {
@@ -392,13 +416,14 @@ export function openVoidForm(orderId) {
     'Void order', (values) => postJSON(orderUrl(orderId, 'void'), values).then(() => 'Order voided.'));
 }
 
-// Nursing corrects the vendor part (until the sub has an order); the details are the Materials
-// Manager's ("Vendor details").
+// Nursing corrects the Reference SKU (until the sub has an order); its vendor items are the
+// Materials Manager's.
 export function openSubEditForm(sub) {
   if (!sub) return;
-  showModal(`Correct the vendor part · ${esc(sub.vendor_part)}`,
-    fields(field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 8)),
-    'Save', (values) => postJSON(subUrl(sub.sub_id, 'edit'), { vendor_part: values.vendor_part }).then(() => 'Vendor part corrected.'));
+  showModal(`Correct the Reference SKU · ${esc(sub.reference_sku)}`,
+    fields(field('reference_sku', 'Reference SKU *', sub.reference_sku, 'maxlength="100" required', 8)),
+    'Save', (values) => postJSON(subUrl(sub.sub_id, 'edit'), { reference_sku: values.reference_sku })
+      .then(() => 'Reference SKU corrected.'));
 }
 
 export function setupForms() {

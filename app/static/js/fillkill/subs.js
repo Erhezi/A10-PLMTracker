@@ -4,7 +4,7 @@
  */
 
 import {
-  $, NO_VENDOR, config, debounce, esc, fmtDate, fmtDateTime, getJSON, itemLink, needsDetails, statusBadge, url,
+  $, config, debounce, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, itemLink, needsDetails, statusBadge, url, vendorText,
 } from './common.js';
 
 const sourceLabels = Object.fromEntries(config.sources);
@@ -20,7 +20,7 @@ function filters() {
 }
 
 function message(html) {
-  $('fk-subs-rows').innerHTML = `<tr><td colspan="9" class="small p-3">${html}</td></tr>`;
+  $('fk-subs-rows').innerHTML = `<tr><td colspan="8" class="small p-3">${html}</td></tr>`;
 }
 
 let ticket = 0;
@@ -43,24 +43,25 @@ function render(subs, limit, deleted) {
     : `${subs.length} sub${subs.length === 1 ? '' : 's'}${deleted ? ' deleted' : ''}`;
   if (!subs.length) { message('<span class="text-muted">No subs match.</span>'); return; }
   $('fk-subs-rows').innerHTML = subs.map((s) => {
-    const needed = needsDetails(s) ? ` <span class="badge text-bg-warning"
-      title="The Materials Manager fills in the vendor, its vendor ID and the UOM">Vendor details needed</span>` : '';
-    const vendorId = s.vendor_id === NO_VENDOR.id ? `${esc(s.vendor_id)} · not in Infor` : esc(s.vendor_id);
-    const vendor = `${esc(s.vendor || '')}${needed}`;
-    // The manufacturer's part and Infor's item number for the sub, when it has them.
-    const parts = [
-      s.manufacturer_part ? `mfr ${esc(s.manufacturer_part)}` : '',
-      s.infor_item ? `Infor item ${esc(s.infor_item)}` : '',
-    ].filter(Boolean).map((text) => `<div class="small text-muted">${text}</div>`).join('');
+    // Its vendor items (2026-10-20): what can be ordered for it, each with the vendor part, vendor
+    // (and vendor ID), UOM and QOE; the manufacturer's part, Infor item and description below.
+    const items = needsDetails(s) ? `<span class="badge text-bg-warning"
+      title="Nothing to order yet: the Materials Manager adds what can be ordered for it">Vendor item needed</span>`
+      : s.vendor_items.map((v) => {
+        const more = [v.manufacturer_part ? `mfr ${esc(v.manufacturer_part)}` : '', v.infor_item ? `Infor item ${esc(v.infor_item)}` : '',
+          esc(v.description || '')].filter(Boolean).join(' · ');
+        return `<div class="mb-1"><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(v.uom)}${v.qoe
+          ? ` × ${fmtNumber(v.qoe)}` : ''} <span class="text-muted">· ${esc(vendorText(v))}</span>
+          ${more ? `<div class="small text-muted">${more}</div>` : ''}</div>`;
+      }).join('');
     const removed = deleted
       ? `<div class="small text-danger">Deleted by ${esc(s.deleted_by)} ${fmtDateTime(s.deleted_at)}: ${esc(s.delete_reason)}</div>` : '';
     const entered = s.source === 'manual' ? esc(s.entered_by) : esc(sourceLabels[s.source] || s.source);
     return `<tr>
       <td><a href="${esc(itemLink(s.medline_item))}" title="Open the item on Main">${esc(s.medline_item)}</a>
         ${s.medline_infor_item ? `<div class="small text-muted">${esc(s.medline_infor_item)}</div>` : ''}</td>
-      <td><span class="fw-semibold">${esc(s.vendor_part)}</span>${parts}</td>
-      <td>${vendor}${s.vendor_id ? `<div class="small text-muted">${vendorId}</div>` : ''}</td>
-      <td class="small">${esc(s.description || '')}</td>
+      <td class="fw-semibold">${esc(s.reference_sku)}</td>
+      <td>${items}</td>
       <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}${removed}</td>
       <td class="small text-nowrap">${s.orders ? `${s.orders} · last ${fmtDate(s.last_ordered)}` : '<span class="text-muted">—</span>'}</td>
       <td class="small">${entered}<div class="text-muted text-nowrap">${fmtDateTime(s.create_dt)}</div></td>

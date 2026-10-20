@@ -353,3 +353,22 @@ def test_nursing_corrects_what_they_entered_after_the_vendor_part_is_set(ctx):
     assert (sub.vendor_part, sub.entered_part) == ("B-D930103CSZ", "930104")
     assert [row[:4] for row in history("sub", sub.sub_id) if row[0] == "edit"][-1] == ("edit", "entered_part", "930103", "930104")
     refused(lambda: services().edit_sub(sub.sub_id, {"vendor_part": "930104"}, APPROVER), says="Nothing to change")
+
+
+def test_an_order_keeps_the_vendor_id_it_was_placed_with(ctx):
+    sub = approved_and_picked()  # Cardinal
+    order = services().record_order(sub.sub_id, {"quantity": 3}, MANAGER)
+    assert (order.vendor, order.vendor_id) == ("Cardinal", CARDINAL)
+    # The sub's vendor changes later; the order keeps its own until corrected.
+    services().set_details(sub.sub_id, {"vendor": "OWENS & MINOR", "vendor_id": OWENS}, MANAGER)
+    from app import db
+    from app.models.fillkill import SubOrder
+    assert db.session.get(SubOrder, order.order_id).vendor_id == CARDINAL
+    refused(lambda: services().edit_order(order.order_id, {"vendor_id": "9999999"}, MANAGER), says="isn't in Infor's vendor list")
+    refused(lambda: services().edit_order(order.order_id, {"vendor_id": " "}, MANAGER),
+            says="Vendor ID (or 000000: Vendor not available in system) is required")
+    order = services().edit_order(order.order_id, {"vendor": "OWENS & MINOR", "vendor_id": OWENS}, MANAGER)
+    assert (order.vendor, order.vendor_id) == ("OWENS & MINOR", OWENS)
+    assert [row[1:4] for row in history("order", order.order_id) if row[0] == "edit"] == [
+        ("vendor", "Cardinal", "OWENS & MINOR"), ("vendor_id", CARDINAL, OWENS)]
+    assert services().edit_order(order.order_id, {"vendor_id": "000000"}, MANAGER).vendor_id == "000000"

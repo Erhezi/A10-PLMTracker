@@ -229,6 +229,11 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
     # The orders section on Main: by the order's own date, with dates of its own.
     _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-29", end="2026-09-29")
     assert [o["quantity"] for o in orders["orders"]] == [30]
+    # What the orders table shows and searches (2026-10-20): the Infor item, the sub's numbers, the
+    # vendor ID the order was placed with.
+    [order] = orders["orders"]
+    assert (order["medline_infor_item"], order["sub_label"], order["sub_entered_part"], order["vendor_id"], order["vendor"],
+            order["qoe"]) == ("100339", "88885", "88885", CARDINAL, "Cardinal Health", 100)
     _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-10-01")
     assert orders["orders"] == []
     _, orders = get(viewer, "/fillkill/api/orders")  # default: the last 30 days, today included

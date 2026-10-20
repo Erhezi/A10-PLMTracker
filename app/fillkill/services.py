@@ -383,7 +383,7 @@ def record_order(sub_id: int, data: dict, actor: str, *, expected_status: str | 
         clean = rules.check_new_order(sub, order_data, now=now)
         order = SubOrder(
             sub_id=sub.sub_id, medline_item=sub.medline_item, quantity=clean["quantity"],
-            uom=clean["uom"], qoe=clean["qoe"], vendor=clean["vendor"], ordered_by=actor,
+            uom=clean["uom"], qoe=clean["qoe"], vendor=clean["vendor"], vendor_id=clean["vendor_id"], ordered_by=actor,
             ordered_dt=clean["ordered_dt"] or now, create_dt=now, update_dt=now,
         )
         db.session.add(order)
@@ -402,6 +402,8 @@ def edit_order(order_id: int, data: dict, actor: str) -> SubOrder:
         order = _locked(SubOrder, order_id)
         now = now_ny_naive()
         changes = rules.check_order_edit(order, data, now=now)
+        if "vendor_id" in changes:
+            _check_vendor_id(changes["vendor_id"])
         for name, value in changes.items():
             _history("order", order.order_id, order.medline_item, "edit", actor, now,
                      field=name, from_value=getattr(order, name), to_value=value)

@@ -13,6 +13,7 @@ export const state = {
   search: '',
   ordersStart: '',  // the orders section's own dates
   ordersEnd: '',
+  orders: [],  // the orders in those dates, before the search box narrows them
   dateMode: 'range',  // 'today' or 'range'
   rows: [],
   counts: {},

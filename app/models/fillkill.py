@@ -106,6 +106,7 @@ class SubOrder(db.Model):
     uom = db.Column(db.String(10), nullable=False)
     qoe = db.Column(db.Numeric(12, 4))
     vendor = db.Column(db.String(255), nullable=False)
+    vendor_id = db.Column(db.String(20))  # the sub's when ordered (2026-10-20); orders before had none
     ordered_by = db.Column(db.String(255), nullable=False)
     ordered_dt = db.Column(db.DateTime, nullable=False)
     voided_by = db.Column(db.String(255))

@@ -159,8 +159,11 @@ const steps = [
     expect(await text('#fk-date-mode') === 'Select a range', 'the dates are not on today');
     expect(await count('#fk-main tbody.fk-item') === 2, `${await count('#fk-main tbody.fk-item')} items today, not 2`);
     expect((await text('#fk-data-as-of')).includes('Data as of') || (await text('#fk-data-as-of')).includes('Latest line update'), 'no data date');
-    // At most 600px tall, scrolling inside, its header staying on top.
-    expect(await evaluate(`getComputedStyle(document.querySelector('.fk-main-scroll')).maxHeight`) === '600px', 'the table is not capped at 600px');
+    // At most 450px tall, scrolling inside, its header staying on top; the orders too (2026-10-20).
+    for (const table of ['#fk-main', '#fk-orders']) {
+      const cap = await evaluate(`getComputedStyle(document.querySelector('${table}').parentElement).maxHeight`);
+      expect(cap === '450px', `${table} is capped at ${cap}, not 450px`);
+    }
     expect(await evaluate(`getComputedStyle(document.querySelector('#fk-main thead th')).position`) === 'sticky', 'the header does not stay on top');
   }],
   ['A range of dates, kept in the page link', async () => {
@@ -235,6 +238,18 @@ const steps = [
     await panelSays('Order recorded.');
     await waitFor(`document.querySelector('#fk-main').innerText.includes('Ordered')`, 'Ordered in the table');
     await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('DYND70294BH')`, 'the order under the table');
+    // Its row (2026-10-20): Infor item, sub, QOE, ordered with a grey UOM, vendor ID, vendor name.
+    const cells = await evaluate(`[...document.querySelector('#fk-orders-rows tr').cells].map((c) => c.innerText.replace(/\\s+/g, ' ').trim())`);
+    expect(JSON.stringify(cells.slice(1, 8)) === JSON.stringify(['DYND70294BH', '100339', '88885', '100', '8 BX', '1000001', 'CARDINAL HEALTH']),
+      `the order's row: ${JSON.stringify(cells)}`);
+    expect(await evaluate(`getComputedStyle(document.querySelector('#fk-orders-rows tr').cells[5].querySelector('.text-muted')).color`)
+      !== await evaluate(`getComputedStyle(document.querySelector('#fk-orders-rows tr').cells[5]).color`), 'the UOM is not grey');
+    // The search box: by any of its numbers, dashes optional.
+    await setValue('#fk-orders-q', 'nothing-like-it', 'input');
+    await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('No order in these dates matches.')`, 'no match');
+    await setValue('#fk-orders-q', '100339 888-85', 'input');
+    await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('DYND70294BH')`, 'the order found by Infor item and part');
+    await setValue('#fk-orders-q', '', 'input');
   }],
   ['Putting the pick on hold', async () => {
     await setValue('#fk-panel-content select[data-act="status"]', 'hold');
@@ -245,6 +260,8 @@ const steps = [
   ['The Subs page', async () => {
     await go('/fillkill/subs', `document.querySelectorAll('#fk-subs-rows tr').length && !document.getElementById('fk-subs-rows').innerText.includes('Loading')`, 'the subs');
     expect((await text('#fk-subs-rows')).includes('88885'), 'the sub is not listed');
+    const cap = await evaluate(`getComputedStyle(document.getElementById('fk-subs-rows').closest('.fk-scroll')).maxHeight`);
+    expect(cap === '600px', `the subs table is capped at ${cap}, not 600px`);
     await setValue('#fk-subs-q', '88885', 'input');
     await waitFor(`document.getElementById('fk-subs-export').href.includes('q=88885')`, 'the export link to follow the search');
   }],

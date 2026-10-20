@@ -83,12 +83,15 @@ export async function postJSON(path, payload) {
   return data;
 }
 
+// ``fn`` once calls stop for ``ms``; ``.cancel()`` drops a call still waiting.
 export function debounce(fn, ms) {
   let timer = null;
-  return (...args) => {
+  const debounced = (...args) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), ms);
   };
+  debounced.cancel = () => clearTimeout(timer);
+  return debounced;
 }
 
 export function alertBox(message, kind) {

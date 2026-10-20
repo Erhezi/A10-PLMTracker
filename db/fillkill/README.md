@@ -58,7 +58,8 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 
 - `01`-`03`, `10`, `11`: run and current.
 - **`12`: re-run it.** Its step 2d (2026-10-19) adds `Sub.entered_part` (what nursing entered, kept
-  when the Materials Manager sets the vendor part ordered), `manufacturer_part` and `infor_item`.
+  when the Materials Manager sets the vendor part ordered), `manufacturer_part` and `infor_item`;
+  step 2e (2026-10-20) adds `SubOrder.vendor_id` and fills it in from the subs.
 - `04`: not yet (deploy #1 isn't live).
 - Sub 10 on B-D930299Z has vendor part 930103, BD's part nursing entered, though its order was
   Medline's B-D930103CSZ (BX of 40). Once this release is in, its **Vendor details** with the

@@ -24,7 +24,7 @@ STATUS_LABELS = {
 # Manager fills in the vendor details, the vendor part ordered among them (2026-10-19: what nursing
 # entered may be the manufacturer's part, or another vendor's).
 SUB_DETAIL_FIELDS = ("vendor_part", "vendor", "vendor_id", "manufacturer_part", "infor_item", "description", "uom", "qoe")
-ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "ordered_dt")
+ORDER_FIELDS = ("quantity", "uom", "qoe", "vendor", "vendor_id", "ordered_dt")
 
 LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100, "manufacturer_part": 100,
           "infor_item": 50, "description": 255, "uom": 10}
@@ -240,6 +240,7 @@ def check_new_order(sub, data: dict, *, now: datetime | None = None) -> dict:
         "uom": uom,
         "qoe": qoe,
         "vendor": vendor,
+        "vendor_id": sub.vendor_id,  # the order keeps it, as it keeps the vendor's name (2026-10-20)
         "ordered_dt": clean_ordered_dt(data.get("ordered_dt"), now=now),
         "comment": clean_text(data.get("comment"), label="Comment", max_len=TEXT_MAX),
     }
@@ -257,6 +258,10 @@ def check_order_edit(order, data: dict, *, now: datetime | None = None) -> dict:
             value = clean_ordered_dt(data[name], now=now)
             if value is None:
                 raise RuleError("Ordered date is required.")
+        elif name == "vendor_id":
+            value = clean_vendor_id(data[name])
+            if value is None:
+                raise RuleError(f"Vendor ID (or {NO_VENDOR_ID}: {NO_VENDOR_LABEL}) is required.")
         else:
             value = clean_field(name, data[name], required=name in ("quantity", "uom", "vendor"))
         current = getattr(order, name)

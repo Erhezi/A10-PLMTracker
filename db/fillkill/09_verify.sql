@@ -165,6 +165,9 @@ SELECT 'Sub has vendor_id, deleted_at, deleted_by, delete_reason (12, 2026-10-15
              AND COL_LENGTH(N'FillKill.Sub', N'deleted_by') IS NOT NULL
              AND COL_LENGTH(N'FillKill.Sub', N'delete_reason') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
+SELECT 'SubOrder has vendor_id (12, 2026-10-20)',
+       CASE WHEN COL_LENGTH(N'FillKill.SubOrder', N'vendor_id') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
 SELECT 'Sub has entered_part, manufacturer_part, infor_item (12, 2026-10-19)',
        CASE WHEN COL_LENGTH(N'FillKill.Sub', N'entered_part') IS NOT NULL
              AND COL_LENGTH(N'FillKill.Sub', N'manufacturer_part') IS NOT NULL

@@ -250,7 +250,13 @@ def order_dict(order: SubOrder) -> dict:
         "order_id": order.order_id, "sub_id": order.sub_id, "medline_item": order.medline_item,
         "sub_label": sub.vendor_part if sub else None,  # the order has its own vendor
         "sub_vendor": sub.vendor if sub else None,
+        # the sub's other numbers, to find the order by (2026-10-20)
+        "sub_entered_part": (sub.entered_part or sub.vendor_part) if sub else None,
+        "sub_manufacturer_part": sub.manufacturer_part if sub else None,
+        "sub_infor_item": sub.infor_item if sub else None,
         "quantity": order.quantity, "uom": order.uom, "qoe": order.qoe, "vendor": order.vendor,
+        # kept with the order since 2026-10-20 (12's 2e filled in the older ones from their sub)
+        "vendor_id": order.vendor_id if order.vendor_id or not sub else sub.vendor_id,
         "ordered_by": order.ordered_by, "ordered_dt": order.ordered_dt,
         "voided_by": order.voided_by, "voided_at": order.voided_at, "void_reason": order.void_reason,
     }
@@ -480,7 +486,9 @@ def orders_log(start: date, end: date) -> list[dict]:
         .order_by(SubOrder.ordered_dt.desc(), SubOrder.order_id.desc())
     ).scalars().all()
     comments = _latest_comments("order", [o.order_id for o in orders])
-    return [{**order_dict(o), "latest_comment": comments.get(o.order_id)} for o in orders]
+    infor = infor_items_of(o.medline_item for o in orders)
+    return [{**order_dict(o), "medline_infor_item": infor.get(o.medline_item), "latest_comment": comments.get(o.order_id)}
+            for o in orders]
 
 
 CONTRACT_LIMIT = 15

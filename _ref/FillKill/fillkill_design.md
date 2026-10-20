@@ -491,7 +491,17 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     their own** (default: the last 30 days; Today / 7 / 30 days), independent of the table's, so a
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
-    recorded after the kills shown.
+    recorded after the kills shown. Columns (2026-10-20): Order Date, Medline Item, its Infor Item,
+    Sub (the vendor part, and as entered when it differs), QOE, Ordered (`21 BX`, the UOM grey as
+    in the main table), Vendor (its vendor ID), Vendor Name, Ordered By, Latest Comment. A search
+    box keeps the orders whose numbers have every word typed: the Medline item, its Infor item, or
+    the sub's vendor part, part as entered, manufacturer part or Infor item (dashes optional). An
+    order keeps the vendor ID it was placed with (`SubOrder.vendor_id`), as it keeps the vendor's
+    name, UOM and QOE; a correction can change it.
+  - **Sizes** (2026-10-20): the tables' text is a little smaller, Infor's long descriptions smaller
+    still. The main table and the orders scroll inside 450px, the Subs page's table inside 600px,
+    each with its header in view. The vendor details and order forms open wide, in sections: what's
+    ordered and why, the contract search, the vendor details, the order.
   - **The page link keeps the view** (2026-10-19): `?dates=today` or `?start=&end=`, `?sites=a,b`,
     `?q=`, `?needs=`, and the open panel's `?item=<Medline item>[&scope=infor][&tab=…]`, updated as
     the user works (no new history entries), so a copied link reopens the same view. Subs and the

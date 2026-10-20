@@ -23,6 +23,8 @@
 --                      key UQ_Sub_item_vendor_part; CK_History_action allows 'delete'
 --      2d. 2026-10-19  Sub.entered_part (the part as entered, kept when the Materials Manager sets
 --                      the vendor part ordered), manufacturer_part, infor_item
+--      2e. 2026-10-20  SubOrder.vendor_id, the vendor ID ordered from, kept with the order like its
+--                      vendor's name; filled in from the sub for the orders already there
 --   3. Adds any default a table made by the app's startup lacks.
 --
 -- A change to what the app needs from these tables goes in step 1 (the shape) and as a new step
@@ -83,6 +85,7 @@ BEGIN
         [uom]          VARCHAR(10)    NOT NULL,
         [qoe]          DECIMAL(12, 4) NULL,
         [vendor]       VARCHAR(255)   NOT NULL,
+        [vendor_id]    VARCHAR(20)    NULL,      -- the sub's when ordered (2026-10-20)
         [ordered_by]   VARCHAR(255)   NOT NULL,
         [ordered_dt]   DATETIME       NOT NULL,
         [voided_by]    VARCHAR(255)   NULL,
@@ -256,6 +259,22 @@ GO
 -- In EXEC, so this batch compiles before the column exists (a first run checked with NOEXEC).
 EXEC (N'UPDATE [FillKill].[Sub] SET [entered_part] = [vendor_part] WHERE [entered_part] IS NULL;
        IF @@ROWCOUNT > 0 PRINT ''Sub.entered_part filled in for the subs already there'';');
+GO
+
+-- 2e. 2026-10-20 --------------------------------------------------------------------------
+-- An order keeps the vendor ID it was placed with, as it keeps the vendor's name.
+IF COL_LENGTH(N'FillKill.SubOrder', N'vendor_id') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[SubOrder] ADD [vendor_id] VARCHAR(20) NULL;
+    PRINT 'Added SubOrder.vendor_id';
+END;
+GO
+
+-- In EXEC, so this batch compiles before the column exists (a first run checked with NOEXEC).
+EXEC (N'UPDATE o SET o.[vendor_id] = s.[vendor_id]
+       FROM [FillKill].[SubOrder] AS o JOIN [FillKill].[Sub] AS s ON s.[sub_id] = o.[sub_id]
+       WHERE o.[vendor_id] IS NULL AND s.[vendor_id] IS NOT NULL;
+       IF @@ROWCOUNT > 0 PRINT ''SubOrder.vendor_id filled in from the subs'';');
 GO
 
 -- 3. Defaults, in case the app's startup created a table before this script ran -------------

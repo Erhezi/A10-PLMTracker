@@ -34,21 +34,32 @@ function hideModal() {
   whenModal('shown', () => modal.hide());
 }
 
-// ``onSubmit`` gets the form's values and returns a promise of the message to show.
-function showModal(title, fields, submitLabel, onSubmit) {
+// ``body`` is the form's HTML; ``onSubmit`` gets the form's values and returns a promise of the
+// message to show. ``wide``: the vendor details and the orders get the room they need (2026-10-20).
+function showModal(title, body, submitLabel, onSubmit, { wide = false } = {}) {
+  modalEl.querySelector('.modal-dialog').classList.toggle('modal-lg', wide);
   modalForm.innerHTML = `
     <div class="modal-header"><h2 class="modal-title h5" id="fk-modal-title">${title}</h2>
       <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
-    <div class="modal-body"><div id="fk-modal-message"></div><div class="row g-2">${fields}</div></div>
+    <div class="modal-body"><div id="fk-modal-message"></div>${body}</div>
     <div class="modal-footer"><button type="button" class="btn btn-sm btn-link" data-bs-dismiss="modal">Cancel</button>
       <button type="submit" class="btn btn-sm btn-primary">${submitLabel}</button></div>`;
   modalSubmit = onSubmit;
   openModal();
 }
 
+// ``col``: a column width (6), or the column classes ('col-12 col-md-4').
 const field = (name, label, value, attrs, col) => `
-  <div class="col-${col || 6}"><label class="form-label small mb-0" for="fk-m-${name}">${label}</label>
+  <div class="${typeof col === 'string' ? col : `col-${col || 6}`}"><label class="form-label small mb-0" for="fk-m-${name}">${label}</label>
     <input class="form-control form-control-sm" id="fk-m-${name}" name="${name}" value="${esc(value == null ? '' : value)}" ${attrs || ''}></div>`;
+
+// A row of fields; or a section of them under a title, so a long form reads in parts.
+const fields = (html) => `<div class="row g-2">${html}</div>`;
+const section = (title, html, hint) => `
+  <section class="fk-form-section">
+    <h3 class="fk-form-section-title">${title}${hint ? ` <span class="fw-normal text-muted">${hint}</span>` : ''}</h3>
+    <div class="row g-2">${html}</div>
+  </section>`;
 
 const plainNumber = (value) => (value != null ? fmtNumber(value).replace(/,/g, '') : '');
 
@@ -126,7 +137,7 @@ function fillFromContract(line) {
   vendorNote($('fk-m-vendor_id'), '');
   $('fk-m-vendor').value = line.vendor_name || '';
   $('fk-m-vendor').dataset.autofilled = '1';
-  $('fk-vendor-results').innerHTML = '';
+  stopVendorSearch();
   $('fk-m-description').value = line.description || '';
   $('fk-m-uom').value = line.uom || '';
   $('fk-m-qoe').value = plainNumber(line.qoe);
@@ -148,13 +159,16 @@ function vendorInput(target) {
   }
 }
 
+let vendorSearch = 0;  // the latest search; choosing a vendor (or 000000) outdates any on its way
+
 const searchVendors = debounce(async (q) => {
   const box = $('fk-vendor-results');
   if (!box) return;
+  const mine = ++vendorSearch;
   if (q.replace(/[\s*]/g, '').length < 2) { box.innerHTML = ''; return; }
   try {
     const data = await getJSON(api.vendors, { q });
-    if (!$('fk-m-vendor') || $('fk-m-vendor').value.trim() !== q) return;  // typed on meanwhile
+    if (mine !== vendorSearch || !$('fk-m-vendor') || $('fk-m-vendor').value.trim() !== q) return;  // outdated
     state.vendorResults = data.vendors;
     const none = `<div class="text-muted">No Infor vendor has "${esc(q)}" in its name. Try part of it,
       or use ${esc(NO_VENDOR.id)} if Infor doesn't have the vendor.</div>`;
@@ -171,9 +185,17 @@ const searchVendors = debounce(async (q) => {
         </button>`;
       }).join('')}</div>` : none;
   } catch (error) {
-    box.innerHTML = alertBox(error.message);
+    if (mine === vendorSearch) box.innerHTML = alertBox(error.message);
   }
 }, 300);
+
+// The vendor is chosen: no list comes back from a search still waiting or on its way.
+function stopVendorSearch() {
+  searchVendors.cancel();
+  vendorSearch += 1;
+  const box = $('fk-vendor-results');
+  if (box) box.innerHTML = '';
+}
 
 function pickVendor(vendor) {
   const idBox = $('fk-m-vendor_id');
@@ -181,7 +203,7 @@ function pickVendor(vendor) {
   vendorNote(idBox, `Infor: ${vendor.vendor_name}${vendor.vendor_status && vendor.vendor_status !== 'Active' ? ` (${vendor.vendor_status})` : ''}`);
   $('fk-m-vendor').value = vendor.vendor_name || '';
   $('fk-m-vendor').dataset.autofilled = '1';
-  $('fk-vendor-results').innerHTML = '';
+  stopVendorSearch();
 }
 
 // Infor has no such vendor: said on purpose, with 000000; the name they typed stays.
@@ -189,7 +211,7 @@ function noInforVendor() {
   const idBox = $('fk-m-vendor_id');
   idBox.value = NO_VENDOR.id;
   vendorNote(idBox, NO_VENDOR.label);
-  $('fk-vendor-results').innerHTML = '';
+  stopVendorSearch();
   $('fk-m-vendor').focus();
 }
 
@@ -226,46 +248,57 @@ const lookupVendor = debounce(async (input) => {
 
 // --- the forms -------------------------------------------------------------------------------
 
-// The contract search, and the vendor details it fills in (the Materials Manager's): the vendor part
-// ordered, the manufacturer's part and Infor's item number among them (2026-10-19).
-function detailFields(sub) {
-  const entered = sub.entered_part || sub.vendor_part;
+// The vendor: its name (typing it searches Infor's vendors) and its vendor ID, with 000000 when
+// Infor has no such vendor. In the vendor details and an order's correction.
+function vendorFields(v) {
   return `
-    <div class="col-12"><label class="form-label small mb-0" for="fk-contract-q">Search Infor's active contracts to fill these in</label>
-      <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
-             placeholder="Vendor item, manufacturer number, Infor item, or words, e.g. 930103 chloraprep"
-             value="${esc(sub.vendor_part)}" data-part="${esc(entered)}">
-      <div id="fk-contract-results" class="small mt-1"></div>
-      <div id="fk-contract-note" class="small text-warning-emphasis mt-1"></div></div>
-    ${field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 5)}
-    ${field('manufacturer_part', 'Manufacturer part', sub.manufacturer_part, 'maxlength="100"', 4)}
-    ${field('infor_item', 'Infor item', sub.infor_item, 'maxlength="50"', 3)}
-    <div class="col-12 small text-muted mt-0">Entered as <span class="fw-semibold">${esc(entered)}</span>${sub.source === 'medline_pbo'
-      ? ' (Medline PBO)' : ''}: the vendor part is the one ordered, which may differ.</div>
-    <div class="col-7"><label class="form-label small mb-0" for="fk-m-vendor">Vendor *</label>
-      <input class="form-control form-control-sm" id="fk-m-vendor" name="vendor" value="${esc(sub.vendor || '')}"
+    <div class="col-12 col-md-8"><label class="form-label small mb-0" for="fk-m-vendor">Vendor *</label>
+      <input class="form-control form-control-sm" id="fk-m-vendor" name="vendor" value="${esc(v.vendor || '')}"
              maxlength="255" required autocomplete="off" placeholder="Type the name to find Infor's vendor ID"></div>
-    <div class="col-5"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID *</label>
-      <input class="form-control form-control-sm" id="fk-m-vendor_id" name="vendor_id" value="${esc(sub.vendor_id || '')}"
+    <div class="col-12 col-md-4"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID *</label>
+      <input class="form-control form-control-sm" id="fk-m-vendor_id" name="vendor_id" value="${esc(v.vendor_id || '')}"
              maxlength="20" inputmode="numeric" required placeholder="Infor's" data-vendor-name="fk-m-vendor">
-      <div class="form-text small mt-0" id="fk-m-vendor_id-note">${sub.vendor_id === NO_VENDOR.id ? esc(NO_VENDOR.label) : ''}</div>
+      <div class="form-text small mt-0" id="fk-m-vendor_id-note">${v.vendor_id === NO_VENDOR.id ? esc(NO_VENDOR.label) : ''}</div>
       <button type="button" class="btn btn-link btn-sm p-0 text-nowrap" data-no-vendor
               title="${esc(NO_VENDOR.label)}">Not in Infor? Use ${esc(NO_VENDOR.id)}</button></div>
-    <div class="col-12"><div id="fk-vendor-results" class="small"></div></div>
-    ${field('description', 'Description', sub.description, 'maxlength="255"', 12)}
-    ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 4)}
-    ${field('qoe', 'QOE', plainNumber(sub.qoe), 'inputmode="decimal"', 4)}`;
+    <div class="col-12"><div id="fk-vendor-results" class="small"></div></div>`;
+}
+
+// The contract search and the vendor details it fills in (the Materials Manager's), each a section:
+// the vendor part ordered, the manufacturer's part and Infor's item number among them (2026-10-19).
+function detailSections(sub) {
+  const entered = sub.entered_part || sub.vendor_part;
+  return section("Find it on Infor's contracts", `
+    <div class="col-12">
+      <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
+             aria-label="Search Infor's active contracts"
+             placeholder="Vendor item, manufacturer number, Infor item, or words, e.g. 930103 chloraprep bx"
+             value="${esc(sub.vendor_part)}" data-part="${esc(entered)}">
+      <div id="fk-contract-results" class="small mt-1"></div>
+      <div id="fk-contract-note" class="small text-warning-emphasis mt-1"></div></div>`,
+  'optional: choosing a line fills in the details below')
+  + section('Vendor details', `
+    ${field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 'col-12 col-md-4')}
+    ${field('manufacturer_part', 'Manufacturer part', sub.manufacturer_part, 'maxlength="100"', 'col-6 col-md-4')}
+    ${field('infor_item', 'Infor item', sub.infor_item, 'maxlength="50"', 'col-6 col-md-4')}
+    <div class="col-12 form-text mt-0">Entered as <span class="fw-semibold">${esc(entered)}</span>${sub.source === 'medline_pbo'
+      ? ' (Medline PBO)' : ''}: the vendor part is the one ordered, which may differ.</div>
+    ${vendorFields(sub)}
+    ${field('description', 'Description', sub.description, 'maxlength="255"', 'col-12 col-md-6')}
+    ${field('uom', 'UOM *', sub.uom, 'maxlength="10" required', 'col-6 col-md-3')}
+    ${field('qoe', 'QOE', plainNumber(sub.qoe), 'inputmode="decimal"', 'col-6 col-md-3')}`);
 }
 
 // Search the contracts for nursing's vendor part as soon as the form opens.
-function searchForTheSub(sub) {
-  whenModal('shown', () => { if ($('fk-contract-q')) searchContracts(sub.vendor_part); });
+// What's in the search box then: the sub's vendor part, unless they've started typing already.
+function searchForTheSub() {
+  whenModal('shown', () => { if ($('fk-contract-q')) searchContracts($('fk-contract-q').value); });
 }
 
 export function openDetailsForm(sub) {
   if (!sub) return;
-  showModal(`Vendor details · ${esc(sub.vendor_part)}`, detailFields(sub), 'Save details',
-    (values) => postJSON(subUrl(sub.sub_id, 'details'), values).then(() => 'Vendor details saved.'));
+  showModal(`Vendor details · ${esc(sub.vendor_part)}`, detailSections(sub), 'Save details',
+    (values) => postJSON(subUrl(sub.sub_id, 'details'), values).then(() => 'Vendor details saved.'), { wide: true });
   searchForTheSub(sub);
 }
 
@@ -280,46 +313,50 @@ export function openOrderForm(subId, item) {
   const killed = pack && pack.quantities.length === 1 ? pack.quantities[0].killed : '';
   // Materials Managers may order for the whole Infor item: its UOMs added up in eaches.
   const combined = row && row.packagings.length > 1 && row.quantities_each
-    ? `<div class="col-12 small text-muted">All ${row.packagings.length} UOMs of Infor item ${esc(row.infor_item)} killed
-        ${fmtNumber(row.quantities_each.killed)} EA in these dates${sub.qoe ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} ×
-        ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
-  showModal(`Record an order · ${esc(medline)}`, `
-    <div class="col-12 small text-muted">Pick: <span class="fw-semibold">${esc(subText(sub))}</span>
-      ${killed ? ` · ${esc(medline)} killed in these dates: ${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}` : ''}</div>${combined}
-    ${detailFields(sub)}
-    <div class="col-12"><hr class="my-1"></div>
-    ${field('quantity', 'Quantity *', killed, 'type="number" min="1" step="1" required', 4)}
-    ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 8)}
-    ${field('comment', 'Comment', '', 'maxlength="400"', 12)}`,
+    ? `<div>All ${row.packagings.length} UOMs of Infor item ${esc(row.infor_item)} killed
+        <span class="fw-semibold">${fmtNumber(row.quantities_each.killed)} EA</span> in these dates${sub.qoe
+        ? ` (${fmtNumber(row.quantities_each.killed / sub.qoe)} × ${esc(sub.uom || 'unit')} of ${fmtNumber(sub.qoe)})` : ''}.</div>` : '';
+  // What's ordered and why, then the vendor details, then the order itself.
+  const summary = `
+    <div class="fk-form-summary small">
+      <div><span class="text-muted">Pick</span> <span class="fw-semibold">${esc(subText(sub))}</span></div>
+      ${killed ? `<div><span class="text-muted">${esc(medline)} killed in these dates</span>
+        <span class="fw-semibold">${fmtNumber(killed)} ${esc(pack.quantities[0].uom)}</span></div>` : ''}${combined}
+    </div>`;
+  showModal(`Record an order · ${esc(medline)}`, summary + detailSections(sub) + section('Order', `
+    ${field('quantity', 'Quantity *', killed, 'type="number" min="1" step="1" required', 'col-6 col-md-3')}
+    ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 'col-6 col-md-4')}
+    ${field('comment', 'Comment', '', 'maxlength="400"', 'col-12 col-md-5')}`),
   'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { sub_id: subId, expected_status: 'approved' }))
-    .then(() => 'Order recorded.'));
+    .then(() => 'Order recorded.'), { wide: true });
   if (needsDetails(sub)) searchForTheSub(sub);
 }
 
+// An order keeps its vendor, vendor ID, UOM and QOE (its vendor ID since 2026-10-20): corrected here.
 export function openOrderEditForm(order) {
   if (!order) return;
-  showModal(`Correct an order · ${esc(order.sub_label)}`, `
-    ${field('quantity', 'Quantity', order.quantity, 'type="number" min="1" step="1"', 4)}
-    ${field('uom', 'UOM', order.uom, 'maxlength="10"', 4)}
-    ${field('qoe', 'QOE', plainNumber(order.qoe), 'inputmode="decimal"', 4)}
-    ${field('vendor', 'Vendor', order.vendor, 'maxlength="255"', 6)}
-    ${field('ordered_dt', 'Ordered', String(order.ordered_dt || '').slice(0, 16), 'type="datetime-local"', 6)}`,
-  'Save correction', (values) => postJSON(orderUrl(order.order_id, 'edit'), values).then(() => 'Order corrected.'));
+  showModal(`Correct an order · ${esc(order.sub_label)}`, fields(`
+    ${field('quantity', 'Quantity', order.quantity, 'type="number" min="1" step="1"', 'col-4')}
+    ${field('uom', 'UOM', order.uom, 'maxlength="10"', 'col-4')}
+    ${field('qoe', 'QOE', plainNumber(order.qoe), 'inputmode="decimal"', 'col-4')}
+    ${vendorFields(order)}
+    ${field('ordered_dt', 'Ordered', String(order.ordered_dt || '').slice(0, 16), 'type="datetime-local"', 'col-12 col-md-6')}`),
+  'Save correction', (values) => postJSON(orderUrl(order.order_id, 'edit'), values).then(() => 'Order corrected.'), { wide: true });
 }
 
 // Deleting a sub needs a reason; the sub's row and history stay.
 export function openSubDeleteForm(sub) {
   if (!sub) return;
-  showModal(`Delete a sub · ${esc(sub.vendor_part)}`, `
+  showModal(`Delete a sub · ${esc(sub.vendor_part)}`, fields(`
     <div class="col-12 small text-muted">${esc(subText(sub))} on ${esc(sub.medline_item)}. It leaves the item and the
       library; who deleted it, when and why stay in its history.</div>
-    ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`,
+    ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`),
   'Delete sub', (values) => postJSON(subUrl(sub.sub_id, 'delete'), { reason: values.reason, expected_status: sub.status })
     .then(() => 'Sub deleted.'));
 }
 
 export function openVoidForm(orderId) {
-  showModal('Void an order', field('reason', 'Why? *', '', 'maxlength="400" required', 12),
+  showModal('Void an order', fields(field('reason', 'Why? *', '', 'maxlength="400" required', 12)),
     'Void order', (values) => postJSON(orderUrl(orderId, 'void'), values).then(() => 'Order voided.'));
 }
 
@@ -328,7 +365,7 @@ export function openVoidForm(orderId) {
 export function openSubEditForm(sub) {
   if (!sub) return;
   showModal(`Correct the vendor part · ${esc(sub.vendor_part)}`,
-    field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 8),
+    fields(field('vendor_part', 'Vendor part *', sub.vendor_part, 'maxlength="100" required', 8)),
     'Save', (values) => postJSON(subUrl(sub.sub_id, 'edit'), { vendor_part: values.vendor_part }).then(() => 'Vendor part corrected.'));
 }
 

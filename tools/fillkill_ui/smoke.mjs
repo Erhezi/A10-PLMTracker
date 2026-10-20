@@ -299,11 +299,18 @@ const steps = [
     await evaluate(`[...document.querySelectorAll('[data-vendor-pick]')].find((b) => b.innerText.trim().startsWith('1000557')).click()`);
     expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '1000557', 'the vendor ID not filled in');
     expect(await evaluate(`document.getElementById('fk-m-vendor').value`) === 'CARDINAL HEALTH MEDICAL PRODUCTS', "Infor's name not filled in");
-    // Infor doesn't have the vendor: 000000, on purpose.
-    await setValue('#fk-m-vendor', 'Local Supply Co', 'input');
+    // Infor doesn't have the vendor: 000000, on purpose. Infor's name goes; theirs is asked for.
     await click('[data-no-vendor]');
     expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '000000', 'not 000000');
     expect((await text('#fk-m-vendor_id-note')) === 'Vendor not available in system', 'no "Vendor not available in system"');
+    expect(await evaluate(`document.getElementById('fk-m-vendor').value`) === '', "Infor's name still there");
+    expect(await evaluate(`document.activeElement.id`) === 'fk-m-vendor', 'the name box is not where the cursor is');
+    expect((await text('#fk-m-vendor-note')).includes("type the vendor's name"), 'no ask for the name');
+    // Typed in, it isn't looked up in Infor; the ask goes.
+    await setValue('#fk-m-vendor', 'Local Supply Co', 'input');
+    await sleep(600);
+    expect(await count('[data-vendor-pick]') === 0 && (await text('#fk-vendor-results')) === '', 'the name was searched in Infor');
+    expect((await text('#fk-m-vendor-note')) === '', 'the ask for the name stayed');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     await panelSays('Vendor details saved.');

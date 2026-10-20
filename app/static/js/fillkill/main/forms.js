@@ -138,6 +138,7 @@ function fillFromContract(line) {
   $('fk-m-vendor').value = line.vendor_name || '';
   $('fk-m-vendor').dataset.autofilled = '1';
   stopVendorSearch();
+  vendorNameNote();
   $('fk-m-description').value = line.description || '';
   $('fk-m-uom').value = line.uom || '';
   $('fk-m-qoe').value = plainNumber(line.qoe);
@@ -153,10 +154,27 @@ function fillFromContract(line) {
 function vendorInput(target) {
   if (target.dataset.vendorName) {
     lookupVendor(target);
+    vendorNameNote();
   } else if (target.name === 'vendor') {
     delete target.dataset.autofilled;
-    searchVendors(target.value.trim());
+    // With 000000 Infor has no such vendor: the name is theirs to type, nothing to look up.
+    if (noInforId()) vendorNameNote();
+    else searchVendors(target.value.trim());
   }
+}
+
+const SEARCH_HINT = "Type the name to find Infor's vendor ID";
+const noInforId = () => Boolean($('fk-m-vendor_id')) && $('fk-m-vendor_id').value.trim() === NO_VENDOR.id;
+
+// With 000000, ask for the vendor's name until it's typed in.
+function vendorNameNote() {
+  const nameBox = $('fk-m-vendor');
+  const note = $('fk-m-vendor-note');
+  if (!nameBox || !note) return;
+  const typeIt = noInforId() && !nameBox.value.trim();
+  note.textContent = typeIt ? "Not in Infor: type the vendor's name." : '';
+  note.classList.toggle('text-warning-emphasis', typeIt);
+  nameBox.placeholder = noInforId() ? "The vendor's name, as you know it" : SEARCH_HINT;
 }
 
 let vendorSearch = 0;  // the latest search; choosing a vendor (or 000000) outdates any on its way
@@ -204,15 +222,21 @@ function pickVendor(vendor) {
   $('fk-m-vendor').value = vendor.vendor_name || '';
   $('fk-m-vendor').dataset.autofilled = '1';
   stopVendorSearch();
+  vendorNameNote();
 }
 
-// Infor has no such vendor: said on purpose, with 000000; the name they typed stays.
+// Infor has no such vendor: said on purpose, with 000000. The vendor's name, typed or Infor's,
+// is cleared, for them to type the one they know (2026-10-20).
 function noInforVendor() {
   const idBox = $('fk-m-vendor_id');
+  const nameBox = $('fk-m-vendor');
   idBox.value = NO_VENDOR.id;
   vendorNote(idBox, NO_VENDOR.label);
   stopVendorSearch();
-  $('fk-m-vendor').focus();
+  nameBox.value = '';
+  delete nameBox.dataset.autofilled;
+  vendorNameNote();
+  nameBox.focus();
 }
 
 function vendorNote(input, text, problem) {
@@ -229,7 +253,14 @@ const lookupVendor = debounce(async (input) => {
   const id = input.value.trim();
   if (!id) { vendorNote(input, ''); return; }
   if (!/^\d+$/.test(id)) { vendorNote(input, "Infor's vendor ID is digits only", true); return; }
-  if (id === NO_VENDOR.id) { vendorNote(input, NO_VENDOR.label); return; }
+  if (id === NO_VENDOR.id) {
+    // Typed in: a name Infor filled in goes (it was another vendor's); one they typed stays.
+    vendorNote(input, NO_VENDOR.label);
+    if (nameBox && nameBox.dataset.autofilled) { nameBox.value = ''; delete nameBox.dataset.autofilled; }
+    stopVendorSearch();
+    vendorNameNote();
+    return;
+  }
   try {
     const data = await getJSON(api.vendor, { id });
     if (input.value.trim() !== id) return;  // typed on meanwhile
@@ -254,7 +285,8 @@ function vendorFields(v) {
   return `
     <div class="col-12 col-md-8"><label class="form-label small mb-0" for="fk-m-vendor">Vendor *</label>
       <input class="form-control form-control-sm" id="fk-m-vendor" name="vendor" value="${esc(v.vendor || '')}"
-             maxlength="255" required autocomplete="off" placeholder="Type the name to find Infor's vendor ID"></div>
+             maxlength="255" required autocomplete="off" placeholder="${esc(SEARCH_HINT)}">
+      <div class="form-text small mt-0" id="fk-m-vendor-note"></div></div>
     <div class="col-12 col-md-4"><label class="form-label small mb-0" for="fk-m-vendor_id">Vendor ID *</label>
       <input class="form-control form-control-sm" id="fk-m-vendor_id" name="vendor_id" value="${esc(v.vendor_id || '')}"
              maxlength="20" inputmode="numeric" required placeholder="Infor's" data-vendor-name="fk-m-vendor">

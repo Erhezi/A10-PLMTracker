@@ -39,7 +39,7 @@ WHERE cl.[Contract.ContractStatus] = 'Active'
   AND CAST(GETDATE() AS DATE) BETWEEN cl.[EffectiveDate] AND cl.[ExpirationDate];
 GO
 
--- Infor's vendors (2026-10-15). A sub carries Infor's vendor ID (or 000000, "Vendor not available
+-- Infor's vendors (2026-10-15). A sub carries Infor's vendor ID (or 0000000, "Vendor not available
 -- in system"): the app checks a typed ID here and fills in the vendor's name, and a typed name is
 -- looked up in all three of Infor's names (2026-10-19: legal_name and search_name added), so the
 -- Materials Manager can find the ID. About 39k vendors, 10k active.

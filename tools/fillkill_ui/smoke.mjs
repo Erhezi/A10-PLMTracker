@@ -281,7 +281,7 @@ const steps = [
     expect(await count('#fk-panel-content [data-act="details"]') === 0, 'a nurse sees "Vendor details"');
     expect(await count('#fk-panel-content [data-act="order"]') === 0, 'a nurse sees "Record order"');
   }],
-  ['A Materials Manager finds the vendor ID by name, or uses 000000', async () => {
+  ['A Materials Manager finds the vendor ID by name, or uses 0000000', async () => {
     await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
     await click('#fk-panel-content [data-act="details"]');
@@ -290,7 +290,7 @@ const steps = [
     await setValue('#fk-m-vendor', 'Local Supply Co', 'input');
     await setValue('#fk-m-uom', 'EA', 'input');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
-    await waitFor(`(document.getElementById('fk-modal-message') || {}).innerText?.includes('Vendor ID (or 000000')`, 'the vendor ID required');
+    await waitFor(`(document.getElementById('fk-modal-message') || {}).innerText?.includes('Vendor ID (or 0000000')`, 'the vendor ID required');
     // The name finds Infor's vendors: the list scrolls, and choosing one fills in its ID.
     await setValue('#fk-m-vendor', 'cardinal', 'input');
     await waitFor(`document.querySelectorAll('[data-vendor-pick]').length === 5`, "five Cardinal vendors");
@@ -299,9 +299,9 @@ const steps = [
     await evaluate(`[...document.querySelectorAll('[data-vendor-pick]')].find((b) => b.innerText.trim().startsWith('1000557')).click()`);
     expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '1000557', 'the vendor ID not filled in');
     expect(await evaluate(`document.getElementById('fk-m-vendor').value`) === 'CARDINAL HEALTH MEDICAL PRODUCTS', "Infor's name not filled in");
-    // Infor doesn't have the vendor: 000000, on purpose. Infor's name goes; theirs is asked for.
+    // Infor doesn't have the vendor: 0000000, on purpose. Infor's name goes; theirs is asked for.
     await click('[data-no-vendor]');
-    expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '000000', 'not 000000');
+    expect(await evaluate(`document.getElementById('fk-m-vendor_id').value`) === '0000000', 'not 0000000');
     expect((await text('#fk-m-vendor_id-note')) === 'Vendor not available in system', 'no "Vendor not available in system"');
     expect(await evaluate(`document.getElementById('fk-m-vendor').value`) === '', "Infor's name still there");
     expect(await evaluate(`document.activeElement.id`) === 'fk-m-vendor', 'the name box is not where the cursor is');

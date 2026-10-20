@@ -99,7 +99,7 @@ export function alertBox(message, kind) {
 }
 
 // The vendor ID that says Infor has no such vendor (2026-10-19; rules.NO_VENDOR_ID).
-export const NO_VENDOR = config.noVendor || { id: '000000', label: 'Vendor not available in system' };
+export const NO_VENDOR = config.noVendor || { id: '0000000', label: 'Vendor not available in system' };
 
 // A sub's vendor: its name, with Infor's vendor ID when it has one; empty until the Materials
 // Manager fills it in.
@@ -114,7 +114,7 @@ export function subText(s) {
   return vendor ? `${s.vendor_part} · ${vendor}` : s.vendor_part;
 }
 
-// The vendor, its vendor ID (or 000000) and the UOM are what an order needs (rules.details_missing);
+// The vendor, its vendor ID (or 0000000) and the UOM are what an order needs (rules.details_missing);
 // nursing leaves them to the Materials Manager.
 export const needsDetails = (s) => !s.vendor || !s.vendor_id || !s.uom;
 

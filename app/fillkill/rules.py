@@ -30,8 +30,8 @@ LIMITS = {"medline_item": 50, "vendor": 255, "vendor_id": 20, "vendor_part": 100
           "infor_item": 50, "description": 255, "uom": 10}
 
 # A sub's vendor details need Infor's vendor ID (2026-10-19). When Infor has no such vendor, the
-# Materials Manager says so on purpose with this one; Infor has no vendor 000000.
-NO_VENDOR_ID = "000000"
+# Materials Manager says so on purpose with this one; Infor has no vendor 0000000.
+NO_VENDOR_ID = "0000000"
 NO_VENDOR_LABEL = "Vendor not available in system"
 
 
@@ -111,7 +111,7 @@ def clean_ordered_dt(value, *, now: datetime | None = None) -> datetime | None:
 
 
 def clean_vendor_id(value) -> str | None:
-    """Infor's vendor ID: digits only (e.g. 1000931), or 000000 when Infor has no such vendor."""
+    """Infor's vendor ID: digits only (e.g. 1000931), or 0000000 when Infor has no such vendor."""
     text = clean_text(value, label="Vendor ID", max_len=LIMITS["vendor_id"])
     if text is not None and not text.isdigit():
         raise RuleError(f"Vendor ID must be Infor's vendor ID (digits, like 1000931), or {NO_VENDOR_ID} "
@@ -120,7 +120,7 @@ def clean_vendor_id(value) -> str | None:
 
 
 def details_missing(sub) -> list[str]:
-    """What a sub still lacks for an order: its vendor, Infor's vendor ID (or 000000) and its UOM.
+    """What a sub still lacks for an order: its vendor, Infor's vendor ID (or 0000000) and its UOM.
     ``sub`` is a Sub or a dict with those keys."""
     get = sub.get if isinstance(sub, dict) else lambda name: getattr(sub, name)
     return [label for name, label in (("vendor", "Vendor"), ("vendor_id", "Vendor ID"), ("uom", "UOM"))

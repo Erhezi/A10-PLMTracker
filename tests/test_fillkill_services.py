@@ -116,17 +116,19 @@ def test_the_vendor_details_are_the_materials_managers(ctx):
     refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "Cardinal"}, MANAGER), says="digits")
     refused(lambda: services().set_details(sub.sub_id, {"uom": "BX"}, MANAGER), says="Nothing to change")
     services().set_status(sub.sub_id, "hold", APPROVER)  # whatever the status
-    # Saved details always have a vendor ID (2026-10-19); 000000 says Infor has no such vendor.
+    # Saved details always have a vendor ID (2026-10-19); 0000000 says Infor has no such vendor.
     refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "", "vendor": "LOCAL SUPPLY CO"}, MANAGER),
-            says="Vendor ID (or 000000: Vendor not available in system) is required")
-    sub = services().set_details(sub.sub_id, {"vendor_id": "000000", "vendor": "LOCAL SUPPLY CO"}, MANAGER)
-    assert (sub.vendor_id, sub.vendor) == ("000000", "LOCAL SUPPLY CO")
+            says="Vendor ID (or 0000000: Vendor not available in system) is required")
+    refused(lambda: services().set_details(sub.sub_id, {"vendor_id": "000000", "vendor": "LOCAL SUPPLY CO"}, MANAGER),
+            says="Vendor ID 000000 isn't in Infor's vendor list. Fix it, or use 0000000")  # six zeros: not the one
+    sub = services().set_details(sub.sub_id, {"vendor_id": "0000000", "vendor": "LOCAL SUPPLY CO"}, MANAGER)
+    assert (sub.vendor_id, sub.vendor) == ("0000000", "LOCAL SUPPLY CO")
 
 
 def test_details_saved_for_the_first_time_need_the_vendor_id(ctx):
     sub = nurse_sub()
     refused(lambda: services().set_details(sub.sub_id, {"vendor": "OWENS & MINOR", "uom": "CS"}, MANAGER),
-            says="Vendor ID (or 000000")
+            says="Vendor ID (or 0000000")
     from app import db
     from app.models.fillkill import Sub
     assert db.session.get(Sub, sub.sub_id).vendor is None  # nothing saved
@@ -234,9 +236,9 @@ def test_an_order_is_recorded_against_a_pick_with_the_sub_defaults(ctx):
 def test_the_materials_manager_fills_in_the_vendor_details_with_the_order(ctx):
     sub = nurse_sub()  # just the vendor part
     refused(lambda: services().record_order(sub.sub_id, {"quantity": 2, "uom": "CS"}, MANAGER),
-            says="Vendor and Vendor ID (or 000000")
+            says="Vendor and Vendor ID (or 0000000")
     refused(lambda: services().record_order(sub.sub_id, {"quantity": 2, "vendor": "OWENS & MINOR", "uom": "CS"}, MANAGER),
-            says="Vendor ID (or 000000: Vendor not available in system) is required")
+            says="Vendor ID (or 0000000: Vendor not available in system) is required")
     details = {"vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "cs", "qoe": "12"}
     refused(lambda: services().record_order(sub.sub_id, {**details, "quantity": 0}, MANAGER), says="more than 0")
     from app import db
@@ -366,9 +368,9 @@ def test_an_order_keeps_the_vendor_id_it_was_placed_with(ctx):
     assert db.session.get(SubOrder, order.order_id).vendor_id == CARDINAL
     refused(lambda: services().edit_order(order.order_id, {"vendor_id": "9999999"}, MANAGER), says="isn't in Infor's vendor list")
     refused(lambda: services().edit_order(order.order_id, {"vendor_id": " "}, MANAGER),
-            says="Vendor ID (or 000000: Vendor not available in system) is required")
+            says="Vendor ID (or 0000000: Vendor not available in system) is required")
     order = services().edit_order(order.order_id, {"vendor": "OWENS & MINOR", "vendor_id": OWENS}, MANAGER)
     assert (order.vendor, order.vendor_id) == ("OWENS & MINOR", OWENS)
     assert [row[1:4] for row in history("order", order.order_id) if row[0] == "edit"] == [
         ("vendor", "Cardinal", "OWENS & MINOR"), ("vendor_id", CARDINAL, OWENS)]
-    assert services().edit_order(order.order_id, {"vendor_id": "000000"}, MANAGER).vendor_id == "000000"
+    assert services().edit_order(order.order_id, {"vendor_id": "0000000"}, MANAGER).vendor_id == "0000000"

@@ -146,7 +146,7 @@ function fillFromContract(line) {
 
 // --- the vendor: by name, and its ID ---------------------------------------------------------
 
-// The vendor ID is needed (2026-10-19): Infor's, or 000000 when Infor has no such vendor. Typing
+// The vendor ID is needed (2026-10-19): Infor's, or 0000000 when Infor has no such vendor. Typing
 // the vendor's name lists Infor's vendors it matches (their names, legal names and search names);
 // choosing one fills in its ID and Infor's name. A typed ID is checked against Infor, and Infor's
 // name goes into the name box when that is empty or was filled in for them (from a contract line,
@@ -157,7 +157,7 @@ function vendorInput(target) {
     vendorNameNote();
   } else if (target.name === 'vendor') {
     delete target.dataset.autofilled;
-    // With 000000 Infor has no such vendor: the name is theirs to type, nothing to look up.
+    // With 0000000 Infor has no such vendor: the name is theirs to type, nothing to look up.
     if (noInforId()) vendorNameNote();
     else searchVendors(target.value.trim());
   }
@@ -166,7 +166,7 @@ function vendorInput(target) {
 const SEARCH_HINT = "Type the name to find Infor's vendor ID";
 const noInforId = () => Boolean($('fk-m-vendor_id')) && $('fk-m-vendor_id').value.trim() === NO_VENDOR.id;
 
-// With 000000, ask for the vendor's name until it's typed in.
+// With 0000000, ask for the vendor's name until it's typed in.
 function vendorNameNote() {
   const nameBox = $('fk-m-vendor');
   const note = $('fk-m-vendor-note');
@@ -177,7 +177,7 @@ function vendorNameNote() {
   nameBox.placeholder = noInforId() ? "The vendor's name, as you know it" : SEARCH_HINT;
 }
 
-let vendorSearch = 0;  // the latest search; choosing a vendor (or 000000) outdates any on its way
+let vendorSearch = 0;  // the latest search; choosing a vendor (or 0000000) outdates any on its way
 
 const searchVendors = debounce(async (q) => {
   const box = $('fk-vendor-results');
@@ -225,7 +225,7 @@ function pickVendor(vendor) {
   vendorNameNote();
 }
 
-// Infor has no such vendor: said on purpose, with 000000. The vendor's name, typed or Infor's,
+// Infor has no such vendor: said on purpose, with 0000000. The vendor's name, typed or Infor's,
 // is cleared, for them to type the one they know (2026-10-20).
 function noInforVendor() {
   const idBox = $('fk-m-vendor_id');
@@ -279,7 +279,7 @@ const lookupVendor = debounce(async (input) => {
 
 // --- the forms -------------------------------------------------------------------------------
 
-// The vendor: its name (typing it searches Infor's vendors) and its vendor ID, with 000000 when
+// The vendor: its name (typing it searches Infor's vendors) and its vendor ID, with 0000000 when
 // Infor has no such vendor. In the vendor details and an order's correction.
 function vendorFields(v) {
   return `

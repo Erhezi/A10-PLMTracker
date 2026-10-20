@@ -120,7 +120,7 @@ def search_vendors(q: str) -> list[dict]:
 
 
 def _check_vendor_id(vendor_id: str | None) -> None:
-    """A vendor ID, when given, must be one Infor knows, or 000000 (Vendor not available in system)."""
+    """A vendor ID, when given, must be one Infor knows, or 0000000 (Vendor not available in system)."""
     if vendor_id and vendor_id != rules.NO_VENDOR_ID and find_vendor(vendor_id) is None:
         raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list. Fix it, or use "
                         f"{rules.NO_VENDOR_ID} ({rules.NO_VENDOR_LABEL}).")
@@ -267,7 +267,7 @@ def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
 
 def set_details(sub_id: int, data: dict, actor: str) -> Sub:
     """The Materials Manager fills in or corrects the vendor details, any time. Saved, they include
-    the vendor, its vendor ID (or 000000) and the UOM (2026-10-19)."""
+    the vendor, its vendor ID (or 0000000) and the UOM (2026-10-19)."""
     def action():
         sub = _live_sub(sub_id)
         _apply_details(sub, data, actor, now_ny_naive(), required=True)

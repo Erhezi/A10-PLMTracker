@@ -186,7 +186,7 @@ def test_nursing_enters_a_part_and_the_materials_manager_fills_in_the_details_an
 
     # The Materials Manager fills in the vendor details with the order.
     status, data = post(finder_manager, "/fillkill/api/orders", {"sub_id": sub_id, "quantity": 30})
-    assert status == 400 and "Vendor, Vendor ID (or 000000: Vendor not available in system) and UOM are required" in data["message"]
+    assert status == 400 and "Vendor, Vendor ID (or 0000000: Vendor not available in system) and UOM are required" in data["message"]
     status, data = post(finder_manager, "/fillkill/api/orders", {
         "sub_id": sub_id, "quantity": 30, "ordered_dt": "2026-09-29T15:00", "expected_status": "approved",
         "vendor": "Cardinal Health", "vendor_id": CARDINAL, "description": "Denture cup", "uom": "bx", "qoe": "100",
@@ -348,7 +348,7 @@ def test_vendor_search_finds_the_vendor_id_from_a_name(app, viewer, finder_appro
     assert (old["vendor_name"], old["legal_name"], old["vendor_status"]) == ("OLD SUPPLY CO", "OLD SUPPLY COMPANY", "Inactive")
 
 
-def test_vendor_details_without_infor_vendor_use_000000(app, viewer, finder_approver, finder_manager):
+def test_vendor_details_without_infor_vendor_use_0000000(app, viewer, finder_approver, finder_manager):
     # Nursing's pick with a vendor and UOM but no vendor ID still needs details.
     _, data = post(finder_approver, "/fillkill/api/subs",
                    {"medline_item": "DYND70294BH", "vendor_part": "LS-1", "vendor": "Local Supply", "uom": "EA"})
@@ -357,15 +357,15 @@ def test_vendor_details_without_infor_vendor_use_000000(app, viewer, finder_appr
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert row["needs"] == ["needs_details", "needs_order"]
     assert [s["vendor_part"] for s in get(viewer, "/fillkill/api/subs", needs_details="1")[1]["subs"]] == ["LS-1"]
-    # Infor has no such vendor: 000000 says so, on purpose; Infor isn't asked about it.
-    assert get(finder_approver, "/fillkill/api/vendor", id="000000")[1]["vendor"] is None
-    status, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor_id": "000000"})
-    assert (status, data["sub"]["vendor_id"]) == (200, "000000"), data
+    # Infor has no such vendor: 0000000 says so, on purpose; Infor isn't asked about it.
+    assert get(finder_approver, "/fillkill/api/vendor", id="0000000")[1]["vendor"] is None
+    status, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor_id": "0000000"})
+    assert (status, data["sub"]["vendor_id"]) == (200, "0000000"), data
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert row["needs"] == ["needs_order"]
     page = viewer.get("/fillkill/").get_data(as_text=True)
-    assert '"noVendor": {"id": "000000", "label": "Vendor not available in system"}' in page
+    assert '"noVendor": {"id": "0000000", "label": "Vendor not available in system"}' in page
 
 
 def test_without_the_vendor_view_a_vendor_id_is_refused_with_a_message_not_a_server_error(app, finder_approver):
@@ -466,7 +466,7 @@ def test_nursing_and_the_materials_manager_each_do_their_part(app):
     status, data = post(nurse, f"/fillkill/api/subs/{sub_id}/details", {"vendor": "Owens"})
     assert status == 403 and "vendor details" in data["message"]
     status, data = post(manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor": "Owens", "uom": "bx"})
-    assert status == 400 and "Vendor ID (or 000000" in data["message"]  # 2026-10-19
+    assert status == 400 and "Vendor ID (or 0000000" in data["message"]  # 2026-10-19
     status, data = post(manager, f"/fillkill/api/subs/{sub_id}/details", {"vendor": "Owens", "vendor_id": OWENS, "uom": "bx"})
     assert (status, data["sub"]["vendor"], data["sub"]["vendor_id"], data["sub"]["uom"]) == (200, "Owens", OWENS, "BX")
     assert post(manager, f"/fillkill/api/subs/{sub_id}/edit", {"vendor_part": "OM-1"})[0] == 403

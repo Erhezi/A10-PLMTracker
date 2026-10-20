@@ -124,21 +124,21 @@ def test_an_order_takes_uom_qoe_and_vendor_from_the_sub_unless_given():
 def test_an_order_needs_the_vendor_id_and_a_uom():
     refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True, vendor_id="1000931"), {"quantity": 1},
                                           now=NOW), says="UOM is required")
-    # The vendor ID is needed too (2026-10-19), unless Infor has no such vendor: 000000, on purpose.
+    # The vendor ID is needed too (2026-10-19), unless Infor has no such vendor: 0000000, on purpose.
     refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True, uom="BX"), {"quantity": 1}, now=NOW),
-            says="Vendor ID (or 000000: Vendor not available in system) is required")
+            says="Vendor ID (or 0000000: Vendor not available in system) is required")
     no_vendor = sub(status="approved", is_picked=True, uom="BX", vendor_id=rules.NO_VENDOR_ID)
     assert rules.check_new_order(no_vendor, {"quantity": 1}, now=NOW)["vendor"] == "Medline"
 
 
 def test_complete_vendor_details_have_the_vendor_its_id_and_the_uom():
     assert rules.details_missing({"vendor": None, "vendor_id": None, "uom": None}) == ["Vendor", "Vendor ID", "UOM"]
-    assert rules.details_missing(sub(vendor="Owens", vendor_id="000000", uom="CS")) == []
+    assert rules.details_missing(sub(vendor="Owens", vendor_id="0000000", uom="CS")) == []
     refused(lambda: rules.check_details_complete(sub(vendor="Owens", uom="CS")),
-            says="Vendor ID (or 000000: Vendor not available in system) is required")
+            says="Vendor ID (or 0000000: Vendor not available in system) is required")
     refused(lambda: rules.check_details_complete(sub(vendor=None)),
-            says="Vendor, Vendor ID (or 000000: Vendor not available in system) and UOM are required")
-    assert rules.clean_vendor_id(" 000000 ") == "000000"
+            says="Vendor, Vendor ID (or 0000000: Vendor not available in system) and UOM are required")
+    assert rules.clean_vendor_id(" 0000000 ") == "0000000"
 
 
 @pytest.mark.parametrize("quantity", [0, -3, "2.5", "", None])

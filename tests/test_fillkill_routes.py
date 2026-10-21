@@ -7,8 +7,9 @@ the test site, over 9/28-9/30.
 import csv
 import io
 import json
+import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -112,7 +113,7 @@ def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer)
     assert config["default"] == {"start": "2026-09-30", "end": "2026-09-30"}  # P4
     assert config["bounds"] == {"first": "2026-09-28", "last": "2026-09-30"}
     assert [s["name"] for s in config["sites"]] == ["WHITE PLAINS", "test site"]
-    assert config["can"] == {"view": True, "add_sub": False, "review": False, "details": False, "order": False}
+    assert config["can"] == {"view": True, "add_sub": False, "review": False, "pick": False, "details": False, "order": False}
     assert 'aria-current="page">Main</a>' in page
 
 
@@ -169,7 +170,7 @@ def test_bad_dates_are_refused(viewer):
 
 # --- the whole flow, role by role ----------------------------------------------------------
 
-CUP_ITEM = {"vendor_part": "88885", "vendor": "Cardinal Health", "vendor_id": CARDINAL, "description": "Denture cup",
+CUP_ITEM = {"vendor_part": "88885", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "description": "Denture cup",
             "uom": "bx", "qoe": "100"}
 
 
@@ -202,6 +203,9 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     assert row["needs"] == ["needs_order"]
     [pick] = row["picks"]
     assert (pick["reference_sku"], [v["vendor_part"] for v in pick["vendor_items"]]) == ("88885", ["88885"])
+    # Its comments icon: how many, and the latest (2026-10-21).
+    assert (pick["comments"], pick["latest_comment"]["comment"], pick["latest_comment"]["actor"]) == (
+        1, "Same cup", "nurse@example.org")
 
     status, data = post(finder_manager, "/fillkill/api/orders", {"quantity": 30})
     assert status == 400 and "Which vendor item" in data["message"]
@@ -211,21 +215,24 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     })
     assert status == 201, data
     assert (data["order"]["vendor_part"], data["order"]["uom"], data["order"]["qoe"], data["order"]["vendor"],
-            data["order"]["reference_sku"]) == ("88885", "BX", 100, "Cardinal Health", "88885")
+            data["order"]["reference_sku"]) == ("88885", "BX", 100, "CARDINAL HEALTH", "88885")
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert (row["ordering_status"], row["needs"]) == ("ordered", ["ordered"])
     assert [(o["quantity"], o["uom"], o["ordered_dt"][:10]) for o in row["orders"]] == [(30, "BX", "2026-09-29")]
+    # Killed 30 EA in these dates (an EA without Infor's QOE is 1); ordered 30 BX of 100 (2026-10-21).
+    assert (row["killed_each"], row["sub_ordered_each"]) == (30.0, 3000.0)
 
-    # Ordered on 9/29: it counts for kills from 9/28 (ordered since), even with the dates ending
-    # before the order, but not for kills from 9/30 on (S4, 2026-10-15).
-    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-28")
+    # Ordered on 9/29: it counts only for Fill/Kill dates that include 9/29 (S4, 2026-10-20; from
+    # 10-15 it counted for any dates starting on or before it, so 9/28 alone said Ordered).
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-29")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert row["ordering_status"] == "ordered"
-    _, main = get(viewer, "/fillkill/api/main", start="2026-09-30", end="2026-09-30")
-    row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
-    assert (row["ordering_status"], row["orders"], row["needs"]) == ("no order", [], ["needs_order"])
+    for day in ("2026-09-28", "2026-09-30"):
+        _, main = get(viewer, "/fillkill/api/main", start=day, end=day)
+        row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
+        assert (row["ordering_status"], row["orders"], row["needs"]) == ("no order", [], ["needs_order"]), day
 
     _, panel = get(viewer, "/fillkill/api/item", item="DYND70294BH", start="2026-09-28", end="2026-09-30")
     assert panel["infor_item"] == "100339"
@@ -234,7 +241,7 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     assert (sub["latest_comment"]["comment"], [v["vendor_part"] for v in sub["vendor_items"]]) == ("Same cup", ["88885"])
     # Sub History: the sub's steps, and its vendor items added (2026-10-20).
     assert [(h["entity"], h["action"], h["label"]) for h in panel["pick_history"]] == [
-        ("vendoritem", "created", "88885: 88885 (Cardinal Health, BX)"), ("sub", "pick", "88885"),
+        ("vendoritem", "created", "88885: 88885 (CARDINAL HEALTH, BX)"), ("sub", "pick", "88885"),
         ("sub", "status", "88885"), ("sub", "created", "88885")]
     assert len(panel["orders"]) == 1 and len(panel["lines"]) == 3
     assert [l["test_purpose"] for l in panel["lines"] if l["is_test"]] == ["Sites: a real line copied under a second site."]
@@ -255,7 +262,7 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     # and the sub's Reference SKU, the vendor ID the order was placed with.
     [order] = orders["orders"]
     assert (order["medline_infor_item"], order["vendor_part"], order["reference_sku"], order["vendor_id"], order["vendor"],
-            order["qoe"], order["vendor_item_id"]) == ("100339", "88885", "88885", CARDINAL, "Cardinal Health", 100,
+            order["qoe"], order["vendor_item_id"]) == ("100339", "88885", "88885", CARDINAL, "CARDINAL HEALTH", 100,
                                                        item["vendor_item_id"])
     _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-10-01")
     assert orders["orders"] == []
@@ -263,7 +270,7 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     assert date.fromisoformat(orders["end"]) - date.fromisoformat(orders["start"]) == timedelta(days=29)
 
 
-ITEM_PAYLOAD = {"vendor_part": "OM1", "vendor": "Owens & Minor", "vendor_id": OWENS, "uom": "CS"}
+ITEM_PAYLOAD = {"vendor_part": "OM1", "vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "CS"}
 
 
 @pytest.mark.parametrize("who, path, payload, allowed", [
@@ -300,6 +307,30 @@ def test_each_action_needs_its_role(app, request, finder_approver, who, path, pa
     else:
         assert status == 403, data
         assert data["error"] == "forbidden"
+
+
+def test_materials_managers_pick_and_unpick_too(app):
+    # Picking among the approved subs is the Sub Approver's and the Materials Manager's (2026-10-21);
+    # the status and the subs' comments stay the Sub Approver's.
+    nurse = client(app, "nurse4@example.org", plm=None, fillkill=("sub_approver",))
+    manager = client(app, "mm4@example.org", plm=None, fillkill=("materials_manager",))
+    finder = client(app, "finder4@example.org", plm=None, fillkill=("sub_finder",))
+    _, data = post(nurse, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
+    first = data["sub"]["sub_id"]  # approved and picked: the only approved one
+    _, data = post(nurse, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM2"})
+    second = data["sub"]["sub_id"]  # approved
+    status, data = post(manager, f"/fillkill/api/subs/{first}/unpick", {"expected_status": "approved"})
+    assert (status, data["sub"]["is_picked"]) == (200, False), data
+    status, data = post(manager, f"/fillkill/api/subs/{second}/pick", {"expected_status": "approved"})
+    assert (status, data["sub"]["is_picked"]) == (200, True), data
+    _, data = get(manager, f"/fillkill/api/history/sub/{second}")
+    assert (data["history"][0]["action"], data["history"][0]["actor"]) == ("pick", "mm4@example.org")
+    status, data = post(manager, f"/fillkill/api/subs/{second}/status", {"status": "hold"})
+    assert status == 403 and "Only Sub Approvers can review or comment on subs." in data["message"]
+    assert post(manager, f"/fillkill/api/subs/{second}/comments", {"comment": "ok"})[0] == 403
+    status, data = post(finder, f"/fillkill/api/subs/{first}/pick", {})
+    assert status == 403 and "Only Sub Approvers and Materials Managers can pick" in data["message"]
+    assert (page_config(manager)["can"]["pick"], page_config(manager)["can"]["review"]) == (True, False)
 
 
 def test_rule_errors_and_conflicts_come_back_as_messages(app, finder_approver, finder_manager):
@@ -406,6 +437,101 @@ def test_a_vendor_item_without_an_infor_vendor_uses_0000000(app, viewer, finder_
     assert '"noVendor": {"id": "0000000", "label": "Vendor not available in system"}' in page
 
 
+def page_config(c) -> dict:
+    page = c.get("/fillkill/").get_data(as_text=True)
+    return json.loads(re.search(r'<script id="fk-config" type="application/json">(.*?)</script>', page, re.S).group(1))
+
+
+def test_the_live_server_opens_on_today(app, viewer, monkeypatch):
+    # FILLKILL_OPEN_ON: "today" on the server (ProductionConfig), the latest day with lines locally.
+    from app.config import DevelopmentConfig, ProductionConfig
+    from app.fillkill import routes
+    if "FILLKILL_OPEN_ON" not in os.environ:
+        assert (DevelopmentConfig.FILLKILL_OPEN_ON, ProductionConfig.FILLKILL_OPEN_ON) == ("latest", "today")
+    monkeypatch.setattr(routes, "now_ny_naive", lambda: datetime(2026, 10, 20, 9, 0))
+    assert page_config(viewer)["default"] == {"start": "2026-09-30", "end": "2026-09-30"}
+    app.config["FILLKILL_OPEN_ON"] = "today"
+    config = page_config(viewer)
+    assert config["default"] == {"start": "2026-10-20", "end": "2026-10-20"} and config["today"] == "2026-10-20"
+
+
+def test_the_medline_item_itself_from_medline_is_refused_as_a_vendor_item(app, finder_approver):
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "DYND70294BH", "reference_sku": "DYND70294"})
+    sub_id = data["sub"]["sub_id"]
+    itself = {"vendor_part": " dynd70294bh ", "vendor": "MEDLINE INDUSTRIES INC", "vendor_id": MEDLINE, "uom": "EA"}
+    status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/vendor-items", itself)
+    assert status == 400 and "dynd70294bh from Medline (vendor ID 1000931) is DYND70294BH itself" in data["message"]
+    # Another of Medline's parts is a sub, and it can't be corrected into the item itself.
+    status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/vendor-items", {**itself, "vendor_part": "DYND70294"})
+    assert status == 201, data
+    status, data = post(finder_approver, f"/fillkill/api/vendor-items/{data['vendor_item']['vendor_item_id']}/edit",
+                        {"vendor_part": "DYND70294BH"})
+    assert status == 400 and "itself" in data["message"]
+    # From a vendor that isn't Medline, the same number is someone else's part.
+    status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/vendor-items", {**itself, "vendor": "Cardinal", "vendor_id": CARDINAL})
+    assert (status, data["vendor_item"]["vendor_part"]) == (201, "dynd70294bh"), data
+
+
+def test_a_uom_typed_another_way_is_saved_as_infors_and_spaces_go(app, finder_approver, finder_manager):
+    add_view_rows(app, "vw_UomAlias", [
+        {"external_value": "CS", "lawson_value": "CA"}, {"external_value": "VL", "lawson_value": "VI"},
+        # Listed with two Infor UOMs: left as typed.
+        {"external_value": "ZZ", "lawson_value": "EA"}, {"external_value": "ZZ", "lawson_value": "BX"},
+    ])
+    config = page_config(finder_manager)
+    assert config["uomAliases"] == {"CS": "CA", "VL": "VI"}
+    assert config["medlineVendorIds"] == ["1000931", "1017968", "1017969", "1037888"]
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "  OM1 "})
+    assert data["sub"]["reference_sku"] == "OM1"
+    sub_id = data["sub"]["sub_id"]
+    item = {"vendor_part": "  OM-1-CS ", "vendor": " OWENS & MINOR ", "vendor_id": f" {OWENS} ", "uom": " cs ", "qoe": " 100 "}
+    status, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/vendor-items", item)
+    saved = data["vendor_item"]
+    assert (status, saved["vendor_part"], saved["vendor"], saved["vendor_id"], saved["uom"], saved["qoe"]) == (
+        201, "OM-1-CS", "OWENS & MINOR", OWENS, "CA", 100)
+    # The same vendor item with its UOM typed Infor's way is the same one.
+    status, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/vendor-items", {**item, "uom": "CA"})
+    assert status == 409, data
+    url = f"/fillkill/api/vendor-items/{saved['vendor_item_id']}/edit"
+    assert post(finder_manager, url, {"uom": "vl"})[1]["vendor_item"]["uom"] == "VI"
+    assert post(finder_manager, url, {"uom": "zz"})[1]["vendor_item"]["uom"] == "ZZ"
+
+
+def test_without_the_uom_view_uoms_stay_as_typed(app, finder_approver):
+    # As on O2 before 13_contract_search.sql adds FillKill.vw_UomAlias: nothing is refused for it.
+    from app import db
+    with app.app_context():
+        with db.engine.begin() as conn:
+            conn.exec_driver_sql('DROP TABLE "FillKill"."vw_UomAlias"')
+    assert page_config(finder_approver)["uomAliases"] == {}
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
+    status, data = post(finder_approver, f"/fillkill/api/subs/{data['sub']['sub_id']}/vendor-items",
+                        {"vendor_part": "OM-1", "vendor": "Owens", "vendor_id": OWENS, "uom": "cs"})
+    assert (status, data["vendor_item"]["uom"]) == (201, "CS")
+
+
+def test_the_vendor_name_follows_the_vendor_id(app, finder_approver):
+    # The ID leads (2026-10-21): an Infor vendor ID is saved with Infor's name for it, whatever was typed.
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
+    status, data = post(finder_approver, f"/fillkill/api/subs/{data['sub']['sub_id']}/vendor-items",
+                        {"vendor_part": "OM-1", "vendor": "Owens", "vendor_id": OWENS, "uom": "BX"})
+    assert (status, data["vendor_item"]["vendor"]) == (201, "OWENS & MINOR"), data
+    url = f"/fillkill/api/vendor-items/{data['vendor_item']['vendor_item_id']}/edit"
+    # A corrected ID brings its own name, even with the old one sent along.
+    status, data = post(finder_approver, url, {"vendor_id": CARDINAL, "vendor": "OWENS & MINOR"})
+    assert (status, data["vendor_item"]["vendor"], data["vendor_item"]["vendor_id"]) == (200, "CARDINAL HEALTH", CARDINAL), data
+    # A name alone can't move it to another vendor: the ID is what to change.
+    status, data = post(finder_approver, url, {"vendor": "Owens"})
+    assert status == 400 and "Infor calls 1000001 CARDINAL HEALTH" in data["message"]
+    # With 0000000, Infor has no name for it: theirs, as typed.
+    status, data = post(finder_approver, url, {"vendor_id": "0000000", "vendor": "Local Supply"})
+    assert (status, data["vendor_item"]["vendor"]) == (200, "Local Supply"), data
+    _, data = get(finder_approver, url.replace("/vendor-items/", "/history/vendoritem/").replace("/edit", ""))
+    assert sorted((h["field"], h["from_value"], h["to_value"]) for h in data["history"] if h["action"] == "edit") == [
+        ("vendor", "CARDINAL HEALTH", "Local Supply"), ("vendor", "OWENS & MINOR", "CARDINAL HEALTH"),
+        ("vendor_id", CARDINAL, "0000000"), ("vendor_id", OWENS, CARDINAL)]
+
+
 def test_without_the_vendor_view_a_vendor_id_is_refused_with_a_message_not_a_server_error(app, finder_approver):
     # As on O2 before 13_contract_search.sql adds FillKill.vw_Vendor.
     from app import db
@@ -482,6 +608,10 @@ def test_packagings_of_one_infor_item_share_a_row_and_see_each_others_subs(app, 
     packs = {p["medline_item"]: p for p in panel["packagings"]}
     assert [p["medline_item"] for p in panel["packagings"]] == ["MDS2585H", "MDS2585HX", "MDS2585HZ"]  # killed first
     assert (packs["MDS2585HZ"]["killed_in_range"], packs["MDS2585HX"]["killed_in_range"]) == (False, True)
+    # Each UOM with Infor's QOE, for the forms' "for MDS2585HX (CS/1000)" (2026-10-21); none known for MDS2585H's BX.
+    assert [(p["medline_item"], p["uom_qoes"]) for p in panel["packagings"]] == [
+        ("MDS2585H", [{"uom": "BX", "qoe": None}]), ("MDS2585HX", [{"uom": "CS", "qoe": 1000}]),
+        ("MDS2585HZ", [{"uom": "EA", "qoe": 1}])]
     assert [(o["reference_sku"], o["status"], o["approved_by"]) for o in packs["MDS2585HX"]["other_subs"]] == [
         ("88885", "approved", "nurse@example.org"), ("OM-9", "approved", "nurse@example.org"),
     ]
@@ -504,14 +634,14 @@ def test_nursing_and_the_materials_manager_each_do_their_part(app):
     status, data = post(nurse, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
     assert (status, data["sub"]["status"]) == (201, "approved")
     sub_id = data["sub"]["sub_id"]
-    item = {"vendor_part": "OM-1-CS", "vendor": "Owens", "uom": "bx"}
+    item = {"vendor_part": "OM-1-CS", "vendor": "OWENS & MINOR", "uom": "bx"}
     status, data = post(nurse, f"/fillkill/api/subs/{sub_id}/vendor-items", {**item, "vendor_id": OWENS})
     assert status == 403 and "vendor items" in data["message"]
     status, data = post(manager, f"/fillkill/api/subs/{sub_id}/vendor-items", item)
     assert status == 400 and "Vendor ID (or 0000000" in data["message"]  # 2026-10-19
     status, data = post(manager, f"/fillkill/api/subs/{sub_id}/vendor-items", {**item, "vendor_id": OWENS})
     assert (status, data["vendor_item"]["vendor"], data["vendor_item"]["vendor_id"], data["vendor_item"]["uom"]) == (
-        201, "Owens", OWENS, "BX")
+        201, "OWENS & MINOR", OWENS, "BX")
     vendor_item_id = data["vendor_item"]["vendor_item_id"]
     assert post(manager, f"/fillkill/api/subs/{sub_id}/edit", {"reference_sku": "OM-1"})[0] == 403
     status, data = post(nurse, f"/fillkill/api/subs/{sub_id}/edit", {"reference_sku": "OM-1"})
@@ -564,11 +694,11 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
                    {"medline_item": "DYND70294BH", "reference_sku": "88885", "comment": "=SUM(A1)"})
     cup_id = data["sub"]["sub_id"]
     _, data = post(finder_manager, f"/fillkill/api/subs/{cup_id}/vendor-items",
-                   {"vendor_part": "88885", "vendor": "Cardinal", "vendor_id": CARDINAL, "uom": "BX", "qoe": "100"})
+                   {"vendor_part": "88885", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "uom": "BX", "qoe": "100"})
     post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "quantity": 2,
                                                   "ordered_dt": "2026-09-29T10:00"})
     post(finder_manager, f"/fillkill/api/subs/{cup_id}/vendor-items",
-         {"vendor_part": "88885-CS", "vendor": "Owens", "vendor_id": OWENS, "uom": "CS", "manufacturer_part": "N88"})
+         {"vendor_part": "88885-CS", "vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "CS", "manufacturer_part": "N88"})
     post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
     _, data = post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "GONE"})
     post(finder_manager, f"/fillkill/api/subs/{data['sub']['sub_id']}/delete", {"reason": "duplicate"})
@@ -597,7 +727,7 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     header, *lines = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     box, case = [dict(zip(header, line)) for line in lines]
     assert (box["Medline Item"], box["Medline Item's Infor Item"], box["Reference SKU"], box["Sub Vendor Name"], box["Status"],
-            box["Picked"], box["Orders"]) == ("DYND70294BH", "100339", "88885", "Cardinal", "Approved", "Yes", "1")
+            box["Picked"], box["Orders"]) == ("DYND70294BH", "100339", "88885", "CARDINAL HEALTH", "Approved", "Yes", "1")
     assert (box["Sub Vendor Part"], box["Sub Vendor ID"], box["Sub UOM"], box["Sub QOE"], box["Vendor Item By"]) == (
         "88885", CARDINAL, "BX", "100.0", "mm@example.org")
     assert (case["Sub Vendor Part"], case["Sub Manufacturer Part"], case["Sub Vendor ID"], case["Sub UOM"], case["Sub ID"]) == (

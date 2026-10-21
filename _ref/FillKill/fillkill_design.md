@@ -213,8 +213,10 @@ gather options from suppliers by email and phone, and nursing filters them. So:
 4. A sub is one Reference SKU per Medline item; its vendor items can wait for the Materials Manager.
 
 Capabilities: `add_sub` = Sub Approver, Sub Finder (enter, correct the Reference SKU, delete);
-`review` = Sub Approver; `details` = Materials Manager, Sub Finder (add, correct and delete vendor
-items, with the contract and vendor searches); `order` = Materials Manager.
+`review` = Sub Approver (status, comments on subs); `pick` = Sub Approver, Materials Manager (pick
+and unpick an approved sub; 2026-10-21, the user: it was the Sub Approver's alone, in `review`);
+`details` = Materials Manager, Sub Finder (add, correct and delete vendor items, with the contract
+and vendor searches); `order` = Materials Manager.
 
 - **The Sub Approver decides what is clinically acceptable and which sub to use; the Materials
   Manager records what was ordered.** Today the Sub Approver is usually nursing. **Decided.**
@@ -248,10 +250,12 @@ Trends and analytics live on a separate Dashboard page (section 7).
 
 **Controls**
 
-- **Order dates** (2026-10-15; the slider was dropped): two date boxes, and a button beside them
-  that switches between **View today** (today only, the boxes locked) and **Select a range** (the
-  boxes open). Default: today when the newest kill lines are today's, otherwise the newest day
-  with lines.
+- **Fill/Kill dates** (2026-10-15; the slider was dropped; called "Order dates" until 2026-10-20,
+  renamed so they aren't taken for our orders' dates): the kill lines' order dates. Two date boxes,
+  and a button beside them that switches between **View today** (today only, the boxes locked) and
+  **Select a range** (the boxes open). Default (2026-10-20): **today** on the live server
+  (`ProductionConfig.FILLKILL_OPEN_ON`); locally the newest day with lines, since O2's data can end
+  days ago.
 - **Site filter:** one or more sites. Default: all.
 - **Needs filter:** All · Needs subs · Needs review · Needs pick · Needs order · Ordered (9.8):
   - *needs subs*: no sub that is pending review, approved or on hold
@@ -295,9 +299,11 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Approver's Pick | per UOM: each pick's **Reference SKU**, as entered (2026-10-20). A pencil when it has no vendor item yet, so nothing can be ordered; for Materials Managers and Sub Finders it opens the vendor item form |
-| Vendor Item Detail | per UOM (2026-10-20): a tile for each vendor item of the picks (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
-| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT on or after the range's first day (9.3, changed 2026-10-15), listing each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab |
+| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered; for Materials Managers and Sub Finders it opens the vendor item form. A comments icon beside each pick (2026-10-21, the user) counts its comments (pointing at it shows the latest) and opens them all, newest first, in a popover, for everyone, without the panel |
+| Vendor Item Detail | per pick, on its line (2026-10-20; beside its pick from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
+| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
+| Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE |
+| Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
 
 The **Needs filter** counts Infor items, over all their Medline items' subs, picks and orders.
 
@@ -342,7 +348,9 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 - **Width:** drag the panel's left edge (or arrow keys on it) to resize; remembered per browser,
   double-click resets (2026-10-15).
 - **Order history:** every order for the item across all days and subs, with edits and voids
-  (9.3).
+  (9.3). A table like the kill lines (2026-10-20; cards before): ordered, vendor part (for its
+  Reference SKU), quantity with UOM/QOE, vendor and ID, who, the latest comment; Correct, Void,
+  Comment and History open from icons, the last two in a line under the row.
 
 **Decided** (2026-10-13).
 
@@ -364,7 +372,7 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 | Field | Notes |
 |---|---|
 | Vendor | the vendor's **name**, required. Picking a contract line fills it with Infor's name. Typing it searches Infor's vendors (2026-10-19): every word anywhere in the vendor name, legal name or search name (`MDM_VENDOR`'s VendorName, LegalName, VendorSearchName, through `vw_Vendor`), `*` inside a word for anything, digits also matching IDs; active vendors first, at most 20. Choosing one fills in its vendor ID and Infor's name |
-| Vendor ID | Infor's vendor ID (e.g. 1000931), **required** (2026-10-19; optional from 10-15): a vendor item can't be saved without it. When Infor has no such vendor, the Materials Manager says so on purpose with **0000000**, "Vendor not available in system" (seven digits like Infor's vendor IDs, 0000000 from 2026-10-20; Infor has no vendor 0000000): choosing it clears the vendor name and asks for the one they know, which isn't looked up in Infor (2026-10-20). Filled in from a contract line or the vendor search; typed by hand, it must be one Infor knows (`vw_Vendor`), and Infor's name fills the vendor name unless one was typed. Medline PBO vendor items get 1000931 (MEDLINE INDUSTRIES INC) |
+| Vendor ID | Infor's vendor ID (e.g. 1000931), **required** (2026-10-19; optional from 10-15): a vendor item can't be saved without it. When Infor has no such vendor, the Materials Manager says so on purpose with **0000000**, "Vendor not available in system" (seven digits like Infor's vendor IDs, 0000000 from 2026-10-20; Infor has no vendor 0000000): choosing it clears the vendor name and asks for the one they know, which isn't looked up in Infor (2026-10-20). Filled in from a contract line or the vendor search; typed by hand, it must be one Infor knows (`vw_Vendor`). **The vendor name follows the ID** (2026-10-21, the user): whenever the ID changes, typed, chosen or from a contract line, Infor's name for it replaces whatever name was there, and a name box left after a search nobody chose from goes back to the ID's vendor; the server saves Infor's name for an Infor ID too, and refuses a correction that changes only the name (change the ID instead). Only 0000000's name is typed. Medline PBO vendor items get 1000931 (MEDLINE INDUSTRIES INC) |
 | Vendor Part | the vendor's part number, required: the one ordered (e.g. B-D930103CSZ for the Reference SKU 930103) |
 | UOM, QOE | the UOM, required, and its eaches (QOE, optional). The same vendor part in another UOM is another vendor item |
 | Manufacturer Part | the manufacturer's part number (2026-10-19), from the contract line's manufacturer number or typed |
@@ -383,10 +391,23 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
   and Sub Finders. Correcting one never changes its orders, which keep what they were placed with.
   Deleting one needs a reason and is refused while it has orders that aren't voided; its row stays.
   Main's Needs details counts picks without a vendor item.
+- **Not the killed item itself** (2026-10-20, the user): a vendor item whose vendor part is the sub's
+  Medline item (ignoring case) under one of Medline's vendor IDs, 1000931, 1017968, 1017969 or
+  1037888 (`rules.MEDLINE_VENDOR_IDS`), is the item that was killed, not a sub. It's refused when
+  added or corrected, with a message saying so; the contract search lists such a line but it can't
+  be chosen, and the form flags it as typed. The same number from another vendor is allowed.
+  Medline's PBO data had no item listed as its own substitute on 10/20, so 14 is unchanged.
+- **UOMs as Infor has them** (2026-10-20): a UOM typed into a vendor item or an order correction is
+  saved as Infor's (Lawson's) when it's one of `MDM_EDI_SUB_UOM`'s external values (CS is CA, VL is
+  VI; `vw_UomAlias`, 13), and as typed otherwise; the form changes it as the box is left. PH is
+  listed as PK there, though one Infor item has a PH UOM: 109889 (Raney scalp clip), whose PH and PK
+  are both 200 EA. Checked with the user 2026-10-21: PH is converted to PK like the rest.
+- **Spaces** (2026-10-20): every box loses leading and trailing spaces when it's left, and the
+  server drops them too.
 - **Deleting a sub** (2026-10-15): a Sub Finder can delete one, with a required reason. It leaves the
   item, the library, the counts and the Dashboard, but its row stays (who, when, why) and Sub History
   shows "Deleted: <reason>"; Medline's PBO sync doesn't add a deleted PBO sub back, and the same
-  Reference SKU can be added again as a new sub. Refused for the Approver's Pick (unpick first) and
+  Reference SKU can be added again as a new sub. Refused for a sub picked for ordering (unpick first) and
   for a sub with orders that aren't voided.
 - **Every sub needs the Sub Approver's approval**, including the same product from another vendor
   or in another UOM. Those usually mean buying on a different contract, so the Sub Approver should
@@ -397,10 +418,12 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 - **History:** clicking a sub shows its history as an audit-log timeline, with who and when:
   creation, every status change, pick and unpick, comments, and its vendor items added, corrected
   and deleted (2026-10-20). **Decided.**
-- **Picking:** approved subs light up a **Pick** button. The Sub Approver can pick one or more
-  (usually one), and picked subs appear under Approver's Pick. A pick stays, across days, until the
-  Sub Approver unpicks it or changes the sub's status (9.2); a sub that stops being *approved* is
-  unpicked automatically. **Decided.**
+- **Picking:** approved subs light up a **Pick** button. The Sub Approver or a Materials Manager
+  (2026-10-21) can pick one or more (usually one), and picked subs appear under Picked for Ordering. A
+  pick stays, across days, until one of them unpicks it or the Sub Approver changes the sub's status
+  (9.2); a sub that stops being *approved* is unpicked automatically. Which subs are approved stays
+  the Sub Approver's call; the Materials Manager can choose among them, e.g. the one that can be
+  ordered. **Decided.**
 - **Other packagings** (2026-10-14): a sub approved for another Medline item of the same Infor item
   is flagged, but not approved automatically. Clinically the substitution was already judged; the
   packaging differs, which matters for ordering. So:
@@ -443,7 +466,7 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 
   | Field | Notes |
   |---|---|
-  | Quantity | in the vendor item's UOM; pre-filled with the quantity killed when the Medline item has one UOM |
+  | Quantity | in the vendor item's UOM. Pre-filled with the quantity killed only when the Medline item was killed in one UOM and the vendor item has that UOM (CS read as CA) and the same QOE (2026-10-20; an EA without a QOE is 1). Otherwise blank, and a red box shows what was killed, with its UOM/QOE, and a recommended quantity: the killed eaches over the vendor item's QOE, rounded up to whole units (10 EA for a CA/50: 0.2, so 1 CA; 5 BX/10 for a CA/100: 1 CA), or why there's none (a QOE unknown) |
   | Ordered By | the user |
   | Ordered DT | defaults to now; editable |
   | Comments | entries of up to 400 characters each, with who and when; Materials Managers add more later (9.7) |
@@ -610,6 +633,11 @@ sample or read-only O2 data, and a smoke walkthrough in headless Edge; see its R
    the kills, so an order recorded today for the 9/30 kills counted as *No order* under the old
    rule whenever the dates ended before today. The "Orders in these dates" table still lists
    orders by their own date.
+   **Changed back 2026-10-20 (the user):** inside the Fill/Kill dates again, so *Ordered* and
+   *No order* are about the dates chosen; with Main opening on today, today's orders count for
+   today's kills. An order recorded on 10/1 for 9/30's kills shows under 9/30 only in a range
+   that reaches 10/1. The Dashboard's kill-to-order times still look for the first order after
+   each kill, whenever it came.
 4. **Sub description.** Yes, optional, pre-filled for PBO subs from contract data. A contract
    search, like PLM's, helps fill in a sub.
 5. **Latest Reason column.** Yes.

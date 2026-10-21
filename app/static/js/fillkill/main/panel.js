@@ -3,7 +3,7 @@
  * modal (forms.js).
  */
 
-import { $, alertBox, config, debounce, esc, fmtNumber, getJSON, postJSON } from '../common.js';
+import { $, alertBox, config, debounce, esc, fmtNumber, formValues, getJSON, postJSON, trimOnChange } from '../common.js';
 import {
   openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm, openVendorItemDeleteForm, openVendorItemForm,
   openVoidForm,
@@ -206,10 +206,18 @@ async function onClick(event) {
   if (what === 'delete-sub') { openSubDeleteForm(sub()); return; }
   if (what === 'edit-order') { openOrderEditForm(state.panelData.orders.find((o) => o.order_id === Number(button.dataset.order))); return; }
   if (what === 'void-order') { openVoidForm(Number(button.dataset.order)); return; }
+  if (what === 'comment-order-open') {
+    const form = panelEl.querySelector(`form[data-act="comment-order"][data-order="${button.dataset.order}"]`);
+    form.classList.toggle('d-none');
+    showOrderMore(form);
+    if (!form.classList.contains('d-none')) form.elements.comment.focus();
+    return;
+  }
   if (what === 'history') {
     const target = $(`fk-history-${button.dataset.entity}-${button.dataset.id}`);
-    if (target.innerHTML) { target.innerHTML = ''; return; }
+    if (target.innerHTML) { target.innerHTML = ''; showOrderMore(target); return; }
     target.innerHTML = '<span class="text-muted">Loading…</span>';
+    showOrderMore(target);
     try {
       const data = await getJSON(historyUrl(button.dataset.entity, button.dataset.id));
       target.innerHTML = timeline(data.history, false);
@@ -217,6 +225,16 @@ async function onClick(event) {
       target.innerHTML = alertBox(error.message);
     }
   }
+}
+
+// In the Orders tab's table, an order's line under its row shows while its history or its comment
+// box is open (2026-10-20).
+function showOrderMore(inside) {
+  const more = inside.closest('.fk-order-more');
+  if (!more) return;
+  const form = more.querySelector('form');
+  const open = Boolean(more.querySelector('.fk-history').innerHTML.trim()) || Boolean(form && !form.classList.contains('d-none'));
+  more.classList.toggle('d-none', !open);
 }
 
 async function onStatusChange(event) {
@@ -232,7 +250,7 @@ async function onSubmit(event) {
   const form = event.target;
   event.preventDefault();
   if (form.id === 'fk-add-form') {
-    const payload = Object.fromEntries(new FormData(form).entries());
+    const payload = formValues(form);
     payload.medline_item = payload.medline_item || state.panelItem;  // the UOM chosen, if several
     await act(api.addSub, payload, (data) => `Sub added. ${addedMessage(data.sub)}`);
     return;
@@ -302,6 +320,7 @@ function setupResizer() {
 export function setupPanel() {
   setupResizer();
   panelEl.addEventListener('click', onClick);
+  trimOnChange(panelEl);  // the add-sub and comment boxes (2026-10-20)
   panelEl.addEventListener('change', onStatusChange);
   panelEl.addEventListener('submit', onSubmit);
   panelEl.addEventListener('hidden.bs.offcanvas', () => {

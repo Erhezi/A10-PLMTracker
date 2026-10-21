@@ -165,6 +165,21 @@ def test_one_row_per_infor_item_with_its_packagings_added_up_in_eaches():
     assert other["quantities_each"] is None  # no conversion: no eaches total
 
 
+def test_killed_and_sub_ordered_in_eaches_for_the_infor_item():
+    # 2026-10-21: killed (186 EA + 15 BX of 20) against what its subs' orders add up to, each order by
+    # its own QOE (2 CA of 100, 10 EA with none: an EA is 1).
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("JLC-EA", "EA", 186, 0), qty("JLC-BX", "BX", 15, 0)], item_rows=ITEM_ROWS, subs=[],
+        orders=[{"medline_item": "JLC-BX", "order_id": 1, "quantity": 2, "uom": "CA", "qoe": 100, "ordered_dt": "2026-09-30T11:00"},
+                {"medline_item": "JLC-EA", "order_id": 2, "quantity": 10, "uom": "EA", "qoe": None, "ordered_dt": "2026-09-30T14:15"}],
+        reasons={}, family_rows=FAMILY,
+    )
+    assert (rows[0]["killed_each"], rows[0]["sub_ordered_each"]) == (486.0, 210.0)
+    assert rollup.eaches([]) == 0.0
+    assert rollup.eaches([(3, "ea", None), (2, "CA", "50")]) == 103.0
+    assert rollup.eaches([(3, "EA", None), (2, "BX", None)]) is None  # a BX without a QOE can't be counted
+
+
 def test_customer_item_that_isnt_the_infor_item_is_flagged():
     # The Infor item comes from Medline vendor items only; Medline's customer item is just compared.
     rows = rollup.build_main_rows(

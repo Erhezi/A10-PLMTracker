@@ -94,6 +94,8 @@ FILLKILL_VIEWS = {
         "contract_name", "base_cost", "is_mhs",
     ],
     "vw_Vendor": ["vendor_id", "vendor_name", "legal_name", "search_name", "vendor_status"],
+    # Empty unless a test adds rows: UOMs stay as typed.
+    "vw_UomAlias": ["external_value", "lawson_value"],
 }
 
 # Infor vendors every Fill/Kill test can use as a sub's vendor ID.

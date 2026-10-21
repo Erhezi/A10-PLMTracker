@@ -118,6 +118,36 @@ export function vendorItemText(v) {
 // A sub needs a vendor item to be ordered (2026-10-20); nursing leaves them to the Materials Manager.
 export const needsDetails = (s) => !(s.vendor_items || []).length;
 
+// Medline's vendor IDs in Infor (2026-10-20; rules.MEDLINE_VENDOR_IDS). A vendor item from one of
+// them whose vendor part is the Medline item itself is the item that was killed, not a sub.
+export const MEDLINE_VENDOR_IDS = config.medlineVendorIds || ['1000931', '1017968', '1017969', '1037888'];
+export const isTheKilledItem = (medlineItem, part, vendorId) => Boolean(medlineItem && part)
+  && MEDLINE_VENDOR_IDS.includes(String(vendorId || '').trim())
+  && String(part).trim().toUpperCase() === String(medlineItem).trim().toUpperCase();
+
+// A UOM as Infor has it (2026-10-20): typed another way (CS for CA, VL for VI), Infor's; otherwise
+// as typed, upper-cased. The server saves it the same way (rules.infor_uom).
+const UOM_ALIASES = config.uomAliases || {};
+export function inforUom(uom) {
+  const text = String(uom || '').trim().toUpperCase();
+  return UOM_ALIASES[text] || text;
+}
+
+// Leading and trailing spaces typed or pasted into a box go as soon as it's left (2026-10-20); the
+// server drops them too. Returns whether the box changed.
+export function trimInput(el) {
+  const boxed = el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && ['text', 'search'].includes(el.type)));
+  if (!boxed || el.value === el.value.trim()) return false;
+  el.value = el.value.trim();
+  return true;
+}
+
+export const trimOnChange = (root) => root.addEventListener('change', (event) => trimInput(event.target));
+
+// A form's values, each trimmed.
+export const formValues = (form) => Object.fromEntries([...new FormData(form).entries()]
+  .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
+
 // An item's panel on Main, from the Subs page or the Dashboard: ?item=<Medline item>, with
 // scope 'infor' for all its UOMs and a tab (subs, lines, picks, orders).
 export const itemLink = (item, scope, tab) => url(config.mainPage, { item, scope, tab });

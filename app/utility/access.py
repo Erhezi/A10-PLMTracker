@@ -34,7 +34,7 @@ PLM_EDITOR = "editor"
 ROLE_VIEWER = "viewer"                        # sees the module; held alone
 ROLE_SUB_FINDER = "sub_finder"                # proposes subs, pending review (kept for a future AI finder)
 ROLE_SUB_APPROVER = "sub_approver"            # nursing: enters vendor parts (approved on entry), reviews, picks, comments
-ROLE_MATERIALS_MANAGER = "materials_manager"  # fills in a sub's vendor details, records orders, comments on orders
+ROLE_MATERIALS_MANAGER = "materials_manager"  # adds vendor items, picks, records orders, comments on orders
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,10 @@ MODULES = {
             "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
             # Enter a vendor part, correct it, delete a sub (a Sub Approver's entries are approved).
             "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_SUB_APPROVER}),
+            # Set a sub's status, comment on subs.
             "review": frozenset({ROLE_SUB_APPROVER}),
+            # Pick or unpick an approved sub (2026-10-21: Materials Managers too; it was in "review").
+            "pick": frozenset({ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
             # A sub's vendor, vendor ID, description, UOM and QOE (2026-10-15).
             "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
@@ -216,7 +219,8 @@ DENIED_MESSAGES = {
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
     (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
     (FILLKILL, "details"): "Only Materials Managers and Sub Finders can add or change a sub's vendor items.",
-    (FILLKILL, "review"): "Only Sub Approvers can review, pick or comment on subs.",
+    (FILLKILL, "review"): "Only Sub Approvers can review or comment on subs.",
+    (FILLKILL, "pick"): "Only Sub Approvers and Materials Managers can pick or unpick subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
 }
 
@@ -310,7 +314,7 @@ def _fillkill_pages(user):
             _page("Dashboard", "fillkill.dashboard_page")]
 
 
-MODULE_HOMES = {PLM: "dashboard.index", FILLKILL: "fillkill.index"}
+MODULE_HOMES = {PLM: "collector.groups", FILLKILL: "fillkill.index"}
 MODULE_PAGES = {PLM: _plm_pages, FILLKILL: _fillkill_pages}
 
 DOCS_BLUEPRINT = "selfawareness"

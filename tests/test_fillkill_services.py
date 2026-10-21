@@ -46,7 +46,7 @@ def nurse_sub(**data):
 
 def vendor_item(sub, **data):
     """The Materials Manager's: a way to order the sub."""
-    base = {"vendor_part": "88885", "vendor": "Cardinal", "vendor_id": CARDINAL, "uom": "BX", "qoe": "100"}
+    base = {"vendor_part": "88885", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "uom": "BX", "qoe": "100"}
     return services().add_vendor_item(sub.sub_id, {**base, **data}, MANAGER)
 
 
@@ -140,7 +140,7 @@ def test_a_vendor_item_needs_infors_vendor_id_or_0000000(ctx):
 
 def test_correcting_and_deleting_a_vendor_item(ctx):
     sub, item = approved_and_picked()
-    item = services().edit_vendor_item(item.vendor_item_id, {"uom": "cs", "qoe": "1000", "vendor": "Cardinal"}, FINDER)
+    item = services().edit_vendor_item(item.vendor_item_id, {"uom": "cs", "qoe": "1000", "vendor": "CARDINAL HEALTH"}, FINDER)
     assert (item.uom, item.qoe) == ("CS", Decimal("1000.0000"))
     assert [row[:4] + (row[5],) for row in history("vendoritem", item.vendor_item_id)][1:] == [
         ("edit", "uom", "BX", "CS", FINDER), ("edit", "qoe", "100", "1000", FINDER)]
@@ -163,7 +163,7 @@ def test_correcting_and_deleting_a_vendor_item(ctx):
     # The sub's history shows its vendor items' too, each named.
     sub_history = queries.history("sub", sub.sub_id)
     assert (sub_history[0]["entity"], sub_history[0]["action"], sub_history[0]["label"]) == (
-        "vendoritem", "delete", "88885 (Cardinal, CS)")
+        "vendoritem", "delete", "88885 (CARDINAL HEALTH, CS)")
 
 
 # --- correcting and reviewing subs ----------------------------------------------------------
@@ -265,7 +265,7 @@ def test_an_order_is_recorded_for_a_vendor_item_of_the_pick(ctx):
                                     expected_status="approved")
     assert (order.sub_id, order.vendor_item_id, order.medline_item, order.quantity, order.vendor_part, order.uom,
             order.qoe, order.vendor, order.vendor_id, order.ordered_by) == (
-        sub.sub_id, item.vendor_item_id, "MDS2585H", 15, "88885", "BX", Decimal("100.0000"), "Cardinal", CARDINAL, MANAGER,
+        sub.sub_id, item.vendor_item_id, "MDS2585H", 15, "88885", "BX", Decimal("100.0000"), "CARDINAL HEALTH", CARDINAL, MANAGER,
     )
     assert isinstance(order.ordered_dt, datetime)
     assert history("order", order.order_id) == [
@@ -287,12 +287,12 @@ def test_no_order_without_a_pick(ctx):
 
 def test_orders_for_two_vendor_items_of_one_pick(ctx):
     sub, box = approved_and_picked()
-    case = vendor_item(sub, vendor_part="88885-CS", vendor="Owens", vendor_id=OWENS, uom="CS", qoe="1000")
+    case = vendor_item(sub, vendor_part="88885-CS", vendor="OWENS & MINOR", vendor_id=OWENS, uom="CS", qoe="1000")
     services().record_order(box.vendor_item_id, {"quantity": 10}, MANAGER)
     services().record_order(case.vendor_item_id, {"quantity": 5}, MANAGER)
     from app.models.fillkill import SubOrder
     assert sorted((o.vendor, o.vendor_part, o.uom, o.quantity) for o in SubOrder.query.all()) == [
-        ("Cardinal", "88885", "BX", 10), ("Owens", "88885-CS", "CS", 5)]
+        ("CARDINAL HEALTH", "88885", "BX", 10), ("OWENS & MINOR", "88885-CS", "CS", 5)]
 
 
 def test_order_corrections_void_and_comments(ctx):
@@ -328,14 +328,14 @@ def test_an_order_keeps_what_it_was_placed_with(ctx):
     from app import db
     from app.models.fillkill import SubOrder
     kept = db.session.get(SubOrder, order.order_id)
-    assert (kept.vendor, kept.vendor_id, kept.vendor_part) == ("Cardinal", CARDINAL, "88885")
+    assert (kept.vendor, kept.vendor_id, kept.vendor_part) == ("CARDINAL HEALTH", CARDINAL, "88885")
     refused(lambda: services().edit_order(order.order_id, {"vendor_id": "9999999"}, MANAGER), says="isn't in Infor's vendor list")
     refused(lambda: services().edit_order(order.order_id, {"vendor_id": " "}, MANAGER),
             says="Vendor ID (or 0000000: Vendor not available in system) is required")
     order = services().edit_order(order.order_id, {"vendor": "OWENS & MINOR", "vendor_id": OWENS, "vendor_part": "OM-1"}, MANAGER)
     assert (order.vendor, order.vendor_id, order.vendor_part) == ("OWENS & MINOR", OWENS, "OM-1")
     assert [row[1:4] for row in history("order", order.order_id) if row[0] == "edit"] == [
-        ("vendor_part", "88885", "OM-1"), ("vendor", "Cardinal", "OWENS & MINOR"), ("vendor_id", CARDINAL, OWENS)]
+        ("vendor_part", "88885", "OM-1"), ("vendor", "CARDINAL HEALTH", "OWENS & MINOR"), ("vendor_id", CARDINAL, OWENS)]
     assert services().edit_order(order.order_id, {"vendor_id": "0000000"}, MANAGER).vendor_id == "0000000"
 
 

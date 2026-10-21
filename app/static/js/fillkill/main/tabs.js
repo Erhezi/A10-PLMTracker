@@ -3,7 +3,7 @@
  */
 
 import {
-  REASON_LABEL, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails, statusBadge, uomQoe, vendorText,
+  NO_VENDOR, REASON_LABEL, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails, statusBadge, uomQoe, vendorText,
 } from '../common.js';
 import { can, state } from './state.js';
 import { customerFlag } from './table.js';
@@ -93,11 +93,12 @@ function subCard(sub) {
     const options = ['approved', 'hold', 'rejected'].map((s) => `<option value="${s}" ${sub.status === s ? 'selected' : ''}>${esc(config.statusLabels[s])}</option>`);
     actions.push(`<select class="form-select form-select-sm w-auto" data-act="status" data-sub="${sub.sub_id}" data-expected="${sub.status}" aria-label="Status">
       ${sub.status === 'pending_review' ? '<option value="" selected disabled>Set status…</option>' : ''}${options.join('')}</select>`);
-    if (sub.status === 'approved') {
-      actions.push(sub.is_picked
-        ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-act="unpick" data-sub="${sub.sub_id}" data-expected="${sub.status}">Unpick</button>`
-        : `<button type="button" class="btn btn-sm btn-success" data-act="pick" data-sub="${sub.sub_id}" data-expected="${sub.status}"><i class="bi bi-hand-index-thumb"></i> Pick</button>`);
-    }
+  }
+  // Sub Approvers and Materials Managers pick among the approved subs (2026-10-21).
+  if (can.pick && sub.status === 'approved') {
+    actions.push(sub.is_picked
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-act="unpick" data-sub="${sub.sub_id}" data-expected="${sub.status}">Unpick</button>`
+      : `<button type="button" class="btn btn-sm btn-success" data-act="pick" data-sub="${sub.sub_id}" data-expected="${sub.status}"><i class="bi bi-hand-index-thumb"></i> Pick</button>`);
   }
   if (can.details) {
     actions.push(`<button type="button" class="btn btn-sm btn-outline-primary" data-act="add-vi" data-sub="${sub.sub_id}"><i
@@ -105,9 +106,9 @@ function subCard(sub) {
   }
   if (can.add_sub) {
     actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Correct Reference SKU</button>`);
-    // The Approver's Pick can't be deleted until it's unpicked (the server refuses it too).
+    // A sub picked for ordering can't be deleted until it's unpicked (the server refuses it too).
     actions.push(sub.is_picked
-      ? `<span class="d-inline-block" tabindex="0" title="It's the Approver's Pick: unpick it first">
+      ? `<span class="d-inline-block" tabindex="0" title="It's picked for ordering: unpick it first">
            <button type="button" class="btn btn-sm btn-outline-danger" disabled>Delete</button></span>`
       : `<button type="button" class="btn btn-sm btn-outline-danger" data-act="delete-sub" data-sub="${sub.sub_id}">Delete</button>`);
   }
@@ -171,7 +172,7 @@ function addSubForm(packs) {
 
 function linesTab(lines, many) {
   if (!lines.length) return '<p class="text-muted small">No kill lines for these dates and sites.</p>';
-  return `<div class="table-responsive"><table class="table table-sm small align-middle">
+  return `<div class="table-responsive"><table class="table table-sm align-middle fk-panel-table">
     <thead class="table-light"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Site · Dept</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
     <tbody>${lines.map((l) => `<tr>
       <td class="text-nowrap">${fmtDate(l.order_date)} ${esc(String(l.order_time || '').slice(0, 5))}</td>
@@ -221,32 +222,48 @@ function picksTab(history, many) {
     ${timeline(history, true, many)}`;
 }
 
+// Every order for the item, as a table like the kill lines (2026-10-20; cards before), newest
+// first. A voided one is greyed, its quantity struck through. A row's History and Comment open a
+// line under it.
 function ordersTab(orders, many) {
   if (!orders.length) return '<p class="text-muted small">No orders recorded for this item.</p>';
-  return orders.map((o) => {
-    const actions = [];
-    if (can.order && !o.voided_at) {
-      actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-order" data-order="${o.order_id}">Correct</button>`);
-      actions.push(`<button type="button" class="btn btn-sm btn-outline-danger" data-act="void-order" data-order="${o.order_id}">Void</button>`);
-    }
-    actions.push(`<button type="button" class="btn btn-sm btn-link" data-act="history" data-entity="order" data-id="${o.order_id}">History</button>`);
-    const commentBox = can.order ? `
-      <form class="input-group input-group-sm mt-2" data-act="comment-order" data-order="${o.order_id}">
-        <input type="text" class="form-control" name="comment" maxlength="400" placeholder="Add a comment" aria-label="Comment on this order">
-        <button class="btn btn-outline-secondary" type="submit">Add</button>
-      </form>` : '';
-    return `<div class="card mb-2 ${o.voided_at ? 'opacity-75' : ''}"><div class="card-body p-2 small">
-      <div class="d-flex flex-wrap gap-2 align-items-center">
-        <span class="fw-semibold ${o.voided_at ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)} ${esc(o.uom)}${o.qoe ? ` (QOE ${fmtNumber(o.qoe)})` : ''}</span>
-        <span>${esc(o.vendor_part)}</span><span class="text-muted">from ${esc(vendorText(o))}, for ${esc(o.reference_sku)}${many
-          ? ` on ${esc(o.medline_item)}` : ''}</span>
-        ${o.voided_at ? `<span class="badge text-bg-secondary">Voided</span>` : ''}
-      </div>
-      <div class="text-muted">Ordered ${fmtDateTime(o.ordered_dt)} by ${esc(o.ordered_by)}${o.voided_at ? ` · voided by ${esc(o.voided_by)}: ${esc(o.void_reason)}` : ''}</div>
-      ${o.latest_comment ? `<div class="border-start border-3 ps-2 my-1">${esc(o.latest_comment.actor)}: ${esc(o.latest_comment.comment)}</div>` : ''}
-      <div class="d-flex flex-wrap gap-2 mt-1">${actions.join('')}</div>
-      ${commentBox}
-      <div class="fk-history mt-2" id="fk-history-order-${o.order_id}"></div>
-    </div></div>`;
-  }).join('');
+  const columns = many ? 8 : 7;
+  return `<div class="table-responsive"><table class="table table-sm align-middle fk-panel-table fk-orders-tab">
+    <thead class="table-light text-nowrap"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Vendor Part</th>
+      <th class="text-end">Quantity</th><th>Vendor</th><th>Ordered By</th><th>Latest Comment</th>
+      <th><span class="visually-hidden">Actions</span></th></tr></thead>
+    <tbody>${orders.map((o) => orderRows(o, many, columns)).join('')}</tbody></table></div>`;
+}
+
+function orderRows(o, many, columns) {
+  const voided = Boolean(o.voided_at);
+  const button = (act, icon, label) => `<button type="button" class="btn btn-sm btn-link p-0 ms-2" data-act="${act}"
+    data-order="${o.order_id}" title="${label}" aria-label="${label}"><i class="bi ${icon}"></i></button>`;
+  const actions = [];
+  if (can.order && !voided) actions.push(button('edit-order', 'bi-pencil', 'Correct'), button('void-order', 'bi-x-circle text-danger', 'Void'));
+  if (can.order) actions.push(button('comment-order-open', 'bi-chat-left-text', 'Add a comment'));
+  actions.push(`<button type="button" class="btn btn-sm btn-link p-0 ms-2" data-act="history" data-entity="order" data-id="${o.order_id}"
+    title="History" aria-label="History"><i class="bi bi-clock-history"></i></button>`);
+  const vendorId = o.vendor_id === NO_VENDOR.id ? 'not in Infor' : (o.vendor_id || '');
+  const c = o.latest_comment;
+  const commentBox = can.order ? `
+    <form class="input-group input-group-sm mb-1 d-none" data-act="comment-order" data-order="${o.order_id}">
+      <input type="text" class="form-control" name="comment" maxlength="400" placeholder="Add a comment" aria-label="Comment on this order">
+      <button class="btn btn-outline-secondary" type="submit">Add</button>
+    </form>` : '';
+  return `<tr class="${voided ? 'text-muted' : ''}">
+      <td class="text-nowrap">${fmtDateTime(o.ordered_dt)}</td>
+      ${many ? `<td class="text-nowrap">${esc(o.medline_item)}</td>` : ''}
+      <td><span class="fw-semibold">${esc(o.vendor_part)}</span><div class="text-muted">for ${esc(o.reference_sku)}</div></td>
+      <td class="text-end text-nowrap"><span class="${voided ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)}</span>
+        <span class="text-muted">${esc(uomQoe(o))}</span></td>
+      <td>${esc(o.vendor)}${vendorId ? `<div class="text-muted">${esc(vendorId)}</div>` : ''}</td>
+      <td>${esc(o.ordered_by)}${voided ? `<div><span class="badge text-bg-secondary">Voided</span> by ${esc(o.voided_by)}:
+        ${esc(o.void_reason)}</div>` : ''}</td>
+      <td>${c ? `${esc(c.comment)}<div class="text-muted">${esc(c.actor)}, ${fmtDateTime(c.acted_at)}${c.count > 1
+        ? ` · ${c.count} comments` : ''}</div>` : ''}</td>
+      <td class="text-end text-nowrap">${actions.join('')}</td>
+    </tr>
+    <tr class="fk-order-more d-none"><td colspan="${columns}">${commentBox}
+      <div class="fk-history" id="fk-history-order-${o.order_id}"></div></td></tr>`;
 }

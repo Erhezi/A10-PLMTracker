@@ -45,7 +45,9 @@ and MDS2585HC by the case), and an item that isn't in Infor (SAMPLE0001). The co
 vendor item 88885 on an MHS contract and another vendor's 88885-CS on a non-MHS one, and five
 ChloraPrep lines as O2 has them ("930103 chloraprep" finds one). The vendors are the tests' four
 (1000001 Cardinal, 1000002 Owens & Minor, 1000931 Medline, 1000099 inactive) and a few of Infor's,
-several Cardinal Health ones among them, so the vendor search has a list to scroll.
+several Cardinal Health ones among them, so the vendor search has a list to scroll. Medline's own
+contract line for DYND70294BH is there too, which the vendor item form shows but won't take (the
+killed item itself), and a few of Infor's UOM aliases (CS is CA, VL is VI).
 
 With `--data o2`, the contract search reads Infor's contract lines through this repo's
 `db/fillkill/13_contract_search.sql`, limited to the vendor items Medline has killed plus nitrile

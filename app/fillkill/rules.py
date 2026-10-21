@@ -37,6 +37,11 @@ LABELS = {"medline_item": "Medline item", "reference_sku": "Reference SKU", "ven
 NO_VENDOR_ID = "0000000"
 NO_VENDOR_LABEL = "Vendor not available in system"
 
+# Medline's vendor IDs in Infor (2026-10-20): MEDLINE INDUSTRIES INC, its physician office (LUM) and
+# decasing (custom packs) accounts, and its JIT tote program. A vendor item from one of them whose
+# vendor part is the Medline item itself is the item that was killed, not a sub.
+MEDLINE_VENDOR_IDS = ("1000931", "1017968", "1017969", "1037888")
+
 
 class RuleError(Exception):
     """An action that isn't allowed. ``status`` is the HTTP status to answer with."""
@@ -64,9 +69,9 @@ def clean_text(value, *, label: str, max_len: int, required: bool = False) -> st
     return text
 
 
-def clean_field(name: str, value, *, required: bool = False):
-    """A sub, vendor item or order field by name; uom is upper-cased, the vendor ID is Infor's, qoe
-    and quantity are numbers."""
+def clean_field(name: str, value, *, required: bool = False, uoms: dict | None = None):
+    """A sub, vendor item or order field by name; uom is upper-cased and made Infor's (``uoms``),
+    the vendor ID is Infor's, qoe and quantity are numbers."""
     if name == "qoe":
         return clean_qoe(value)
     if name == "quantity":
@@ -79,7 +84,15 @@ def clean_field(name: str, value, *, required: bool = False):
             raise RuleError(_missing_message(["Vendor ID"]))
         return text
     text = clean_text(value, label=label(name), max_len=LIMITS[name], required=required)
-    return text.upper() if (text and name == "uom") else text
+    return infor_uom(text, uoms) if (text and name == "uom") else text
+
+
+def infor_uom(uom: str, uoms: dict | None = None) -> str:
+    """The UOM upper-cased, and Infor's when it's typed another way (2026-10-20): ``uoms`` maps
+    MDM_EDI_SUB_UOM's external values to Infor's (Lawson's), e.g. CS to CA, VL to VI. One it doesn't
+    list stays as typed."""
+    uom = uom.upper()
+    return (uoms or {}).get(uom, uom)
 
 
 def clean_qoe(value) -> Decimal | None:
@@ -183,32 +196,48 @@ def check_unpick(sub) -> None:
 
 
 def check_delete(sub, reason) -> str:
-    """A sub is deleted with a reason. The Approver's Pick stays until it's unpicked."""
+    """A sub is deleted with a reason. One picked for ordering stays until it's unpicked."""
     if sub.is_picked:
-        raise RuleError(f"{sub.label()} is the Approver's Pick; it has to be unpicked before it's deleted.", 409)
+        raise RuleError(f"{sub.label()} is picked for ordering; it has to be unpicked before it's deleted.", 409)
     return clean_comment(reason, label="Reason")
 
 
 # --- vendor items --------------------------------------------------------------
 
-def check_new_vendor_item(data: dict) -> dict:
+def check_new_vendor_item(data: dict, *, uoms: dict | None = None) -> dict:
     """A vendor item (2026-10-20): its vendor part, vendor, Infor's vendor ID (or 0000000) and UOM
     are required; its manufacturer part, Infor item, description and QOE are optional."""
-    clean = {name: clean_field(name, data.get(name)) for name in VENDOR_ITEM_FIELDS}
+    clean = {name: clean_field(name, data.get(name), uoms=uoms) for name in VENDOR_ITEM_FIELDS}
     missing = [label(name) for name in VENDOR_ITEM_REQUIRED if not clean[name]]
     if missing:
         raise RuleError(_missing_message(missing))
     return clean
 
 
-def check_vendor_item_changes(item, data: dict) -> dict:
+def is_the_killed_item(medline_item: str, vendor_part, vendor_id) -> bool:
+    """Whether a vendor item is the Medline item itself (2026-10-20): Medline's own part number
+    under one of Medline's vendor IDs, so the sub would point back at the item that was killed."""
+    return (vendor_id in MEDLINE_VENDOR_IDS and bool(vendor_part)
+            and str(vendor_part).strip().upper() == str(medline_item).strip().upper())
+
+
+def check_not_the_killed_item(medline_item: str, values: dict) -> None:
+    if is_the_killed_item(medline_item, values.get("vendor_part"), values.get("vendor_id")):
+        raise RuleError(
+            f"{values['vendor_part']} from Medline (vendor ID {values['vendor_id']}) is {medline_item} itself, "
+            "the Medline item that was killed, so it can't be ordered as its sub. Add another vendor's part "
+            "or another product instead."
+        )
+
+
+def check_vendor_item_changes(item, data: dict, *, uoms: dict | None = None) -> dict:
     """The fields in ``data`` that differ from the vendor item's, cleaned; a required one can't be
     emptied, and nothing to change is refused."""
     changes = {}
     for name in VENDOR_ITEM_FIELDS:
         if name not in data:
             continue
-        value = clean_field(name, data[name], required=name in VENDOR_ITEM_REQUIRED)
+        value = clean_field(name, data[name], required=name in VENDOR_ITEM_REQUIRED, uoms=uoms)
         if not _same(name, value, getattr(item, name)):
             changes[name] = value
     if not changes:
@@ -239,7 +268,7 @@ def check_new_order(sub, item, data: dict, *, now: datetime | None = None) -> di
     }
 
 
-def check_order_edit(order, data: dict, *, now: datetime | None = None) -> dict:
+def check_order_edit(order, data: dict, *, now: datetime | None = None, uoms: dict | None = None) -> dict:
     """Changed fields only; a voided order can't change (P3)."""
     if order.voided_at is not None:
         raise RuleError("A voided order can't be changed.", 409)
@@ -252,7 +281,8 @@ def check_order_edit(order, data: dict, *, now: datetime | None = None) -> dict:
             if value is None:
                 raise RuleError("Ordered date is required.")
         else:
-            value = clean_field(name, data[name], required=name in ("quantity", "vendor_part", "uom", "vendor", "vendor_id"))
+            value = clean_field(name, data[name], required=name in ("quantity", "vendor_part", "uom", "vendor", "vendor_id"),
+                                uoms=uoms)
         current = getattr(order, name)
         if not (_same(name, value, current) if name == "qoe" else value == current):
             changes[name] = value

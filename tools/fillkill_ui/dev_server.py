@@ -156,8 +156,14 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
                    "MBO-APPLICATORCHLORAPREP3ML", "CA", 100, "107896", "No"),
                   ("1000307", "BECTON DICKINSON COMPANY INC", "260815", "260815", "CHLORAPREP ONE-STEP 26ML", "CS", 25,
                    None, "Yes"),
+                  # The killed cup itself, from Medline: listed, but not a sub of itself (2026-10-20).
+                  ("1000931", "MEDLINE INDUSTRIES INC", "DYND70294BH", "DYND70294B", "CUP,DENTURE,8OZ", "EA", 1,
+                   "100339", "Yes"),
               ]],
         ],
+        # Infor's UOM for one typed another way (MDM_EDI_SUB_UOM), a few of O2's 32.
+        "vw_UomAlias": [{"external_value": ext, "lawson_value": infor}
+                        for ext, infor in [("CS", "CA"), ("VL", "VI"), ("GL", "GA"), ("BT", "BO"), ("PH", "PK")]],
         # Infor's vendors: the tests' four and a few more, several Cardinal Health ones among them.
         "vw_Vendor": TEST_VENDORS + [
             {"vendor_id": vid, "vendor_name": name, "legal_name": legal, "search_name": search, "vendor_status": status}
@@ -215,13 +221,16 @@ def o2_rows() -> dict[str, list[dict]]:
         "vw_Vendor": ("SELECT {cols} FROM (SELECT Vendor AS vendor_id, VendorName AS vendor_name, LegalName AS legal_name, "
                       "VendorSearchName AS search_name, VendorStatus AS vendor_status "
                       "FROM PLMPreprocessorShared.infor.MDM_VENDOR) AS v"),
+        "vw_UomAlias": ("SELECT {cols} FROM (SELECT DISTINCT UPPER(LTRIM(RTRIM(ExternalValue))) AS external_value, "
+                        "UPPER(LTRIM(RTRIM(LawsonValue))) AS lawson_value "
+                        "FROM PLMPreprocessorShared.infor.MDM_EDI_SUB_UOM) AS v"),
     }
     found = {}
     conn = pyodbc.connect(O2, readonly=True)
     try:
         cur = conn.cursor()
         for name, sql in copies.items():
-            if name in ("vw_ContractLineSearch", "vw_Vendor"):  # read as 13 defines them
+            if name in ("vw_ContractLineSearch", "vw_Vendor", "vw_UomAlias"):  # read as 13 defines them
                 present = set(FILLKILL_VIEWS[name])
             else:
                 cur.execute("SELECT name FROM sys.columns WHERE object_id = OBJECT_ID(?)", f"FillKill.{name}")

@@ -141,11 +141,54 @@ def search_vendors(q: str) -> list[dict]:
         raise RuleError(VENDOR_LOOKUP_DOWN, 503) from None
 
 
-def _check_vendor_id(vendor_id: str | None) -> None:
-    """A vendor ID, when given, must be one Infor knows, or 0000000 (Vendor not available in system)."""
-    if vendor_id and vendor_id != rules.NO_VENDOR_ID and find_vendor(vendor_id) is None:
+def uom_aliases() -> dict[str, str]:
+    """Infor's UOM for one typed another way (queries.uom_aliases). If vw_UomAlias can't be read
+    (13_contract_search.sql not run yet, or no grant), UOMs stay as typed and the log says why;
+    nothing is refused for it. Read before a change starts: it rolls the session back on failure."""
+    try:
+        return queries.uom_aliases()
+    except SQLAlchemyError:
+        db.session.rollback()
+        log.exception("FillKill.vw_UomAlias read failed; has 13_contract_search.sql been run?")
+        return {}
+
+
+def _check_vendor_id(vendor_id: str | None) -> dict | None:
+    """A vendor ID, when given, must be one Infor knows, or 0000000 (Vendor not available in system).
+    Returns Infor's vendor for it (None for 0000000 or no ID)."""
+    if not vendor_id or vendor_id == rules.NO_VENDOR_ID:
+        return None
+    found = find_vendor(vendor_id)
+    if found is None:
         raise RuleError(f"Vendor ID {vendor_id} isn't in Infor's vendor list. Fix it, or use "
                         f"{rules.NO_VENDOR_ID} ({rules.NO_VENDOR_LABEL}).")
+    return found
+
+
+def _infor_name(found: dict | None) -> str | None:
+    """Infor's name for a vendor ID (2026-10-21): the vendor name follows the ID, so a name and an ID
+    saved together are always the same vendor. None for 0000000, whose name is typed by hand."""
+    name = str((found or {}).get("vendor_name") or "").strip()
+    return name[:rules.LIMITS["vendor"]] or None
+
+
+def _vendor_follows_id(record, changes: dict) -> None:
+    """In a correction that touches the vendor or its ID, the vendor name becomes Infor's for the ID
+    (an order from before vendor IDs may have none: its name stays as typed). A name typed for an
+    Infor vendor ID, and nothing else, is refused: the ID is what to change."""
+    if not changes.keys() & {"vendor", "vendor_id"}:
+        return
+    vendor_id = changes.get("vendor_id", record.vendor_id)
+    name = _infor_name(_check_vendor_id(vendor_id))
+    if name is None:
+        return
+    if name == record.vendor:
+        changes.pop("vendor", None)
+    else:
+        changes["vendor"] = name
+    if not changes:
+        raise RuleError(f"The vendor name follows the vendor ID: Infor calls {vendor_id} {name}. "
+                        "To change the vendor, change its vendor ID.")
 
 
 def _commit():
@@ -259,7 +302,7 @@ def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
 
 def delete_sub(sub_id: int, reason, actor: str, *, expected_status: str | None = None) -> Sub:
     """Hide a sub everywhere, keeping its row and history (who, when, why). Refused for the
-    Approver's Pick and for a sub with orders that aren't voided."""
+    sub picked for ordering and for a sub with orders that aren't voided."""
     def action():
         sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
@@ -359,13 +402,16 @@ def _open_orders_of(item: VendorItem) -> int:
 
 def add_vendor_item(sub_id: int, data: dict, actor: str) -> VendorItem:
     """A way to order the sub (2026-10-20): a vendor's part in a UOM, with Infor's vendor ID (or
-    0000000). Any sub can have them, whatever its status, as many as there are ways to order it."""
-    clean = rules.check_new_vendor_item(data)
+    0000000). Any sub can have them, whatever its status, as many as there are ways to order it,
+    but never the Medline item itself from Medline. The UOM is Infor's (CS is saved as CA), and so is
+    the vendor name for an Infor vendor ID (2026-10-21)."""
+    clean = rules.check_new_vendor_item(data, uoms=uom_aliases())
 
     def action():
         sub = _live_sub(sub_id)
+        rules.check_not_the_killed_item(sub.medline_item, clean)
         _ensure_unique_vendor_item(sub, clean)
-        _check_vendor_id(clean["vendor_id"])
+        clean["vendor"] = _infor_name(_check_vendor_id(clean["vendor_id"])) or clean["vendor"]
         now = now_ny_naive()
         item = VendorItem(sub_id=sub.sub_id, **clean, entered_by=actor, create_dt=now, update_dt=now)
         db.session.add(item)
@@ -378,16 +424,21 @@ def add_vendor_item(sub_id: int, data: dict, actor: str) -> VendorItem:
 
 
 def edit_vendor_item(vendor_item_id: int, data: dict, actor: str) -> VendorItem:
-    """Corrects a vendor item, any time; its orders keep what they were placed with."""
+    """Corrects a vendor item, any time; its orders keep what they were placed with. It can't be
+    made the Medline item itself from Medline."""
+    uoms = uom_aliases()
+
     def action():
         item, sub = _live_vendor_item(vendor_item_id)
-        changes = rules.check_vendor_item_changes(item, data)
+        changes = rules.check_vendor_item_changes(item, data, uoms=uoms)
+        if changes.keys() & {"vendor_id", "vendor_part"}:
+            rules.check_not_the_killed_item(sub.medline_item, {name: changes.get(name, getattr(item, name))
+                                                               for name in ("vendor_id", "vendor_part")})
         if changes.keys() & {"vendor_id", "vendor_part", "uom"}:
             _ensure_unique_vendor_item(sub, {name: changes.get(name, getattr(item, name))
                                              for name in ("vendor_id", "vendor_part", "uom")},
                                        except_id=item.vendor_item_id)
-        if "vendor_id" in changes:
-            _check_vendor_id(changes["vendor_id"])
+        _vendor_follows_id(item, changes)
         now = now_ny_naive()
         for name, value in changes.items():
             _history("vendoritem", item.vendor_item_id, sub.medline_item, "edit", actor, now,
@@ -446,12 +497,13 @@ def record_order(vendor_item_id: int, data: dict, actor: str, *, expected_status
 
 
 def edit_order(order_id: int, data: dict, actor: str) -> SubOrder:
+    uoms = uom_aliases()
+
     def action():
         order = _locked(SubOrder, order_id)
         now = now_ny_naive()
-        changes = rules.check_order_edit(order, data, now=now)
-        if "vendor_id" in changes:
-            _check_vendor_id(changes["vendor_id"])
+        changes = rules.check_order_edit(order, data, now=now, uoms=uoms)
+        _vendor_follows_id(order, changes)
         for name, value in changes.items():
             _history("order", order.order_id, order.medline_item, "edit", actor, now,
                      field=name, from_value=getattr(order, name), to_value=value)

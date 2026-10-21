@@ -42,7 +42,7 @@ changes something now ends with a red error when a transaction is still open (20
 | `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines plus the test lines, with `Reason`, `Reason Date`, `Is Test`, `Test Purpose`), `vw_FillKillLastLoad` ("data as of"), and the test lines in `FillKill.TestFillKillLine`. | Any time; re-running reloads the test lines. |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (so the test site shows), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
 | `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each), `SubOrder`, `History`, and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
-| `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`) and `vw_Vendor` (Infor's vendors, with their legal and search names). | Whenever it changes, before running that code. |
+| `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`), `vw_Vendor` (Infor's vendors, with their legal and search names) and `vw_UomAlias` (Infor's UOM for one typed another way, from `MDM_EDI_SUB_UOM`: CS is CA, VL is VI). | Whenever it changes, before running that code. |
 | `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review, with a vendor item when Medline's contract lines give one UOM. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes, after `12`. Its version line is what `09` and the app check. |
 | `90_reset_workflow.sql` | Empties `Sub`, `SubVendorItem`, `SubOrder` and `History` (with DELETE: `TRUNCATE` is refused on tables other tables' keys point at), numbers new ones from 1, and drops `12`'s copy `Sub_before_vendor_items`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
 | `rollback_deploy1.sql` | Sets `users.user_role` back to `admin` / `user` / `view-only` from each person's PLM role, which is all the previous release reads. | Only just before putting the previous release back. Leave the new tables and columns in place. |
@@ -64,8 +64,10 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 
 ## On O2 now (checked 2026-10-20, read-only)
 
-- `01`-`03`, `10`-`14`: run and current. `09`: every Fill/Kill check `PASS`, but for the History
-  one below.
+- `01`-`03`, `10`-`14`: run and current, except `13`'s `vw_UomAlias` (added 2026-10-20, after
+  the run): re-run `13`. Until then the app keeps UOMs as typed (CS stays CS), logs why, and admins
+  see the warning on Main. `09`: every Fill/Kill check `PASS`, but that one and the History one
+  below.
 - `04`: not yet (deploy #1 isn't live).
 - `12`'s vendor items step and `14` ran at 15:08 on 10/20, as tried beforehand on a copy: sub 11
   (930103 on B-D930299Z, entered a second time for a second vendor part) merged into sub 10, which
@@ -98,7 +100,7 @@ runs a script or query has its command under **Commands** below.
 2. Grants for the app's account (a view in PLM doesn't carry permissions into another database):
    - read `SCSFileIngestor`: `MedlineFillKill`, `ETLHealth`, `MedlineSubCollection`
    - read `PLMPreprocessorShared.infor`: `MDM_ITEM`, `MDM_ITEMUOM`, `CONTRACTLINE`,
-     `MDM_VENDORITEM`, `MDM_VENDOR`
+     `MDM_VENDORITEM`, `MDM_VENDOR`, `MDM_EDI_SUB_UOM` (2026-10-20)
    - EXECUTE on `FillKill.usp_SyncPboSubs`
 3. The Medline kill-line load (A13) runs on its schedule in Task Scheduler. Main marks data more
    than 90 minutes old.
@@ -119,7 +121,11 @@ put the code in place and recycle the app pool.
    `view-only` accounts edit). Then `09`: all `PASS`, except the History check if step 11's
    query hasn't run.
 7. Everyone logs in once more: logins from before this release have no recorded login time.
-8. An admin opens Fill/Kill's Main page: no "The database needs an update" warning.
+8. An admin opens Fill/Kill's Main page: no "The database needs an update" warning, and the
+   Fill/Kill dates are **today's**. On the server Main opens on today (2026-10-20); locally it opens
+   on the latest day with kill lines (9/30 in O2's data now). That follows `FLASK_ENV=production`
+   in `web.config`: `ProductionConfig` sets `FILLKILL_OPEN_ON` to `today`. Nothing to change for it,
+   but if Main opens on an older day, the server's `.env` has `FILLKILL_OPEN_ON=latest`: remove it.
 9. In User Control, give the Fill/Kill roles: nursing Sub Approver, Materials Managers Materials
    Manager, viewers Viewer.
 

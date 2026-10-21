@@ -11,14 +11,14 @@ import io
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-from flask import Blueprint, Response, jsonify, render_template, request, url_for
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import SUB_SOURCES, SUB_STATUSES
-from .rules import NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
+from .rules import MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
@@ -112,10 +112,13 @@ def index():
     first, last = queries.date_bounds()
     module = MODULES[FILLKILL]
     held = roles_in(current_user, FILLKILL)
+    today = now_ny_naive().date()
+    # The live server opens on today; locally, on the latest day with kill lines (FILLKILL_OPEN_ON).
+    opening = today if current_app.config.get("FILLKILL_OPEN_ON") == "today" else last
     config = {
         "bounds": {"first": first, "last": last},
-        "default": {"start": last, "end": last},
-        "today": now_ny_naive().date(),  # for "View today"
+        "default": {"start": opening, "end": opening},
+        "today": today,  # for "View today"
         "ordersDays": ORDERS_DAYS,
         "sites": queries.sites(),
         "can": capabilities(current_user),
@@ -125,6 +128,10 @@ def index():
         "needs": [[key, rollup.NEEDS_LABELS[key]] for key in rollup.NEEDS],
         # The vendor ID that says Infor has no such vendor (2026-10-19).
         "noVendor": {"id": NO_VENDOR_ID, "label": NO_VENDOR_LABEL},
+        # A vendor item that is the Medline item itself from Medline isn't a sub (2026-10-20).
+        "medlineVendorIds": list(MEDLINE_VENDOR_IDS),
+        # A UOM typed another way, and Infor's for it (CS is CA): the forms change it as it's typed.
+        "uomAliases": services.uom_aliases(),
         "api": {
             "main": url_for("fillkill.api_main"),
             "item": url_for("fillkill.api_item"),
@@ -393,8 +400,8 @@ def api_add_sub():
 SUB_ACTIONS = {
     "edit": "add_sub",
     "status": "review",
-    "pick": "review",
-    "unpick": "review",
+    "pick": "pick",  # Sub Approvers and Materials Managers (2026-10-21)
+    "unpick": "pick",
     "comments": "review",
     "delete": "add_sub",
 }

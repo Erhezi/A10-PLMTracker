@@ -222,6 +222,10 @@ SELECT 'view FillKill.vw_Vendor has the legal and search names (13, 2026-10-19)'
        CASE WHEN COL_LENGTH(N'FillKill.vw_Vendor', N'legal_name') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_Vendor', N'search_name') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
+SELECT 'view FillKill.vw_UomAlias, typed UOMs to Infor''s (13, 2026-10-20)',
+       CASE WHEN COL_LENGTH(N'FillKill.vw_UomAlias', N'external_value') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_UomAlias', N'lawson_value') IS NOT NULL THEN 'PASS' ELSE 'FAIL: run 13' END
+UNION ALL
 -- The version line near the top of 14; change both together.
 SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-20 version (14)',
        CASE WHEN OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]', N'P') IS NULL THEN 'FAIL: run 14'

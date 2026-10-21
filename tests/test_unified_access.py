@@ -134,7 +134,7 @@ def test_cleanup_actions_stay_admin_only(sqlite_app):
 
 def test_landing_goes_to_the_first_module_you_can_open(sqlite_app):
     plm = client_for(sqlite_app, "plm@example.org", role="user")
-    assert plm.get("/").headers["Location"].endswith("/dashboard/")
+    assert plm.get("/").headers["Location"].endswith("/groups")
 
     fk = client_for(sqlite_app, "fk@example.org", plm=None, fillkill=("viewer",))
     assert fk.get("/").headers["Location"].endswith("/fillkill/")

@@ -125,6 +125,9 @@ class Config:
     MAX_BATCH_PER_SIDE = int(os.getenv("MAX_BATCH_PER_SIDE", "6"))  # Max items or replace_items per side (total combinations = per_side^2)
     ENABLE_BURN_RATE_REFRESH = os.getenv("ENABLE_BURN_RATE_REFRESH", "1") not in {"0", "false", "False"}
     INCLUDE_OR_INVENTORY_LOCATIONS = os.getenv("INCLUDE_OR_INVENTORY_LOCATIONS", "0").lower() in {"1", "true", "yes"}
+    # Fill/Kill's Main opens on "today", or on the "latest" day with kill lines. Locally that's the
+    # latest (O2's lines may end days ago); the live server opens on today (ProductionConfig).
+    FILLKILL_OPEN_ON = os.getenv("FILLKILL_OPEN_ON", "latest")
 
     @classmethod
     def validate(cls):
@@ -146,6 +149,7 @@ class DevelopmentConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
+    FILLKILL_OPEN_ON = os.getenv("FILLKILL_OPEN_ON", "today")  # go-live (2026-10-20): Main opens on today
 
 config_map = {
     "development": DevelopmentConfig,

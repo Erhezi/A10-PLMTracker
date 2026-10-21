@@ -5,9 +5,10 @@ import { linked, state } from './state.js';
 import { reloadAll } from './refresh.js';
 import { renderRows } from './table.js';
 
-// Two ways to choose the order dates: today only, or a range in the two date boxes. The button
-// beside them switches. The page opens on today when the newest kill lines are today's, and
-// otherwise on the newest day there is (a range of one day).
+// Two ways to choose the Fill/Kill dates (the kill lines' order dates; named so 2026-10-20, apart
+// from our orders' dates): today only, or a range in the two date boxes. The button beside them
+// switches. The live server opens on today; locally, on the newest day with kill lines
+// (FILLKILL_OPEN_ON), today when that's today.
 export function setupDates() {
   const startInput = $('fk-start');
   const endInput = $('fk-end');
@@ -27,7 +28,7 @@ export function setupDates() {
     startInput.disabled = onToday;
     endInput.disabled = onToday;
     modeButton.textContent = onToday ? 'Select a range' : 'View today';
-    modeButton.title = onToday ? 'Choose the first and last order dates'
+    modeButton.title = onToday ? 'Choose the first and last Fill/Kill dates'
       : `Show only today's kill lines (${fmtDate(today)})`;
   };
 

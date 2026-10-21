@@ -10,8 +10,8 @@ Inputs, all plain dicts:
   item_rows    vw_MedlineFillKillItemCollection rows of the Medline items in the range
   subs         subs of those Medline items and of their Infor items' other Medline items:
                sub_id, medline_item, reference_sku, status, is_picked, vendor_items
-  orders       non-voided orders dated on or after the range's first day, for the same Medline
-               items: medline_item, order_id, quantity, uom, ordered_dt
+  orders       non-voided orders dated inside the range (2026-10-20), for the same Medline items:
+               medline_item, order_id, quantity, uom, ordered_dt
   reasons      {medline_item: {comment, reason, reason_date, order_date, order_time}}: the latest
                comment in the range
   family_rows  item-view rows (Medline Item, UM, Customer Item #, Infor Item) of every Medline item
@@ -95,6 +95,19 @@ def merge_item_details(item_rows) -> dict[str, dict]:
         merged["infor_consistent"] = consistent.get(item)
         details[item] = merged
     return details
+
+
+def eaches(amounts) -> float | None:
+    """(quantity, uom, eaches per unit) added up in eaches; an EA without a QOE counts 1. None when
+    one can't be converted (no QOE for another UOM)."""
+    total = 0.0
+    for quantity, uom, per in amounts:
+        if per in (None, ""):
+            if str(uom or "").strip().upper() != "EA":
+                return None
+            per = 1
+        total += float(quantity or 0) * float(per)
+    return total
 
 
 def subs_status(subs) -> dict[str, int]:
@@ -236,7 +249,7 @@ def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> di
         "lines": qty["lines"],
         "latest_reason": reason,
         "subs_status": subs_status(item_subs),
-        "picks": [s for s in item_subs if s.get("is_picked")],
+        "picks": sorted((s for s in item_subs if s.get("is_picked")), key=lambda s: s["sub_id"]),  # oldest first
         "orders": orders,
     }
 
@@ -305,7 +318,12 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
             "subs_status": counts,
             "picks": picks,
             "approved_other_packagings": list(elsewhere.values()),
-            "orders": row_orders,  # since the range's first day, newest first
+            "orders": row_orders,  # dated inside the range, newest first
+            # Killed and ordered in these dates, in eaches (2026-10-21): kill lines keep coming in
+            # through the day, so a Materials Manager can see when orders fall short. An order counts
+            # by its own QOE (quantity x eaches per its UOM).
+            "killed_each": eaches((q["killed"], q["uom"], q["each"]) for q in quantities_),
+            "sub_ordered_each": eaches((o.get("quantity"), o.get("uom"), o.get("qoe")) for o in row_orders),
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered,
                                  details_missing=any(not p.get("vendor_items") for p in picks)),

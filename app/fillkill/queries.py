@@ -8,6 +8,7 @@ the tests stand in tables with the views' names and columns.
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
@@ -25,6 +26,7 @@ LINES = "[FillKill].[vw_MedlineFillKill]"
 LAST_LOAD = "[FillKill].[vw_FillKillLastLoad]"
 CONTRACTS = "[FillKill].[vw_ContractLineSearch]"
 VENDORS = "[FillKill].[vw_Vendor]"
+UOM_ALIASES = "[FillKill].[vw_UomAlias]"
 
 LIBRARY_LIMIT = 1000
 
@@ -195,13 +197,24 @@ def _range_condition(column, scope: Scope):
     return and_(column >= scope.start, column < scope.end + timedelta(days=1))
 
 
-def orders_since_start(scope: Scope, items=None) -> list[dict]:
-    """Non-voided orders dated on or after the scope's first day: the orders placed since those
-    kills (Ordering Status, S4; 2026-10-15). Kills are ordered for afterwards, so there's no end."""
-    query = select(SubOrder).where(SubOrder.voided_at.is_(None), SubOrder.ordered_dt >= scope.start)
+def _orders(condition, items=None) -> list[dict]:
+    query = select(SubOrder).where(SubOrder.voided_at.is_(None), condition)
     if items is not None:
         query = query.where(SubOrder.medline_item.in_(sorted(set(items)) or [""]))
     return [order_dict(order) for order in db.session.execute(query).scalars()]
+
+
+def orders_in_range(scope: Scope, items=None) -> list[dict]:
+    """Non-voided orders dated inside the scope's Fill/Kill dates: the main table's Ordering column
+    (S4; 2026-10-20, back from "on or after the first day"), so Ordered and No order are about
+    those dates."""
+    return _orders(_range_condition(SubOrder.ordered_dt, scope), items)
+
+
+def orders_since_start(scope: Scope, items=None) -> list[dict]:
+    """Non-voided orders dated on or after the scope's first day: what the Dashboard's kill-to-order
+    times look for, the first order after each kill, whenever it came."""
+    return _orders(SubOrder.ordered_dt >= scope.start, items)
 
 
 def family_rows(infor_items) -> list[dict]:
@@ -228,11 +241,19 @@ def main_table_inputs(scope: Scope) -> dict:
     items = {row["medline_item"] for row in qty}
     details = item_rows(scope)
     family = family_rows(row.get("Infor Item") for row in details)
+    subs = subs_for_items(items | {row["Medline Item"] for row in family})
+    # A pick's comments: how many and the latest, for its comments icon on Main (2026-10-21).
+    latest = _latest_comments("sub", [s["sub_id"] for s in subs if s["is_picked"]])
+    for sub in subs:
+        if sub["is_picked"]:
+            found = latest.get(sub["sub_id"])
+            sub["comments"] = found["count"] if found else 0
+            sub["latest_comment"] = found
     return {
         "qty_rows": qty,
         "item_rows": details,
-        "subs": subs_for_items(items | {row["Medline Item"] for row in family}),
-        "orders": orders_since_start(scope, items),
+        "subs": subs,
+        "orders": orders_in_range(scope, items),
         "reasons": latest_reasons(scope),
         "family_rows": family,
     }
@@ -308,7 +329,8 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     uoms: dict[str, list] = {medline_item: [row.get("UM") or "" for row in own]}
     for row in family_rows([infor] if infor else []):
         uoms.setdefault(row["Medline Item"], []).append(row.get("UM") or "")
-    uoms = {item: "/".join(sorted(set(u))) for item, u in uoms.items()}
+    uom_lists = {item: sorted(set(u)) for item, u in uoms.items()}
+    uoms = {item: "/".join(u) for item, u in uom_lists.items()}
     members = sorted(uoms)
 
     item_view_rows = _rows(
@@ -316,6 +338,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
         {"members": members}, [bindparam("members", expanding=True)],
     )
     details = rollup.merge_item_details(item_view_rows)
+    factors = rollup.each_factors(item_view_rows)
 
     every_sub = db.session.execute(
         select(Sub).where(Sub.medline_item.in_(members)).order_by(Sub.create_dt, Sub.sub_id)
@@ -365,6 +388,8 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
             "medline_item": item,
             "um": uoms[item],
             "qoe": info.get("item_qoe"),  # eaches per UOM, from Infor's conversion for the Infor item
+            # Each UOM with its QOE, for the forms' "for B-D930299Z (BX/25)" (2026-10-21); qoe None if Infor has none.
+            "uom_qoes": [{"uom": u, "qoe": factors.get((item, u))} for u in uom_lists[item] if u],
             "customer_item": info.get("customer_item"),
             "consistent": bool(infor) and info.get("customer_item") == infor,
             "description": info.get("description"),
@@ -636,6 +661,19 @@ def vendor(vendor_id: str) -> dict | None:
         {"id": vendor_id},
     )
     return rows[0] if rows else None
+
+
+def uom_aliases() -> dict[str, str]:
+    """Infor's UOM for each one typed another way (vw_UomAlias, 13_contract_search.sql; 2026-10-20):
+    {"CS": "CA", "VL": "VI", ...}. An external value listed with two Infor UOMs is left out, so it
+    stays as typed."""
+    found: dict[str, set] = defaultdict(set)
+    for row in _rows(f"SELECT external_value, lawson_value FROM {UOM_ALIASES}"):
+        external = str(row["external_value"] or "").strip().upper()
+        lawson = str(row["lawson_value"] or "").strip().upper()
+        if external and lawson and external != lawson:
+            found[external].add(lawson)
+    return {external: lawson.pop() for external, lawson in found.items() if len(lawson) == 1}
 
 
 VENDOR_LIMIT = 20

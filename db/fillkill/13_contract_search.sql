@@ -1,5 +1,6 @@
 -- Contract-line search for "Add sub": Infor contract lines active today, with what a sub needs;
--- and Infor's vendors (vw_Vendor), to check a sub's vendor ID and fill in its name.
+-- Infor's vendors (vw_Vendor), to check a sub's vendor ID and fill in its name; and Infor's UOM
+-- for one typed another way (vw_UomAlias, 2026-10-20).
 -- Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.2). Safe to re-run.
 --
 -- The app matches the stripped vendor item or manufacturer number first, then description words,
@@ -50,6 +51,16 @@ SELECT v.[Vendor]           AS [vendor_id],
        v.[VendorSearchName] AS [search_name],
        v.[VendorStatus]     AS [vendor_status]
 FROM [PLMPreprocessorShared].[infor].[MDM_VENDOR] AS v;
+GO
+
+-- Infor's (Lawson's) UOM for one typed another way (2026-10-20): CS is CA, VL is VI. A UOM typed
+-- into a vendor item or an order correction is saved as Infor's when it's one of these external
+-- values, and as typed otherwise; the order form also compares Medline's UOM to the vendor item's
+-- through it. 32 rows on 10/20, all in EDI list L1_I_UOM.
+CREATE OR ALTER VIEW [FillKill].[vw_UomAlias] AS
+SELECT DISTINCT UPPER(LTRIM(RTRIM(u.[ExternalValue]))) AS [external_value],
+                UPPER(LTRIM(RTRIM(u.[LawsonValue])))   AS [lawson_value]
+FROM [PLMPreprocessorShared].[infor].[MDM_EDI_SUB_UOM] AS u;
 GO
 
 -- Still in a transaction here? (SSMS's "SET IMPLICIT_TRANSACTIONS" option, or a BEGIN TRAN run

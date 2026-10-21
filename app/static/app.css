@@ -1300,7 +1300,8 @@ div.fk-vi-tile { border: 1px solid var(--bs-border-color); border-radius: var(--
 .fk-vendor-items > li + li { border-top: 1px dashed var(--bs-border-color); }
 /* One <tbody> per Infor item: its UOMs highlight together, with lighter lines between them. */
 .fk-main > tbody.fk-item:hover > tr > * { --bs-table-bg-state: var(--bs-table-hover-bg); }
-.fk-main > tbody.fk-item > tr:not(:last-child) > td:not([rowspan]) { border-bottom-style: dashed; }
+.fk-main > tbody.fk-item > tr:not(:last-child) > td:not([data-to-end]) { border-bottom-style: dashed; }
+.fk-main > tbody.fk-item > tr:not(:last-child) > td.fk-pick-split { border-bottom-style: dotted; }  /* between picks of a UOM */
 .fk-main > tbody.fk-item > tr.fk-total > td { font-size: 0.875rem; }
 .fk-flag { margin-left: 0.125rem; }
 .fk-panel.offcanvas-end { width: min(44rem, 100vw); }
@@ -1315,4 +1316,10 @@ div.fk-vi-tile { border: 1px solid var(--bs-border-color); border-radius: var(--
   .fk-panel-resize { display: none; }
 }
 .fk-timeline li { line-height: 1.35; }
+/* The item panel's kill lines and orders (2026-10-21): smaller than .small, to fit the panel. */
+.fk-panel-table { font-size: 0.75rem; }
+.fk-panel-table > :not(caption) > * > * { padding: 0.2rem 0.3rem; }
+/* A pick's comments on Main (2026-10-21): a popover whose list scrolls past a few comments. */
+.fk-comments-popover { --bs-popover-max-width: 22rem; --bs-popover-font-size: 0.8rem; }
+.fk-comments-popover .popover-body { max-height: 18rem; overflow-y: auto; }
 .fk-chart { position: relative; height: 16rem; }

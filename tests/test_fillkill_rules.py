@@ -93,6 +93,32 @@ def test_vendor_item_changes_are_only_the_fields_that_differ():
     assert rules.check_vendor_item_changes(item, {"qoe": ""}) == {"qoe": None}  # QOE may be left out
 
 
+def test_a_uom_typed_another_way_becomes_infors():
+    # MDM_EDI_SUB_UOM's external values to Infor's (2026-10-20); one it doesn't list stays as typed.
+    uoms = {"CS": "CA", "VL": "VI"}
+    assert [rules.infor_uom(u, uoms) for u in ("cs", "VL", "bx")] == ["CA", "VI", "BX"]
+    clean = rules.check_new_vendor_item({"vendor_part": "P", "vendor": "V", "vendor_id": "1", "uom": " cs "}, uoms=uoms)
+    assert clean["uom"] == "CA"
+    assert rules.check_new_vendor_item({"vendor_part": "P", "vendor": "V", "vendor_id": "1", "uom": "cs"})["uom"] == "CS"
+    # Typed the other way, it's the same UOM: nothing to change.
+    refused(lambda: rules.check_vendor_item_changes(vendor_item(uom="CA"), {"uom": "CS"}, uoms=uoms), says="Nothing to change")
+    assert rules.check_order_edit(order(uom="BX"), {"uom": "vl"}, now=NOW, uoms=uoms) == {"uom": "VI"}
+
+
+@pytest.mark.parametrize("vendor_id", rules.MEDLINE_VENDOR_IDS)
+def test_the_medline_item_itself_from_medline_is_not_a_sub(vendor_id):
+    # Its vendor part is the Medline item, under one of Medline's vendor IDs (2026-10-20), in any case.
+    refused(lambda: rules.check_not_the_killed_item("MMO2329H", {"vendor_part": "mmo2329h", "vendor_id": vendor_id}),
+            says="MMO2329H itself, the Medline item that was killed")
+
+
+def test_the_same_part_from_another_vendor_or_another_medline_part_is_a_sub():
+    for values in ({"vendor_part": "MMO2329H", "vendor_id": "1000001"},   # not Medline
+                   {"vendor_part": "MMO2329H", "vendor_id": "0000000"},   # not in Infor
+                   {"vendor_part": "MMO2329", "vendor_id": "1000931"}):   # Medline, another part
+        rules.check_not_the_killed_item("MMO2329H", values)
+
+
 # --- status and picks ----------------------------------------------------------------
 
 @pytest.mark.parametrize("new", ["approved", "hold", "rejected"])

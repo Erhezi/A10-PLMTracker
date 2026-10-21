@@ -90,6 +90,21 @@ MODULES = {
     ),
 }
 
+# What each Fill/Kill capability lets someone do, one thing a line, for the "Who can do what" table
+# on the module's help page (2026-10-21). Its ticks come from the capabilities above, so the page
+# shows what the app checks; a new capability needs its lines here (a test says so).
+FILLKILL_FUNCTIONS = (
+    ("See Main, Subs and the Dashboard: kill lines, subs, vendor items, orders, comments and histories; export the subs", "view"),
+    ("Add a sub (its Reference SKU)", "add_sub"),
+    ("Correct a sub's Reference SKU, or delete a sub with a reason", "add_sub"),
+    ("Approve, hold or reject a sub", "review"),
+    ("Comment on a sub", "review"),
+    ("Pick or unpick a sub for ordering", "pick"),
+    ("Add, correct or delete a sub's vendor items (vendor item details), with the contract and vendor searches", "details"),
+    ("Record an order from a vendor item", "order"),
+    ("Correct or void an order; comment on an order", "order"),
+)
+
 APPROVE_ORDER_CONFLICT_MESSAGE = (
     "Sub Approver and Materials Manager can't be held by the same person, except by admins."
 )

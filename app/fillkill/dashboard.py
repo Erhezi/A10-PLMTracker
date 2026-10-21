@@ -65,7 +65,7 @@ def review_hours(subs, history, start: date, end: date) -> list[float]:
 
 
 def weekly_new_subs(subs, start: date, end: date) -> dict:
-    """Subs added per week (weeks start on Monday), by source."""
+    """Subs added per week (weeks start on Monday), by source. Not on the Dashboard for now (2026-10-21)."""
     first_monday = start - timedelta(days=start.weekday())
     weeks = []
     week = first_monday
@@ -84,7 +84,8 @@ def weekly_new_subs(subs, start: date, end: date) -> dict:
 
 def rejected_groups(subs, history) -> list[dict]:
     """Subs rejected now, grouped by vendor (most first), with who rejected each, when, and comments.
-    A sub's vendors are its vendor items' (2026-10-20); one rejected before any was added has none."""
+    A sub's vendors are its vendor items' (2026-10-20); one rejected before any was added has none.
+    Not on the Dashboard for now (2026-10-21)."""
     rejected_by: dict[int, dict] = {}
     comments: dict[int, list] = defaultdict(list)
     for row in history:
@@ -181,6 +182,6 @@ def build(scope: queries.Scope) -> dict:
         "by_site": series_by_day(queries.lines_by_day(scope, "site"), scope.start, scope.end),
         "top_items": rollup.most_killed(rows, TOP_ITEMS),
         "subs_by_status": status_counts,
-        "new_subs": weekly_new_subs(subs, scope.start, scope.end),
-        "rejected": rejected_groups(subs, history),
+        # Subs added per week (weekly_new_subs) and rejected subs by vendor (rejected_groups) are off
+        # the Dashboard for now (the user, 2026-10-21); the functions stay, to bring them back.
     }

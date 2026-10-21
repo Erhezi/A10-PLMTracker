@@ -133,6 +133,11 @@ export function inforUom(uom) {
   return UOM_ALIASES[text] || text;
 }
 
+// A vendor item (or order) without a QOE, in a UOM other than EA (an EA is 1): flagged wherever it
+// shows, since how many to order can't be worked out without it (2026-10-21).
+export const noQoeBadge = (v) => (v.qoe || inforUom(v.uom) === 'EA' ? ''
+  : ' <span class="badge text-bg-warning" title="No QOE: how many eaches it holds is unknown, so the order form can\'t recommend a quantity. Correct it to add the QOE.">no QOE</span>');
+
 // Leading and trailing spaces typed or pasted into a box go as soon as it's left (2026-10-20); the
 // server drops them too. Returns whether the box changed.
 export function trimInput(el) {

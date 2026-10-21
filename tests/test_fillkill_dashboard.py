@@ -98,6 +98,10 @@ def test_dashboard_page_and_api(sqlite_app):
     assert data["subs_by_status"] == {"approved": 0, "hold": 0, "pending_review": 0, "rejected": 0}
     assert data["flow"] == {"items": 1, "kill_to_sub": None, "items_with_sub": 0, "sub_to_order": None,
                             "kill_to_order": None, "items_ordered": 0}
+    # Off for now (2026-10-21): subs added per week, rejected subs by vendor, and Ordering in the top items.
+    assert "new_subs" not in data and "rejected" not in data
+    assert "fk-chart-new-subs" not in page and "fk-dash-rejected" not in page and ">Ordering</th>" not in page
+    assert 'data-days="today">Today</button>' in page and '"today": "' in page
 
 
 def test_flow_medians_from_kill_to_sub_to_order():

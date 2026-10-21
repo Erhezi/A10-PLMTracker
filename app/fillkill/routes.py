@@ -68,9 +68,11 @@ def default_dates(days: int = 1) -> tuple[date, date]:
 
 def scope_from_request(days: int = 1) -> queries.Scope:
     """Dates from ?start&end (default: the latest ``days`` of data); sites from ?sites=a,b."""
-    default_start, default_end = default_dates(days)
-    start = _parse_date(request.args.get("start"), default_start)
-    end = _parse_date(request.args.get("end"), default_end)
+    start, end = request.args.get("start"), request.args.get("end")
+    # The defaults read the data's first and last dates: only when a date isn't given (2026-10-21).
+    defaults = default_dates(days) if not (start and end) else (None, None)
+    start = _parse_date(start, defaults[0])
+    end = _parse_date(end, defaults[1])
     if start > end:
         start, end = end, start
     raw = ",".join(request.args.getlist("sites"))
@@ -195,6 +197,7 @@ def dashboard_page():
     config = {
         "bounds": {"first": first, "last": last},
         "default": {"start": start, "end": end},
+        "today": now_ny_naive().date(),  # for "Today" (2026-10-21)
         "sites": queries.sites(),
         "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
         "api": {"dashboard": url_for("fillkill.api_dashboard")},

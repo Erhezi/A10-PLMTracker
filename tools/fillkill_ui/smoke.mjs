@@ -273,8 +273,9 @@ const steps = [
     // Killed by the each, ordered by the box of 100: what was killed and a recommendation, in red,
     // and no quantity (2026-10-20).
     const check = (await text('.fk-order-check')).replace(/\s+/g, ' ');
-    expect(check.includes('Killed in these dates: 8 EA of DYND70294BH (EA/1)') && check.includes('Recommended order: 1 BX')
-      && check.includes('= 0.08 BX, rounded up') && check.includes('Quantity is left blank'), `the check: ${check}`);
+    expect(check.includes('Killed in these dates: 8 EA (DYND70294BH: 8 EA (EA/1))') && check.includes('still needed: 8 EA')
+      && check.includes('Recommended order: 1 BX') && check.includes('= 0.08 BX, rounded up') && check.includes('Quantity is left blank'),
+    `the check: ${check}`);
     expect(await evaluate(`getComputedStyle(document.querySelector('.fk-order-check')).backgroundColor`) === 'rgb(248, 215, 218)',
       'the check is not on red');
     const quantity = '#fk-modal-form [name="quantity"]';
@@ -325,8 +326,9 @@ const steps = [
     await panelSays('88885');
     await panelSays('Added the vendor item');
   }],
-  ['Ordered in the UOM and QOE killed, the quantity is filled in', async () => {
-    // MDS2585HC was killed 2 CS (Infor's CA, of 1000); Owens' 88885-CS is a CS of 1000 too, saved as CA.
+  ["The recommendation is what's still needed: killed less what's already ordered", async () => {
+    // Infor item 999999: MDS2585HC killed 2 CS (Infor's CA, of 1000) and MDS2585H 3 BX of 100, 2,300 EA.
+    // Owens' 88885-CS is a CS of 1000 too, saved as CA (2026-10-21).
     await click('#fk-main button[data-open="MDS2585HC"]:not([data-scope])');
     await waitFor(`document.getElementById('fk-panel-title').innerText === 'MDS2585HC'`, 'MDS2585HC in the panel');
     await click('[data-panel-tab="subs"]');
@@ -345,19 +347,86 @@ const steps = [
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     await panelSays('Vendor item added.');
+    const quantity = '#fk-modal-form [name="quantity"]';
+    const check = async () => (await text('.fk-order-check')).replace(/\s+/g, ' ');
+    // 2,300 EA still needed is 2.3 CA: 3 recommended, left blank (not a whole number).
     await click('#fk-panel-content [data-act="order"]');
     await modalOpen();
-    expect(await evaluate(`document.querySelector('#fk-modal-form [name="quantity"]').value`) === '2', 'the quantity is not the 2 killed');
-    expect(await count('.fk-order-check') === 0, 'the check shows though the UOM and QOE are the same');
-    expect((await text('.fk-form-summary')).includes("the vendor item's UOM and QOE"), 'the summary does not say they match');
-    // Ordered short: 1 CA of 1000 against 2,300 EA killed for Infor item 999999 (3 BX of 100, 2 CS of 1000).
-    await setValue('#fk-modal-form [name="quantity"]', '1');
+    let said = await check();
+    expect(said.includes('still needed: 2,300 EA') && said.includes('Recommended order: 3 CA') && said.includes("2.3 CA isn't a whole number"),
+      `the check: ${said}`);
+    expect(await evaluate(`document.querySelector('${quantity}').value`) === '', 'the quantity is filled in');
+    // Ordered short: 1 CA of 1000.
+    await setValue(quantity, '1');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     await panelSays('Order recorded.');
     await waitFor(`${lastCells('MDS2585HC')} === '2,300 EA|1,000 EA 1,300 EA short'`, 'the shortfall', 5000).catch(async () => {
       throw new Error(`the eaches columns: ${await evaluate(lastCells('MDS2585HC'))}`);
     });
+    // The next order takes off what's been ordered: 1,300 EA still needed, 2 CA.
+    await click('#fk-panel-content [data-act="order"]');
+    await modalOpen();
+    said = await check();
+    expect(said.includes('Sub ordered in these dates: 1,000 EA') && said.includes('still needed: 1,300 EA')
+      && said.includes('Recommended order: 2 CA'), `the check: ${said}`);
+    await sleep(500);  // Bootstrap ignores a close while the form is still fading in
+    await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
+    await modalClosed();
+  }],
+  ['Filled in when it matches what was killed; a vendor item without a QOE is flagged', async () => {
+    // SAMPLE0001 was killed 6 EA (not in Infor, so no QOE: an EA is 1).
+    const quantity = '#fk-modal-form [name="quantity"]';
+    await click('#fk-main button[data-open="SAMPLE0001"]:not([data-scope])');
+    await waitFor(`document.getElementById('fk-panel-title').innerText === 'SAMPLE0001'`, 'SAMPLE0001 in the panel');
+    await click('[data-panel-tab="subs"]');
+    await click('[data-act="show-add"]');
+    await setValue('#fk-add-sku', 'S1');
+    await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
+    await panelSays('Approved and picked');
+    for (const [part, uom] of [['S1-EA', 'EA'], ['S1-BX', 'BX']]) {
+      await click('#fk-panel-content [data-act="add-vi"]');
+      await modalOpen();
+      await setValue('#fk-m-vendor_part', part, 'input');
+      await click('[data-no-vendor]');
+      await setValue('#fk-m-vendor', 'Local Supply Co', 'input');
+      await setValue('#fk-m-uom', uom);
+      await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+      await modalClosed();
+      await panelSays('Vendor item added.');
+    }
+    const orderFor = (part) => `[...document.querySelectorAll('#fk-panel-content .fk-vendor-items li')]
+      .find((li) => li.innerText.includes(${JSON.stringify(part)})).querySelector('[data-act="order"]')`;
+    // The EA vendor item is what was killed: 6 EA filled in; with 4 ordered, 2 more.
+    for (const [expected, ordered] of [['6', '4'], ['2', null]]) {
+      await waitFor(orderFor('S1-EA'), 'Record order for S1-EA');
+      await evaluate(`${orderFor('S1-EA')}.click()`);
+      await modalOpen();
+      expect(await evaluate(`document.querySelector('${quantity}').value`) === expected, `the quantity is not ${expected}`);
+      expect((await text('.fk-order-check')).includes('Quantity filled in'), 'no "Quantity filled in"');
+      if (ordered) {
+        await setValue(quantity, ordered);
+        await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+        await modalClosed();
+        await waitFor(`${lastCells('SAMPLE0001')} === '6 EA|4 EA 2 EA short'`, 'the order in the table');
+      } else {
+        await sleep(500);
+        await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
+        await modalClosed();
+      }
+    }
+    // A BX without a QOE: flagged on its tile, and the form says why there's no quantity to recommend.
+    await waitFor(`[...document.querySelectorAll('#fk-main [data-order-vi]')].some((b) => b.innerText.includes('S1-BX')
+      && b.innerText.includes('no QOE'))`, 'the "no QOE" badge on the tile');
+    await evaluate(`${orderFor('S1-BX')}.click()`);
+    await modalOpen();
+    const said = (await text('.fk-order-check')).replace(/\s+/g, ' ');
+    expect(said.includes('No QOE: This vendor item has no QOE') && said.includes('No recommended quantity'), `the check: ${said}`);
+    expect(await evaluate(`document.querySelector('${quantity}').value + '|' + document.querySelector('${quantity}').placeholder`) === '|',
+      'a quantity or a recommendation without a QOE');
+    await sleep(500);
+    await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
+    await modalClosed();
   }],
   ['The Subs page', async () => {
     await go('/fillkill/subs', `document.querySelectorAll('#fk-subs-rows tr').length && !document.getElementById('fk-subs-rows').innerText.includes('Loading')`, 'the subs');
@@ -371,6 +440,14 @@ const steps = [
     await go('/fillkill/dashboard', `document.querySelectorAll('#fk-dash-flow .card').length === 3`, 'the flow cards');
     expect(await count('#fk-dash-headline .card') === 6, 'not 6 headline cards');
     expect((await text('#fk-dash-flow')).includes('Kill to order'), 'no "Kill to order"');
+    // 2026-10-21: no subs-per-week or rejected sections, no Ordering in the top items; a Today button.
+    expect(await count('#fk-chart-new-subs, #fk-dash-rejected') === 0, 'the sections taken off are there');
+    expect(!(await text('#fk-dash-top')).includes('No order') && await evaluate(
+      `[...document.querySelector('#fk-dash-top').closest('table').tHead.rows[0].cells].length`) === 5, 'the top items have an Ordering column');
+    await click('[data-days="today"]');
+    const [y, m, d] = daysAgo(0).split('-');
+    await waitFor(`document.getElementById('fk-dash-range').innerText === '${m}/${d}/${y} to ${m}/${d}/${y}'`, 'the range on today');
+    await waitFor(`document.querySelectorAll('#fk-dash-top tr').length === 2`, "today's two items");
   }],
   ['A nurse: no vendor items, and their Reference SKU is the pick', async () => {
     await go('/dev-login?as=nurse', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
@@ -382,10 +459,10 @@ const steps = [
     await panelSays('Approved and picked');
     expect(await count('#fk-panel-content [data-act="add-vi"]') === 0, 'a nurse can add vendor items');
     expect(await count('#fk-panel-content [data-act="order"]') === 0, 'a nurse sees "Record order"');
-    // Their pick shows the pencil, but it's the Materials Manager's to act on.
-    await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2')
-      && b.querySelector('i.bi-pencil-square'))`, 'the pick with its pencil');
-    expect(await count('#fk-main [data-add-vi]') === 0, 'a nurse can open the vendor item form from the table');
+    // Their pick is in the table without the pencil: adding its vendor items is the Materials
+    // Manager's, and a pencil they can't use looked broken (2026-10-21).
+    await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2'))`, 'the pick');
+    expect(await count('#fk-main .bi-pencil-square, #fk-main [data-add-vi]') === 0, 'a nurse sees the pencil or can open the vendor item form');
     // A second pick on the same UOM gets a line of its own in the table (2026-10-21).
     await click('[data-act="show-add"]');
     await setValue('#fk-add-sku', 'GLV-3');
@@ -505,6 +582,7 @@ const steps = [
     expect(await count('#fk-panel-body [data-act="show-add"], #fk-panel-body select[data-act="status"], #fk-panel-body [data-act="add-vi"]') === 0,
       'a viewer can change subs');
     expect(await count('#fk-main [data-order-vi], #fk-main [data-add-vi]') === 0, 'a viewer can record orders or add vendor items');
+    expect(await count('#fk-main .bi-pencil-square') === 0, 'a viewer sees the pencil of a pick without vendor items (GLV-3)');
     expect(await count('#fk-main div.fk-vi-tile') >= 3, 'a viewer sees no vendor item tiles');
   }],
 ];

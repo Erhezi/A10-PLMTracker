@@ -2,10 +2,9 @@
  * Chart.js is loaded with `defer` in base.html's head, so it has run before this module does.
  */
 
-import { $, REASON_LABEL, config, esc, fmtDate, fmtDateTime, getJSON, itemLink } from './common.js';
+import { $, REASON_LABEL, config, esc, fmtDate, getJSON, itemLink } from './common.js';
 
 const statusLabels = config.statusLabels;
-const SOURCE_LABEL = { manual: 'Entered by hand', medline_pbo: 'Medline PBO', llm: 'AI (future)' };
 const STATUS_COLOR = { approved: '#198754', hold: '#ffc107', pending_review: '#0dcaf0', rejected: '#dc3545' };
 const PALETTE = ['#003769', '#d6336c', '#2a9d8f', '#e9c46a', '#f4a261', '#6c757d', '#7b2cbf', '#0d6efd'];
 
@@ -20,7 +19,8 @@ startInput.value = state.start || '';
 endInput.value = state.end || '';
 [startInput, endInput].forEach((input) => {
   if (config.bounds.first) input.min = config.bounds.first;
-  if (config.bounds.last) input.max = config.bounds.last;
+  const last = [config.bounds.last, config.today].filter(Boolean).sort().pop();  // today, even before its lines
+  if (last) input.max = last;
   input.addEventListener('change', () => {
     if (!startInput.value || !endInput.value) return;
     [state.start, state.end] = startInput.value <= endInput.value
@@ -29,8 +29,19 @@ endInput.value = state.end || '';
   });
 });
 
+// Today (2026-10-21), like Main's "View today"; the last 7 and 30 days end on the latest day with
+// kill lines, which on the live server is today too.
 document.querySelectorAll('[data-days]').forEach((button) => button.addEventListener('click', () => {
   const last = config.bounds.last;
+  if (button.dataset.days === 'today') {
+    if (!config.today) return;
+    state.start = config.today;
+    state.end = config.today;
+    startInput.value = state.start;
+    endInput.value = state.end;
+    load();
+    return;
+  }
   if (!last) return;
   if (button.dataset.days === 'all') {
     state.start = config.bounds.first;
@@ -145,23 +156,8 @@ function topItems(rows) {
       <td class="text-end">${row.lines}</td>
       <td class="text-end small">${killed}</td>
       <td>${subs || '<span class="small text-muted">No subs</span>'}</td>
-      <td>${row.ordering_status === 'ordered' ? '<span class="badge text-bg-success">Ordered</span>' : '<span class="badge text-bg-light border">No order</span>'}</td>
     </tr>`;
-  }).join('') : '<tr><td colspan="6" class="small text-muted">No kill lines for these dates and sites.</td></tr>';
-}
-
-function rejected(groups) {
-  $('fk-dash-rejected').innerHTML = groups.length ? groups.map((g) => `
-    <div class="mb-3">
-      <div class="fw-semibold">${esc(g.vendor)} <span class="badge text-bg-danger">${g.count}</span></div>
-      <ul class="list-unstyled small mb-0 ms-2">${g.subs.map((s) => `
-        <li class="mb-1"><span class="fw-semibold">${esc(s.reference_sku)}</span> for
-          <a href="${esc(itemLink(s.medline_item, '', 'subs'))}" title="Open the item on Main">${esc(s.medline_item)}</a>
-          <span class="text-muted">· rejected${s.rejected_by ? ` by ${esc(s.rejected_by)}` : ''}${s.rejected_at ? ` ${fmtDateTime(s.rejected_at)}` : ''}</span>
-          ${s.comments.map((c) => `<div class="border-start border-2 ps-2 text-muted">${esc(c.actor)}: ${esc(c.comment)}</div>`).join('')}
-        </li>`).join('')}
-      </ul>
-    </div>`).join('') : '<p class="small text-muted mb-0">No rejected subs.</p>';
+  }).join('') : '<tr><td colspan="5" class="small text-muted">No kill lines for these dates and sites.</td></tr>';
 }
 
 // --- loading -----------------------------------------------------------------------------
@@ -183,11 +179,8 @@ async function load() {
     const statuses = Object.keys(data.subs_by_status);
     draw('fk-chart-status', 'doughnut', statuses.map((s) => statusLabels[s] || s),
       [{ data: statuses.map((s) => data.subs_by_status[s]), backgroundColor: statuses.map((s) => STATUS_COLOR[s]) }]);
-    draw('fk-chart-new-subs', 'bar', data.new_subs.weeks.map((w) => `Week of ${fmtDate(w)}`),
-      seriesDatasets(data.new_subs.series, (name) => SOURCE_LABEL[name] || name), stacked);
     flow(data.flow);
     topItems(data.top_items);
-    rejected(data.rejected);
   } catch (error) {
     if (mine !== ticket) return;
     $('fk-dash-error').innerHTML = `<div class="alert alert-danger py-2 small">${esc(error.message)}</div>`;

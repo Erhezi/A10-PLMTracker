@@ -4,6 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, abort, current_app, render_template, send_file, url_for
 
+from ..utility.access import FILLKILL, FILLKILL_FUNCTIONS, MODULES
 from .doc_parser import load_manual_sections
 
 bp = Blueprint("selfawareness", __name__, url_prefix="/doc")
@@ -90,7 +91,17 @@ def index():
 
 @bp.route("/fillkill")
 def fillkill():
-    return render_template("selfawareness/fillkill.html")
+    # "Who can do what": a line per thing, a column per role, ticked from the app's own capabilities.
+    module = MODULES[FILLKILL]
+    labels = dict(module.roles)
+    roles = [(code, labels[code]) for code in FILLKILL_ROLE_COLUMNS]
+    grid = [(label, [code in module.capabilities[capability] for code, _ in roles])
+            for label, capability in FILLKILL_FUNCTIONS]
+    return render_template("selfawareness/fillkill.html", function_roles=roles, function_grid=grid)
+
+
+# The columns, in the order "Who does what" lists the roles.
+FILLKILL_ROLE_COLUMNS = ("viewer", "sub_approver", "materials_manager", "sub_finder")
 
 
 @bp.route("/workflow-video")

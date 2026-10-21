@@ -4,7 +4,7 @@
 
 import {
   $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
-  statusBadge, uomQoe, vendorItemText,
+  noQoeBadge, statusBadge, uomQoe, vendorItemText,
 } from '../common.js';
 import { renderNeeds } from './controls.js';
 import { openOrderForm, openVendorItemForm } from './forms.js';
@@ -115,17 +115,18 @@ function otherPackagingNote(approved) {
 }
 
 // Picked for Ordering (named so 2026-10-21; "Approver's Pick" before) is always the Reference SKU
-// nursing entered (2026-10-20). With no vendor item yet there's nothing to order: a pencil says so,
-// and for whoever adds them it opens the form.
+// nursing entered (2026-10-20). With no vendor item yet there's nothing to order: for whoever adds
+// them, a pencil says so and opens the form.
 function pickCell(pick) {
   if (!pick) return '<span class="text-muted small">—</span>';
   const title = `No vendor item yet: nothing to order for ${pick.reference_sku}`;
-  const pencil = !needsDetails(pick) ? ''
-    : can.details
-      ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-add-vi="${pick.sub_id}"
-           title="${esc(title)}. Add one." aria-label="Add a vendor item for ${esc(pick.reference_sku)}"><i
-           class="bi bi-pencil-square text-warning"></i></button>`
-      : ` <i class="bi bi-pencil-square text-warning" title="${esc(title)}" role="img" aria-label="${esc(title)}"></i>`;
+  // Only for those who can add a vendor item, whom it takes to the form (2026-10-21): to others it
+  // looked like a button that didn't work. Everyone has the Needs details filter.
+  const pencil = needsDetails(pick) && can.details
+    ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-add-vi="${pick.sub_id}"
+         title="${esc(title)}. Add one." aria-label="Add a vendor item for ${esc(pick.reference_sku)}"><i
+         class="bi bi-pencil-square text-warning"></i></button>`
+    : '';
   // Its comments, in a popover (2026-10-21): filled with a count when there are some.
   const n = pick.comments || 0;
   const latest = pick.latest_comment;
@@ -190,7 +191,7 @@ function vendorItemsCell(pick, several) {
   const items = (pick.vendor_items || []).map((v) => {
     // The vendor ID first: a long vendor name is cut short, never the ID.
     const id = v.vendor_id === NO_VENDOR.id ? 'Not in Infor' : v.vendor_id;
-    const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(uomQoe(v))}</div>
+    const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(uomQoe(v))}${noQoeBadge(v)}</div>
       <div class="fk-vi-vendor text-truncate">${esc(id)} · ${esc(v.vendor)}</div>`;
     const title = [vendorItemText(v), v.description, several ? `For ${pick.reference_sku}` : '']
       .filter(Boolean).join('\n');

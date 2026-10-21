@@ -8,8 +8,10 @@ the tests stand in tables with the views' names and columns.
 from __future__ import annotations
 
 import logging
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
+from time import monotonic
 from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import and_, bindparam, func, or_, select, text
@@ -115,14 +117,45 @@ def qty_rows(scope: Scope) -> list[dict]:
     )
 
 
-def _items_in_scope(scope: Scope) -> tuple[str, dict, list]:
-    where, params, binds = scope.where("[Order Date]", "[Sold-To]")
-    return f"SELECT DISTINCT [Medline Item] FROM {QTY} WHERE {where}", params, binds
+# --- the item view, kept in memory ----------------------------------------------------------------
+
+# The item view is the slowest read (2026-10-21, O2: ~100 ms, up to 0.3 s when SQL Server compiles it,
+# with 330 kill lines; it works over all of them, so it grows with Medline's data), and Main read it
+# up to three times a load, the panel, the orders and the Subs page again. It changes only when the
+# kill lines load (hourly) or Infor's item data does, so on SQL Server each process keeps all its
+# rows and reads them again when the kill lines' "as of" moves, when they're ITEM_CACHE_SECONDS old,
+# or when a Medline item asked for isn't among them (killed since). Not kept on SQLite: the tests and
+# the dev server change the stand-in tables as they go.
+ITEM_CACHE_SECONDS = 600
+_item_cache: dict = {"rows": None, "items": frozenset(), "key": None, "at": 0.0}
+_item_cache_lock = threading.Lock()
 
 
-def item_rows(scope: Scope) -> list[dict]:
-    items_sql, params, binds = _items_in_scope(scope)
-    return _rows(f"SELECT * FROM {ITEMS} WHERE [Medline Item] IN ({items_sql})", params, binds)
+def _read_item_view() -> list[dict]:
+    return _rows(f"SELECT * FROM {ITEMS}")
+
+
+def clear_item_cache() -> None:
+    with _item_cache_lock:
+        _item_cache.update(rows=None, items=frozenset(), key=None, at=0.0)
+
+
+def item_view_rows(must_have=()) -> list[dict]:
+    """Every row of vw_MedlineFillKillItemCollection (see ITEM_CACHE_SECONDS). ``must_have``: Medline
+    items that should be in it; one that isn't has the rows read again. The rows are shared:
+    callers must not change them."""
+    if not _is_mssql():
+        return _read_item_view()
+    key = tuple(last_load().values())
+    with _item_cache_lock:
+        cache = _item_cache
+        fresh = (cache["rows"] is not None and cache["key"] == key
+                 and monotonic() - cache["at"] < ITEM_CACHE_SECONDS
+                 and all(item in cache["items"] for item in must_have))
+        if not fresh:
+            rows = _read_item_view()
+            cache.update(rows=rows, items=frozenset(row["Medline Item"] for row in rows), key=key, at=monotonic())
+        return cache["rows"]
 
 
 def latest_reasons(scope: Scope, items=None) -> dict[str, dict]:
@@ -217,21 +250,21 @@ def orders_since_start(scope: Scope, items=None) -> list[dict]:
     return _orders(SubOrder.ordered_dt >= scope.start, items)
 
 
-def family_rows(infor_items) -> list[dict]:
+FAMILY_COLUMNS = ("Medline Item", "UM", "Customer Item #", "Infor Item")
+
+
+def family_rows(infor_items, rows=None) -> list[dict]:
     """Every Medline item (and UOM) Medline has killed under these Infor items: their packagings.
-    Read from the item view, so only Medline items that have been killed, and matched to an Infor
-    item there (by Medline vendor item). Medline's customer item isn't used: it isn't always an
-    Infor item number."""
-    infor_items = sorted({i for i in infor_items if i})
-    rows = []
-    for start in range(0, len(infor_items), 1000):
-        chunk = infor_items[start:start + 1000]
-        rows += _rows(
-            f"""SELECT DISTINCT [Medline Item], [UM], [Customer Item #], [Infor Item] FROM {ITEMS}
-                WHERE [Infor Item] IN :infor""",
-            {"infor": chunk}, [bindparam("infor", expanding=True)],
-        )
-    return rows
+    From the item view (``rows``, or item_view_rows()), so only Medline items that have been killed,
+    and matched to an Infor item there (by Medline vendor item). Medline's customer item isn't used:
+    it isn't always an Infor item number."""
+    wanted = {i for i in infor_items if i}
+    found: dict[tuple, dict] = {}
+    for row in item_view_rows() if rows is None else rows:
+        if row.get("Infor Item") in wanted:
+            picked = {column: row.get(column) for column in FAMILY_COLUMNS}
+            found.setdefault(tuple(picked.values()), picked)
+    return list(found.values())
 
 
 def main_table_inputs(scope: Scope) -> dict:
@@ -239,8 +272,9 @@ def main_table_inputs(scope: Scope) -> dict:
     items' other packagings, for their "approved" signal."""
     qty = qty_rows(scope)
     items = {row["medline_item"] for row in qty}
-    details = item_rows(scope)
-    family = family_rows(row.get("Infor Item") for row in details)
+    every = item_view_rows(must_have=items)
+    details = [row for row in every if row["Medline Item"] in items]
+    family = family_rows((row.get("Infor Item") for row in details), every)
     subs = subs_for_items(items | {row["Medline Item"] for row in family})
     # A pick's comments: how many and the latest, for its comments icon on Main (2026-10-21).
     latest = _latest_comments("sub", [s["sub_id"] for s in subs if s["is_picked"]])
@@ -323,22 +357,20 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     """The Infor item ``medline_item`` belongs to: every packaging (Medline item) Medline has killed
     under it, with their subs, kill lines in the scope, pick history and orders. A Medline item
     Infor can't place is shown on its own."""
-    own = _rows(f"SELECT * FROM {ITEMS} WHERE [Medline Item] = :item", {"item": medline_item})
+    every = item_view_rows(must_have={medline_item})
+    own = [row for row in every if row["Medline Item"] == medline_item]
     infor_items = {row.get("Infor Item") for row in own if row.get("Infor Item")}
     infor = next(iter(infor_items)) if len(infor_items) == 1 else None
     uoms: dict[str, list] = {medline_item: [row.get("UM") or "" for row in own]}
-    for row in family_rows([infor] if infor else []):
+    for row in family_rows([infor] if infor else [], every):
         uoms.setdefault(row["Medline Item"], []).append(row.get("UM") or "")
     uom_lists = {item: sorted(set(u)) for item, u in uoms.items()}
     uoms = {item: "/".join(u) for item, u in uom_lists.items()}
     members = sorted(uoms)
 
-    item_view_rows = _rows(
-        f"SELECT * FROM {ITEMS} WHERE [Medline Item] IN :members",
-        {"members": members}, [bindparam("members", expanding=True)],
-    )
-    details = rollup.merge_item_details(item_view_rows)
-    factors = rollup.each_factors(item_view_rows)
+    member_rows = [row for row in every if row["Medline Item"] in uoms]
+    details = rollup.merge_item_details(member_rows)
+    factors = rollup.each_factors(member_rows)
 
     every_sub = db.session.execute(
         select(Sub).where(Sub.medline_item.in_(members)).order_by(Sub.create_dt, Sub.sub_id)
@@ -484,14 +516,11 @@ def _compact_column(column):
 
 def infor_items_of(medline_items) -> dict[str, str]:
     """Medline item -> Infor item, from the item view (Medline items Infor can't place are left out)."""
+    wanted = {item for item in medline_items if item}
     found: dict[str, str] = {}
-    for chunk in _chunks(sorted({item for item in medline_items if item})):
-        for row in _rows(
-            f"SELECT DISTINCT [Medline Item] AS item, [Infor Item] AS infor FROM {ITEMS} WHERE [Medline Item] IN :items",
-            {"items": chunk}, [bindparam("items", expanding=True)],
-        ):
-            if row["infor"]:
-                found.setdefault(row["item"], row["infor"])
+    for row in item_view_rows():
+        if row["Medline Item"] in wanted and row.get("Infor Item"):
+            found.setdefault(row["Medline Item"], row["Infor Item"])
     return found
 
 

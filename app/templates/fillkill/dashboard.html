@@ -20,6 +20,7 @@
       </div>
     </div>
     <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges">
+      <button type="button" class="btn btn-outline-secondary" data-days="today">Today</button>
       <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
       <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
       <button type="button" class="btn btn-outline-secondary" data-days="all">All</button>
@@ -53,37 +54,26 @@
       <div class="fk-chart"><canvas id="fk-chart-status" aria-label="Subs by status" role="img"></canvas></div>
     </div></div>
   </div>
-  <div class="col-12 col-xl-6">
+  <div class="col-12">
     <div class="card shadow-sm border-0 h-100"><div class="card-body">
       <h2 class="h6 fw-semibold">Kill lines per day, by site</h2>
       <div class="fk-chart"><canvas id="fk-chart-site" aria-label="Kill lines per day by site" role="img"></canvas></div>
     </div></div>
   </div>
-  <div class="col-12 col-xl-6">
-    <div class="card shadow-sm border-0 h-100"><div class="card-body">
-      <h2 class="h6 fw-semibold">Subs added per week, by source</h2>
-      <div class="fk-chart"><canvas id="fk-chart-new-subs" aria-label="Subs added per week by source" role="img"></canvas></div>
-    </div></div>
-  </div>
+  {# "Subs added per week, by source" and "Rejected subs, by vendor" are off for now (2026-10-21). #}
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-12 col-xl-7">
+  <div class="col-12">
     <div class="card shadow-sm border-0 h-100"><div class="card-body">
       <h2 class="h6 fw-semibold">Most killed items</h2>
       <div class="table-responsive"><table class="table table-sm align-middle mb-0">
         <thead class="table-light"><tr>
           <th scope="col">Infor Item<div class="fw-normal small text-muted">Medline items</div></th><th scope="col">Description</th><th scope="col" class="text-end">Lines</th>
-          <th scope="col" class="text-end">Killed</th><th scope="col">Subs</th><th scope="col">Ordering</th>
+          <th scope="col" class="text-end">Killed</th><th scope="col">Subs</th>
         </tr></thead>
         <tbody id="fk-dash-top"></tbody>
       </table></div>
-    </div></div>
-  </div>
-  <div class="col-12 col-xl-5">
-    <div class="card shadow-sm border-0 h-100"><div class="card-body">
-      <h2 class="h6 fw-semibold">Rejected subs, by vendor <span class="small text-muted fw-normal">(all subs)</span></h2>
-      <div id="fk-dash-rejected"></div>
     </div></div>
   </div>
 </div>

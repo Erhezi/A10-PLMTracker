@@ -421,69 +421,82 @@ export function openVendorItemForm(sub, item) {
   searchForIt();
 }
 
-// --- what was killed, against the vendor item ordered -----------------------------------------
+// --- what's still needed, against the vendor item ordered --------------------------------------
 
 // Eaches per unit: the QOE given, or 1 for an EA without one.
 const eachesPer = (uom, qoe) => (qoe != null && qoe !== '' ? Number(qoe) : (inforUom(uom) === 'EA' ? 1 : null));
 const sameNumber = (a, b) => a != null && b != null && Math.abs(a - b) < 1e-9;
-// Whole units of ``perUnit`` eaches that cover ``eaches``, and whether that was rounded up.
-function wholeUnits(eaches, perUnit) {
-  const need = eaches / perUnit;
-  const whole = Math.max(1, Math.ceil(need - 1e-9));
-  return { need, whole, rounded: Math.abs(need - whole) > 1e-9 };
-}
+const isWhole = (n) => Math.abs(n - Math.round(n)) < 1e-9;
 
-// The order form (2026-10-20). When the Medline item was killed in one UOM, and the vendor item is
-// that UOM (Infor's: CS is CA) with the same QOE, the quantity is filled in with what was killed
-// (``line``, in the form's summary). Otherwise what was killed and a recommended quantity, in whole
-// units of the vendor item (rounded up), show in red (``alert``), and the quantity is left for the
-// Materials Manager to fill in.
-function killedAgainst(medline, quantities, item) {
-  const kills = quantities.filter((q) => q.killed > 0).map((q) => ({ ...q, per: eachesPer(q.uom, q.each) }));
-  if (!kills.length) return { quantity: '', recommended: null, line: '', alert: '' };
+const CHECK_STYLES = {
+  danger: 'bg-danger-subtle text-danger-emphasis border-danger-subtle',
+  warning: 'bg-warning-subtle text-warning-emphasis border-warning-subtle',
+  plain: 'bg-body-tertiary',
+};
+const checkBox = (style, lines) => `<div class="${CHECK_STYLES[style]} border rounded-2 px-3 py-2 mb-3 small fk-order-check"
+    ${style === 'plain' ? '' : 'role="alert"'}>${lines.filter(Boolean).map((line) => `<div>${line}</div>`).join('')}</div>`;
+
+// The order form's check (2026-10-21; first version 10-20). What's still needed is the Infor item's
+// Total Killed (EA) less its Total Sub Ordered (EA) in these dates, the main table's columns, and
+// the recommended order is that over the vendor item's QOE, rounded up to whole units. The quantity
+// is filled in only when the vendor item has the UOM and QOE this Medline item was killed in and
+// the need comes out whole; otherwise it's left for the Materials Manager. A QOE missing anywhere
+// (the vendor item, a UOM killed, an order already placed) is said in red: there's then no number.
+function orderCheck(medline, row, item) {
+  const none = { quantity: '', recommended: null, html: '' };
+  const kills = row ? row.packagings.flatMap((p) => p.quantities.filter((q) => q.killed > 0)
+    .map((q) => ({ ...q, medline: p.medline_item, per: eachesPer(q.uom, q.each) }))) : [];
+  if (!kills.length) return none;
+  const uom = esc(item.uom);
   const perUnit = eachesPer(item.uom, item.qoe);
-  const [only] = kills;
-  if (kills.length === 1 && inforUom(only.uom) === inforUom(item.uom) && sameNumber(only.per, perUnit)) {
-    return {
-      quantity: only.killed,
-      recommended: null,
-      line: `<div><span class="text-muted">${esc(medline)} killed in these dates</span>
-        <span class="fw-semibold">${fmtNumber(only.killed)} ${esc(only.uom)}</span>
-        <span class="text-muted">· the vendor item's UOM and QOE</span></div>`,
-      alert: '',
-    };
+  const asKilled = (q) => `${esc(q.medline)}: ${fmtNumber(q.killed)} ${esc(q.uom)}${q.per != null ? ` (${esc(q.uom)}/${fmtNumber(q.per)})` : ''}`;
+  const eaches = (n) => (n != null ? `${fmtNumber(n)} EA` : 'can\'t be counted');
+  const known = row.killed_each != null && row.sub_ordered_each != null;
+  const need = known ? row.killed_each - row.sub_ordered_each : null;
+  const facts = [
+    `<span class="fw-semibold">Killed in these dates: ${eaches(row.killed_each)}</span>${row.packagings.length > 1
+      ? ` for Infor item ${esc(row.infor_item)}` : ''} (${kills.map(asKilled).join('; ')})`,
+    `Sub ordered in these dates: ${eaches(row.sub_ordered_each)}${known
+      ? ` · <span class="fw-semibold">still needed: ${fmtNumber(Math.max(need, 0))} EA</span>` : ''}`,
+  ];
+
+  const problems = [];
+  const noQoe = [...new Set(kills.filter((q) => q.per == null).map((q) => `${q.medline}'s ${q.uom}`))];
+  if (noQoe.length) problems.push(`Infor has no QOE for ${esc(noQoe.join(', '))}, so the kills can't be counted in eaches.`);
+  if (row.sub_ordered_each == null) {
+    problems.push("An order already placed in these dates has no QOE, so what's been ordered can't be counted in eaches. Correct that order to add it.");
   }
-  const asKilled = (q) => `${esc(q.uom)}${q.per != null ? `/${fmtNumber(q.per)}` : ''}`;
-  const killed = kills.map((q) => `${fmtNumber(q.killed)} ${esc(q.uom)}`).join(' + ');
-  const unknown = kills.filter((q) => q.per == null).map((q) => q.uom);
-  const eaches = unknown.length ? null : kills.reduce((n, q) => n + q.killed * q.per, 0);
-  let recommended = null;
-  let advice;
-  if (eaches == null) {
-    advice = `No recommended quantity: Infor has no QOE for ${esc(medline)}'s ${esc(unknown.join('/'))}.`;
-  } else if (perUnit == null) {
-    advice = "No recommended quantity: the vendor item has no QOE. Correct the vendor item to add it.";
-  } else {
-    const units = wholeUnits(eaches, perUnit);
-    recommended = units.whole;
-    advice = `<span class="fw-semibold">Recommended order: ${fmtNumber(units.whole)} ${esc(item.uom)}</span>
-      (${fmtNumber(eaches)} EA ÷ ${fmtNumber(perUnit)} EA per ${esc(item.uom)} = ${fmtNumber(units.need)} ${esc(item.uom)}${units.rounded
-      ? ', rounded up' : ''})`;
+  if (perUnit == null) {
+    problems.push(`This vendor item has no QOE, so how many ${uom} cover what's needed can't be worked out. Correct the vendor item to add its QOE, or work the quantity out yourself.`);
   }
-  const why = kills.length > 1 ? `${esc(medline)} was killed in ${kills.length} UOMs`
-    : `the vendor item comes as ${esc(uomQoe(item))}, and ${asKilled(only)} was killed`;
-  return {
-    quantity: '',
-    recommended,
-    line: '',
-    alert: `<div class="bg-danger-subtle text-danger-emphasis border border-danger-subtle rounded-2 px-3 py-2 mb-3 small fk-order-check"
-        role="alert">
-      <div><span class="fw-semibold">Killed in these dates: ${killed}</span> of ${esc(medline)}
-        (${kills.map(asKilled).join(', ')})</div>
-      <div>${advice}</div>
-      <div>Quantity is left blank: ${why}. Enter how many ${esc(item.uom)} to order.</div>
-    </div>`,
-  };
+  if (problems.length) {
+    return { ...none, html: checkBox('danger', [...facts,
+      ...problems.map((p) => `<span class="fw-semibold"><i class="bi bi-exclamation-triangle-fill"></i> No QOE:</span> ${p}`),
+      `No recommended quantity: enter how many ${uom} to order.`]) };
+  }
+  if (need <= 1e-9) {
+    return { ...none, html: checkBox('warning', [...facts,
+      'The sub orders in these dates already cover what was killed: nothing more is needed. Enter a quantity only to order more.']) };
+  }
+
+  const units = need / perUnit;
+  const whole = Math.max(1, Math.ceil(units - 1e-9));
+  const exact = isWhole(units);
+  const advice = `<span class="fw-semibold">Recommended order: ${fmtNumber(whole)} ${uom}</span> (${fmtNumber(need)} EA ÷ ${fmtNumber(perUnit)}
+    EA per ${uom} = ${fmtNumber(units)} ${uom}${exact ? '' : ', rounded up'})`;
+  const mine = kills.filter((q) => q.medline === medline);
+  const same = mine.length === 1 && inforUom(mine[0].uom) === inforUom(item.uom) && sameNumber(mine[0].per, perUnit);
+  if (same && exact) {
+    return { quantity: whole, recommended: whole, html: checkBox('plain', [...facts, advice,
+      `Quantity filled in: the vendor item comes as ${esc(uomQoe(item))}, as ${esc(medline)} was killed.`]) };
+  }
+  let why;
+  if (!mine.length) why = `${esc(medline)} wasn't killed in these dates (what's needed is the Infor item's)`;
+  else if (mine.length > 1) why = `${esc(medline)} was killed in ${mine.length} UOMs`;
+  else if (!same) why = `the vendor item comes as ${esc(uomQoe(item))}, and ${esc(medline)} was killed as ${esc(mine[0].uom)}${mine[0].per != null ? `/${fmtNumber(mine[0].per)}` : ''}`;
+  else why = `${fmtNumber(units)} ${uom} isn't a whole number`;
+  return { quantity: '', recommended: whole, html: checkBox('danger', [...facts, advice,
+    `Quantity is left blank: ${why}. Enter how many ${uom} to order.`]) };
 }
 
 // Recording an order for a vendor item of a pick: it's placed with the vendor item's vendor part,
@@ -493,18 +506,9 @@ export function openOrderForm(vendorItemId) {
   if (!item) return;
   const medline = sub.medline_item;
   const row = state.rows.find((r) => r.medline_items.includes(medline));
-  const pack = row ? row.packagings.find((p) => p.medline_item === medline) : null;
-  const check = killedAgainst(medline, pack ? pack.quantities : [], item);
-  // Materials Managers may order for the whole Infor item: its UOMs added up in eaches.
-  const perUnit = eachesPer(item.uom, item.qoe);
-  const all = row && row.packagings.length > 1 && row.quantities_each && row.quantities_each.killed > 0
-    && perUnit != null ? wholeUnits(row.quantities_each.killed, perUnit) : null;
-  const combined = row && row.packagings.length > 1 && row.quantities_each
-    ? `<div>All ${row.packagings.length} UOMs of Infor item ${esc(row.infor_item)} killed
-        <span class="fw-semibold">${fmtNumber(row.quantities_each.killed)} EA</span> in these dates${all
-        ? `: ${fmtNumber(all.need)} ${esc(item.uom)} of ${fmtNumber(perUnit)} EA${all.rounded ? `, ${fmtNumber(all.whole)} rounded up` : ''}` : ''}.</div>` : '';
+  const check = orderCheck(medline, row, item);
   const hint = check.recommended != null ? `placeholder="Recommended: ${check.recommended}"` : '';
-  showModal(`Record an order · ${esc(medline)}`, summary(sub, item, check.line + combined) + check.alert + section('Order', `
+  showModal(`Record an order · ${esc(medline)}`, summary(sub, item) + check.html + section('Order', `
     ${field('quantity', `Quantity (${esc(item.uom)}) *`, check.quantity, `type="number" min="1" step="1" required ${hint}`, 'col-6 col-md-3')}
     ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 'col-6 col-md-4')}
     ${field('comment', 'Comment', '', 'maxlength="400"', 'col-12 col-md-5')}`),

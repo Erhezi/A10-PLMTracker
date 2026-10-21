@@ -21,6 +21,22 @@ def test_fillkill_docs_are_public_with_a_docs_page_row(sqlite_app):
     assert 'class="nav-link active" href="/doc/fillkill">Docs</a>' in page
 
 
+def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):
+    # Every capability has its lines in the table, and the ticks follow MODULES (2026-10-21).
+    from app.selfawareness.routes import FILLKILL_ROLE_COLUMNS
+    from app.utility.access import FILLKILL, FILLKILL_FUNCTIONS, MODULES
+    assert {capability for _, capability in FILLKILL_FUNCTIONS} == set(MODULES[FILLKILL].capabilities)
+    assert set(FILLKILL_ROLE_COLUMNS) == set(MODULES[FILLKILL].role_codes)
+    page = sqlite_app.test_client().get("/doc/fillkill").get_data(as_text=True)
+    table = page[page.index('id="who-can-do-what"'):]
+    table = table[:table.index("</table>")]
+    pick = table[table.index("Pick or unpick a sub for ordering"):]
+    pick = pick[:pick.index("</tr>")]
+    # Viewer, Sub Approver, Materials Manager, Sub Finder
+    assert [cell.startswith('<i class="bi bi-check-lg') for cell in
+            [part.split(">", 1)[1].strip() for part in pick.split('<td class="text-center"')[1:]]] == [False, True, True, False]
+
+
 def test_docs_link_follows_the_active_module(sqlite_app):
     user = viewer()
     with sqlite_app.test_request_context("/fillkill/"):

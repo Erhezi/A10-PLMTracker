@@ -299,7 +299,7 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered; for Materials Managers and Sub Finders it opens the vendor item form. A comments icon beside each pick (2026-10-21, the user) counts its comments (pointing at it shows the latest) and opens them all, newest first, in a popover, for everyone, without the panel |
+| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to Materials Managers and Sub Finders, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments (pointing at it shows the latest) and opens them all, newest first, in a popover, for everyone, without the panel |
 | Vendor Item Detail | per pick, on its line (2026-10-20; beside its pick from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
 | Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
 | Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE |
@@ -466,7 +466,7 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 
   | Field | Notes |
   |---|---|
-  | Quantity | in the vendor item's UOM. Pre-filled with the quantity killed only when the Medline item was killed in one UOM and the vendor item has that UOM (CS read as CA) and the same QOE (2026-10-20; an EA without a QOE is 1). Otherwise blank, and a red box shows what was killed, with its UOM/QOE, and a recommended quantity: the killed eaches over the vendor item's QOE, rounded up to whole units (10 EA for a CA/50: 0.2, so 1 CA; 5 BX/10 for a CA/100: 1 CA), or why there's none (a QOE unknown) |
+  | Quantity | in the vendor item's UOM. **Recommended** (2026-10-21, the user; 10-20 used the kills alone): what's still needed, the Infor item's Total Killed (EA) less its Total Sub Ordered (EA) in these dates (Main's columns), over the vendor item's QOE, rounded up to whole units (1,300 EA still needed for a CA/1000: 1.3, so 2 CA; 10 EA for a CA/50: 1 CA). Pre-filled with it only when this Medline item was killed in one UOM, the vendor item has that UOM (CS read as CA) and QOE (an EA without a QOE is 1), and it comes out whole (killed 30 EA, 10 EA ordered: 20). Otherwise blank, with the recommendation as the box's hint, and a red box shows what was killed (each UOM with its QOE), what's been ordered, what's still needed and the recommendation. Already covered: a yellow box says nothing more is needed. A QOE missing on the vendor item, a UOM killed or an order already placed: a red **No QOE** warning says which, and there's no recommendation. Vendor items without a QOE (other than EA) carry a *no QOE* badge on Main and in the panel |
   | Ordered By | the user |
   | Ordered DT | defaults to now; editable |
   | Comments | entries of up to 400 characters each, with who and when; Materials Managers add more later (9.7) |
@@ -568,8 +568,12 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
   item's; Orders and Last Ordered are the sub's. Read-only; a row's Medline item opens the panel on
   Main.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
-  coverage, time to review, and rejected subs with their comments, grouped by vendor and item.
-  Read-only for every Fill/Kill role. Separate from PLM Tracker's dashboard.
+  coverage, time to review, and the most killed items with their subs. Read-only for every Fill/Kill
+  role. Separate from PLM Tracker's dashboard. Quick dates: Today, Last 7 days, Last 30 days, All
+  (2026-10-21: Today added; the 7 and 30 days end on the latest day with kill lines).
+  **Off for now** (the user, 2026-10-21): subs added per week by source, rejected subs by vendor,
+  and the Ordering column of the most killed items (over a period it added nothing and could
+  mislead). `dashboard.weekly_new_subs` and `rejected_groups` stay, to bring the first two back.
   **Flow** (2026-10-19): for the Medline items killed in the dates, the median time from the first
   kill to a sub (0 when one was already on file), from that sub to the first order since the kill,
   and from the kill to that order, each with how many items it covers; the share of killed items
@@ -587,6 +591,21 @@ shared by the three pages (formatting, fetching, status badges, the link to an i
 modules (state and page link, controls, table, panel and its tabs, modal forms, orders, refresh).
 To try the pages locally and check them after a change: `tools/fillkill_ui/` (a dev server on
 sample or read-only O2 data, and a smoke walkthrough in headless Edge; see its README).
+
+**Speed** (measured 2026-10-21 on O2, 330 kill lines). Main's table took ~0.2 s on the server, 80% of
+it reading `vw_MedlineFillKillItemCollection` three times (~100 ms each, ~0.3 s when SQL Server
+compiles it; it works over all kill lines and joins CONTRACTLINE, so it grows with the data). Each
+app process now keeps that view's rows in memory and reads them again when the kill lines' "as of"
+moves, after 10 minutes, or for a Medline item it hasn't got (`queries.item_view_rows`): ~45 ms a
+load after the first. The panel, the orders and the Subs page use it too. The PBO sync took 7 ms.
+The 2-3 s users saw is a **cold start**: a new app process takes ~2-2.5 s (imports ~1 s, the app's
+setup ~0.9 s, `db.create_all` ~0.15 s of it) before its first answer. IIS starts one on the first
+request, and stops it after `idleTimeout` (300 s in the repo's `web.config`) without requests, so
+the first person after 5 quiet minutes waits. For Abdallah: a longer FastCGI `idleTimeout` (and app
+pool idle time-out) keeps processes warm.
+
+**Help page:** "Who can do what" (2026-10-21) lists each function against each role, ticked from
+`FILLKILL_FUNCTIONS` and the capabilities in `app/utility/access.py`, so it shows what the app checks.
 
 ## 8. For stakeholders
 

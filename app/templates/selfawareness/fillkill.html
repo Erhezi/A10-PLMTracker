@@ -45,6 +45,34 @@
       Managers hold Materials Manager. Sub Approver and Materials Manager stay with different people, so the
       person who approves isn't the person who orders (admins excepted).
     </p>
+
+    <h3 class="h6 fw-semibold mt-4 mb-2" id="who-can-do-what">Who can do what</h3>
+    {# Ticked from the app's own role rules (FILLKILL_FUNCTIONS in app/utility/access.py), 2026-10-21. #}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-2">
+        <thead class="table-light">
+          <tr>
+            <th scope="col">What</th>
+            {% for code, label in function_roles %}<th scope="col" class="text-center text-nowrap">{{ label }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for label, allowed in function_grid %}
+          <tr>
+            <td>{{ label }}</td>
+            {% for yes in allowed %}
+            <td class="text-center">{% if yes %}<i class="bi bi-check-lg text-success" role="img" aria-label="Yes"></i>{% else %}<span class="text-muted" aria-label="No">—</span>{% endif %}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="small text-muted mb-0">
+      A Sub Approver's new sub is approved as it's added, and picked when it's the item's only approved one; a Sub
+      Finder's waits for a Sub Approver's review. Someone with two roles can do what either allows. Admins assign
+      the roles in User Control; being an admin adds nothing here.
+    </p>
   </section>
 
   <section class="card shadow-sm border-0 p-4">
@@ -62,7 +90,7 @@
         and last <em>Fill/Kill dates</em> (the days Medline's killed lines were ordered; it opens on today), pick sites, and type part of an item number or description.</li>
       <li class="mb-1"><strong>Needs filter:</strong> <em>Needs subs</em> (no live substitute), <em>Needs review</em>
         (one is pending review), <em>Needs pick</em> (approved but nothing picked), <em>Needs details</em> (the pick has no vendor item
-        yet, so nothing to order: the Materials Manager's to add; a pencil beside the pick says so), <em>Needs order</em> (picked, no
+        yet, so nothing to order: the Materials Manager's to add; for them, a pencil beside the pick opens the form), <em>Needs order</em> (picked, no
         order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
       <li class="mb-1"><strong>Killed against ordered:</strong> <em>Total Killed (EA)</em> and <em>Total Sub Ordered (EA)</em>, after
         <em>Ordering</em>, put the Infor item's kills and its substitutes' orders in these dates side by side, in eaches (an order counts its
@@ -83,10 +111,10 @@
     <p class="mb-2"><strong>Subs</strong> lists every substitute on file, as a reference, with its Reference SKU and
       vendor items: search it, filter by status, source, no vendor item yet, or deleted ones, and export what you see
       as a spreadsheet (a row per vendor item). Click an item to open it on Main.</p>
-    <p class="mb-0"><strong>Dashboard</strong> shows trends for the chosen dates and sites: kill lines by reason and
-      by site, the most killed items, how substitutes are being reviewed, and which were rejected. It also shows how
-      fast killed items move: the median time from a kill to a substitute, from the substitute to an order, and from
-      the kill to the order.</p>
+    <p class="mb-0"><strong>Dashboard</strong> shows trends for the chosen dates and sites (<em>Today</em>, the last 7
+      or 30 days, all, or dates you pick): kill lines by reason and by site, the most killed items with their
+      substitutes, and how substitutes are being reviewed. It also shows how fast killed items move: the median time
+      from a kill to a substitute, from the substitute to an order, and from the kill to the order.</p>
   </section>
 
   <section class="card shadow-sm border-0 p-4">
@@ -100,9 +128,12 @@
       <li><strong>Ordered.</strong> A Materials Manager adds the pick's <em>vendor items</em>, one for each way to order it: a vendor part, its vendor and vendor ID, and a UOM
         (and QOE, manufacturer part, Infor item, description). The search of Infor's active contracts starts from the Reference SKU and fills one in; for 930103,
         for example, Medline's B-D930103CSZ (a box of 40) and B-D930103CS (a case of 400) are two vendor items of the same substitute. Then they click a vendor
-        item's tile on Main to record an order, which keeps that vendor item's part, vendor, UOM and QOE. The quantity is filled in with what was
-        killed only when the vendor item has the same UOM and QOE; otherwise the form shows, in red, what was killed and a recommended quantity
-        in whole units of the vendor item, rounded up (10 EA killed, ordered by the CA/50: 0.2 CA, so 1 CA), and leaves the quantity to you.
+        item's tile on Main to record an order, which keeps that vendor item's part, vendor, UOM and QOE. The form works out what's still
+        needed: the item's <em>Total Killed (EA)</em> less its <em>Total Sub Ordered (EA)</em> in these dates, and recommends that in whole
+        units of the vendor item, rounded up (1,300 EA still needed, ordered by the CA/1000: 1.3 CA, so 2 CA). The quantity is filled in only
+        when the vendor item has the UOM and QOE that was killed and it comes out whole (30 EA killed, 10 EA ordered: 20 EA); otherwise the
+        form shows its working in red and leaves the quantity to you. Without a QOE, on the vendor item, a UOM killed or an earlier order, it
+        says <em>No QOE</em> in red and recommends nothing; vendor items without one are marked <em>no QOE</em> on Main and in the panel.
         A UOM typed another way, like CS or VL, is saved as Infor's (CA, VI). Medline's own part for the killed item, from one of Medline's vendor
         IDs, is the item itself, not a substitute: the form says so and it isn't saved.
         The vendor ID is required: typing the vendor's name lists Infor's vendors (by their name, legal name or search name) to choose

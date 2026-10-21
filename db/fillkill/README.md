@@ -62,26 +62,18 @@ Under Sold-To `test site` (Sales Order # starting `TEST`); each says why it's th
 - **Contract search, MHS or not** (9/30): BXT2D0737H (EA, Infor item 112057), on Medline JIT
   contracts 1412 and 2421 (not MHS) and 2680 (MHS).
 
-## On O2 now (checked 2026-10-20, read-only)
+## On O2 now (checked 2026-10-21, read-only)
 
-- `01`-`03`, `10`-`14`: run and current, except `13`'s `vw_UomAlias` (added 2026-10-20, after
-  the run): re-run `13`. Until then the app keeps UOMs as typed (CS stays CS), logs why, and admins
-  see the warning on Main. `09`: every Fill/Kill check `PASS`, but that one and the History one
-  below.
-- `04`: not yet (deploy #1 isn't live).
-- `12`'s vendor items step and `14` ran at 15:08 on 10/20, as tried beforehand on a copy: sub 11
-  (930103 on B-D930299Z, entered a second time for a second vendor part) merged into sub 10, which
-  has two vendor items, B-D930103CS (Medline 1000931, CA/400) and B-D930103CSZ (BX/40), with orders
-  2-4 linked to them; order 1 (930103 from 1017968, BX) keeps what it was placed with. `12`'s copy
-  of the old subs, `FillKill.Sub_before_vendor_items`, is there.
-- The subs and orders there are UAT data, to be emptied for testing this version: `90` (confirmed)
-  deletes them, drops `12`'s copy and numbers new ones from 1. The next Main load adds Medline's
-  PBO sub MMO2329H → 2329RH again, pending review.
-- `09`'s "every sub, vendor item and order has a created History row" says `FAIL` for one sub until
-  then: the PBO sub MMO2329H → 2329RH from 10/14, whose row went when History was emptied on 10/19.
-- A local `run.py` on this code against O2 is fine again now that `12` has run. It runs the app's
-  startup, which creates any table its models have and O2 lacks: it made `SubVendorItem` at 12:46
-  on 10/20, before `12` did.
+- `01`-`03`, `10`-`14`: run and current; `13` re-run at 13:36 on 10/21 for `vw_UomAlias` (32 of
+  Infor's UOM aliases). The app's own check finds nothing missing with a developer's login; the
+  web server's account still needs its grants (go-live step 2).
+- `04`: not yet (deploy #1 isn't live); 3 accounts still say `view-only`.
+- `90` ran on 10/20, after `12`'s vendor items step and `14`: `Sub_before_vendor_items` is gone, and
+  what's there since is new UAT data (5 subs, 1 of them Medline's PBO sub, 3 vendor items, 2 orders,
+  33 History rows), each with its "created" History row, so `09`'s History check passes.
+- The 39 test lines (`TestFillKillLine`) are still there: go-live step 10 removes them.
+- A local `run.py` on this code against O2 is fine. It runs the app's startup, which creates any
+  table its models have and O2 lacks: it made `SubVendorItem` at 12:46 on 10/20, before `12` did.
 - `PLMPreprocessorShared.infor.CONTRACTLINE` was empty earlier on 10/19 and is loaded again
   (631,677 lines that afternoon). It is loaded upstream; when it's empty, the contract search, and
   PLM's contract item search, find nothing.
@@ -134,11 +126,12 @@ put the code in place and recycle the app pool.
 10. Remove the test lines: `TRUNCATE TABLE [FillKill].[TestFillKillLine];`
 11. Decide on the subs and orders entered during UAT:
     - keep them (the default), and give any that lost its "created" History row one, so `09`'s
-      History check passes (today: the PBO sub MMO2329H → 2329RH); or
+      History check passes (none lacks one on O2 today); or
     - empty them with `90_reset_workflow.sql`, edited to confirm.
 
-    Kept, drop `FillKill.Sub_before_vendor_items` (`12`'s copy of `Sub` from before vendor items)
-    once the subs look right; `90` drops it itself. Then `09`: all `PASS`.
+    `12`'s copy of `Sub` from before vendor items, `FillKill.Sub_before_vendor_items`, is already
+    gone on O2 (`90` dropped it on 10/20); the `DROP` below is only for a database where it's left.
+    Then `09`: all `PASS`.
 
 **Rollback:** just before putting the previous release back, run `rollback_deploy1.sql`.
 

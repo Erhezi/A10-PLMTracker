@@ -10,6 +10,7 @@ from app.fillkill import rules
 from app.fillkill.rules import RuleError
 
 NOW = datetime(2026, 10, 13, 14, 0)
+SITE, SITES = "WP", ("WP", "test site")  # Medline Sold-To codes
 
 
 def sub(**kwargs):
@@ -25,7 +26,7 @@ def vendor_item(**kwargs):
 
 def order(**kwargs):
     base = dict(quantity=10, vendor_part="P1", uom="BX", qoe=None, vendor="Medline", vendor_id="1000931",
-                ordered_dt=NOW, voided_at=None)
+                ordered_dt=NOW, voided_at=None, site=None, po_number=None)
     return SimpleNamespace(**{**base, **kwargs})
 
 
@@ -141,32 +142,32 @@ def test_only_an_approved_sub_can_be_picked():
 # --- orders --------------------------------------------------------------------------
 
 def test_an_order_needs_a_picked_sub():
-    refused(lambda: rules.check_new_order(sub(status="approved"), vendor_item(), {"quantity": 5}, now=NOW),
+    refused(lambda: rules.check_new_order(sub(status="approved"), vendor_item(), {"site": SITE, "quantity": 5}, now=NOW, sites=SITES),
             status=409, says="isn't picked")
 
 
 def test_an_order_takes_what_it_is_placed_with_from_the_vendor_item():
     picked = sub(status="approved", is_picked=True)
-    clean = rules.check_new_order(picked, vendor_item(), {"quantity": "15", "uom": "EA", "vendor": "Owens"}, now=NOW)
+    clean = rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": "15", "uom": "EA", "vendor": "Owens"}, now=NOW, sites=SITES)
     assert (clean["quantity"], clean["vendor_part"], clean["uom"], clean["qoe"], clean["vendor"], clean["vendor_id"]) == (
         15, "B-D930103CSZ", "BX", Decimal("40"), "Medline", "1000931")
     assert clean["ordered_dt"] is None  # "now", set when saved
-    assert rules.check_new_order(picked, vendor_item(qoe=None), {"quantity": 1}, now=NOW)["qoe"] is None
+    assert rules.check_new_order(picked, vendor_item(qoe=None), {"site": SITE, "quantity": 1}, now=NOW, sites=SITES)["qoe"] is None
 
 
 @pytest.mark.parametrize("quantity", [0, -3, "2.5", "", None])
 def test_quantity_is_a_whole_number_above_zero(quantity):
     refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True), vendor_item(),
-                                          {"quantity": quantity}, now=NOW))
+                                          {"site": SITE, "quantity": quantity}, now=NOW, sites=SITES))
 
 
 def test_ordered_date_can_be_earlier_but_not_in_the_future():
     picked = sub(status="approved", is_picked=True)
-    clean = rules.check_new_order(picked, vendor_item(), {"quantity": 1, "ordered_dt": "2026-10-12T09:15"}, now=NOW)
+    clean = rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "2026-10-12T09:15"}, now=NOW, sites=SITES)
     assert clean["ordered_dt"] == datetime(2026, 10, 12, 9, 15)
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"quantity": 1, "ordered_dt": "2026-10-14"}, now=NOW),
+    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "2026-10-14"}, now=NOW, sites=SITES),
             says="future")
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"quantity": 1, "ordered_dt": "10/12/2026"}, now=NOW),
+    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "10/12/2026"}, now=NOW, sites=SITES),
             says="must look like")
 
 
@@ -192,3 +193,39 @@ def test_history_values_are_written_plainly():
     assert rules.display(datetime(2026, 10, 13, 9, 5, 30)) == "2026-10-13 09:05"
     assert rules.display(None) is None
     assert rules.clean_vendor_id(" 0000000 ") == "0000000"
+
+
+# --- an order's site and PO number, an instruction (2026-10-27) --------------------------------
+
+def test_an_order_is_for_a_known_site_and_may_carry_infors_po_number():
+    picked = sub(status="approved", is_picked=True)
+    refused(lambda: rules.check_new_order(picked, vendor_item(), {"quantity": 1}, now=NOW, sites=SITES),
+            says="Choose the site")
+    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": "MOSES", "quantity": 1}, now=NOW, sites=SITES),
+            says="isn't one of the sites")
+    clean = rules.check_new_order(picked, vendor_item(), {"site": " WP ", "quantity": 1, "po_number": " 3000564756 "},
+                                  now=NOW, sites=SITES)
+    assert (clean["site"], clean["po_number"]) == ("WP", "3000564756")
+    assert rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "po_number": ""},
+                                 now=NOW, sites=SITES)["po_number"] is None
+    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "po_number": "PO-3000564756"},
+                                          now=NOW, sites=SITES), says="digits only")
+
+
+def test_correcting_an_orders_site_and_po_number():
+    # An order from before sites can be given one; once it has a site, it keeps one.
+    assert rules.check_order_edit(order(), {"site": "WP"}, now=NOW, sites=SITES) == {"site": "WP"}
+    refused(lambda: rules.check_order_edit(order(), {"site": ""}, now=NOW, sites=SITES), says="Nothing to change")
+    refused(lambda: rules.check_order_edit(order(site="WP"), {"site": ""}, now=NOW, sites=SITES), says="Choose the site")
+    refused(lambda: rules.check_order_edit(order(site="WP"), {"site": "elsewhere"}, now=NOW, sites=SITES),
+            says="isn't one of the sites")
+    # Its own site stays allowed once it has left the data (the test site at go-live).
+    assert rules.check_order_edit(order(site="gone"), {"site": "gone", "po_number": "3000000001"}, now=NOW,
+                                  sites=SITES) == {"po_number": "3000000001"}
+
+
+def test_an_instruction_is_required_and_up_to_1000_characters():
+    assert rules.clean_instruction("  Moses: 2 CA  ") == "Moses: 2 CA"
+    assert len(rules.clean_instruction("x" * 1000)) == 1000
+    refused(lambda: rules.clean_instruction("x" * 1001), says="longer than 1000")
+    refused(lambda: rules.clean_instruction(" "), says="Instruction is required")

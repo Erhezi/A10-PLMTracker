@@ -243,3 +243,45 @@ def test_panel_signals_for_this_items_subs_and_the_other_packagings_subs():
     annotated, others = rollup.sibling_signals(here, siblings, {"JLC-EA": "EA"})
     assert [(s["sub_id"], [o["sub_id"] for o in s["approved_elsewhere"]]) for s in annotated] == [(3, [1]), (4, [])]
     assert [(o["sub_id"], o["status"], o["um"]) for o in others] == [(5, "approved", "EA"), (2, "hold", "EA")]
+
+
+def test_each_site_has_its_own_kills_and_orders_in_eaches():
+    # 2026-10-27: each site orders for itself. One site killed 186 EA and 5 BX of 20, the other 10 BX;
+    # the first ordered 1 CA of 100, and an order from before sites has none.
+    rows = rollup.build_main_rows(
+        qty_rows=[{**qty("JLC-EA", "EA", 186, 0), "site": "MOS"}, {**qty("JLC-BX", "BX", 5, 0), "site": "MOS"},
+                  {**qty("JLC-BX", "BX", 10, 0), "site": "WAK"}],
+        item_rows=ITEM_ROWS, subs=[],
+        orders=[{"medline_item": "JLC-BX", "order_id": 1, "site": "MOS", "quantity": 1, "uom": "CA", "qoe": 100,
+                 "ordered_dt": "2026-09-30T11:00"},
+                {"medline_item": "JLC-EA", "order_id": 2, "site": None, "quantity": 5, "uom": "EA", "qoe": None,
+                 "ordered_dt": "2026-09-30T09:00"}],
+        reasons={}, family_rows=FAMILY,
+    )
+    [cuff] = rows
+    assert [(s["site"], s["killed_each"], s["sub_ordered_each"], s["orders"]) for s in cuff["sites"]] == [
+        ("MOS", 286.0, 100.0, 1), ("WAK", 200.0, 0.0, 0), (None, 0.0, 5.0, 1)]
+    assert (cuff["killed_each"], cuff["sub_ordered_each"]) == (486.0, 105.0)  # the sites together
+    assert [(k["medline_item"], k["uom"], k["killed"], k["each"]) for k in cuff["sites"][0]["kills"]] == [
+        ("JLC-BX", "BX", 5, 20.0), ("JLC-EA", "EA", 186, 1.0)]
+
+
+def test_the_instruction_in_force_is_the_rows_latest():
+    # 2026-10-27: per Infor item; one written while Infor had none for the Medline item stays with it.
+    def instruction(i, infor, item, text):
+        return {"instruction_id": i, "infor_item": infor, "medline_item": item, "instruction": text,
+                "written_by": "lead@example.org", "written_at": f"2026-09-30T0{i}:00"}
+
+    rows = rollup.build_main_rows(
+        qty_rows=[qty("JLC-EA", "EA", 1, 0), qty("JLC-BX", "BX", 1, 0), qty("OTHER", "EA", 1, 0)],
+        item_rows=ITEM_ROWS, subs=[], orders=[], reasons={}, family_rows=FAMILY,
+        instructions=[instruction(1, "111848", "JLC-EA", "Hold until Friday"),
+                      instruction(2, None, "OTHER", "Use stock"),
+                      instruction(3, "111848", "JLC-BX", "Both sites: 2 CA"),
+                      instruction(4, "222222", "ELSEWHERE", "Not this one")],
+    )
+    cuff, other = rows
+    assert (cuff["instruction"]["count"], cuff["instruction"]["latest"]["instruction"]) == (2, "Both sites: 2 CA")
+    assert (other["instruction"]["count"], other["instruction"]["latest"]["instruction"]) == (1, "Use stock")
+    assert rollup.build_main_rows(qty_rows=[qty("JLC-EA", "EA", 1, 0)], item_rows=ITEM_ROWS, subs=[], orders=[],
+                                  reasons={}, family_rows=FAMILY)[0]["instruction"] is None

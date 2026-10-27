@@ -3,7 +3,9 @@
  * modal (forms.js).
  */
 
-import { $, alertBox, config, debounce, esc, fmtNumber, formValues, getJSON, postJSON, trimOnChange } from '../common.js';
+import {
+  $, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, postJSON, trimOnChange,
+} from '../common.js';
 import {
   openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm, openVendorItemDeleteForm, openVendorItemForm,
   openVoidForm,
@@ -86,7 +88,7 @@ function renderPanel(message) {
   ];
   $('fk-panel-body').innerHTML = `
     ${message ? alertBox(message.text, message.kind) : ''}
-    ${itemDetails(d)}
+    ${itemDetails(d, data.instruction)}
     ${packagingList(data, view)}
     <ul class="nav nav-pills nav-fill small mb-3" role="tablist">
       ${tabs.map(([key, label]) => `<li class="nav-item"><button type="button" class="nav-link py-1 ${state.panelTab === key ? 'active' : ''}"
@@ -95,7 +97,8 @@ function renderPanel(message) {
     <div id="fk-panel-content">${renderPanelTab(state.panelTab, view)}</div>`;
 }
 
-function itemDetails(d) {
+// The item, and the MM Lead's instruction in force for it (2026-10-27).
+function itemDetails(d, instruction) {
   const rows = [
     ['Infor item', d.infor_item
       ? [d.infor_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : ''].filter(Boolean).join(' · ')
@@ -104,8 +107,13 @@ function itemDetails(d) {
     ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
     ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],
   ].filter(([, value]) => value);
+  const latest = instruction && instruction.latest;
+  const instructed = latest ? `<dt class="col-sm-4 text-muted fw-normal">MM Instruction</dt><dd class="col-sm-8 mb-1">
+      <div class="fk-instruction-text">${esc(latest.instruction)}</div>
+      <div class="text-muted">${esc(latest.written_by)}, ${fmtDateTime(latest.written_at)}${instruction.count > 1
+        ? ` · ${instruction.count} instructions, the earlier ones from the table's icon` : ''}</div></dd>` : '';
   return `<dl class="row small bg-light border rounded py-2 mx-0 mb-3">${rows.map(([label, value]) => `
-    <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
+    <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}${instructed}</dl>`;
 }
 
 // The Medline items (UOMs) shown: those killed in these dates first, then any other Medline has

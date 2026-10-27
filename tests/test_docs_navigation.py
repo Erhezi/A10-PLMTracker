@@ -32,9 +32,9 @@ def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):
     table = table[:table.index("</table>")]
     pick = table[table.index("Pick or unpick a sub for ordering"):]
     pick = pick[:pick.index("</tr>")]
-    # Viewer, Sub Approver, Materials Manager, Sub Finder
+    # Viewer, Sub Approver, MM Lead, Materials Manager, Sub Finder
     assert [cell.startswith('<i class="bi bi-check-lg') for cell in
-            [part.split(">", 1)[1].strip() for part in pick.split('<td class="text-center"')[1:]]] == [False, True, True, False]
+            [part.split(">", 1)[1].strip() for part in pick.split('<td class="text-center"')[1:]]] == [False, True, True, True, False]
 
 
 def test_docs_link_follows_the_active_module(sqlite_app):

@@ -1,22 +1,23 @@
 /* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
  * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
- * a sub or a vendor item. Boxes lose their leading and trailing spaces when left, and a UOM typed
- * another way becomes Infor's (2026-10-20).
+ * a sub or a vendor item, and the MM Lead's instruction (2026-10-27). Boxes lose their leading and
+ * trailing spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
  */
 
 import {
-  $, NO_VENDOR, alertBox, debounce, esc, fmtNumber, formValues, getJSON, inforUom, isTheKilledItem, postJSON,
-  trimInput, uomQoe, vendorItemText,
+  $, NO_VENDOR, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, inforUom,
+  isTheKilledItem, postJSON, trimInput, uomQoe, vendorItemText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
-import { addVendorItemUrl, api, orderUrl, state, subUrl, vendorItemUrl } from './state.js';
+import { addVendorItemUrl, api, orderUrl, siteName, state, subUrl, vendorItemUrl } from './state.js';
 
 const modalEl = $('fk-modal');
 const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
 const modalForm = $('fk-modal-form');
 let modalSubmit = null;
 let formItem = null;  // the vendor item form's Medline item: its vendor items can't be the item itself
+let orderForm = null;  // the order form's item and vendor item: its check follows the site chosen
 
 // Bootstrap ignores show() while the modal fades out and hide() while it fades in, so a quick
 // "save, then open the next form" would be lost. Track the fade and wait for it to finish.
@@ -41,6 +42,7 @@ function hideModal() {
 // message to show. ``wide``: the vendor item and order forms get the room they need (2026-10-20).
 function showModal(title, body, submitLabel, onSubmit, { wide = false } = {}) {
   formItem = null;
+  orderForm = null;
   modalEl.querySelector('.modal-dialog').classList.toggle('modal-lg', wide);
   modalForm.innerHTML = `
     <div class="modal-header"><h2 class="modal-title h5" id="fk-modal-title">${title}</h2>
@@ -436,35 +438,46 @@ const CHECK_STYLES = {
 const checkBox = (style, lines) => `<div class="${CHECK_STYLES[style]} border rounded-2 px-3 py-2 mb-3 small fk-order-check"
     ${style === 'plain' ? '' : 'role="alert"'}>${lines.filter(Boolean).map((line) => `<div>${line}</div>`).join('')}</div>`;
 
-// The order form's check (2026-10-21; first version 10-20). What's still needed is the Infor item's
-// Total Killed (EA) less its Total Sub Ordered (EA) in these dates, the main table's columns, and
-// the recommended order is that over the vendor item's QOE, rounded up to whole units. The quantity
-// is filled in only when the vendor item has the UOM and QOE this Medline item was killed in and
-// the need comes out whole; otherwise it's left for the Materials Manager. A QOE missing anywhere
-// (the vendor item, a UOM killed, an order already placed) is said in red: there's then no number.
-function orderCheck(medline, row, item) {
+// The order form's check (2026-10-21; first version 10-20; per site from 2026-10-27, since each
+// site orders for itself). What's still needed at the order's site is the Infor item's eaches killed
+// there in these dates less its sub orders for that site, and the recommended order is that over the
+// vendor item's QOE, rounded up to whole units. The quantity is filled in only when the vendor item
+// has the UOM and QOE this Medline item was killed in there and the need comes out whole; otherwise
+// it's left for the Materials Manager. A QOE missing anywhere (the vendor item, a UOM killed, an
+// order already placed) is said in red: there's then no number. No site chosen yet: it says to
+// choose one.
+function orderCheck(medline, row, item, site) {
   const none = { quantity: '', recommended: null, html: '' };
-  const kills = row ? row.packagings.flatMap((p) => p.quantities.filter((q) => q.killed > 0)
-    .map((q) => ({ ...q, medline: p.medline_item, per: eachesPer(q.uom, q.each) }))) : [];
-  if (!kills.length) return none;
+  if (!row) return none;
+  if (!site) {
+    return { ...none, html: checkBox('plain', ["Choose the site this order is for: what's still needed there is worked out once you do."]) };
+  }
+  const here = (row.sites || []).find((s) => s.site === site);
+  const kills = here ? here.kills.filter((k) => k.killed > 0)
+    .map((k) => ({ ...k, medline: k.medline_item, per: eachesPer(k.uom, k.each) })) : [];
+  const at = esc(siteName(site));
+  if (!kills.length) {
+    return { ...none, html: checkBox('warning', [`${at} had no kills of this item in these Fill/Kill dates${state.sites.length
+      ? ' (with the sites shown)' : ''}: nothing to recommend. Enter a quantity only to order anyway.`]) };
+  }
   const uom = esc(item.uom);
   const perUnit = eachesPer(item.uom, item.qoe);
   const asKilled = (q) => `${esc(q.medline)}: ${fmtNumber(q.killed)} ${esc(q.uom)}${q.per != null ? ` (${esc(q.uom)}/${fmtNumber(q.per)})` : ''}`;
   const eaches = (n) => (n != null ? `${fmtNumber(n)} EA` : 'can\'t be counted');
-  const known = row.killed_each != null && row.sub_ordered_each != null;
-  const need = known ? row.killed_each - row.sub_ordered_each : null;
+  const known = here.killed_each != null && here.sub_ordered_each != null;
+  const need = known ? here.killed_each - here.sub_ordered_each : null;
   const facts = [
-    `<span class="fw-semibold">Killed in these dates: ${eaches(row.killed_each)}</span>${row.packagings.length > 1
+    `<span class="fw-semibold">Killed at ${at} in these dates: ${eaches(here.killed_each)}</span>${row.packagings.length > 1
       ? ` for Infor item ${esc(row.infor_item)}` : ''} (${kills.map(asKilled).join('; ')})`,
-    `Sub ordered in these dates: ${eaches(row.sub_ordered_each)}${known
+    `Sub ordered for ${at} in these dates: ${eaches(here.sub_ordered_each)}${known
       ? ` · <span class="fw-semibold">still needed: ${fmtNumber(Math.max(need, 0))} EA</span>` : ''}`,
   ];
 
   const problems = [];
   const noQoe = [...new Set(kills.filter((q) => q.per == null).map((q) => `${q.medline}'s ${q.uom}`))];
   if (noQoe.length) problems.push(`Infor has no QOE for ${esc(noQoe.join(', '))}, so the kills can't be counted in eaches.`);
-  if (row.sub_ordered_each == null) {
-    problems.push("An order already placed in these dates has no QOE, so what's been ordered can't be counted in eaches. Correct that order to add it.");
+  if (here.sub_ordered_each == null) {
+    problems.push(`An order already placed for ${at} in these dates has no QOE, so what's been ordered can't be counted in eaches. Correct that order to add it.`);
   }
   if (perUnit == null) {
     problems.push(`This vendor item has no QOE, so how many ${uom} cover what's needed can't be worked out. Correct the vendor item to add its QOE, or work the quantity out yourself.`);
@@ -476,7 +489,7 @@ function orderCheck(medline, row, item) {
   }
   if (need <= 1e-9) {
     return { ...none, html: checkBox('warning', [...facts,
-      'The sub orders in these dates already cover what was killed: nothing more is needed. Enter a quantity only to order more.']) };
+      `The sub orders for ${at} in these dates already cover what was killed there: nothing more is needed. Enter a quantity only to order more.`]) };
   }
 
   const units = need / perUnit;
@@ -491,35 +504,69 @@ function orderCheck(medline, row, item) {
       `Quantity filled in: the vendor item comes as ${esc(uomQoe(item))}, as ${esc(medline)} was killed.`]) };
   }
   let why;
-  if (!mine.length) why = `${esc(medline)} wasn't killed in these dates (what's needed is the Infor item's)`;
-  else if (mine.length > 1) why = `${esc(medline)} was killed in ${mine.length} UOMs`;
+  if (!mine.length) why = `${esc(medline)} wasn't killed at ${at} in these dates (what's needed is the Infor item's)`;
+  else if (mine.length > 1) why = `${esc(medline)} was killed at ${at} in ${mine.length} UOMs`;
   else if (!same) why = `the vendor item comes as ${esc(uomQoe(item))}, and ${esc(medline)} was killed as ${esc(mine[0].uom)}${mine[0].per != null ? `/${fmtNumber(mine[0].per)}` : ''}`;
   else why = `${fmtNumber(units)} ${uom} isn't a whole number`;
   return { quantity: '', recommended: whole, html: checkBox('danger', [...facts, advice,
     `Quantity is left blank: ${why}. Enter how many ${uom} to order.`]) };
 }
 
+// The site an order is for (2026-10-27): the Materials Manager's to choose. ``required``: a new order,
+// or one that has a site; one from before sites can stay without.
+function siteSelect(selected, { required = true, col = 'col-12 col-md-5' } = {}) {
+  return `<div class="${col}"><label class="form-label small mb-0" for="fk-m-site">Site${required ? ' *' : ''}</label>
+    <select class="form-select form-select-sm" id="fk-m-site" name="site"${required ? ' required' : ''}>
+      <option value=""${selected ? '' : ' selected'}>${required ? 'Choose the site…' : 'Site not recorded'}</option>
+      ${(config.sites || []).map((s) => `<option value="${esc(s.code)}"${s.code === selected ? ' selected' : ''}>${esc(s.name || s.code)}</option>`).join('')}
+    </select></div>`;
+}
+
+const poField = (value, col) => field('po_number', 'PO number', value, `maxlength="20" inputmode="numeric" autocomplete="off"
+  placeholder="Optional: Infor's PO, e.g. 3000564756" title="Infor's PO number, digits only. Optional: it links the order back to the killed items later."`, col);
+
 // Recording an order for a vendor item of a pick: it's placed with the vendor item's vendor part,
-// vendor, vendor ID, UOM and QOE (2026-10-20).
+// vendor, vendor ID, UOM and QOE (2026-10-20), for the site the Materials Manager chooses, with
+// Infor's PO number if they have it (2026-10-27). The site starts on the one the filter shows, when
+// it shows just one (a Materials Manager looking at their own site); otherwise they choose it.
 export function openOrderForm(vendorItemId) {
   const { sub, item } = findVendorItem(vendorItemId);
   if (!item) return;
   const medline = sub.medline_item;
   const row = state.rows.find((r) => r.medline_items.includes(medline));
-  const check = orderCheck(medline, row, item);
+  const site = state.sites.length === 1 ? state.sites[0] : '';
+  const check = orderCheck(medline, row, item, site);
   const hint = check.recommended != null ? `placeholder="Recommended: ${check.recommended}"` : '';
-  showModal(`Record an order · ${esc(medline)}`, summary(sub, item) + check.html + section('Order', `
+  showModal(`Record an order · ${esc(medline)}`, `${summary(sub, item)}<div id="fk-order-check">${check.html}</div>` + section('Order', `
+    ${siteSelect(site)}
     ${field('quantity', `Quantity (${esc(item.uom)}) *`, check.quantity, `type="number" min="1" step="1" required ${hint}`, 'col-6 col-md-3')}
+    ${poField('', 'col-6 col-md-4')}
     ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 'col-6 col-md-4')}
-    ${field('comment', 'Comment', '', 'maxlength="400"', 'col-12 col-md-5')}`),
+    ${field('comment', 'Comment', '', 'maxlength="400"', 'col-12 col-md-8')}`),
   'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { vendor_item_id: vendorItemId, expected_status: 'approved' }))
-    .then(() => 'Order recorded.'), { wide: true });
+    .then(() => `Order recorded for ${siteName(values.site)}.`), { wide: true });
+  orderForm = { medline, row, item, filled: check.quantity };
 }
 
-// An order keeps what it was placed with (vendor part, vendor, vendor ID, UOM, QOE): corrected here.
+// Another site chosen: its check, and its recommendation. A quantity the form filled in follows it;
+// one they typed stays.
+function orderSiteChanged(select) {
+  if (!orderForm || !$('fk-order-check')) return;
+  const check = orderCheck(orderForm.medline, orderForm.row, orderForm.item, select.value);
+  $('fk-order-check').innerHTML = check.html;
+  const quantity = $('fk-m-quantity');
+  quantity.placeholder = check.recommended != null ? `Recommended: ${check.recommended}` : '';
+  if (quantity.value === String(orderForm.filled)) quantity.value = check.quantity;
+  orderForm.filled = check.quantity;
+}
+
+// An order keeps what it was placed with (vendor part, vendor, vendor ID, UOM, QOE): corrected here,
+// with its site and PO number (2026-10-27). One from before sites can be given one.
 export function openOrderEditForm(order) {
   if (!order) return;
   showModal(`Correct an order · ${esc(order.vendor_part)}`, fields(`
+    ${siteSelect(order.site, { required: Boolean(order.site), col: 'col-12 col-md-6' })}
+    ${poField(order.po_number, 'col-12 col-md-6')}
     ${field('quantity', 'Quantity', order.quantity, 'type="number" min="1" step="1"', 'col-4')}
     ${field('uom', 'UOM', order.uom, 'maxlength="10"', 'col-4')}
     ${field('qoe', 'QOE', plainNumber(order.qoe), 'inputmode="decimal"', 'col-4')}
@@ -566,6 +613,34 @@ export function openSubEditForm(sub) {
       .then(() => 'Reference SKU corrected.'));
 }
 
+// The MM Lead's instruction to the sites' Materials Managers (2026-10-27), for the Infor item, the
+// main table's row. It becomes the one in force; the earlier ones stay, listed from the table.
+// What each site killed and has ordered in these dates is above it, to write it from.
+export function openInstructionForm(row) {
+  if (!row) return;
+  const item = row.packagings[0].medline_item;
+  const what = row.infor_item ? `Infor item ${row.infor_item}` : item;
+  const eaches = (n) => (n != null ? `${fmtNumber(n)} EA` : "can't be counted");
+  const sites = (row.sites || []).filter((s) => s.site);
+  const latest = row.instruction && row.instruction.latest;
+  const summaryLines = [
+    `<div><span class="fw-semibold">${esc(what)}</span> <span class="text-muted">${esc(row.description || '')}</span></div>`,
+    sites.length ? `<div><span class="text-muted">In these Fill/Kill dates</span> ${sites.map((s) => `${esc(siteName(s.site))}:
+      killed ${eaches(s.killed_each)}, sub ordered ${eaches(s.sub_ordered_each)}`).join(' · ')}</div>` : '',
+    latest ? `<div><span class="text-muted">In force</span> <span class="fk-instruction-text">${esc(latest.instruction)}</span>
+      <span class="text-muted">· ${esc(latest.written_by)}, ${fmtDateTime(latest.written_at)}</span></div>` : '',
+  ];
+  showModal(`Instruction to the sites · ${esc(what)}`, `<div class="fk-form-summary small">${summaryLines.join('')}</div>${fields(`
+    <div class="col-12"><label class="form-label small mb-0" for="fk-m-instruction">Instruction to the sites' Materials Managers *</label>
+      <textarea class="form-control form-control-sm" id="fk-m-instruction" name="instruction" rows="5" required
+                maxlength="${config.instructionMax || 1000}"
+                placeholder="e.g. White Plains and Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."></textarea>
+      <div class="form-text small">It replaces the instruction in force, on Main for everyone. The earlier ones are kept.</div></div>`)}`,
+  latest ? 'Save new instruction' : 'Save instruction',
+  (values) => postJSON(api.instructions, { medline_item: item, instruction: values.instruction })
+    .then(() => `Instruction saved for ${what}.`), { wide: true });
+}
+
 export function setupForms() {
   modalEl.addEventListener('show.bs.modal', () => { modalPhase = 'showing'; });
   modalEl.addEventListener('shown.bs.modal', () => { modalPhase = 'shown'; });
@@ -581,6 +656,7 @@ export function setupForms() {
   modalForm.addEventListener('change', (event) => {
     if (trimInput(event.target) && (event.target.name === 'vendor_part' || event.target.name === 'vendor_id')) killedItemCheck();
     if (event.target.name === 'uom') uomChanged(event.target);
+    if (event.target.name === 'site') orderSiteChanged(event.target);
     if (event.target.name === 'vendor') vendorNameLeft();
   });
 

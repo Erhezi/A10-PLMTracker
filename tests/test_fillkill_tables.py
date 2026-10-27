@@ -19,10 +19,10 @@ SCRIPT = Path(__file__).resolve().parents[1] / "db" / "fillkill" / "12_workflow_
 
 
 def _model_ddl() -> str:
-    from app.models.fillkill import History, Sub, SubOrder, VendorItem
+    from app.models.fillkill import History, ItemInstruction, Sub, SubOrder, VendorItem
 
     parts = []
-    for model in (Sub, VendorItem, SubOrder, History):
+    for model in (Sub, VendorItem, SubOrder, History, ItemInstruction):
         parts.append(str(CreateTable(model.__table__).compile(dialect=mssql.dialect())))
         parts += [str(CreateIndex(ix).compile(dialect=mssql.dialect())) for ix in model.__table__.indexes]
     return "\n".join(parts)

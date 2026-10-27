@@ -113,7 +113,8 @@ def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer)
     assert config["default"] == {"start": "2026-09-30", "end": "2026-09-30"}  # P4
     assert config["bounds"] == {"first": "2026-09-28", "last": "2026-09-30"}
     assert [s["name"] for s in config["sites"]] == ["WHITE PLAINS", "test site"]
-    assert config["can"] == {"view": True, "add_sub": False, "review": False, "pick": False, "details": False, "order": False}
+    assert config["can"] == {"view": True, "add_sub": False, "review": False, "pick": False, "details": False, "order": False,
+                             "instruct": False}
     assert 'aria-current="page">Main</a>' in page
 
 
@@ -210,7 +211,8 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     status, data = post(finder_manager, "/fillkill/api/orders", {"quantity": 30})
     assert status == 400 and "Which vendor item" in data["message"]
     status, data = post(finder_manager, "/fillkill/api/orders", {
-        "vendor_item_id": item["vendor_item_id"], "quantity": 30, "ordered_dt": "2026-09-29T15:00", "expected_status": "approved",
+        "vendor_item_id": item["vendor_item_id"], "site": WP, "quantity": 30, "ordered_dt": "2026-09-29T15:00",
+        "expected_status": "approved",
         "uom": "CS",  # not the order's to say: the vendor item's
     })
     assert status == 201, data
@@ -285,7 +287,7 @@ ITEM_PAYLOAD = {"vendor_part": "OM1", "vendor": "OWENS & MINOR", "vendor_id": OW
     ("viewer", "/fillkill/api/vendor-items/{item}/edit", {"uom": "EA"}, False),
     ("finder_manager", "/fillkill/api/vendor-items/{item}/edit", {"uom": "EA"}, True),
     ("finder_manager", "/fillkill/api/vendor-items/{item}/delete", {"reason": "no longer sold"}, True),
-    ("finder_approver", "/fillkill/api/orders", {"vendor_item_id": "{item}", "quantity": 1}, False),
+    ("finder_approver", "/fillkill/api/orders", {"vendor_item_id": "{item}", "site": WP, "quantity": 1}, False),
     ("viewer", "/fillkill/api/subs/{sub}/pick", {}, False),
     ("viewer", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, False),
     ("finder_manager", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, True),
@@ -329,7 +331,7 @@ def test_materials_managers_pick_and_unpick_too(app):
     assert status == 403 and "Only Sub Approvers can review or comment on subs." in data["message"]
     assert post(manager, f"/fillkill/api/subs/{second}/comments", {"comment": "ok"})[0] == 403
     status, data = post(finder, f"/fillkill/api/subs/{first}/pick", {})
-    assert status == 403 and "Only Sub Approvers and Materials Managers can pick" in data["message"]
+    assert status == 403 and "Only Sub Approvers, Materials Managers and MM Leads can pick" in data["message"]
     assert (page_config(manager)["can"]["pick"], page_config(manager)["can"]["review"]) == (True, False)
 
 
@@ -348,7 +350,8 @@ def test_rule_errors_and_conflicts_come_back_as_messages(app, finder_approver, f
     assert status == 409 and "nurse@example.org" in data["message"]
 
     _, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/vendor-items", ITEM_PAYLOAD)
-    status, data = post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "quantity": 1})
+    status, data = post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "site": WP,
+                                                       "quantity": 1})
     assert status == 409 and "isn't picked" in data["message"]
     status, data = post(finder_manager, "/fillkill/api/vendor-items/999/edit", {"uom": "EA"})
     assert status == 404 and "That vendor item no longer exists" in data["message"]
@@ -695,7 +698,7 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     cup_id = data["sub"]["sub_id"]
     _, data = post(finder_manager, f"/fillkill/api/subs/{cup_id}/vendor-items",
                    {"vendor_part": "88885", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "uom": "BX", "qoe": "100"})
-    post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "quantity": 2,
+    post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "site": WP, "quantity": 2,
                                                   "ordered_dt": "2026-09-29T10:00"})
     post(finder_manager, f"/fillkill/api/subs/{cup_id}/vendor-items",
          {"vendor_part": "88885-CS", "vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "CS", "manufacturer_part": "N88"})
@@ -739,3 +742,71 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     header, *lines = list(csv.reader(io.StringIO(response.get_data(as_text=True).lstrip("﻿"))))
     [line] = [dict(zip(header, line)) for line in lines]
     assert (line["Reference SKU"], line["Vendor Item ID"], line["Sub Vendor Part"]) == ("OM1", "", "")
+
+
+# --- the coordination hub (2026-10-27) -----------------------------------------------------------
+
+@pytest.fixture
+def lead(app):
+    return client(app, "lead@example.org", plm=None, fillkill=("mm_lead",))
+
+
+def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, lead, finder_manager):
+    assert page_config(lead)["can"] == {"view": True, "add_sub": False, "review": False, "pick": True, "details": True,
+                                       "order": False, "instruct": True}
+    status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
+    assert status == 403 and "Only MM Leads" in data["message"]
+    assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403
+    assert post(lead, "/fillkill/api/instructions", {"medline_item": "NOT-KILLED", "instruction": "x"})[0] == 404
+    status, data = post(lead, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": " "})
+    assert status == 400 and "Instruction is required" in data["message"]
+    for text in ("Hold until Friday", "White Plains: 2 BX of OM1. Test site: use stock."):
+        status, data = post(lead, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": text})
+        assert status == 201, data
+    assert (data["instruction"]["infor_item"], data["instruction"]["written_by"]) == ("999999", "lead@example.org")
+
+    # On Main, the latest is in force; it isn't tied to the Fill/Kill dates.
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-29", end="2026-09-29")
+    [glove] = main["rows"]
+    assert (glove["instruction"]["count"], glove["instruction"]["latest"]["instruction"]) == (
+        2, "White Plains: 2 BX of OM1. Test site: use stock.")
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    assert next(r for r in main["rows"] if r["infor_item"] == "100339")["instruction"] is None
+    _, thread = get(viewer, "/fillkill/api/instructions", item="MDS2585H")
+    assert [i["instruction"] for i in thread["instructions"]] == [
+        "White Plains: 2 BX of OM1. Test site: use stock.", "Hold until Friday"]  # newest first
+    assert get(viewer, "/fillkill/api/instructions")[0] == 400
+    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-28", end="2026-09-30")
+    assert panel["instruction"]["latest"]["written_by"] == "lead@example.org"
+    # The MM Lead doesn't record orders.
+    status, data = post(lead, "/fillkill/api/orders", {"vendor_item_id": 1, "site": WP, "quantity": 1})
+    assert status == 403 and "Only Materials Managers" in data["message"]
+
+
+def test_orders_are_for_a_site_and_the_site_filter_applies_to_them(app, viewer, finder_approver, finder_manager):
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "DYND70294BH", "reference_sku": "88885"})
+    _, data = post(finder_manager, f"/fillkill/api/subs/{data['sub']['sub_id']}/vendor-items", CUP_ITEM)  # BX of 100
+    order = {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "quantity": 1, "expected_status": "approved",
+             "ordered_dt": "2026-09-30T12:00"}
+    status, data = post(finder_manager, "/fillkill/api/orders", order)
+    assert status == 400 and "Choose the site" in data["message"]
+    status, data = post(finder_manager, "/fillkill/api/orders", {**order, "site": "MOSES"})
+    assert status == 400 and "isn't one of the sites" in data["message"]
+    status, data = post(finder_manager, "/fillkill/api/orders", {**order, "site": TEST, "po_number": "3000564756"})
+    assert status == 201, data
+    assert (data["order"]["site"], data["order"]["po_number"]) == (TEST, "3000564756")
+
+    # Every site: each one's kills (White Plains 25 EA over 9/28-9/30, the test site 5) and orders.
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    cup = next(r for r in main["rows"] if r["infor_item"] == "100339")
+    assert [(s["site"], s["killed_each"], s["sub_ordered_each"]) for s in cup["sites"]] == [(WP, 25.0, 0.0), (TEST, 5.0, 100.0)]
+    assert cup["ordering_status"] == "ordered"
+    # White Plains alone: the test site's order doesn't count for it.
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30", sites=WP)
+    cup = next(r for r in main["rows"] if r["infor_item"] == "100339")
+    assert (cup["ordering_status"], cup["sub_ordered_each"], cup["needs"]) == ("no order", 0.0, ["needs_order"])
+    # The orders under the table follow the site filter.
+    for sites, expected in ((WP, []), (TEST, ["3000564756"]), (None, ["3000564756"])):
+        params = {"start": "2026-09-30", "end": "2026-09-30", **({"sites": sites} if sites else {})}
+        _, orders = get(viewer, "/fillkill/api/orders", **params)
+        assert [o["po_number"] for o in orders["orders"]] == expected, sites

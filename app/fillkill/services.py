@@ -15,7 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .. import db
 from ..models import now_ny_naive
-from ..models.fillkill import History, Sub, SubOrder, VendorItem
+from ..models.fillkill import History, ItemInstruction, Sub, SubOrder, VendorItem
 from . import queries, rules
 from .rules import RuleError
 
@@ -151,6 +151,11 @@ def uom_aliases() -> dict[str, str]:
         db.session.rollback()
         log.exception("FillKill.vw_UomAlias read failed; has 13_contract_search.sql been run?")
         return {}
+
+
+def site_codes() -> list[str]:
+    """The sites an order can be for (2026-10-27): Medline's Sold-To codes in the kill lines."""
+    return [site["code"] for site in queries.sites()]
 
 
 def _check_vendor_id(vendor_id: str | None) -> dict | None:
@@ -472,16 +477,19 @@ def delete_vendor_item(vendor_item_id: int, reason, actor: str) -> VendorItem:
 # --- orders (Materials Manager) -------------------------------------------------------
 
 def record_order(vendor_item_id: int, data: dict, actor: str, *, expected_status: str | None = None) -> SubOrder:
-    """An order for a vendor item of a pick (2026-10-20). It keeps the vendor item's vendor part,
+    """An order for a vendor item of a pick (2026-10-20), for the site the Materials Manager chose,
+    with Infor's PO number if they gave it (2026-10-27). It keeps the vendor item's vendor part,
     vendor, vendor ID, UOM and QOE."""
+    sites = site_codes()
+
     def action():
         item, sub = _live_vendor_item(vendor_item_id)
         _ensure_current(sub, expected_status)
         now = now_ny_naive()
-        clean = rules.check_new_order(sub, item, data, now=now)
+        clean = rules.check_new_order(sub, item, data, now=now, sites=sites)
         order = SubOrder(
             sub_id=sub.sub_id, vendor_item_id=item.vendor_item_id, medline_item=sub.medline_item,
-            quantity=clean["quantity"], vendor_part=clean["vendor_part"], uom=clean["uom"], qoe=clean["qoe"],
+            site=clean["site"], po_number=clean["po_number"], quantity=clean["quantity"], vendor_part=clean["vendor_part"], uom=clean["uom"], qoe=clean["qoe"],
             vendor=clean["vendor"], vendor_id=clean["vendor_id"], ordered_by=actor,
             ordered_dt=clean["ordered_dt"] or now, create_dt=now, update_dt=now,
         )
@@ -498,11 +506,12 @@ def record_order(vendor_item_id: int, data: dict, actor: str, *, expected_status
 
 def edit_order(order_id: int, data: dict, actor: str) -> SubOrder:
     uoms = uom_aliases()
+    sites = site_codes()
 
     def action():
         order = _locked(SubOrder, order_id)
         now = now_ny_naive()
-        changes = rules.check_order_edit(order, data, now=now, uoms=uoms)
+        changes = rules.check_order_edit(order, data, now=now, uoms=uoms, sites=sites)
         _vendor_follows_id(order, changes)
         for name, value in changes.items():
             _history("order", order.order_id, order.medline_item, "edit", actor, now,
@@ -536,5 +545,24 @@ def comment_on_order(order_id: int, text, actor: str) -> SubOrder:
         order.update_dt = now
         _history("order", order.order_id, order.medline_item, "comment", actor, now, comment=comment)
         return order
+
+    return _run(action)
+
+
+# --- instructions (MM Lead) ---------------------------------------------------------------
+
+def add_instruction(medline_item: str, text, actor: str) -> ItemInstruction:
+    """An MM Lead's instruction to the sites on how to order an item (2026-10-27). It belongs to the
+    Infor item of ``medline_item``, the main table's row (to the Medline item when Infor has none).
+    Instructions are never changed: a new one replaces the last as the one in force."""
+    instruction = rules.clean_instruction(text)
+    infor_item = queries.infor_items_of([medline_item]).get(medline_item)
+
+    def action():
+        row = ItemInstruction(infor_item=infor_item, medline_item=medline_item, instruction=instruction,
+                              written_by=actor, written_at=now_ny_naive())
+        db.session.add(row)
+        db.session.flush()
+        return row
 
     return _run(action)

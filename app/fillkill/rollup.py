@@ -6,16 +6,20 @@ Subs, picks and orders still belong to a Medline item.
 
 Inputs, all plain dicts:
   qty_rows     vw_MedlineFillKillQtyAgg rows already filtered to the dates and sites:
-               medline_item, um, ordered, filled, killed, lines (any granularity)
+               medline_item, um, ordered, filled, killed, lines (any granularity), and site, the
+               Sold-To, for the per-site figures (2026-10-27)
   item_rows    vw_MedlineFillKillItemCollection rows of the Medline items in the range
   subs         subs of those Medline items and of their Infor items' other Medline items:
                sub_id, medline_item, reference_sku, status, is_picked, vendor_items
-  orders       non-voided orders dated inside the range (2026-10-20), for the same Medline items:
-               medline_item, order_id, quantity, uom, ordered_dt
+  orders       non-voided orders dated inside the range (2026-10-20) for its sites (2026-10-27), for
+               the same Medline items: medline_item, order_id, site, quantity, uom, qoe, ordered_dt
   reasons      {medline_item: {comment, reason, reason_date, order_date, order_time}}: the latest
                comment in the range
   family_rows  item-view rows (Medline Item, UM, Customer Item #, Infor Item) of every Medline item
                Medline has killed under the Infor items in the range
+  instructions the MM Lead's instructions for those Infor items, and for Medline items Infor had
+               none for (2026-10-27), oldest first: infor_item, medline_item, instruction, written_by,
+               written_at
 """
 
 from __future__ import annotations
@@ -235,6 +239,49 @@ def _order_key(order) -> tuple:
     return (str(order.get("ordered_dt") or ""), order.get("order_id") or 0)
 
 
+def kills_by_site(qty_rows) -> dict[str, list[dict]]:
+    """Per Medline item: what each site killed, per UOM (2026-10-27)."""
+    found: dict[str, dict[tuple, dict]] = defaultdict(dict)
+    for row in qty_rows:
+        key = (row.get("site"), row.get("um") or "")
+        entry = found[row["medline_item"]].setdefault(key, {"site": key[0], "uom": key[1], "killed": 0})
+        entry["killed"] += _number(row.get("killed"))
+    return {item: list(entries.values()) for item, entries in found.items()}
+
+
+def site_figures(packagings, site_kills, factors, orders) -> list[dict]:
+    """Per site (2026-10-27): what it killed of the row's Medline items, each UOM and in eaches, and
+    its sub orders in eaches. Each site orders for itself, so its shortfall is its own. Orders
+    recorded before sites are under None. Sorted by site, None last."""
+    sites: dict = {}
+
+    def entry(site):
+        return sites.setdefault(site, {"site": site, "kills": [], "orders": []})
+
+    for p in packagings:
+        for k in site_kills.get(p["medline_item"], []):
+            entry(k["site"])["kills"].append({"medline_item": p["medline_item"], "uom": k["uom"], "killed": k["killed"],
+                                              "each": factors.get((p["medline_item"], k["uom"]))})
+    for order in orders:
+        entry(order.get("site"))["orders"].append(order)
+    found = [{
+        "site": e["site"],
+        "kills": e["kills"],
+        "killed_each": eaches((k["killed"], k["uom"], k["each"]) for k in e["kills"]),
+        "orders": len(e["orders"]),
+        "sub_ordered_each": eaches((o.get("quantity"), o.get("uom"), o.get("qoe")) for o in e["orders"]),
+    } for e in sites.values()]
+    return sorted(found, key=lambda s: (s["site"] is None, str(s["site"] or "")))
+
+
+def row_instructions(infor, medline_items, instructions) -> list[dict]:
+    """The row's instructions (2026-10-27): its Infor item's, and those written for its Medline items
+    while Infor had none for them."""
+    return [i for i in instructions
+            if (infor and i.get("infor_item") == infor)
+            or (i.get("infor_item") is None and i.get("medline_item") in medline_items)]
+
+
 def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> dict:
     for q in qty["by_uom"]:
         q["each"] = factors.get((item, q["uom"]))
@@ -254,10 +301,11 @@ def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> di
     }
 
 
-def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) -> list[dict]:
+def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), instructions=()) -> list[dict]:
     """One row per Infor item killed in the range (a Medline item without one is its own row),
     sorted by ``sort_key``. Each row lists its packagings: its Medline items killed in the range."""
     quantities = sum_quantities(qty_rows)
+    site_kills = kills_by_site(qty_rows)
     details = merge_item_details(item_rows)
     factors = each_factors(item_rows)
     infor_of, members = families(family_rows)
@@ -324,12 +372,20 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=()) 
             # by its own QOE (quantity x eaches per its UOM).
             "killed_each": eaches((q["killed"], q["uom"], q["each"]) for q in quantities_),
             "sub_ordered_each": eaches((o.get("quantity"), o.get("uom"), o.get("qoe")) for o in row_orders),
+            # The same per site (2026-10-27): each site orders for itself.
+            "sites": site_figures(packagings, site_kills, factors, row_orders),
+            # The MM Lead's instruction in force, and how many there have been (2026-10-27).
+            "instruction": instruction_summary(row_instructions(infor, here, instructions)),
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered,
                                  details_missing=any(not p.get("vendor_items") for p in picks)),
         })
     rows.sort(key=sort_key)
     return rows
+
+
+def instruction_summary(found) -> dict | None:
+    return {"count": len(found), "latest": found[-1]} if found else None
 
 
 def killed_total(row) -> float:

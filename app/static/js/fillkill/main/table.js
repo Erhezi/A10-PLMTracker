@@ -4,12 +4,12 @@
 
 import {
   $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
-  noQoeBadge, statusBadge, uomQoe, vendorItemText,
+  noQoeBadge, shortName, statusBadge, uomQoe, vendorItemText,
 } from '../common.js';
 import { renderNeeds } from './controls.js';
-import { openOrderForm, openVendorItemForm } from './forms.js';
+import { openInstructionForm, openOrderForm, openVendorItemForm } from './forms.js';
 import { openPanel } from './panel.js';
-import { api, can, historyUrl, scopeParams, state, syncLink } from './state.js';
+import { api, can, historyUrl, scopeParams, siteName, state, syncLink } from './state.js';
 
 const mainTable = $('fk-main');
 let mainRequest = 0;
@@ -26,7 +26,7 @@ export async function loadMain() {
     renderRows();
   } catch (error) {
     if (ticket !== mainRequest) return;
-    setRows(`<tbody><tr><td colspan="15" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
+    setRows(`<tbody><tr><td colspan="16" class="p-3">${alertBox(error.message)}</td></tr></tbody>`);
   }
 }
 
@@ -72,14 +72,14 @@ export function renderRows() {
   const rows = state.rows.filter((row) => (state.needs === 'all' || row.needs.includes(state.needs)) && matchesSearch(row));
   if (!rows.length) {
     const why = state.rows.length ? 'No item matches these filters.' : 'No kill lines for these dates and sites.';
-    setRows(`<tbody><tr><td colspan="15" class="text-muted small p-3">${why}</td></tr></tbody>`);
+    setRows(`<tbody><tr><td colspan="16" class="text-muted small p-3">${why}</td></tr></tbody>`);
     return;
   }
   setRows(rows.map(itemRows).join(''));
 }
 
 function setRows(html) {
-  closeComments();  // its button is about to go
+  closePopover();  // its button is about to go
   mainTable.querySelectorAll(':scope > tbody').forEach((body) => body.remove());
   mainTable.tHead.insertAdjacentHTML('afterend', html);
 }
@@ -134,23 +134,27 @@ function pickCell(pick) {
   const chat = ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline${n ? '' : ' text-muted'}" data-comments="${pick.sub_id}"
       title="${esc(about)}" aria-label="Comments on ${esc(pick.reference_sku)}"><i
       class="bi ${n ? 'bi-chat-left-text-fill' : 'bi-chat-left'}"></i>${n ? `<span class="small ms-1">${n}</span>` : ''}</button>`;
-  return `<div class="text-nowrap"><span class="fw-semibold">${esc(pick.reference_sku)}</span>${pencil}${chat}</div>`;
+  // The latest, as text under it (2026-10-27): nursing's word reads on the table, without a click.
+  const said = n ? `<div class="fk-pick-comment" title="${esc(`${latest.comment}\n${latest.actor}, ${fmtDateTime(latest.acted_at)}`)}">
+      <div class="fk-clamp-2">${esc(latest.comment)}</div>
+      <div class="text-muted text-nowrap">${esc(shortName(latest.actor))} · ${fmtDate(latest.acted_at)}</div></div>` : '';
+  return `<div class="text-nowrap"><span class="fw-semibold">${esc(pick.reference_sku)}</span>${pencil}${chat}</div>${said}`;
 }
 
-// --- a pick's comments -----------------------------------------------------------------------
+// --- a pick's comments, an item's instructions ----------------------------------------------
 
-// A pick's comments, newest first, in a popover beside it (2026-10-21), so they can be read
-// without opening the item's panel. One is open at a time; a click elsewhere or Escape closes it.
-// They're read first and the popover shown with them: Bootstrap hides a manual popover whose
-// content is changed while it shows.
-let openComments = null;  // { button, popover }
-let loadingComments = null;  // the button whose comments are on their way
+// A pick's comments (2026-10-21), or the item's instructions (2026-10-27), newest first, in a
+// popover beside them, so they can be read without opening the item's panel. One is open at a time;
+// a click elsewhere or Escape closes it. They're read first and the popover shown with them:
+// Bootstrap hides a manual popover whose content is changed while it shows.
+let openPopover = null;  // { button, popover }
+let loadingPopover = null;  // the button whose list is on its way
 
-function closeComments() {
-  loadingComments = null;
-  if (!openComments) return;
-  openComments.popover.dispose();
-  openComments = null;
+function closePopover() {
+  loadingPopover = null;
+  if (!openPopover) return;
+  openPopover.popover.dispose();
+  openPopover = null;
 }
 
 function commentList(history) {
@@ -160,27 +164,47 @@ function commentList(history) {
     <div class="text-muted">${esc(fmtDateTime(h.acted_at))} · ${esc(h.actor)}</div><div>${esc(h.comment)}</div></li>`).join('')}</ul>`;
 }
 
-async function toggleComments(button) {
-  const again = (openComments && openComments.button === button) || loadingComments === button;
-  closeComments();
+// The instructions, newest first: the first is the one in force.
+function instructionList(instructions) {
+  if (!instructions.length) return '<div class="text-muted">No instructions yet.</div>';
+  return `<ul class="list-unstyled mb-0">${instructions.map((i, n) => `<li class="mb-2">
+    <div class="text-muted">${esc(fmtDateTime(i.written_at))} · ${esc(i.written_by)}${n === 0 ? ' · in force' : ''}</div>
+    <div class="fk-instruction-text">${esc(i.instruction)}</div></li>`).join('')}</ul>`;
+}
+
+// ``load`` returns the popover's HTML; ``title`` is already escaped.
+async function togglePopover(button, title, load) {
+  const again = (openPopover && openPopover.button === button) || loadingPopover === button;
+  closePopover();
   if (again || !window.bootstrap) return;
-  loadingComments = button;
+  loadingPopover = button;
   let content;
   try {
-    content = commentList((await getJSON(historyUrl('sub', button.dataset.comments))).history);
+    content = await load();
   } catch (error) {
     content = alertBox(error.message);
   }
   // Closed, another opened, or the table redrawn while they were on their way.
-  if (loadingComments !== button || !button.isConnected) return;
-  loadingComments = null;
-  const pick = state.rows.flatMap((row) => row.picks).find((s) => s.sub_id === Number(button.dataset.comments));
+  if (loadingPopover !== button || !button.isConnected) return;
+  loadingPopover = null;
   const popover = window.bootstrap.Popover.getOrCreateInstance(button, {
-    trigger: 'manual', html: true, placement: 'left', customClass: 'fk-comments-popover',
-    title: `Comments · ${esc(pick ? pick.reference_sku : '')}`, content,
+    trigger: 'manual', html: true, placement: 'left', customClass: 'fk-comments-popover', title, content,
   });
-  openComments = { button, popover };
+  openPopover = { button, popover };
   popover.show();
+}
+
+function toggleComments(button) {
+  const pick = state.rows.flatMap((row) => row.picks).find((s) => s.sub_id === Number(button.dataset.comments));
+  return togglePopover(button, `Comments · ${esc(pick ? pick.reference_sku : '')}`,
+    async () => commentList((await getJSON(historyUrl('sub', button.dataset.comments))).history));
+}
+
+function toggleInstructions(button) {
+  const item = button.dataset.instructions;
+  const row = state.rows.find((r) => r.medline_items.includes(item));
+  return togglePopover(button, `Instructions · ${esc(row && row.infor_item ? `Infor item ${row.infor_item}` : item)}`,
+    async () => instructionList((await getJSON(api.instructions, { item })).instructions));
 }
 
 // Vendor Item Detail: a tile per vendor ID, vendor part and UOM of the pick beside it (2026-10-20).
@@ -205,6 +229,27 @@ function vendorItemsCell(pick, several) {
       class="bi bi-plus-lg"></i> Vendor item${several ? ` for ${esc(pick.reference_sku)}` : ''}</button>`);
   }
   return items.join('') || '<span class="text-muted small">—</span>';
+}
+
+// MM Instruction (2026-10-27): the MM Lead's latest instruction to the sites, the one in force, its
+// first lines (the whole on hover) with who and when. Its icon lists them all; an MM Lead writes a new
+// one from the pencil. Not tied to the Fill/Kill dates: its date says how old it is.
+function instructionCell(row) {
+  const info = row.instruction;
+  const item = esc(row.packagings[0].medline_item);
+  const write = can.instruct
+    ? `<button type="button" class="btn btn-link btn-sm p-0 align-baseline text-decoration-none" data-instruct="${item}"
+         title="Write a new instruction for the sites' Materials Managers">${info ? '<i class="bi bi-pencil-square" aria-label="New instruction"></i>'
+        : '<i class="bi bi-plus-lg"></i> Instruction'}</button>` : '';
+  if (!info) return write || '<span class="text-muted small">—</span>';
+  const { latest, count } = info;
+  const all = `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-instructions="${item}"
+      title="${count > 1 ? `All ${count} instructions, newest first` : 'The instruction, with who wrote it and when'}"
+      aria-label="All instructions"><i class="bi bi-chat-square-text"></i>${count > 1 ? `<span class="small ms-1">${count}</span>` : ''}</button>`;
+  return `<div class="fk-instruction">
+    <div class="fk-instruction-text fk-clamp-3" title="${esc(latest.instruction)}">${esc(latest.instruction)}</div>
+    <div class="text-muted text-nowrap" title="${esc(latest.written_by)}">${esc(shortName(latest.written_by))} · ${fmtDateTime(latest.written_at)}
+      ${all} ${write}</div></div>`;
 }
 
 function reasonCell(reason) {
@@ -235,8 +280,10 @@ const ORDERS_SHOWN = 3;
 
 function orderingCell(row) {
   if (!row.orders.length) return '<span class="badge text-bg-light border">No order</span>';
+  // Each with its site (2026-10-27): each site orders for itself.
   const lines = row.orders.slice(0, ORDERS_SHOWN).map((o) => `<div class="small text-nowrap">${fmtNumber(o.quantity)}
-    <span class="text-muted">${esc(o.uom)}</span> · ${fmtDate(o.ordered_dt)}</div>`).join('');
+    <span class="text-muted">${esc(o.uom)}</span> · <span class="fk-site${o.site ? '' : ' text-muted'}" title="${esc(siteName(o.site))}${o.po_number
+      ? ` · PO ${esc(o.po_number)}` : ''}">${esc(o.site ? siteName(o.site) : 'no site')}</span> · ${fmtDate(o.ordered_dt)}</div>`).join('');
   const more = row.orders.length > ORDERS_SHOWN ? `<div class="small text-muted">+${row.orders.length - ORDERS_SHOWN} more</div>` : '';
   return `<span class="badge text-bg-success">Ordered</span>${lines}${more}`;
 }
@@ -246,19 +293,36 @@ function orderingCell(row) {
 const eachesUnknown = (why) => `<span class="text-muted" title="${esc(why)}">—</span>`;
 const eachesText = (n) => `${fmtNumber(n)} <span class="text-muted small">EA</span>`;
 
+// The sites that killed the item in these dates (2026-10-27): each orders for itself.
+const killedSites = (row) => (row.sites || []).filter((s) => s.site && s.kills.some((k) => k.killed > 0));
+const eachesOrUnknown = (n) => (n == null ? "can't be counted" : `${fmtNumber(n)} EA`);
+
 function killedEachCell(row) {
-  return row.killed_each == null ? eachesUnknown("A UOM killed has no QOE in Infor, so it can't be counted in eaches")
-    : eachesText(row.killed_each);
+  if (row.killed_each == null) return eachesUnknown("A UOM killed has no QOE in Infor, so it can't be counted in eaches");
+  const sites = killedSites(row);
+  if (sites.length < 2) return eachesText(row.killed_each);
+  const each = sites.map((s) => `${siteName(s.site)}: ${eachesOrUnknown(s.killed_each)}`).join('\n');
+  return `<span title="${esc(each)}">${eachesText(row.killed_each)}</span><div class="small text-muted">${sites.length} sites</div>`;
 }
 
-// With orders that fall short of what was killed, how many eaches short.
+// With orders that fall short of what was killed, how many eaches short: with kills at several
+// sites, each site that's short (2026-10-27), since each orders for itself.
 function subOrderedEachCell(row) {
   if (!row.orders.length) return `<span class="text-muted">${eachesText(0)}</span>`;
   if (row.sub_ordered_each == null) {
     return eachesUnknown("An order's UOM has no QOE, so it can't be counted in eaches. Correct the order to add its QOE.");
   }
-  const short = row.killed_each != null && row.sub_ordered_each < row.killed_each - 1e-9
-    ? `<div class="small text-danger fw-semibold">${fmtNumber(row.killed_each - row.sub_ordered_each)} EA short</div>` : '';
+  const shortBy = (killed, ordered) => (killed != null && ordered != null && ordered < killed - 1e-9 ? killed - ordered : 0);
+  const sites = killedSites(row);
+  let short;
+  if (sites.length > 1) {
+    short = sites.filter((s) => shortBy(s.killed_each, s.sub_ordered_each)).map((s) => `<div class="small text-danger fw-semibold
+      text-nowrap"><span class="fk-site" title="${esc(siteName(s.site))}">${esc(siteName(s.site))}</span>:
+      ${fmtNumber(shortBy(s.killed_each, s.sub_ordered_each))} EA short</div>`).join('');
+  } else {
+    const by = shortBy(row.killed_each, row.sub_ordered_each);
+    short = by ? `<div class="small text-danger fw-semibold">${fmtNumber(by)} EA short</div>` : '';
+  }
   return `${eachesText(row.sub_ordered_each)}${short}`;
 }
 
@@ -305,7 +369,8 @@ function itemRows(row) {
         <td role="button" data-open="${esc(p.medline_item)}"${own}>${subsStatusCell(p.subs_status)}${many ? '' : note}</td>`}
         <td${split}>${pickCell(pick)}</td>
         <td${split}>${vendorItemsCell(pick, picks.length > 1)}</td>
-        ${first ? `<td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
+        ${first ? `<td data-to-end${all}>${instructionCell(row)}</td>
+          <td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
             title="Orders recorded in these Fill/Kill dates. Click for all of its orders">${ordering}</td>
           <td class="text-end" data-to-end${all}>${killedEachCell(row)}</td>
           <td class="text-end" data-to-end${all}>${subOrderedEachCell(row)}</td>` : ''}
@@ -336,15 +401,28 @@ function totalRow(row, note) {
 }
 
 export function setupTable() {
-  // A pick's comments close on a click outside them, or Escape.
+  // A pick's comments, or an item's instructions, close on a click outside them, or Escape.
   document.addEventListener('click', (event) => {
-    if ((openComments || loadingComments) && !event.target.closest('.fk-comments-popover, [data-comments]')) closeComments();
+    if ((openPopover || loadingPopover) && !event.target.closest('.fk-comments-popover, [data-comments], [data-instructions]')) {
+      closePopover();
+    }
   });
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeComments(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePopover(); });
   mainTable.addEventListener('click', (event) => {
     const commentsButton = event.target.closest('[data-comments]');
     if (commentsButton) {
       toggleComments(commentsButton);
+      return;
+    }
+    const instructionsButton = event.target.closest('[data-instructions]');
+    if (instructionsButton) {
+      toggleInstructions(instructionsButton);
+      return;
+    }
+    const instructButton = event.target.closest('[data-instruct]');
+    if (instructButton) {
+      closePopover();
+      openInstructionForm(state.rows.find((row) => row.medline_items.includes(instructButton.dataset.instruct)));
       return;
     }
     const orderButton = event.target.closest('[data-order-vi]');

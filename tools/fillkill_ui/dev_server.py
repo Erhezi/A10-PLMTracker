@@ -35,9 +35,10 @@ O2 = r"DRIVER={ODBC Driver 17 for SQL Server};SERVER=YNBBSTVWP02\PROCDATASRVPROD
 
 # Who /dev-login?as=<who> signs in: (app role, Fill/Kill roles).
 USERS = {
-    "all": ("admin", ("sub_finder", "sub_approver", "materials_manager")),
+    "all": ("admin", ("sub_finder", "sub_approver", "materials_manager", "mm_lead")),
     "nurse": ("user", ("sub_approver",)),
     "mm": ("user", ("materials_manager",)),
+    "lead": ("user", ("mm_lead",)),  # the Materials Management lead (2026-10-27)
     "finder": ("user", ("sub_finder",)),
     "viewer": ("user", ("viewer",)),
 }

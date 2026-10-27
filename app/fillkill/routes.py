@@ -17,7 +17,7 @@ from flask_login import current_user, login_required
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
-from ..models.fillkill import SUB_SOURCES, SUB_STATUSES
+from ..models.fillkill import INSTRUCTION_MAX, SUB_SOURCES, SUB_STATUSES
 from .rules import MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
@@ -66,6 +66,12 @@ def default_dates(days: int = 1) -> tuple[date, date]:
     return (max(start, first) if first else start), last
 
 
+def sites_from_request() -> tuple[str, ...]:
+    """Sold-To codes from ?sites=a,b (or ?sites=a&sites=b); none means every site."""
+    raw = ",".join(request.args.getlist("sites"))
+    return tuple(sorted({site.strip() for site in raw.split(",") if site.strip()}))
+
+
 def scope_from_request(days: int = 1) -> queries.Scope:
     """Dates from ?start&end (default: the latest ``days`` of data); sites from ?sites=a,b."""
     start, end = request.args.get("start"), request.args.get("end")
@@ -75,9 +81,7 @@ def scope_from_request(days: int = 1) -> queries.Scope:
     end = _parse_date(end, defaults[1])
     if start > end:
         start, end = end, start
-    raw = ",".join(request.args.getlist("sites"))
-    sites = tuple(sorted({site.strip() for site in raw.split(",") if site.strip()}))
-    return queries.Scope(start, end, sites)
+    return queries.Scope(start, end, sites_from_request())
 
 
 def data_as_of() -> dict:
@@ -134,6 +138,7 @@ def index():
         "medlineVendorIds": list(MEDLINE_VENDOR_IDS),
         # A UOM typed another way, and Infor's for it (CS is CA): the forms change it as it's typed.
         "uomAliases": services.uom_aliases(),
+        "instructionMax": INSTRUCTION_MAX,  # an MM Lead's instruction (2026-10-27)
         "api": {
             "main": url_for("fillkill.api_main"),
             "item": url_for("fillkill.api_item"),
@@ -148,6 +153,7 @@ def index():
             "vendorItemAction": url_for("fillkill.api_vendor_item_action", vendor_item_id=0, action="ACTION"),
             "recordOrder": url_for("fillkill.api_record_order"),
             "orderAction": url_for("fillkill.api_order_action", order_id=0, action="ACTION"),
+            "instructions": url_for("fillkill.api_instructions"),
         },
     }
     return render_template(
@@ -328,12 +334,25 @@ ORDERS_DAYS = 30  # the orders section's default: the last 30 days, today includ
 @require_module(FILLKILL, "view")
 def api_orders():
     """Orders by their own date, ?start&end (default: the last ORDERS_DAYS days); not the main
-    table's dates."""
+    table's dates. For ?sites, the main table's site filter (2026-10-27): a site's Materials Manager
+    sees their site's orders."""
     end = _parse_date(request.args.get("end"), now_ny_naive().date())
     start = _parse_date(request.args.get("start"), end - timedelta(days=ORDERS_DAYS - 1))
     if start > end:
         start, end = end, start
-    return ok({"orders": queries.orders_log(start, end), "start": start, "end": end})
+    sites = sites_from_request()
+    return ok({"orders": queries.orders_log(start, end, sites), "start": start, "end": end, "sites": sites})
+
+
+@bp.get("/api/instructions")
+@login_required
+@require_module(FILLKILL, "view")
+def api_instructions():
+    """Every MM Lead instruction for the main table's row of ?item=<Medline item>, newest first."""
+    medline_item = (request.args.get("item") or "").strip()
+    if not medline_item:
+        raise RuleError("Which item?")
+    return ok(queries.instruction_thread(medline_item))
 
 
 @bp.get("/api/dashboard")
@@ -496,3 +515,18 @@ def api_order_action(order_id, action):
         order = services.comment_on_order(order_id, data.get("comment"), me)
     return ok({"order": queries.order_dict(order)})
 
+
+# The MM Lead's instructions to the sites (2026-10-27).
+
+@bp.post("/api/instructions")
+@login_required
+@require_module(FILLKILL, "instruct")
+def api_add_instruction():
+    data = body()
+    medline_item = (data.get("medline_item") or "").strip()
+    if not medline_item:
+        raise RuleError("Which item is this instruction for?")
+    if not queries.item_exists(medline_item):
+        raise RuleError(f"{medline_item} isn't a Medline item in the fill/kill data.", 404)
+    row = services.add_instruction(medline_item, data.get("instruction"), current_user.email)
+    return ok({"instruction": queries.instruction_dict(row)}, 201)

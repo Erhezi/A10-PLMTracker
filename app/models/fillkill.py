@@ -1,4 +1,5 @@
-"""Fill/Kill workflow tables (schema FillKill): subs, their vendor items, orders, and their history.
+"""Fill/Kill workflow tables (schema FillKill): subs, their vendor items, orders, their history, and
+the MM Lead's instructions.
 
 db/fillkill/12_workflow_tables.sql creates these tables. The constraints are
 spelled out here with the same names, because the app's startup (db.create_all)
@@ -21,6 +22,7 @@ HISTORY_ENTITIES = ("sub", "vendoritem", "order")
 HISTORY_ACTIONS = ("created", "status", "pick", "unpick", "comment", "edit", "void", "delete")
 
 TEXT_MAX = 400  # comments and void reasons
+INSTRUCTION_MAX = 1000  # an MM Lead's instruction: it may speak to every site (2026-10-27)
 
 
 def _one_of(column: str, values) -> str:
@@ -120,8 +122,9 @@ class VendorItem(db.Model):
 
 
 class SubOrder(db.Model):
-    """An order a Materials Manager recorded for a vendor item of a picked sub. It keeps what it was
-    placed with (vendor part, vendor, vendor ID, UOM, QOE), whatever happens to the vendor item."""
+    """An order a Materials Manager recorded for a vendor item of a picked sub, for a site. It keeps
+    what it was placed with (vendor part, vendor, vendor ID, UOM, QOE), whatever happens to the
+    vendor item."""
 
     __tablename__ = "SubOrder"
     __table_args__ = (
@@ -148,6 +151,10 @@ class SubOrder(db.Model):
     # sub's vendor details were what it was placed with (12_workflow_tables.sql, step 2).
     vendor_item_id = db.Column(db.Integer)
     medline_item = db.Column(db.String(50), nullable=False)
+    # The site it was ordered for, Medline's Sold-To code (2026-10-27): each site orders for itself.
+    # Orders recorded before then have none.
+    site = db.Column(db.String(20))
+    po_number = db.Column(db.String(20))  # Infor's PO number, when the Materials Manager gives it (2026-10-27)
     quantity = db.Column(db.Integer, nullable=False)
     vendor_part = db.Column(db.String(100), nullable=False)
     uom = db.Column(db.String(10), nullable=False)
@@ -168,6 +175,27 @@ class SubOrder(db.Model):
     @property
     def is_voided(self) -> bool:
         return self.voided_at is not None
+
+
+class ItemInstruction(db.Model):
+    """An MM Lead's instruction to the sites' Materials Managers on how to order an item (2026-10-27):
+    which sub, how much, which sites. One thread per Infor item, the main table's row, or per Medline
+    item when it isn't in Infor. Never changed or deleted: the newest is the one in force."""
+
+    __tablename__ = "ItemInstruction"
+    __table_args__ = (
+        db.PrimaryKeyConstraint("instruction_id", name="PK_ItemInstruction"),
+        db.Index("IX_ItemInstruction_infor_item", "infor_item", "written_at"),
+        db.Index("IX_ItemInstruction_medline_item", "medline_item", "written_at"),
+        {"schema": SCHEMA},
+    )
+
+    instruction_id = db.Column(db.Integer, autoincrement=True)
+    infor_item = db.Column(db.String(50))  # the row's Infor item; none for a Medline item not in Infor
+    medline_item = db.Column(db.String(50), nullable=False)  # the Medline item it was written from
+    instruction = db.Column(db.String(INSTRUCTION_MAX), nullable=False)
+    written_by = db.Column(db.String(255), nullable=False)
+    written_at = db.Column(db.DateTime, nullable=False, default=now_ny_naive)
 
 
 class History(db.Model):

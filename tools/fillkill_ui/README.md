@@ -31,9 +31,10 @@ Then open http://127.0.0.1:5099/dev-login. Add `?as=` to sign in with fewer role
 
 | `?as=` | App role | Fill/Kill roles |
 | --- | --- | --- |
-| `all` (default) | admin | Sub Finder, Sub Approver, Materials Manager |
+| `all` (default) | admin | Sub Finder, Sub Approver, Materials Manager, MM Lead |
 | `nurse` | user | Sub Approver |
 | `mm` | user | Materials Manager |
+| `lead` | user | MM Lead |
 | `finder` | user | Sub Finder |
 | `viewer` | user | Viewer |
 

@@ -14,10 +14,10 @@ from dataclasses import dataclass, field
 from time import monotonic
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import and_, bindparam, func, or_, select, text
+from sqlalchemy import and_, bindparam, func, or_, select, text, true
 
 from .. import db
-from ..models.fillkill import History, Sub, SubOrder, VendorItem
+from ..models.fillkill import History, ItemInstruction, Sub, SubOrder, VendorItem
 from . import rollup
 
 log = logging.getLogger(__name__)
@@ -106,13 +106,14 @@ def sync_pbo() -> int:
 
 
 def qty_rows(scope: Scope) -> list[dict]:
+    """Quantities per Medline item, UOM and site (the site since 2026-10-27: each orders for itself)."""
     where, params, binds = scope.where("[Order Date]", "[Sold-To]")
     return _rows(
-        f"""SELECT [Medline Item] AS medline_item, [UM] AS um,
+        f"""SELECT [Medline Item] AS medline_item, [UM] AS um, [Sold-To] AS site,
                    SUM([Total Ordered Qty]) AS ordered, SUM([Total Filled Qty]) AS filled,
                    SUM([Total Killed Qty]) AS killed, SUM([Total PO Line Count]) AS lines
             FROM {QTY} WHERE {where}
-            GROUP BY [Medline Item], [UM]""",
+            GROUP BY [Medline Item], [UM], [Sold-To]""",
         params, binds,
     )
 
@@ -237,11 +238,17 @@ def _orders(condition, items=None) -> list[dict]:
     return [order_dict(order) for order in db.session.execute(query).scalars()]
 
 
+def _site_condition(sites):
+    """Orders for these sites (2026-10-27); every order, those without a site too, when none are
+    chosen."""
+    return SubOrder.site.in_(list(sites)) if sites else true()
+
+
 def orders_in_range(scope: Scope, items=None) -> list[dict]:
-    """Non-voided orders dated inside the scope's Fill/Kill dates: the main table's Ordering column
-    (S4; 2026-10-20, back from "on or after the first day"), so Ordered and No order are about
-    those dates."""
-    return _orders(_range_condition(SubOrder.ordered_dt, scope), items)
+    """Non-voided orders dated inside the scope's Fill/Kill dates, for its sites (2026-10-27): the
+    main table's Ordering column (S4; 2026-10-20, back from "on or after the first day"), so Ordered
+    and No order are about those dates and sites."""
+    return _orders(and_(_range_condition(SubOrder.ordered_dt, scope), _site_condition(scope.sites)), items)
 
 
 def orders_since_start(scope: Scope, items=None) -> list[dict]:
@@ -276,7 +283,8 @@ def main_table_inputs(scope: Scope) -> dict:
     details = [row for row in every if row["Medline Item"] in items]
     family = family_rows((row.get("Infor Item") for row in details), every)
     subs = subs_for_items(items | {row["Medline Item"] for row in family})
-    # A pick's comments: how many and the latest, for its comments icon on Main (2026-10-21).
+    # A pick's comments: how many and the latest, for its comments icon on Main (2026-10-21), the
+    # latest shown under it (2026-10-27).
     latest = _latest_comments("sub", [s["sub_id"] for s in subs if s["is_picked"]])
     for sub in subs:
         if sub["is_picked"]:
@@ -290,7 +298,43 @@ def main_table_inputs(scope: Scope) -> dict:
         "orders": orders_in_range(scope, items),
         "reasons": latest_reasons(scope),
         "family_rows": family,
+        "instructions": instructions_for({row.get("Infor Item") for row in details}, items),
     }
+
+
+# --- the MM Lead's instructions (2026-10-27) --------------------------------------------------
+
+def instruction_dict(row: ItemInstruction) -> dict:
+    return {
+        "instruction_id": row.instruction_id, "infor_item": row.infor_item, "medline_item": row.medline_item,
+        "instruction": row.instruction, "written_by": row.written_by, "written_at": row.written_at,
+    }
+
+
+def instructions_for(infor_items, medline_items) -> list[dict]:
+    """Instructions for these Infor items, and those written for these Medline items while Infor had
+    none for them, oldest first."""
+    infor = sorted({i for i in infor_items if i})
+    medline = sorted({i for i in medline_items if i})
+    found: dict[int, ItemInstruction] = {}
+    for chunk in _chunks(infor):
+        for row in db.session.execute(select(ItemInstruction).where(ItemInstruction.infor_item.in_(chunk))).scalars():
+            found[row.instruction_id] = row
+    for chunk in _chunks(medline):
+        for row in db.session.execute(select(ItemInstruction).where(
+                ItemInstruction.infor_item.is_(None), ItemInstruction.medline_item.in_(chunk))).scalars():
+            found[row.instruction_id] = row
+    rows = sorted(found.values(), key=lambda row: (row.written_at, row.instruction_id))
+    return [instruction_dict(row) for row in rows]
+
+
+def instruction_thread(medline_item: str) -> dict:
+    """Every instruction for the main table's row of ``medline_item``, newest first: its Infor item's
+    (all its Medline items'), or its own when Infor has none."""
+    infor = infor_items_of([medline_item]).get(medline_item)
+    members = {medline_item} | {row["Medline Item"] for row in family_rows([infor] if infor else [])}
+    instructions = instructions_for([infor], members)
+    return {"infor_item": infor, "medline_item": medline_item, "instructions": instructions[::-1]}
 
 
 # --- the item panel --------------------------------------------------------------------
@@ -325,6 +369,7 @@ def order_dict(order: SubOrder) -> dict:
     return {
         "order_id": order.order_id, "sub_id": order.sub_id, "vendor_item_id": order.vendor_item_id,
         "medline_item": order.medline_item, "reference_sku": sub.reference_sku if sub else None,
+        "site": order.site, "po_number": order.po_number,
         "vendor_part": order.vendor_part,
         "manufacturer_part": item.manufacturer_part if item else None,
         "infor_item": item.infor_item if item else None,
@@ -450,6 +495,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     return {
         "infor_item": infor,
         "medline_item": medline_item,
+        "instruction": rollup.instruction_summary(instructions_for([infor], members)),
         "details": {
             "infor_item": infor,
             **{field: (first.get(field) if infor else None) for field in rollup.INFOR_FIELDS},
@@ -578,11 +624,13 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
     } for s, d in zip(subs, _sub_dicts(subs))]
 
 
-def orders_log(start: date, end: date) -> list[dict]:
+def orders_log(start: date, end: date, sites=()) -> list[dict]:
     """Orders dated from ``start`` to ``end``, voided ones included: the orders section on Main,
-    whose dates are its own (2026-10-19), so past orders can be looked up there."""
+    whose dates are its own (2026-10-19), so past orders can be looked up there. For ``sites``, the
+    table's site filter, when given (2026-10-27)."""
     orders = db.session.execute(
-        select(SubOrder).where(SubOrder.ordered_dt >= start, SubOrder.ordered_dt < end + timedelta(days=1))
+        select(SubOrder).where(SubOrder.ordered_dt >= start, SubOrder.ordered_dt < end + timedelta(days=1),
+                               _site_condition(sites))
         .order_by(SubOrder.ordered_dt.desc(), SubOrder.order_id.desc())
     ).scalars().all()
     comments = _latest_comments("order", [o.order_id for o in orders])

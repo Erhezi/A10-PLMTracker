@@ -1,6 +1,7 @@
 /* Main: the controls above the table: dates, sites, search and the Needs chips. */
 
 import { $, config, debounce, esc, fmtDate } from '../common.js';
+import { loadOrders } from './orders.js';
 import { linked, state } from './state.js';
 import { reloadAll } from './refresh.js';
 import { renderRows } from './table.js';
@@ -74,10 +75,12 @@ export function setupSites() {
   };
   boxes.forEach((b) => { b.checked = state.sites.includes(b.value); });  // from the page link
   label();
+  // The orders under the table follow the sites too (2026-10-27), so a site sees its own.
   const update = debounce(() => {
     state.sites = boxes.filter((b) => b.checked).map((b) => b.value);
     label();
     reloadAll();
+    loadOrders();
   }, 300);
   boxes.forEach((b) => b.addEventListener('change', update));
 }

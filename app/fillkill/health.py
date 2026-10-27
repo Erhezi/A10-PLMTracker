@@ -29,9 +29,11 @@ COLUMNS = {
     ("FillKill", "Sub"): (("reference_sku", "deleted_at", "deleted_by", "delete_reason"), "12_workflow_tables.sql"),
     ("FillKill", "SubVendorItem"): (("sub_id", "vendor_part", "vendor", "vendor_id", "uom", "qoe", "manufacturer_part",
                                      "infor_item", "deleted_at"), "12_workflow_tables.sql"),
-    ("FillKill", "SubOrder"): (("sub_id", "vendor_item_id", "vendor_part", "ordered_dt", "voided_at", "vendor_id"),
-                               "12_workflow_tables.sql"),
+    ("FillKill", "SubOrder"): (("sub_id", "vendor_item_id", "vendor_part", "ordered_dt", "voided_at", "vendor_id",
+                                "site", "po_number"), "12_workflow_tables.sql"),
     ("FillKill", "History"): (("entity", "entity_id", "action", "comment"), "12_workflow_tables.sql"),
+    ("FillKill", "ItemInstruction"): (("infor_item", "medline_item", "instruction", "written_by", "written_at"),
+                                      "12_workflow_tables.sql"),
     ("FillKill", "vw_ContractLineSearch"): (("vendor_id", "vendor_name", "infor_item", "item_type", "is_mhs"),
                                              "13_contract_search.sql"),
     ("FillKill", "vw_Vendor"): (("vendor_id", "vendor_name", "legal_name", "search_name", "vendor_status"),
@@ -54,7 +56,7 @@ INDEXES = {
 CHECKS = {
     ("FillKill", "CK_History_action"): ("'delete'", "12_workflow_tables.sql"),
     ("FillKill", "CK_History_entity"): ("'vendoritem'", "12_workflow_tables.sql"),
-    ("PLM", "CK_UserModuleRole_role"): ("'materials_manager'", "02_user_module_role.sql"),
+    ("PLM", "CK_UserModuleRole_role"): ("'mm_lead'", "02_user_module_role.sql"),
 }
 
 # Procedures, the version marker in their body, and whether the app runs them.

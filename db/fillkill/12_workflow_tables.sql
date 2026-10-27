@@ -1,21 +1,25 @@
--- Fill/Kill workflow tables: subs, their vendor items, orders, and the history of every change and
--- comment. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1). Safe to re-run.
+-- Fill/Kill workflow tables: subs, their vendor items, orders, the history of every change and
+-- comment, and the MM Lead's instructions. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1),
+-- and again before the coordination release (2026-10-27). Safe to re-run.
 --
 --   Sub            a sub of a Medline item: the Reference SKU nursing (or a Sub Finder) entered,
 --                  its status, and whether it's the Approver's Pick
 --   SubVendorItem  what can be ordered for a sub: a vendor's part in a UOM, with Infor's vendor ID
 --                  (the Materials Manager's or a Sub Finder's); one per vendor ID, vendor part and UOM
---   SubOrder       an order a Materials Manager recorded for a vendor item of a picked sub; it keeps
---                  the vendor part, vendor, vendor ID, UOM and QOE it was placed with
+--   SubOrder       an order a Materials Manager recorded for a vendor item of a picked sub, for a
+--                  site, with Infor's PO number if they gave it; it keeps the vendor part, vendor,
+--                  vendor ID, UOM and QOE it was placed with
 --   History        one row per change or comment on a sub, a vendor item or an order (comments
 --                  live only here)
+--   ItemInstruction  an MM Lead's instruction to the sites on how to order an item (2026-10-27),
+--                  per Infor item; never changed, the newest is in force
 --
 -- app/models/fillkill.py carries the same constraint names, so a table the app's startup
 -- (db.create_all) creates matches this script. Only the defaults differ (the app always sets
 -- every value); the end of this script adds any that are missing.
 --
 -- What it does, in order (each step only when needed, so re-running changes nothing):
---   1. Creates Sub, SubVendorItem, SubOrder and History in their current shape.
+--   1. Creates Sub, SubVendorItem, SubOrder, History and ItemInstruction in their current shape.
 --   2. 2026-10-20, vendor items: brings the tables O2 has had since 2026-10-20 up to date. Until then
 --      a sub carried one set of vendor details (the vendor part ordered, vendor, vendor ID, UOM, QOE,
 --      manufacturer part, Infor item, description). Nursing often enters the manufacturer's part,
@@ -25,7 +29,9 @@
 --          'vendoritem'
 --      2b. Moves the data, in one transaction, and saves a copy of Sub as it was first
 --          (Sub_before_vendor_items); then Sub's vendor details are dropped
---   3. Adds any default a table made by the app's startup lacks.
+--   3. 2026-10-27, the coordination release: SubOrder.site (the Sold-To it was ordered for) and
+--      SubOrder.po_number, empty on the orders recorded before.
+--   4. Adds any default a table made by the app's startup lacks.
 --
 -- Its earlier steps 2a-2e (2026-10-15 to 10-20) brought older tables to the shape step 2 starts
 -- from. O2 has had that shape since 2026-10-20, so they're gone; git history has them.
@@ -109,6 +115,8 @@ BEGIN
         [sub_id]         INT            NOT NULL,
         [vendor_item_id] INT            NULL,      -- the vendor item ordered; step 2 links the older orders it can
         [medline_item]   VARCHAR(50)    NOT NULL,
+        [site]           VARCHAR(20)    NULL,      -- Medline's Sold-To it was ordered for; none before 2026-10-27
+        [po_number]      VARCHAR(20)    NULL,      -- Infor's PO number, when given (2026-10-27)
         [quantity]       INT            NOT NULL,
         [vendor_part]    VARCHAR(100)   NOT NULL,  -- what it was placed with, as the four below
         [uom]            VARCHAR(10)    NOT NULL,
@@ -163,6 +171,23 @@ BEGIN
     CREATE INDEX [IX_History_item] ON [FillKill].[History] ([medline_item], [acted_at]);
     CREATE INDEX [IX_History_entity] ON [FillKill].[History] ([entity], [entity_id], [acted_at]);
     PRINT 'Created FillKill.History';
+END;
+GO
+
+IF OBJECT_ID(N'[FillKill].[ItemInstruction]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [FillKill].[ItemInstruction] (
+        [instruction_id] INT IDENTITY(1, 1) NOT NULL,
+        [infor_item]     VARCHAR(50)    NULL,      -- the main table's row; none for a Medline item not in Infor
+        [medline_item]   VARCHAR(50)    NOT NULL,  -- the Medline item it was written from
+        [instruction]    VARCHAR(1000)  NOT NULL,
+        [written_by]     VARCHAR(255)   NOT NULL,
+        [written_at]     DATETIME       NOT NULL CONSTRAINT [DF_ItemInstruction_written_at] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_ItemInstruction] PRIMARY KEY CLUSTERED ([instruction_id])
+    );
+    CREATE INDEX [IX_ItemInstruction_infor_item] ON [FillKill].[ItemInstruction] ([infor_item], [written_at]);
+    CREATE INDEX [IX_ItemInstruction_medline_item] ON [FillKill].[ItemInstruction] ([medline_item], [written_at]);
+    PRINT 'Created FillKill.ItemInstruction';
 END;
 GO
 
@@ -365,7 +390,22 @@ PRINT CONCAT(''Vendor items: '', @item_count, '' made from the subs; '', @merged
 ');
 GO
 
--- 3. Defaults, in case the app's startup created a table before this script ran -------------
+-- 3. 2026-10-27: the site each order was placed for, and its PO number ----------------------
+-- Each site orders for itself, so an order says which site it's for; the PO number is optional, kept
+-- to link orders back to the killed items later. Orders recorded before have neither.
+IF COL_LENGTH(N'FillKill.SubOrder', N'site') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[SubOrder] ADD [site] VARCHAR(20) NULL;
+    PRINT 'Added SubOrder.site';
+END;
+IF COL_LENGTH(N'FillKill.SubOrder', N'po_number') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[SubOrder] ADD [po_number] VARCHAR(20) NULL;
+    PRINT 'Added SubOrder.po_number';
+END;
+GO
+
+-- 4. Defaults, in case the app's startup created a table before this script ran -------------
 DECLARE @defaults TABLE ([tbl] SYSNAME, [col] SYSNAME, [name] SYSNAME, [expr] NVARCHAR(100));
 INSERT INTO @defaults VALUES
     (N'Sub', N'status', N'DF_Sub_status', N'(''pending_review'')'),
@@ -376,7 +416,8 @@ INSERT INTO @defaults VALUES
     (N'SubVendorItem', N'update_dt', N'DF_SubVendorItem_update_dt', N'(GETDATE())'),
     (N'SubOrder', N'create_dt', N'DF_SubOrder_create_dt', N'(GETDATE())'),
     (N'SubOrder', N'update_dt', N'DF_SubOrder_update_dt', N'(GETDATE())'),
-    (N'History', N'acted_at', N'DF_History_acted_at', N'(GETDATE())');
+    (N'History', N'acted_at', N'DF_History_acted_at', N'(GETDATE())'),
+    (N'ItemInstruction', N'written_at', N'DF_ItemInstruction_written_at', N'(GETDATE())');
 
 DECLARE @tbl SYSNAME, @col SYSNAME, @name SYSNAME, @expr NVARCHAR(100), @sql NVARCHAR(MAX);
 DECLARE d CURSOR LOCAL FAST_FORWARD FOR SELECT [tbl], [col], [name], [expr] FROM @defaults;

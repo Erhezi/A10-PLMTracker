@@ -6,7 +6,7 @@ roles) or 'user'. Being an admin grants nothing inside a module: what anyone,
 admins included, can do there is set in ``PLM.UserModuleRole``:
 
     plm       viewer | editor                           at most one of the two
-    fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager
+    fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager, mm_lead
 
 Routes and templates ask ``can(user, module, capability)`` and ``is_admin(user)``
 instead of checking role codes.
@@ -34,7 +34,8 @@ PLM_EDITOR = "editor"
 ROLE_VIEWER = "viewer"                        # sees the module; held alone
 ROLE_SUB_FINDER = "sub_finder"                # proposes subs, pending review (kept for a future AI finder)
 ROLE_SUB_APPROVER = "sub_approver"            # nursing: enters vendor parts (approved on entry), reviews, picks, comments
-ROLE_MATERIALS_MANAGER = "materials_manager"  # adds vendor items, picks, records orders, comments on orders
+ROLE_MATERIALS_MANAGER = "materials_manager"  # a site's buyer: adds vendor items, picks, records orders
+ROLE_MM_LEAD = "mm_lead"                      # the Materials Management lead: instructs the sites, picks, adds vendor items
 
 
 @dataclass(frozen=True)
@@ -73,18 +74,22 @@ MODULES = {
             (ROLE_SUB_FINDER, "Sub Finder"),
             (ROLE_SUB_APPROVER, "Sub Approver"),
             (ROLE_MATERIALS_MANAGER, "Materials Manager"),
+            (ROLE_MM_LEAD, "MM Lead"),
         ),
         capabilities={
-            "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
+            "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
             # Enter a vendor part, correct it, delete a sub (a Sub Approver's entries are approved).
             "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_SUB_APPROVER}),
             # Set a sub's status, comment on subs.
             "review": frozenset({ROLE_SUB_APPROVER}),
-            # Pick or unpick an approved sub (2026-10-21: Materials Managers too; it was in "review").
-            "pick": frozenset({ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER}),
-            # A sub's vendor, vendor ID, description, UOM and QOE (2026-10-15).
-            "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER}),
+            # Pick or unpick an approved sub (2026-10-21: Materials Managers too; it was in "review";
+            # 2026-10-27: MM Leads, choosing what the sites order).
+            "pick": frozenset({ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
+            # A sub's vendor items: vendor part, vendor, vendor ID, UOM, QOE (2026-10-15, 10-20).
+            "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER, ROLE_MM_LEAD}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
+            # Write an item's instruction to the sites' Materials Managers (2026-10-27).
+            "instruct": frozenset({ROLE_MM_LEAD}),
         },
         exclusive_roles=frozenset({ROLE_VIEWER}),  # the other roles can already view
     ),
@@ -103,6 +108,7 @@ FILLKILL_FUNCTIONS = (
     ("Add, correct or delete a sub's vendor items (vendor item details), with the contract and vendor searches", "details"),
     ("Record an order from a vendor item", "order"),
     ("Correct or void an order; comment on an order", "order"),
+    ("Write an item's instruction to the sites' Materials Managers", "instruct"),
 )
 
 APPROVE_ORDER_CONFLICT_MESSAGE = (
@@ -233,10 +239,11 @@ DENIED_MESSAGES = {
     (PLM, "edit"): "Your PLM Tracker role is Viewer, so you can't make changes.",
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
     (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
-    (FILLKILL, "details"): "Only Materials Managers and Sub Finders can add or change a sub's vendor items.",
+    (FILLKILL, "details"): "Only Materials Managers, MM Leads and Sub Finders can add or change a sub's vendor items.",
     (FILLKILL, "review"): "Only Sub Approvers can review or comment on subs.",
-    (FILLKILL, "pick"): "Only Sub Approvers and Materials Managers can pick or unpick subs.",
+    (FILLKILL, "pick"): "Only Sub Approvers, Materials Managers and MM Leads can pick or unpick subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
+    (FILLKILL, "instruct"): "Only MM Leads can write an item's instruction.",
 }
 
 

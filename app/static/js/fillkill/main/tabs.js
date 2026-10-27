@@ -6,7 +6,7 @@ import {
   NO_VENDOR, REASON_LABEL, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails, noQoeBadge, statusBadge, uomQoe,
   vendorText,
 } from '../common.js';
-import { can, state } from './state.js';
+import { can, siteName, state } from './state.js';
 import { customerFlag } from './table.js';
 
 export function renderPanelTab(tab, view) {
@@ -188,11 +188,14 @@ function linesTab(lines, many) {
 }
 
 const FIELD_LABELS = { reference_sku: 'Reference SKU', vendor_part: 'vendor part', vendor_id: 'vendor ID', uom: 'UOM', qoe: 'QOE',
-  manufacturer_part: 'manufacturer part', infor_item: 'Infor item', entered_part: 'part as entered', ordered_dt: 'ordered date' };
+  manufacturer_part: 'manufacturer part', infor_item: 'Infor item', entered_part: 'part as entered', ordered_dt: 'ordered date',
+  po_number: 'PO number' };
 
 function describe(h) {
   const labels = config.statusLabels;
   const vendorItem = h.entity === 'vendoritem';
+  // An order's site is kept as Medline's Sold-To code (2026-10-27): shown by its name.
+  const value = (v) => esc(h.field === 'site' && v ? siteName(v) : (v || '—'));
   switch (h.action) {
     case 'created': return { order: 'Recorded the order', vendoritem: 'Added the vendor item' }[h.entity] || 'Added the sub';
     case 'status': return `Status ${esc(labels[h.from_value] || h.from_value)} → ${statusBadge(h.to_value)}`;
@@ -200,7 +203,7 @@ function describe(h) {
     case 'unpick': return h.comment ? esc(h.comment) : 'Unpicked';
     case 'comment': return `Comment: ${esc(h.comment)}`;
     case 'edit': return `Changed ${vendorItem ? "the vendor item's " : ''}${esc(FIELD_LABELS[h.field] || String(h.field || '').replace(/_/g, ' '))}:
-      ${esc(h.from_value || '—')} → ${esc(h.to_value || '—')}`;
+      ${value(h.from_value)} → ${value(h.to_value)}`;
     case 'void': return `Voided: ${esc(h.comment)}`;
     case 'delete': return `Deleted${vendorItem ? ' the vendor item' : ''}: ${esc(h.comment)}`;
     default: return esc(h.action);
@@ -223,14 +226,14 @@ function picksTab(history, many) {
     ${timeline(history, true, many)}`;
 }
 
-// Every order for the item, as a table like the kill lines (2026-10-20; cards before), newest
-// first. A voided one is greyed, its quantity struck through. A row's History and Comment open a
-// line under it.
+// Every order for the item, every site's (whatever the site filter: it's the item's history), as a
+// table like the kill lines (2026-10-20; cards before), newest first. A voided one is greyed, its
+// quantity struck through. A row's History and Comment open a line under it.
 function ordersTab(orders, many) {
   if (!orders.length) return '<p class="text-muted small">No orders recorded for this item.</p>';
-  const columns = many ? 8 : 7;
+  const columns = many ? 9 : 8;
   return `<div class="table-responsive"><table class="table table-sm align-middle fk-panel-table fk-orders-tab">
-    <thead class="table-light text-nowrap"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Vendor Part</th>
+    <thead class="table-light text-nowrap"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Site · PO</th><th>Vendor Part</th>
       <th class="text-end">Quantity</th><th>Vendor</th><th>Ordered By</th><th>Latest Comment</th>
       <th><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>${orders.map((o) => orderRows(o, many, columns)).join('')}</tbody></table></div>`;
@@ -255,6 +258,8 @@ function orderRows(o, many, columns) {
   return `<tr class="${voided ? 'text-muted' : ''}">
       <td class="text-nowrap">${fmtDateTime(o.ordered_dt)}</td>
       ${many ? `<td class="text-nowrap">${esc(o.medline_item)}</td>` : ''}
+      <td>${o.site ? esc(siteName(o.site)) : '<span class="text-muted">Site not recorded</span>'}${o.po_number
+        ? `<div class="text-muted text-nowrap">PO ${esc(o.po_number)}</div>` : ''}</td>
       <td><span class="fw-semibold">${esc(o.vendor_part)}</span><div class="text-muted">for ${esc(o.reference_sku)}</div></td>
       <td class="text-end text-nowrap"><span class="${voided ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)}</span>
         <span class="text-muted">${esc(uomQoe(o))}</span></td>

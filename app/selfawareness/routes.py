@@ -101,7 +101,7 @@ def fillkill():
 
 
 # The columns, in the order "Who does what" lists the roles.
-FILLKILL_ROLE_COLUMNS = ("viewer", "sub_approver", "materials_manager", "sub_finder")
+FILLKILL_ROLE_COLUMNS = ("viewer", "sub_approver", "mm_lead", "materials_manager", "sub_finder")
 
 
 @bp.route("/workflow-video")

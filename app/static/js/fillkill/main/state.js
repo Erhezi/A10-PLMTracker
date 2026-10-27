@@ -5,6 +5,10 @@ import { $, config } from '../common.js';
 export const can = config.can || {};
 export const api = config.api;
 
+// Medline's Sold-To codes and their names: an order is for a site (2026-10-27).
+const SITE_NAMES = Object.fromEntries((config.sites || []).map((site) => [site.code, site.name || site.code]));
+export const siteName = (code) => (code ? SITE_NAMES[code] || code : 'Site not recorded');
+
 export const state = {
   start: (config.default && config.default.start) || '',
   end: (config.default && config.default.end) || '',

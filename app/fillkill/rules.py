@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
-from ..models.fillkill import SUB_STATUSES, TEXT_MAX
+from ..models.fillkill import INSTRUCTION_MAX, SUB_STATUSES, TEXT_MAX
 
 # What a Sub Approver can set; pending_review is only where a sub starts (S1).
 REVIEW_STATUSES = ("approved", "hold", "rejected")
@@ -25,12 +25,12 @@ STATUS_LABELS = {
 # items, each a vendor's part in a UOM that can be ordered.
 VENDOR_ITEM_FIELDS = ("vendor_part", "vendor", "vendor_id", "manufacturer_part", "infor_item", "description", "uom", "qoe")
 VENDOR_ITEM_REQUIRED = ("vendor_part", "vendor", "vendor_id", "uom")
-ORDER_FIELDS = ("quantity", "vendor_part", "uom", "qoe", "vendor", "vendor_id", "ordered_dt")
+ORDER_FIELDS = ("site", "po_number", "quantity", "vendor_part", "uom", "qoe", "vendor", "vendor_id", "ordered_dt")
 
 LIMITS = {"medline_item": 50, "reference_sku": 100, "vendor": 255, "vendor_id": 20, "vendor_part": 100,
-          "manufacturer_part": 100, "infor_item": 50, "description": 255, "uom": 10}
+          "manufacturer_part": 100, "infor_item": 50, "description": 255, "uom": 10, "site": 20, "po_number": 20}
 LABELS = {"medline_item": "Medline item", "reference_sku": "Reference SKU", "vendor_id": "Vendor ID", "uom": "UOM",
-          "qoe": "QOE"}
+          "qoe": "QOE", "po_number": "PO number"}
 
 # A vendor item needs Infor's vendor ID (2026-10-19). When Infor has no such vendor, the Materials
 # Manager says so on purpose with this one; Infor has no vendor 0000000.
@@ -78,6 +78,8 @@ def clean_field(name: str, value, *, required: bool = False, uoms: dict | None =
         return clean_quantity(value)
     if name == "ordered_dt":
         return clean_ordered_dt(value)
+    if name == "po_number":
+        return clean_po_number(value)
     if name == "vendor_id":
         text = clean_vendor_id(value)
         if text is None and required:
@@ -144,6 +146,28 @@ def clean_vendor_id(value) -> str | None:
     return text
 
 
+def clean_po_number(value) -> str | None:
+    """Infor's PO number (2026-10-27), optional: digits only (company 3000's are 10, e.g.
+    3000564756). Kept to link the order back to the killed items later; not checked against Infor."""
+    text = clean_text(value, label="PO number", max_len=LIMITS["po_number"])
+    if text is not None and not text.isdigit():
+        raise RuleError("PO number must be Infor's PO number, digits only (like 3000564756), or left empty.")
+    return text
+
+
+def clean_site(value, sites, *, required: bool = True) -> str | None:
+    """The site an order is for (2026-10-27): one of Medline's Sold-To codes in ``sites``. The
+    Materials Manager chooses it; each site orders for itself."""
+    text = clean_text(value, label="Site", max_len=LIMITS["site"])
+    if text is None:
+        if required:
+            raise RuleError("Choose the site this order is for.")
+        return None
+    if text not in set(sites):
+        raise RuleError(f"{text} isn't one of the sites in the fill/kill data.")
+    return text
+
+
 def _missing_message(missing: list[str]) -> str:
     labels = [f"{name} (or {NO_VENDOR_ID}: {NO_VENDOR_LABEL})" if name == "Vendor ID" else name for name in missing]
     names = ", ".join(labels[:-1]) + (" and " if len(labels) > 1 else "") + labels[-1]
@@ -160,6 +184,12 @@ def _same(name: str, value, current) -> bool:
 
 def clean_comment(value, *, label: str = "Comment") -> str:
     return clean_text(value, label=label, max_len=TEXT_MAX, required=True)
+
+
+def clean_instruction(value) -> str:
+    """An MM Lead's instruction to the sites (2026-10-27): longer than a comment, since it may speak
+    to every site."""
+    return clean_text(value, label="Instruction", max_len=INSTRUCTION_MAX, required=True)
 
 
 # --- subs ----------------------------------------------------------------------
@@ -252,11 +282,14 @@ def check_orderable(sub) -> None:
         raise RuleError("Orders are recorded against a picked sub, and this one isn't picked.", 409)
 
 
-def check_new_order(sub, item, data: dict, *, now: datetime | None = None) -> dict:
-    """An order for a vendor item of a picked sub (S3; 2026-10-20). It keeps the vendor item's vendor
-    part, vendor, vendor ID, UOM and QOE."""
+def check_new_order(sub, item, data: dict, *, now: datetime | None = None, sites=()) -> dict:
+    """An order for a vendor item of a picked sub (S3; 2026-10-20), for one of ``sites`` (2026-10-27),
+    with Infor's PO number if given. It keeps the vendor item's vendor part, vendor, vendor ID, UOM
+    and QOE."""
     check_orderable(sub)
     return {
+        "site": clean_site(data.get("site"), sites),
+        "po_number": clean_po_number(data.get("po_number")),
         "quantity": clean_quantity(data.get("quantity")),
         "vendor_part": item.vendor_part,
         "uom": item.uom,
@@ -268,15 +301,20 @@ def check_new_order(sub, item, data: dict, *, now: datetime | None = None) -> di
     }
 
 
-def check_order_edit(order, data: dict, *, now: datetime | None = None, uoms: dict | None = None) -> dict:
-    """Changed fields only; a voided order can't change (P3)."""
+def check_order_edit(order, data: dict, *, now: datetime | None = None, uoms: dict | None = None,
+                     sites=()) -> dict:
+    """Changed fields only; a voided order can't change (P3). An order from before sites (2026-10-27)
+    can be given one; once it has a site, it keeps one."""
     if order.voided_at is not None:
         raise RuleError("A voided order can't be changed.", 409)
     changes = {}
     for name in ORDER_FIELDS:
         if name not in data:
             continue
-        if name == "ordered_dt":
+        if name == "site":
+            # Its own site stays allowed, should it leave the data (the test site at go-live).
+            value = clean_site(data[name], {*sites, order.site} - {None}, required=order.site is not None)
+        elif name == "ordered_dt":
             value = clean_ordered_dt(data[name], now=now)
             if value is None:
                 raise RuleError("Ordered date is required.")

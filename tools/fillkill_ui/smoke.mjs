@@ -150,6 +150,9 @@ const daysAgo = (n) => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 const MAIN_READY = `document.querySelector('#fk-main tbody') && !document.querySelector('#fk-main').innerText.includes('Loading')`;
+// dev_server.py's sample sites (Medline Sold-To codes): an order is for one (2026-10-27).
+const SITE_A = '0000000001';
+const SITE_B = '0000000002';
 // The text of the last two cells (Total Killed (EA), Total Sub Ordered (EA)) of the item with this Medline item.
 const lastCells = (item) => `[...[...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes(${JSON.stringify(item)}))
   .rows[0].cells].slice(-2).map((c) => c.innerText.replace(/\\s+/g, ' ').trim()).join('|')`;
@@ -213,6 +216,9 @@ const steps = [
     // Its comments beside it (2026-10-21): the icon counts them and opens them; a click elsewhere closes them.
     const chat = `[...document.querySelectorAll('#fk-main [data-comments]')].find((b) => b.closest('td').innerText.includes('88885'))`;
     await waitFor(`${chat} && ${chat}.innerText.trim() === '1'`, 'the comments icon, counting 1');
+    // The latest reads under the pick, with who and when (2026-10-27, for the nursing manager).
+    const said = await evaluate(`${chat}.closest('td').querySelector('.fk-pick-comment').innerText.replace(/\\s+/g, ' ').trim()`);
+    expect(said.startsWith('From the supplier by phone all ·'), `the comment under the pick: ${said}`);
     await evaluate(`${chat}.click()`);
     await waitFor(`(document.querySelector('.fk-comments-popover') || {}).innerText?.includes('From the supplier by phone')`,
       'the comment in its popover');
@@ -266,42 +272,51 @@ const steps = [
     await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
     await modalClosed();
   }],
-  ['Recording an order from a vendor item tile', async () => {
+  ['Recording an order from a vendor item tile, for a site', async () => {
     await click('#fk-main [data-order-vi]');
     await modalOpen();
     expect((await text('.fk-form-summary')).includes('88885 · CARDINAL HEALTH (1000001) · BX/100'), 'the vendor item is not shown');
-    // Killed by the each, ordered by the box of 100: what was killed and a recommendation, in red,
-    // and no quantity (2026-10-20).
-    const check = (await text('.fk-order-check')).replace(/\s+/g, ' ');
-    expect(check.includes('Killed in these dates: 8 EA (DYND70294BH: 8 EA (EA/1))') && check.includes('still needed: 8 EA')
-      && check.includes('Recommended order: 1 BX') && check.includes('= 0.08 BX, rounded up') && check.includes('Quantity is left blank'),
-    `the check: ${check}`);
+    const check = async () => (await text('.fk-order-check')).replace(/\s+/g, ' ');
+    // Every site shown: the Materials Manager chooses the order's site first (2026-10-27).
+    expect(await evaluate(`document.getElementById('fk-m-site').value`) === '', 'a site was chosen for them');
+    expect((await check()).includes('Choose the site this order is for'), `the check before a site: ${await check()}`);
+    // Killed by the each at site A (5 of the 8 EA), ordered by the box of 100: what was killed there
+    // and a recommendation, in red, and no quantity (2026-10-20).
+    await setValue('#fk-m-site', SITE_A);
+    const said = await check();
+    expect(said.includes('Killed at SAMPLE SITE A in these dates: 5 EA (DYND70294BH: 5 EA (EA/1))') && said.includes('still needed: 5 EA')
+      && said.includes('Recommended order: 1 BX') && said.includes('= 0.05 BX, rounded up') && said.includes('Quantity is left blank'),
+    `the check: ${said}`);
     expect(await evaluate(`getComputedStyle(document.querySelector('.fk-order-check')).backgroundColor`) === 'rgb(248, 215, 218)',
       'the check is not on red');
     const quantity = '#fk-modal-form [name="quantity"]';
     expect(await evaluate(`document.querySelector('${quantity}').value`) === '', 'the quantity is filled in');
     expect(await evaluate(`document.querySelector('${quantity}').placeholder`) === 'Recommended: 1', 'no recommendation in the box');
     await setValue(quantity, '1');
+    await setValue('#fk-m-po_number', ' 3000564756 ');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
-    await panelSays('Order recorded.');
+    await panelSays('Order recorded for SAMPLE SITE A.');
     await waitFor(`document.querySelector('#fk-main').innerText.includes('Ordered')`, 'Ordered in the table');
-    // Killed and ordered for the item, in eaches (2026-10-21): 8 EA killed, 1 BX of 100 ordered.
-    await waitFor(`${lastCells('DYND70294BH')} === '8 EA|100 EA'`, 'the eaches columns', 5000).catch(async () => {
-      throw new Error(`the eaches columns: ${await evaluate(lastCells('DYND70294BH'))}`);
-    });
+    // Killed and ordered for the item, in eaches (2026-10-21): 8 EA killed at two sites, 1 BX of 100
+    // ordered for site A; site B has ordered nothing for its 3 EA (2026-10-27).
+    await waitFor(`${lastCells('DYND70294BH')} === '8 EA 2 sites|100 EA SAMPLE SITE B: 3 EA short'`, 'the eaches columns', 5000)
+      .catch(async () => { throw new Error(`the eaches columns: ${await evaluate(lastCells('DYND70294BH'))}`); });
     await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('DYND70294BH')`, 'the order under the table');
-    // Its row (2026-10-20): Infor item, vendor part, QOE, ordered with a grey UOM, vendor ID, vendor name.
+    // Its row (2026-10-20): site and PO (2026-10-27), Infor item, vendor part, QOE, ordered with a grey
+    // UOM, vendor ID, vendor name.
     const cells = await evaluate(`[...document.querySelector('#fk-orders-rows tr').cells].map((c) => c.innerText.replace(/\\s+/g, ' ').trim())`);
-    expect(JSON.stringify(cells.slice(1, 8)) === JSON.stringify(['DYND70294BH', '100339', '88885', '100', '1 BX', '1000001', 'CARDINAL HEALTH']),
-      `the order's row: ${JSON.stringify(cells)}`);
-    expect(await evaluate(`getComputedStyle(document.querySelector('#fk-orders-rows tr').cells[5].querySelector('.text-muted')).color`)
-      !== await evaluate(`getComputedStyle(document.querySelector('#fk-orders-rows tr').cells[5]).color`), 'the UOM is not grey');
-    // The search box: by any of its numbers, dashes optional.
+    expect(JSON.stringify(cells.slice(1, 10)) === JSON.stringify(['SAMPLE SITE A', 'DYND70294BH', '100339', '88885', '100', '1 BX',
+      '3000564756', '1000001', 'CARDINAL HEALTH']), `the order's row: ${JSON.stringify(cells)}`);
+    expect(await evaluate(`getComputedStyle(document.querySelector('#fk-orders-rows tr').cells[6].querySelector('.text-muted')).color`)
+      !== await evaluate(`getComputedStyle(document.querySelector('#fk-orders-rows tr').cells[6]).color`), 'the UOM is not grey');
+    // The search box: by any of its numbers, dashes optional; the PO number too.
     await setValue('#fk-orders-q', 'nothing-like-it', 'input');
     await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('No order in these dates matches.')`, 'no match');
     await setValue('#fk-orders-q', '100339 888-85', 'input');
     await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('DYND70294BH')`, 'the order found by Infor item and part');
+    await setValue('#fk-orders-q', '3000564756', 'input');
+    await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('DYND70294BH')`, 'the order found by its PO');
     await setValue('#fk-orders-q', '', 'input');
   }],
   ["The panel's orders: a table, a row's history under it", async () => {
@@ -309,8 +324,8 @@ const steps = [
     const rows = '#fk-panel-content table.fk-orders-tab tbody tr:not(.fk-order-more)';
     await waitFor(`document.querySelectorAll('${rows}').length === 1`, 'one order row');
     const cells = await evaluate(`[...document.querySelector('${rows}').cells].map((c) => c.innerText.replace(/\\s+/g, ' ').trim())`);
-    expect(cells[1] === '88885 for 88885' && cells[2] === '1 BX/100' && cells[3] === 'CARDINAL HEALTH 1000001',
-      `the order's row: ${JSON.stringify(cells)}`);
+    expect(cells[1] === 'SAMPLE SITE A PO 3000564756' && cells[2] === '88885 for 88885' && cells[3] === '1 BX/100'
+      && cells[4] === 'CARDINAL HEALTH 1000001', `the order's row: ${JSON.stringify(cells)}`);
     const more = `document.querySelector('#fk-panel-content .fk-order-more')`;
     expect(await evaluate(`${more}.classList.contains('d-none')`), 'the line under the row shows before it is asked for');
     await click('#fk-panel-content [data-act="history"][data-entity="order"]');
@@ -349,9 +364,11 @@ const steps = [
     await panelSays('Vendor item added.');
     const quantity = '#fk-modal-form [name="quantity"]';
     const check = async () => (await text('.fk-order-check')).replace(/\s+/g, ' ');
-    // 2,300 EA still needed is 2.3 CA: 3 recommended, left blank (not a whole number).
+    // 2,300 EA still needed at site A, where both were killed, is 2.3 CA: 3 recommended, left blank
+    // (not a whole number).
     await click('#fk-panel-content [data-act="order"]');
     await modalOpen();
+    await setValue('#fk-m-site', SITE_A);
     let said = await check();
     expect(said.includes('still needed: 2,300 EA') && said.includes('Recommended order: 3 CA') && said.includes("2.3 CA isn't a whole number"),
       `the check: ${said}`);
@@ -360,23 +377,35 @@ const steps = [
     await setValue(quantity, '1');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
-    await panelSays('Order recorded.');
+    await panelSays('Order recorded for SAMPLE SITE A.');
     await waitFor(`${lastCells('MDS2585HC')} === '2,300 EA|1,000 EA 1,300 EA short'`, 'the shortfall', 5000).catch(async () => {
       throw new Error(`the eaches columns: ${await evaluate(lastCells('MDS2585HC'))}`);
     });
     // The next order takes off what's been ordered: 1,300 EA still needed, 2 CA.
     await click('#fk-panel-content [data-act="order"]');
     await modalOpen();
+    await setValue('#fk-m-site', SITE_A);
     said = await check();
-    expect(said.includes('Sub ordered in these dates: 1,000 EA') && said.includes('still needed: 1,300 EA')
+    expect(said.includes('Sub ordered for SAMPLE SITE A in these dates: 1,000 EA') && said.includes('still needed: 1,300 EA')
       && said.includes('Recommended order: 2 CA'), `the check: ${said}`);
+    // Site B killed none of it: nothing to recommend there.
+    await setValue('#fk-m-site', SITE_B);
+    said = await check();
+    expect(said.includes('SAMPLE SITE B had no kills of this item') && await evaluate(`document.querySelector('${quantity}').placeholder`) === '',
+      `the check for site B: ${said}`);
     await sleep(500);  // Bootstrap ignores a close while the form is still fading in
     await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
     await modalClosed();
   }],
   ['Filled in when it matches what was killed; a vendor item without a QOE is flagged', async () => {
-    // SAMPLE0001 was killed 6 EA (not in Infor, so no QOE: an EA is 1).
+    // SAMPLE0001 was killed 6 EA at site B (not in Infor, so no QOE: an EA is 1). Main filtered to
+    // site B, as a site's Materials Manager would: the order form starts on it, and the orders under
+    // the table are site B's (2026-10-27).
     const quantity = '#fk-modal-form [name="quantity"]';
+    await click('#fk-site-1');
+    await waitFor(`document.getElementById('fk-sites-button').innerText.trim() === 'SAMPLE SITE B'
+      && document.querySelectorAll('#fk-main tbody.fk-item').length === 2`, "site B's two items");
+    await waitFor(`!document.getElementById('fk-orders-rows').innerText.includes('DYND70294BH')`, "site A's order gone from the orders");
     await click('#fk-main button[data-open="SAMPLE0001"]:not([data-scope])');
     await waitFor(`document.getElementById('fk-panel-title').innerText === 'SAMPLE0001'`, 'SAMPLE0001 in the panel');
     await click('[data-panel-tab="subs"]');
@@ -402,6 +431,7 @@ const steps = [
       await waitFor(orderFor('S1-EA'), 'Record order for S1-EA');
       await evaluate(`${orderFor('S1-EA')}.click()`);
       await modalOpen();
+      expect(await evaluate(`document.getElementById('fk-m-site').value`) === SITE_B, 'the form is not on the site shown');
       expect(await evaluate(`document.querySelector('${quantity}').value`) === expected, `the quantity is not ${expected}`);
       expect((await text('.fk-order-check')).includes('Quantity filled in'), 'no "Quantity filled in"');
       if (ordered) {
@@ -409,6 +439,7 @@ const steps = [
         await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
         await modalClosed();
         await waitFor(`${lastCells('SAMPLE0001')} === '6 EA|4 EA 2 EA short'`, 'the order in the table');
+        await waitFor(`document.getElementById('fk-orders-rows').innerText.includes('SAMPLE0001')`, "the order in site B's orders");
       } else {
         await sleep(500);
         await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
@@ -427,6 +458,8 @@ const steps = [
     await sleep(500);
     await click('#fk-modal-form [data-bs-dismiss="modal"].btn-link');
     await modalClosed();
+    await click('#fk-site-1');  // every site again
+    await waitFor(`document.querySelectorAll('#fk-main tbody.fk-item').length === 3`, 'all 3 items again');
   }],
   ['The Subs page', async () => {
     await go('/fillkill/subs', `document.querySelectorAll('#fk-subs-rows tr').length && !document.getElementById('fk-subs-rows').innerText.includes('Loading')`, 'the subs');
@@ -574,6 +607,33 @@ const steps = [
     // Main: the pick is 930103, with a tile for each.
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('930103')
       && b.querySelectorAll('[data-order-vi]').length === 2)`, 'two tiles for 930103');
+  }],
+  ['The MM Lead writes an instruction; the sites read it on Main', async () => {
+    // 2026-10-27: the Materials Management lead guides the sites' Materials Managers and doesn't
+    // order: no tiles to click, but a pencil to write the item's instruction.
+    await go('/dev-login?as=lead', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    expect(await count('#fk-main button[data-order-vi]') === 0 && await count('#fk-main div.fk-vi-tile') >= 1,
+      'an MM Lead can click a tile to record an order');
+    await click('#fk-main [data-instruct="DYND70294BH"]');
+    await modalOpen();
+    const summary = (await text('.fk-form-summary')).replace(/\s+/g, ' ');
+    expect(summary.includes('Infor item 100339') && summary.includes('SAMPLE SITE A: killed 5 EA, sub ordered 100 EA'),
+      `the instruction form's summary: ${summary}`);
+    await setValue('#fk-m-instruction', 'Site A: covered.\nSite B: 1 BX of 88885 today.');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    const cell = `document.querySelector('#fk-main [data-instructions="DYND70294BH"]')?.closest('td')`;
+    await waitFor(`${cell} && ${cell}.querySelector('.fk-instruction-text').innerText.includes('Site B: 1 BX of 88885 today.')`,
+      'the instruction on Main');
+    expect((await evaluate(`${cell}.innerText`)).includes('lead ·'), 'no who and when under it');
+    // A Materials Manager reads it, with every instruction in its popover, and can't write one.
+    await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    await waitFor(cell, 'the instruction');
+    expect(await count('#fk-main [data-instruct]') === 0, 'a Materials Manager can write instructions');
+    await click('#fk-main [data-instructions="DYND70294BH"]');
+    await waitFor(`(document.querySelector('.fk-comments-popover') || {}).innerText?.includes('in force')`, 'the instructions popover');
+    await evaluate('document.body.click()');
+    await waitFor(`!document.querySelector('.fk-comments-popover')`, 'the popover to close');
   }],
   ['A viewer: nothing to change', async () => {
     await go('/dev-login?as=viewer', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');

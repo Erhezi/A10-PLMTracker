@@ -40,6 +40,9 @@ export function fmtDateTime(iso) {
   return `${fmtDate(text)} ${text.slice(11, 16)}`.trim();
 }
 
+// Who, short: the part of the email before the @ (the whole email goes in a title).
+export const shortName = (email) => String(email || '').split('@')[0];
+
 export function fmtNumber(value) {
   if (value == null || value === '') return '';
   const n = Number(value);

@@ -35,16 +35,16 @@ changes something now ends with a red error when a transaction is still open (20
 | Script | What it does | When to re-run |
 | --- | --- | --- |
 | `01_schema.sql` | Creates the empty `FillKill` schema. | Never needed. |
-| `02_user_module_role.sql` | `PLM.UserModuleRole`, each user's roles per module, with a CHECK listing the role codes the code uses. Repairs a table the app made itself, moves admins stored there to `users.user_role`, renames the first Fill/Kill role codes (`proposer`, `clinical`, `materials`), and drops Fill/Kill Viewer from anyone with another Fill/Kill role. | Whenever it changes, before running that code: otherwise saving roles in User Control is refused. |
+| `02_user_module_role.sql` | `PLM.UserModuleRole`, each user's roles per module, with a CHECK listing the role codes the code uses (`mm_lead`, the MM Lead, since 2026-10-27). Repairs a table the app made itself, moves admins stored there to `users.user_role`, renames the first Fill/Kill role codes (`proposer`, `clinical`, `materials`), and drops Fill/Kill Viewer from anyone with another Fill/Kill role. | Whenever it changes, before running that code: otherwise saving roles in User Control is refused. |
 | `03_unify_roles.sql` | Adds `users.requested_modules` and gives everyone the PLM role matching their `users.user_role` (admin and user: PLM editor; view-only: PLM viewer). Copies only once, so re-running never undoes User Control changes. | Never needed. |
 | `04_after_deploy.sql` | Renames `view-only` to `user`. **Only once the new release is live:** the previous release would let `view-only` accounts edit. | Never needed. |
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
 | `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines plus the test lines, with `Reason`, `Reason Date`, `Is Test`, `Test Purpose`), `vw_FillKillLastLoad` ("data as of"), and the test lines in `FillKill.TestFillKillLine`. | Any time; re-running reloads the test lines. |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (so the test site shows), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
-| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each), `SubOrder`, `History`, and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
+| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`), `vw_Vendor` (Infor's vendors, with their legal and search names) and `vw_UomAlias` (Infor's UOM for one typed another way, from `MDM_EDI_SUB_UOM`: CS is CA, VL is VI). | Whenever it changes, before running that code. |
 | `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review, with a vendor item when Medline's contract lines give one UOM. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes, after `12`. Its version line is what `09` and the app check. |
-| `90_reset_workflow.sql` | Empties `Sub`, `SubVendorItem`, `SubOrder` and `History` (with DELETE: `TRUNCATE` is refused on tables other tables' keys point at), numbers new ones from 1, and drops `12`'s copy `Sub_before_vendor_items`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
+| `90_reset_workflow.sql` | Empties `Sub`, `SubVendorItem`, `SubOrder`, `History` and `ItemInstruction` (with DELETE: `TRUNCATE` is refused on tables other tables' keys point at), numbers new ones from 1, and drops `12`'s copy `Sub_before_vendor_items`. Does nothing unless you edit it to confirm. | Only to throw away UAT subs and orders. |
 | `rollback_deploy1.sql` | Sets `users.user_role` back to `admin` / `user` / `view-only` from each person's PLM role, which is all the previous release reads. | Only just before putting the previous release back. Leave the new tables and columns in place. |
 
 ### Test lines (`10`)
@@ -182,3 +182,42 @@ DROP TABLE IF EXISTS [FillKill].[Sub_before_vendor_items];
 ```
 
 Then `09_verify.sql` once more.
+
+## The coordination release (branch `fillkill-deploy2`, 2026-10-27)
+
+The business model of 10/27 (design section 1b): an **MM Lead** role writes each item's instruction to
+the sites' Materials Managers, Main shows each pick's latest comment under it, and **orders record
+their site** (and Infor's PO number, optional). It needs `02` and `12` again, then the app deploy.
+
+**Before the deploy**
+
+1. On O2: `02`, then `12`, then `09`.
+   - `02` lets the role CHECK take `mm_lead`; until then User Control refuses to save an MM Lead.
+   - `12` adds `FillKill.ItemInstruction`, and `SubOrder.site` and `SubOrder.po_number` (empty on
+     the orders recorded before; those count only when Main shows every site).
+   - `09`: all `PASS`, including "SubOrder has site and po_number" and MM Lead in the role CHECK.
+2. **Don't run this code against O2 before `12`** (a local `run.py` included): its startup creates
+   `ItemInstruction` itself, and every read of orders fails until `SubOrder.site` exists.
+3. Locally, `tools/fillkill_ui/smoke.mjs` passes (19 steps on 10/27).
+4. On the web server, `flask fillkill check-db` says the database has everything.
+
+**The deploy:** put the code in place and recycle the app pool, as before.
+
+**After the deploy**
+
+5. In User Control, give the Materials Management lead **MM Lead**. Add Materials Manager only if
+   they record orders themselves. The sites' Materials Managers keep Materials Manager.
+6. Tell the sites' Materials Managers: every order now needs its **site** (the form starts on it
+   when Main is filtered to just their site), the PO number is optional, and the MM Lead's
+   instruction is in the **MM Instruction** column.
+
+**Rollback:** the previous release ignores the new table and columns, and an `mm_lead` role grants
+nothing there (someone whose only Fill/Kill role is MM Lead has no Fill/Kill access on it). Nothing
+to undo in the database.
+
+```bash
+for s in 02_user_module_role 12_workflow_tables 09_verify; do
+  sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i "db/fillkill/$s.sql" || break
+done
+flask fillkill check-db        # on the web server, with its .env
+```

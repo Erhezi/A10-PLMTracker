@@ -28,6 +28,10 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
     (("materials_manager",), {"view", "details", "pick", "order"}),  # vendor items, picks (2026-10-21), orders
     (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "pick", "order"}),
     (("sub_finder", "sub_approver"), {"view", "add_sub", "details", "review", "pick"}),
+    # The Materials Management lead (2026-10-27): instructs the sites, picks, adds vendor items; orders
+    # only with Materials Manager too.
+    (("mm_lead",), {"view", "pick", "details", "instruct"}),
+    (("mm_lead", "materials_manager"), {"view", "pick", "details", "instruct", "order"}),
     ((), set()),
 ])
 def test_fillkill_capabilities_follow_roles(roles, expected):
@@ -121,3 +125,10 @@ def test_module_row_lists_only_modules_you_can_open(sqlite_app):
     assert [m["key"] for m in fillkill_only["modules"]] == ["fillkill"]
     assert [m["key"] for m in admin["modules"]] == ["plm"]  # admin adds no modules
     assert nobody["modules"] == []
+
+
+def test_mm_lead_combines_with_the_other_roles_but_not_viewer():
+    # Not part of the Sub Approver + Materials Manager rule: the MM Lead doesn't order (2026-10-27).
+    assert access.validate_roles(admin=False, roles={FILLKILL: {"mm_lead", "materials_manager"}}) is None
+    assert access.validate_roles(admin=False, roles={FILLKILL: {"mm_lead", "sub_approver"}}) is None
+    assert "can't be combined" in access.validate_roles(admin=False, roles={FILLKILL: {"mm_lead", "viewer"}})

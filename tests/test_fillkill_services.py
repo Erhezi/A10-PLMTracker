@@ -6,15 +6,22 @@ from decimal import Decimal
 import pytest
 
 from app.fillkill.rules import RuleError
-from conftest import CARDINAL, MEDLINE, OWENS  # Infor vendor IDs
+from conftest import CARDINAL, MEDLINE, OWENS, add_view_rows  # Infor vendor IDs
 
-FINDER, APPROVER, OTHER_APPROVER, MANAGER = (
-    "finder@example.org", "approver@example.org", "approver2@example.org", "mm@example.org",
+FINDER, APPROVER, OTHER_APPROVER, MANAGER, LEAD = (
+    "finder@example.org", "approver@example.org", "approver2@example.org", "mm@example.org", "lead@example.org",
 )
+SITE, OTHER_SITE = "0001795146", "test site"  # Medline Sold-To codes: an order is for one (2026-10-27)
 
 
 @pytest.fixture
 def ctx(sqlite_app):
+    add_view_rows(sqlite_app, "vw_MedlineFillKillQtyAgg", [
+        {"Order Date": "2026-09-30", "Sold-To": SITE, "Sold-To Name": "WHITE PLAINS", "Medline Item": "MDS2585H",
+         "UM": "BX", "Total Ordered Qty": 4, "Total Filled Qty": 0, "Total Killed Qty": 4, "Total PO Line Count": 1},
+        {"Order Date": "2026-09-30", "Sold-To": OTHER_SITE, "Sold-To Name": "test site", "Medline Item": "MDS2585H",
+         "UM": "BX", "Total Ordered Qty": 2, "Total Filled Qty": 0, "Total Killed Qty": 2, "Total PO Line Count": 1},
+    ])
     with sqlite_app.app_context():
         yield
 
@@ -150,7 +157,7 @@ def test_correcting_and_deleting_a_vendor_item(ctx):
     other = vendor_item(sub, uom="BX")
     refused(lambda: services().edit_vendor_item(other.vendor_item_id, {"uom": "CS"}, FINDER), status=409, says="already has")
     # Deleted with a reason, unless it has orders that aren't voided.
-    order = services().record_order(item.vendor_item_id, {"quantity": 2}, MANAGER)
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 2}, MANAGER)
     refused(lambda: services().delete_vendor_item(item.vendor_item_id, "no longer sold", FINDER), status=409, says="void it before")
     services().void_order(order.order_id, "entered twice", MANAGER)
     refused(lambda: services().delete_vendor_item(item.vendor_item_id, " ", FINDER), says="Reason is required")
@@ -176,7 +183,7 @@ def test_nursing_corrects_the_reference_sku_until_the_sub_has_an_order(ctx):
     from app import db
     from app.models.fillkill import VendorItem
     assert db.session.get(VendorItem, item.vendor_item_id).vendor_part == "88885"  # the Materials Manager's stays
-    services().record_order(item.vendor_item_id, {"quantity": 1}, MANAGER)
+    services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 1}, MANAGER)
     refused(lambda: services().edit_sub(sub.sub_id, {"reference_sku": "88887"}, APPROVER), status=409, says="has an order")
     nurse_sub(reference_sku="OTHER")
     other = nurse_sub(reference_sku="OTHER-2")
@@ -254,14 +261,14 @@ def test_a_refused_action_writes_nothing(ctx):
 def test_a_missing_sub_or_vendor_item(ctx):
     refused(lambda: services().pick(999, APPROVER), status=404, says="That sub")
     refused(lambda: services().edit_vendor_item(999, {"uom": "BX"}, MANAGER), status=404, says="That vendor item")
-    refused(lambda: services().record_order(999, {"quantity": 1}, MANAGER), status=404, says="That vendor item")
+    refused(lambda: services().record_order(999, {"site": SITE, "quantity": 1}, MANAGER), status=404, says="That vendor item")
 
 
 # --- orders -------------------------------------------------------------------------
 
 def test_an_order_is_recorded_for_a_vendor_item_of_the_pick(ctx):
     sub, item = approved_and_picked()
-    order = services().record_order(item.vendor_item_id, {"quantity": 15, "comment": "covers 4E and ICU"}, MANAGER,
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 15, "comment": "covers 4E and ICU"}, MANAGER,
                                     expected_status="approved")
     assert (order.sub_id, order.vendor_item_id, order.medline_item, order.quantity, order.vendor_part, order.uom,
             order.qoe, order.vendor, order.vendor_id, order.ordered_by) == (
@@ -278,25 +285,25 @@ def test_no_order_without_a_pick(ctx):
     approved_and_picked()
     second = nurse_sub(reference_sku="B1")  # approved, but not the pick
     item = vendor_item(second, vendor_part="B1")
-    refused(lambda: services().record_order(item.vendor_item_id, {"quantity": 1}, MANAGER),
+    refused(lambda: services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 1}, MANAGER),
             status=409, says="isn't picked")
     services().set_status(second.sub_id, "hold", OTHER_APPROVER)
-    refused(lambda: services().record_order(item.vendor_item_id, {"quantity": 1}, MANAGER, expected_status="approved"),
+    refused(lambda: services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 1}, MANAGER, expected_status="approved"),
             status=409, says="now Hold")
 
 
 def test_orders_for_two_vendor_items_of_one_pick(ctx):
     sub, box = approved_and_picked()
     case = vendor_item(sub, vendor_part="88885-CS", vendor="OWENS & MINOR", vendor_id=OWENS, uom="CS", qoe="1000")
-    services().record_order(box.vendor_item_id, {"quantity": 10}, MANAGER)
-    services().record_order(case.vendor_item_id, {"quantity": 5}, MANAGER)
+    services().record_order(box.vendor_item_id, {"site": SITE, "quantity": 10}, MANAGER)
+    services().record_order(case.vendor_item_id, {"site": SITE, "quantity": 5}, MANAGER)
     from app.models.fillkill import SubOrder
     assert sorted((o.vendor, o.vendor_part, o.uom, o.quantity) for o in SubOrder.query.all()) == [
         ("CARDINAL HEALTH", "88885", "BX", 10), ("OWENS & MINOR", "88885-CS", "CS", 5)]
 
 
 def test_order_corrections_void_and_comments(ctx):
-    order = services().record_order(approved_and_picked()[1].vendor_item_id, {"quantity": 10}, MANAGER)
+    order = services().record_order(approved_and_picked()[1].vendor_item_id, {"site": SITE, "quantity": 10}, MANAGER)
     services().edit_order(order.order_id, {"quantity": "12"}, MANAGER)
     order = services().void_order(order.order_id, "entered twice", MANAGER)
     assert (order.voided_by, order.void_reason, order.is_voided) == (MANAGER, "entered twice", True)
@@ -313,7 +320,7 @@ def test_order_corrections_void_and_comments(ctx):
 
 def test_an_order_survives_its_sub_being_unpicked(ctx):
     sub, item = approved_and_picked()
-    order = services().record_order(item.vendor_item_id, {"quantity": 3}, MANAGER)
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 3}, MANAGER)
     services().set_status(sub.sub_id, "rejected", APPROVER)
     from app import db
     from app.models.fillkill import SubOrder
@@ -322,7 +329,7 @@ def test_an_order_survives_its_sub_being_unpicked(ctx):
 
 def test_an_order_keeps_what_it_was_placed_with(ctx):
     _, item = approved_and_picked()  # Cardinal
-    order = services().record_order(item.vendor_item_id, {"quantity": 3}, MANAGER)
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 3}, MANAGER)
     # The vendor item is corrected later; the order keeps its own until corrected.
     services().edit_vendor_item(item.vendor_item_id, {"vendor": "OWENS & MINOR", "vendor_id": OWENS, "vendor_part": "OM-1"}, MANAGER)
     from app import db
@@ -363,8 +370,32 @@ def test_a_deleted_sub_keeps_its_row_and_history_and_leaves_every_list(ctx):
 def test_the_approvers_pick_and_a_sub_with_orders_cant_be_deleted(ctx):
     sub, item = approved_and_picked()
     refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="unpicked before")
-    order = services().record_order(item.vendor_item_id, {"quantity": 3}, MANAGER)
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 3}, MANAGER)
     services().unpick(sub.sub_id, APPROVER)
     refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="void it before")
     services().void_order(order.order_id, "entered twice", MANAGER)
     assert services().delete_sub(sub.sub_id, "not needed", FINDER).deleted_by == FINDER
+
+
+# --- sites, PO numbers and instructions (2026-10-27) -------------------------------------------
+
+def test_an_order_is_for_a_site_and_keeps_its_po_number(ctx):
+    _, item = approved_and_picked()
+    refused(lambda: services().record_order(item.vendor_item_id, {"quantity": 2}, MANAGER), says="Choose the site")
+    order = services().record_order(item.vendor_item_id, {"site": OTHER_SITE, "quantity": 2, "po_number": "3000564756"},
+                                    MANAGER)
+    assert (order.site, order.po_number) == (OTHER_SITE, "3000564756")
+    order = services().edit_order(order.order_id, {"site": SITE, "po_number": ""}, MANAGER)
+    assert (order.site, order.po_number) == (SITE, None)
+    assert [row[:4] for row in history("order", order.order_id)][-2:] == [
+        ("edit", "site", OTHER_SITE, SITE), ("edit", "po_number", "3000564756", None)]
+
+
+def test_an_instruction_belongs_to_the_infor_item_of_its_medline_item(ctx, sqlite_app):
+    add_view_rows(sqlite_app, "vw_MedlineFillKillItemCollection", [
+        {"Medline Item": "MDS2585H", "UM": "BX", "Infor Item": "999999"}])
+    first = services().add_instruction("MDS2585H", "  Both sites: 2 BX of 88885  ", LEAD)
+    assert (first.infor_item, first.medline_item, first.instruction, first.written_by) == (
+        "999999", "MDS2585H", "Both sites: 2 BX of 88885", LEAD)
+    assert services().add_instruction("NOT-IN-INFOR", "Use stock", LEAD).infor_item is None
+    refused(lambda: services().add_instruction("MDS2585H", "", LEAD), says="Instruction is required")

@@ -31,12 +31,13 @@ SELECT 'deleting a user deletes their UserModuleRole rows',
              AND delete_referential_action_desc = N'CASCADE'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'UserModuleRole accepts only known roles for plm and fillkill',
+SELECT 'UserModuleRole accepts only known roles for plm and fillkill, MM Lead included (02, 2026-10-27)',
        CASE WHEN EXISTS (
            SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
              AND definition LIKE '%editor%' AND definition LIKE '%sub[_]approver%'
-             AND definition LIKE '%materials[_]manager%' AND definition NOT LIKE '%''app''%'
+             AND definition LIKE '%materials[_]manager%' AND definition LIKE '%mm[_]lead%'
+             AND definition NOT LIKE '%''app''%'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'a user holds at most one PLM role',
@@ -154,11 +155,12 @@ IF COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
 
 -- Workflow (12-14) ----------------------------------------------------------------
 
-SELECT 'tables FillKill.Sub, SubVendorItem, SubOrder, History exist (12)' AS [check],
+SELECT 'tables FillKill.Sub, SubVendorItem, SubOrder, History, ItemInstruction exist (12)' AS [check],
        CASE WHEN OBJECT_ID(N'[FillKill].[Sub]', N'U') IS NOT NULL
              AND OBJECT_ID(N'[FillKill].[SubVendorItem]', N'U') IS NOT NULL
              AND OBJECT_ID(N'[FillKill].[SubOrder]', N'U') IS NOT NULL
-             AND OBJECT_ID(N'[FillKill].[History]', N'U') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
+             AND OBJECT_ID(N'[FillKill].[History]', N'U') IS NOT NULL
+             AND OBJECT_ID(N'[FillKill].[ItemInstruction]', N'U') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
 UNION ALL
 -- A sub keeps what was entered; its vendor items keep the vendor details (12's step 2).
 SELECT 'Sub has reference_sku, deleted_at, deleted_by, delete_reason, and no vendor details (12, 2026-10-20)',
@@ -172,6 +174,10 @@ SELECT 'SubOrder has vendor_item_id, vendor_part, vendor_id (12, 2026-10-20)',
        CASE WHEN COL_LENGTH(N'FillKill.SubOrder', N'vendor_item_id') IS NOT NULL
              AND COL_LENGTH(N'FillKill.SubOrder', N'vendor_part') IS NOT NULL
              AND COL_LENGTH(N'FillKill.SubOrder', N'vendor_id') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'SubOrder has site and po_number (12, 2026-10-27)',
+       CASE WHEN COL_LENGTH(N'FillKill.SubOrder', N'site') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.SubOrder', N'po_number') IS NOT NULL THEN 'PASS' ELSE 'FAIL: re-run 12' END
 UNION ALL
 SELECT 'one live sub per Medline item and Reference SKU: UX_Sub_item_reference_sku (12, 2026-10-20)',
        CASE WHEN (SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
@@ -200,11 +206,13 @@ SELECT 'workflow constraints have their standard names (12)',
                           N'PK_SubOrder', N'FK_SubOrder_Sub', N'FK_SubOrder_SubVendorItem', N'CK_SubOrder_quantity',
                           N'CK_SubOrder_qoe', N'CK_SubOrder_void',
                           N'PK_History', N'CK_History_entity', N'CK_History_action',
+                          N'PK_ItemInstruction',
                           N'DF_Sub_status', N'DF_Sub_is_picked', N'DF_Sub_create_dt', N'DF_Sub_update_dt',
                           N'DF_SubVendorItem_create_dt', N'DF_SubVendorItem_update_dt',
-                          N'DF_SubOrder_create_dt', N'DF_SubOrder_update_dt', N'DF_History_acted_at')
+                          N'DF_SubOrder_create_dt', N'DF_SubOrder_update_dt', N'DF_History_acted_at',
+                          N'DF_ItemInstruction_written_at')
              AND SCHEMA_NAME(schema_id) = N'FillKill'
-       ) = 27 THEN 'PASS' ELSE 'FAIL' END
+       ) = 29 THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'History can record vendor items and deletes: CK_History_entity and CK_History_action (12, 2026-10-20)',
        CASE WHEN EXISTS (SELECT 1 FROM sys.check_constraints
@@ -273,4 +281,17 @@ IF COL_LENGTH(N'FillKill.Sub', N'reference_sku') IS NOT NULL AND OBJECT_ID(N'[Fi
                       (SELECT COUNT(*) FROM [FillKill].[SubVendorItem]), '' / '',
                       (SELECT COUNT(*) FROM [FillKill].[SubOrder]), '' / '',
                       (SELECT COUNT(*) FROM [FillKill].[History]));
+    ');
+
+-- Coordination (12, 2026-10-27), once its columns and table exist.
+IF COL_LENGTH(N'FillKill.SubOrder', N'site') IS NOT NULL AND OBJECT_ID(N'[FillKill].[ItemInstruction]', N'U') IS NOT NULL
+    EXEC (N'
+        SELECT ''orders without a site (recorded before 2026-10-27)'' AS [check],
+               CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[SubOrder] WHERE [site] IS NULL), '' of '',
+                      (SELECT COUNT(*) FROM [FillKill].[SubOrder])) AS [result]
+        UNION ALL
+        SELECT ''MM Lead instructions'',
+               CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[ItemInstruction]), '' on '',
+                      (SELECT COUNT(DISTINCT COALESCE([infor_item], [medline_item])) FROM [FillKill].[ItemInstruction]),
+                      '' item(s)'');
     ');

@@ -37,6 +37,10 @@ LABELS = {"medline_item": "Medline item", "reference_sku": "Reference SKU", "ven
 NO_VENDOR_ID = "0000000"
 NO_VENDOR_LABEL = "Vendor not available in system"
 
+# What Main, its panel and the help page call the MM Lead's instructions: named for the MM Lead who
+# writes them, for now (the user, 2026-10-27; "MM Instruction" before).
+INSTRUCTION_LABEL = "Will's Comments"
+
 # Medline's vendor IDs in Infor (2026-10-20): MEDLINE INDUSTRIES INC, its physician office (LUM) and
 # decasing (custom packs) accounts, and its JIT tote program. A vendor item from one of them whose
 # vendor part is the Medline item itself is the item that was killed, not a sub.

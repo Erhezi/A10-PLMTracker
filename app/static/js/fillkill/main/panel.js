@@ -7,12 +7,12 @@ import {
   $, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, postJSON, trimOnChange,
 } from '../common.js';
 import {
-  openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm, openVendorItemDeleteForm, openVendorItemForm,
-  openVoidForm,
+  addedMessage, openInstructionForm, openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm,
+  openVendorItemDeleteForm, openVendorItemForm, openVoidForm,
 } from './forms.js';
 import { afterChange } from './refresh.js';
-import { api, historyUrl, orderUrl, scopeParams, state, subUrl, syncLink } from './state.js';
-import { customerFlag } from './table.js';
+import { api, can, historyUrl, orderUrl, scopeParams, state, subUrl, syncLink } from './state.js';
+import { customerFlag, instructionList } from './table.js';
 import { renderPanelTab, timeline } from './tabs.js';
 
 export const panelEl = $('fk-panel');
@@ -88,7 +88,8 @@ function renderPanel(message) {
   ];
   $('fk-panel-body').innerHTML = `
     ${message ? alertBox(message.text, message.kind) : ''}
-    ${itemDetails(d, data.instruction)}
+    ${itemDetails(d)}
+    ${instructionBlock(data.instruction)}
     ${packagingList(data, view)}
     <ul class="nav nav-pills nav-fill small mb-3" role="tablist">
       ${tabs.map(([key, label]) => `<li class="nav-item"><button type="button" class="nav-link py-1 ${state.panelTab === key ? 'active' : ''}"
@@ -97,8 +98,7 @@ function renderPanel(message) {
     <div id="fk-panel-content">${renderPanelTab(state.panelTab, view)}</div>`;
 }
 
-// The item, and the MM Lead's instruction in force for it (2026-10-27).
-function itemDetails(d, instruction) {
+function itemDetails(d) {
   const rows = [
     ['Infor item', d.infor_item
       ? [d.infor_item, d.infor_active ? (d.infor_active === 'Yes' ? 'Active' : 'Inactive') : ''].filter(Boolean).join(' · ')
@@ -107,13 +107,36 @@ function itemDetails(d, instruction) {
     ['Commodity', [d.commodity_code, d.commodity_description].filter(Boolean).join(' · ')],
     ['Manufacturer', [d.manufacturer, d.mfr_item].filter(Boolean).join(' · ')],
   ].filter(([, value]) => value);
-  const latest = instruction && instruction.latest;
-  const instructed = latest ? `<dt class="col-sm-4 text-muted fw-normal">MM Instruction</dt><dd class="col-sm-8 mb-1">
-      <div class="fk-instruction-text">${esc(latest.instruction)}</div>
-      <div class="text-muted">${esc(latest.written_by)}, ${fmtDateTime(latest.written_at)}${instruction.count > 1
-        ? ` · ${instruction.count} instructions, the earlier ones from the table's icon` : ''}</div></dd>` : '';
   return `<dl class="row small bg-light border rounded py-2 mx-0 mb-3">${rows.map(([label, value]) => `
-    <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}${instructed}</dl>`;
+    <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
+}
+
+// Will's Comments (2026-10-27): the MM Lead's latest instruction for the item, for everyone. An MM
+// Lead adds one here (the user: a button, like the subs' Add sub) or by double-clicking its cell on
+// Main; with several, they all open under it.
+function instructionBlock(instruction) {
+  const latest = instruction && instruction.latest;
+  if (!latest && !can.instruct) return '';
+  const all = instruction && instruction.count > 1
+    ? `<button type="button" class="btn btn-sm btn-link py-0" data-act="instructions">All ${instruction.count}</button>` : '';
+  const add = can.instruct
+    ? '<button type="button" class="btn btn-sm btn-primary py-0" data-act="instruct"><i class="bi bi-plus-lg"></i> Add comment</button>' : '';
+  return `<div class="small border rounded p-2 mb-3">
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-1"><span class="fw-semibold me-auto">${esc(config.instructionLabel)}</span>${all}${add}</div>
+    ${latest ? `<div class="fk-instruction-text">${esc(latest.instruction)}</div>
+      <div class="text-muted">${esc(latest.written_by)}, ${fmtDateTime(latest.written_at)}</div>` : '<div class="text-muted">None yet.</div>'}
+    <div class="border-top pt-2 mt-2 d-none" id="fk-panel-instructions"></div>
+  </div>`;
+}
+
+// The form wants the item's main-table row (each site's kills and orders); an item opened from a
+// link may not be on the table for these dates and sites, so then what the panel has.
+function instructionRow() {
+  const data = state.panelData;
+  return state.rows.find((r) => r.medline_items.includes(state.panelItem)) || {
+    infor_item: data.infor_item, description: (data.details || {}).description, instruction: data.instruction,
+    packagings: [{ medline_item: state.panelItem }], sites: [],
+  };
 }
 
 // The Medline items (UOMs) shown: those killed in these dates first, then any other Medline has
@@ -157,12 +180,6 @@ async function act(path, payload, done) {
   }
 }
 
-// What happened to a new sub: approved on entry (and maybe picked), or waiting for review.
-function addedMessage(added) {
-  if (added.is_picked) return 'Approved and picked: it is the only approved sub.';
-  return added.status === 'approved' ? 'Approved.' : 'It is pending review.';
-}
-
 async function onClick(event) {
   const tab = event.target.closest('[data-panel-tab]');
   if (tab) {
@@ -188,6 +205,19 @@ async function onClick(event) {
   const subId = Number(button.dataset.sub);
   const sub = () => panelSubs().find((s) => s.sub_id === subId);
   const vendorItem = () => (sub() ? sub().vendor_items.find((v) => v.vendor_item_id === Number(button.dataset.vi)) : null);
+  if (what === 'instruct') { openInstructionForm(instructionRow()); return; }
+  if (what === 'instructions') {
+    const target = $('fk-panel-instructions');
+    if (!target.classList.contains('d-none')) { target.classList.add('d-none'); return; }
+    target.innerHTML = '<span class="text-muted">Loading…</span>';
+    target.classList.remove('d-none');
+    try {
+      target.innerHTML = instructionList((await getJSON(api.instructions, { item: state.panelItem })).instructions);
+    } catch (error) {
+      target.innerHTML = alertBox(error.message);
+    }
+    return;
+  }
   if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-sku').focus(); return; }
   if (what === 'hide-add') { $('fk-add-sub').classList.add('d-none'); return; }
   if (what === 'pick' || what === 'unpick') {

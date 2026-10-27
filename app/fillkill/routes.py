@@ -18,7 +18,7 @@ from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import INSTRUCTION_MAX, SUB_SOURCES, SUB_STATUSES
-from .rules import MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
+from .rules import INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
@@ -139,6 +139,7 @@ def index():
         # A UOM typed another way, and Infor's for it (CS is CA): the forms change it as it's typed.
         "uomAliases": services.uom_aliases(),
         "instructionMax": INSTRUCTION_MAX,  # an MM Lead's instruction (2026-10-27)
+        "instructionLabel": INSTRUCTION_LABEL,
         "api": {
             "main": url_for("fillkill.api_main"),
             "item": url_for("fillkill.api_item"),
@@ -160,6 +161,7 @@ def index():
         "fillkill/index.html",
         roles=[label for code, label in module.roles if code in held],
         config=plain(config),
+        instruction_label=INSTRUCTION_LABEL,
         # Admins see what the database is missing for this version (each item names its script).
         health=health.check() if is_admin(current_user) else [],
     )

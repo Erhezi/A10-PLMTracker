@@ -198,7 +198,8 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
    - `09`: all `PASS`, including "SubOrder has site and po_number" and MM Lead in the role CHECK.
 2. **Don't run this code against O2 before `12`** (a local `run.py` included): its startup creates
    `ItemInstruction` itself, and every read of orders fails until `SubOrder.site` exists.
-3. Locally, `tools/fillkill_ui/smoke.mjs` passes (19 steps on 10/27).
+3. Locally, `tools/fillkill_ui/smoke.mjs` passes (19 steps on 10/27, with Will's Comments and the
+   double-clicks).
 4. On the web server, `flask fillkill check-db` says the database has everything.
 
 **The deploy:** put the code in place and recycle the app pool, as before.
@@ -209,7 +210,14 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
    they record orders themselves. The sites' Materials Managers keep Materials Manager.
 6. Tell the sites' Materials Managers: every order now needs its **site** (the form starts on it
    when Main is filtered to just their site), the PO number is optional, and the MM Lead's
-   instruction is in the **MM Instruction** column.
+   instruction is in the **Will's Comments** column (no email: open or refresh Main). Tell the MM
+   Lead to double-click that column's cell to write one, and nursing that a double-click on Picked
+   for Ordering adds a sub.
+
+**O2 on 10/27** (read before and after the reset): `02` and `12` already run, `09` all `PASS`,
+wmcelwaine holds MM Lead (with Materials Manager and Sub Finder). `90` ran at the user's request
+(7 subs, 4 vendor items, 2 orders, 39 history rows, all UAT; saved to CSV first), so the workflow
+starts empty. Left: steps 3, 4 and the deploy.
 
 **Rollback:** the previous release ignores the new table and columns, and an `mm_lead` role grants
 nothing there (someone whose only Fill/Kill role is MM Lead has no Fill/Kill access on it). Nothing

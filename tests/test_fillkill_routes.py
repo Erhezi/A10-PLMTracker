@@ -754,6 +754,10 @@ def lead(app):
 def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, lead, finder_manager):
     assert page_config(lead)["can"] == {"view": True, "add_sub": False, "review": False, "pick": True, "details": True,
                                        "order": False, "instruct": True}
+    # Called Will's Comments on the page for now (the user, 2026-10-27), before Vendor Item Detail.
+    assert page_config(lead)["instructionLabel"] == "Will's Comments"
+    page = lead.get("/fillkill/").get_data(as_text=True)
+    assert page.index("Picked for Ordering</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
     assert status == 403 and "Only MM Leads" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403
@@ -810,3 +814,10 @@ def test_orders_are_for_a_site_and_the_site_filter_applies_to_them(app, viewer, 
         params = {"start": "2026-09-30", "end": "2026-09-30", **({"sites": sites} if sites else {})}
         _, orders = get(viewer, "/fillkill/api/orders", **params)
         assert [o["po_number"] for o in orders["orders"]] == expected, sites
+    # So do the Dashboard's (the user, 2026-10-27: a site's figures through the filter, the totals for
+    # every site): the cup is ordered for the test site, and short at White Plains, unordered.
+    for sites, ordered, short in ((WP, 0, 0), (TEST, 1, 0), (None, 1, 0)):
+        params = {"start": "2026-09-28", "end": "2026-09-30", **({"sites": sites} if sites else {})}
+        _, dash = get(viewer, "/fillkill/api/dashboard", **params)
+        assert (dash["headline"]["items_ordered"], dash["headline"]["items_ordered_short"]) == (ordered, short), sites
+        assert dash["flow"]["items_ordered"] == ordered, sites

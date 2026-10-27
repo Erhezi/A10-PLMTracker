@@ -150,6 +150,12 @@ def flow_hours(first_kill: dict, subs, orders) -> dict:
     }
 
 
+def _short(row) -> bool:
+    """Ordered, but fewer eaches than were killed (Main's "N EA short"), for the sites shown."""
+    killed, ordered = row.get("killed_each"), row.get("sub_ordered_each")
+    return row["ordering_status"] == "ordered" and killed is not None and ordered is not None and ordered < killed - 1e-9
+
+
 def headline(rows, subs, hours, start: date, end: date) -> dict:
     items = len(rows)
     with_approved = sum(1 for r in rows if r["subs_status"].get("approved"))
@@ -159,6 +165,8 @@ def headline(rows, subs, hours, start: date, end: date) -> dict:
         "lines": sum(r["lines"] for r in rows),
         "items_with_approved_sub": with_approved,
         "items_ordered": ordered,
+        # Per site through the site filter (the user, 2026-10-27); with every site, the totals.
+        "items_ordered_short": sum(1 for r in rows if _short(r)),
         "share_with_approved_sub": round(100 * with_approved / items) if items else None,
         "share_ordered": round(100 * ordered / items) if items else None,
         "subs_added": sum(1 for s in subs if _created_in(s, start, end)),

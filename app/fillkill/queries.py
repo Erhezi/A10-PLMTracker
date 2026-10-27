@@ -252,9 +252,9 @@ def orders_in_range(scope: Scope, items=None) -> list[dict]:
 
 
 def orders_since_start(scope: Scope, items=None) -> list[dict]:
-    """Non-voided orders dated on or after the scope's first day: what the Dashboard's kill-to-order
-    times look for, the first order after each kill, whenever it came."""
-    return _orders(SubOrder.ordered_dt >= scope.start, items)
+    """Non-voided orders dated on or after the scope's first day, for its sites (2026-10-27): what the
+    Dashboard's kill-to-order times look for, the first order after each kill, whenever it came."""
+    return _orders(and_(SubOrder.ordered_dt >= scope.start, _site_condition(scope.sites)), items)
 
 
 FAMILY_COLUMNS = ("Medline Item", "UM", "Customer Item #", "Infor Item")

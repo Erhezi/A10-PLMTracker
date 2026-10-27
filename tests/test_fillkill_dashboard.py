@@ -66,9 +66,16 @@ def test_headline():
     rows = [{"lines": 3, "subs_status": {"approved": 1}, "ordering_status": "ordered"},
             {"lines": 1, "subs_status": {"approved": 0}, "ordering_status": "no order"}]
     out = dashboard.headline(rows, [sub(1, "approved", datetime(2026, 9, 28))], [1.0, 3.0, 8.0], D, D)
-    assert out == {"items": 2, "lines": 4, "items_with_approved_sub": 1, "items_ordered": 1,
+    assert out == {"items": 2, "lines": 4, "items_with_approved_sub": 1, "items_ordered": 1, "items_ordered_short": 0,
                    "share_with_approved_sub": 50, "share_ordered": 50, "subs_added": 1, "subs_reviewed": 3,
                    "median_review_hours": 3.0}
+
+
+def test_items_ordered_short_are_those_with_fewer_eaches_ordered_than_killed():
+    def row(killed, ordered, status="ordered"):
+        return {"lines": 1, "subs_status": {}, "ordering_status": status, "killed_each": killed, "sub_ordered_each": ordered}
+    rows = [row(30, 10), row(30, 30), row(30, 40), row(None, 10), row(30, None), row(30, 0, "no order")]
+    assert dashboard.headline(rows, [], [], D, D)["items_ordered_short"] == 1
 
 
 def test_dashboard_page_and_api(sqlite_app):

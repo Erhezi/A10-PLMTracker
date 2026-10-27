@@ -19,6 +19,8 @@ def test_fillkill_docs_are_public_with_a_docs_page_row(sqlite_app):
     assert 'aria-current="page">Fill/Kill Management</a>' in page
     assert ">PLM Tracker</a>" in page  # the other docs tab
     assert 'class="nav-link active" href="/doc/fillkill">Docs</a>' in page
+    # The MM Lead's instructions by the name Main gives them (2026-10-27).
+    assert "<strong>Will&#39;s Comments</strong>, between the pick and its vendor items" in page
 
 
 def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):

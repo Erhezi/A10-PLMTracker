@@ -4,6 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, abort, current_app, render_template, send_file, url_for
 
+from ..fillkill.rules import INSTRUCTION_LABEL
 from ..utility.access import FILLKILL, FILLKILL_FUNCTIONS, MODULES
 from .doc_parser import load_manual_sections
 
@@ -97,7 +98,8 @@ def fillkill():
     roles = [(code, labels[code]) for code in FILLKILL_ROLE_COLUMNS]
     grid = [(label, [code in module.capabilities[capability] for code, _ in roles])
             for label, capability in FILLKILL_FUNCTIONS]
-    return render_template("selfawareness/fillkill.html", function_roles=roles, function_grid=grid)
+    return render_template("selfawareness/fillkill.html", function_roles=roles, function_grid=grid,
+                           instruction_label=INSTRUCTION_LABEL)
 
 
 # The columns, in the order "Who does what" lists the roles.

@@ -122,6 +122,12 @@ async function click(selector) {
   await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
 }
 
+// Double-click the element the expression finds (Main's cells to write in, 2026-10-27).
+async function dblclick(expression, what) {
+  await waitFor(expression, what);
+  await evaluate(`${expression}.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+}
+
 // The first element matching the selector whose text is exactly ``label``.
 async function clickText(selector, label) {
   const find = `[...document.querySelectorAll(${JSON.stringify(selector)})].find((el) => el.innerText.trim() === ${JSON.stringify(label)})`;
@@ -496,11 +502,21 @@ const steps = [
     // Manager's, and a pencil they can't use looked broken (2026-10-21).
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2'))`, 'the pick');
     expect(await count('#fk-main .bi-pencil-square, #fk-main [data-add-vi]') === 0, 'a nurse sees the pencil or can open the vendor item form');
+    // A second sub from Main, without the panel (2026-10-27): a double-click on the Medline item's
+    // Picked for Ordering cell opens the form.
+    await go('/dev-login?as=nurse', `${MAIN_READY} && ${lineOf('GLV-2')}`, 'the main table');
+    await dblclick(`${lineOf('GLV-2')}.querySelector('td[data-add-sub="MDS2585H"]')`, "GLV-2's cell");
+    await modalOpen();
+    const about = (await text('.fk-form-summary')).replace(/\s+/g, ' ');
+    expect(about.includes('MDS2585H (BX/100)') && about.includes('1 approved · picked GLV-2'), `the add-sub form's summary: ${about}`);
+    await waitFor(`document.activeElement.id === 'fk-m-reference_sku'`, 'the cursor in the Reference SKU');
+    await setValue('#fk-m-reference_sku', 'GLV-3');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2')
+      && b.innerText.replace(/\\s+/g, ' ').includes('Approved 2'))`, 'two approved subs on MDS2585H');
     // A second pick on the same UOM gets a line of its own in the table (2026-10-21).
-    await click('[data-act="show-add"]');
-    await setValue('#fk-add-sku', 'GLV-3');
-    await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
-    await panelSays('Sub added. Approved.');
+    await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
     const glv3 = `[...document.querySelectorAll('#fk-panel-content .card')].find((c) => c.querySelector('.fw-semibold').innerText === 'GLV-3')`;
     await waitFor(`${glv3} && ${glv3}.querySelector('[data-act="pick"]')`, 'Pick on GLV-3');
     await evaluate(`${glv3}.querySelector('[data-act="pick"]').click()`);
@@ -608,32 +624,54 @@ const steps = [
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('930103')
       && b.querySelectorAll('[data-order-vi]').length === 2)`, 'two tiles for 930103');
   }],
-  ['The MM Lead writes an instruction; the sites read it on Main', async () => {
+  ["The MM Lead writes Will's Comments; the sites read them on Main", async () => {
     // 2026-10-27: the Materials Management lead guides the sites' Materials Managers and doesn't
-    // order: no tiles to click, but a pencil to write the item's instruction.
+    // order: no tiles to click, but the item's comment to write.
     await go('/dev-login?as=lead', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     expect(await count('#fk-main button[data-order-vi]') === 0 && await count('#fk-main div.fk-vi-tile') >= 1,
       'an MM Lead can click a tile to record an order');
-    await click('#fk-main [data-instruct="DYND70294BH"]');
+    // Between the pick and its vendor items (the user, 2026-10-27).
+    const heads = await evaluate(`[...document.querySelectorAll('#fk-main thead th')].map((th) => th.innerText.trim())`);
+    const at = heads.indexOf("Will's Comments");
+    expect(at > 0 && heads[at - 1] === 'Picked for Ordering' && heads[at + 1] === 'Vendor Item Detail', `the columns: ${heads.join(', ')}`);
+    // A double-click on its cell opens the form.
+    await dblclick(`document.querySelector('#fk-main td[data-instruct="DYND70294BH"]')`, "the item's cell");
     await modalOpen();
     const summary = (await text('.fk-form-summary')).replace(/\s+/g, ' ');
     expect(summary.includes('Infor item 100339') && summary.includes('SAMPLE SITE A: killed 5 EA, sub ordered 100 EA'),
-      `the instruction form's summary: ${summary}`);
+      `the comment form's summary: ${summary}`);
+    await waitFor(`document.activeElement.id === 'fk-m-instruction'`, 'the cursor in the comment');
     await setValue('#fk-m-instruction', 'Site A: covered.\nSite B: 1 BX of 88885 today.');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     const cell = `document.querySelector('#fk-main [data-instructions="DYND70294BH"]')?.closest('td')`;
     await waitFor(`${cell} && ${cell}.querySelector('.fk-instruction-text').innerText.includes('Site B: 1 BX of 88885 today.')`,
-      'the instruction on Main');
+      'the comment on Main');
     expect((await evaluate(`${cell}.innerText`)).includes('lead ·'), 'no who and when under it');
-    // A Materials Manager reads it, with every instruction in its popover, and can't write one.
+    // Or from the item's panel: Add comment (the user: a button, like Add sub).
+    await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
+    await panelSays('Site B: 1 BX of 88885 today.');
+    await click('#fk-panel-body [data-act="instruct"]');
+    await modalOpen();
+    await setValue('#fk-m-instruction', 'All sites: order the pick as usual.');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    await panelSays('Comment saved for Infor item 100339.');
+    await click('#fk-panel-body [data-act="instructions"]');
+    await waitFor(`document.getElementById('fk-panel-instructions').innerText.includes('Site B: 1 BX of 88885 today.')`, 'both comments in the panel');
+    await waitFor(`${cell}.innerText.includes('All sites: order the pick as usual.')`, 'the latest on Main');
+    // A Materials Manager reads them, all of them in the popover, and can't write one.
     await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
-    await waitFor(cell, 'the instruction');
-    expect(await count('#fk-main [data-instruct]') === 0, 'a Materials Manager can write instructions');
+    await waitFor(cell, 'the comment');
+    expect(await count('#fk-main td[data-instruct]') === 0, 'a Materials Manager can write comments');
     await click('#fk-main [data-instructions="DYND70294BH"]');
-    await waitFor(`(document.querySelector('.fk-comments-popover') || {}).innerText?.includes('in force')`, 'the instructions popover');
+    await waitFor(`(document.querySelector('.fk-comments-popover') || {}).innerText?.includes('Site B: 1 BX')`, 'the comments popover');
+    expect((await text('.fk-comments-popover')).includes("Will's Comments"), "the popover isn't titled Will's Comments");
     await evaluate('document.body.click()');
     await waitFor(`!document.querySelector('.fk-comments-popover')`, 'the popover to close');
+    await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
+    await panelSays('All sites: order the pick as usual.');
+    expect(await count('#fk-panel-body [data-act="instruct"]') === 0, 'a Materials Manager has Add comment');
   }],
   ['A viewer: nothing to change', async () => {
     await go('/dev-login?as=viewer', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
@@ -642,6 +680,7 @@ const steps = [
     expect(await count('#fk-panel-body [data-act="show-add"], #fk-panel-body select[data-act="status"], #fk-panel-body [data-act="add-vi"]') === 0,
       'a viewer can change subs');
     expect(await count('#fk-main [data-order-vi], #fk-main [data-add-vi]') === 0, 'a viewer can record orders or add vendor items');
+    expect(await count('#fk-main td[data-dblclick]') === 0, 'a viewer has cells to double-click');
     expect(await count('#fk-main .bi-pencil-square') === 0, 'a viewer sees the pencil of a pick without vendor items (GLV-3)');
     expect(await count('#fk-main div.fk-vi-tile') >= 3, 'a viewer sees no vendor item tiles');
   }],

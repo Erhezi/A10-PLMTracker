@@ -60,7 +60,7 @@ each item.
 | Party | Fill/Kill role | Decides | What Main shows of it |
 |---|---|---|---|
 | Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them, picks, comments on subs | **Picked for Ordering**: each pick's latest sub comment, as text (new) |
-| Materials Management lead (MM manager) | **MM Lead** (new) | How the sites should order: which approved sub and vendor item, how much, for which sites. Picks among approved subs and adds vendor items. Usually doesn't order | **MM Instruction** column: the item's latest instruction (new) |
+| Materials Management lead (MM manager) | **MM Lead** (new) | How the sites should order: which approved sub and vendor item, how much, for which sites. Picks among approved subs and adds vendor items. Usually doesn't order | **Will's Comments** column ("MM Instruction" at first): the item's latest instruction (new) |
 | Each site's Materials Managers | Materials Manager | Carry the instruction out: order for their site and record it: the sub's vendor item and how much, with the PO number if they have it | **Ordering Status**: each order with its site; **Total Sub Ordered (EA)** with what each site is short (new) |
 | Everyone else | Viewer | Nothing; sees everything | |
 | A future AI finder | Sub Finder | Proposes subs for nursing to review | |
@@ -101,6 +101,18 @@ nursing note; orders record their site, chosen by the Materials Manager; the Rec
 an optional PO number. An order recorded by PO number alone (a "+ PO" on the row, checked against
 Infor's PO lines the next day) was drafted the same day and dropped by the user: the quantity is the
 record, and nothing is matched against Infor in this deploy.
+
+**Decided after trying it** (2026-10-27, the user; the open items of 8.13):
+- The instructions' column is called **Will's Comments** for now (one label in the code,
+  `rules.INSTRUCTION_LABEL`), and sits **before Vendor Item Detail**: read before ordering from the tiles.
+- **Double-click to write.** An MM Lead double-clicks the Will's Comments cell to add one; nursing
+  (Sub Approvers, Sub Finders) double-click a Picked for Ordering cell to add a sub for its Medline item.
+  Both open a small modal. The item panel has an **Add comment** button too, like its Add sub.
+- **One free-text comment per item**, not one per site: it names the sites it speaks to.
+- **Nobody is emailed.** The sites' Materials Managers open Main, or refresh it, to read the latest.
+- **No home site.** A Materials Manager picks their sites with the site filter, which reveals their
+  site's figures (and keeps them in the page link); with every site chosen, the totals show. Main and
+  the Dashboard alike.
 
 **Considered, not planned: finding orders in Infor that nobody recorded.** The app could search
 Infor's PO lines for the subs' vendor items after each kill and show "Found in Infor". The user
@@ -387,9 +399,9 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when |
+| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the picks |
+| Will's Comments | (2026-10-27; "MM Instruction" until the user renamed it and moved it before Vendor Item Detail the same day) for the Infor item: the MM Lead's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts them and opens them all, newest first, in a popover. An MM Lead **double-clicks the cell** to write a new one (no button in the cell; the cell is outlined under the pointer, and says so on hover), or uses the panel's Add comment. It isn't tied to the Fill/Kill dates: the latest stays in force until a newer one replaces it, and its date shows how old it is |
 | Vendor Item Detail | per pick, on its line (2026-10-20; beside its pick from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
-| MM Instruction | (2026-10-27) for the Infor item: the MM Lead's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts the instructions and opens them all, newest first, in a popover; an MM Lead writes a new one from there ("+ Instruction" when there's none). It isn't tied to the Fill/Kill dates: an instruction stays in force until a newer one replaces it, and its date shows how old it is |
 | Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
 | Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates at the sites shown, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE. Killed at several sites: each site's eaches on hover |
 | Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates for the sites shown, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Killed at several sites (2026-10-27): a red line per site that's short ("Moses: 20 EA short"), since each site orders for itself. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
@@ -422,8 +434,10 @@ item in the UOM list narrows to it. A Medline item's subs section still lists su
 not on it yet. The API returns the whole Infor item either way; the page filters.
 
 - **Item details** at the top: the Infor item and whether it's active (or *not found*), its long
-  description, its commodity code and description, and the manufacturer (2026-10-14); and the MM
-  Lead's latest instruction, with who and when (2026-10-27).
+  description, its commodity code and description, and the manufacturer (2026-10-14).
+- **Will's Comments** (2026-10-27): the MM Lead's latest instruction, with who and when; *All N*
+  lists them all under it. MM Leads get **Add comment** (the user: a button like the subs' Add sub),
+  which opens the same modal as a double-click on the column.
 - **UOMs:** each Medline item with its UOM and QOE, the ⚠ where Medline's customer item isn't the
   Infor item, and *not killed in these dates*.
 - **Subs:** one section per Medline item; each sub's card has its Reference SKU, status, pick,
@@ -576,7 +590,7 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 - **Any site** (2026-10-27): a Materials Manager can record orders for any site. Roles aren't scoped
   by site (section 4); the site says who the order is for, not who may place it.
 
-### Instructions (MM Lead, 2026-10-27)
+### Instructions (MM Lead, 2026-10-27; "Will's Comments" on the page)
 
 The MM Lead's word to the sites' Materials Managers on how to order an item: which sub and vendor
 item, how much, which sites, until when. Free text, so one instruction can speak to every site.
@@ -593,6 +607,11 @@ item, how much, which sites, until when. Free text, so one instruction can speak
   date.
 - **Who:** written by MM Leads only (`instruct`); read by everyone, on Main, in the item panel, and in
   the popover listing them all.
+- **Where it's written:** a double-click on the item's Will's Comments cell, or Add comment in its
+  panel, opens a modal: each site's killed and sub-ordered eaches in these dates and the latest
+  comment above a box for the new one.
+- **Nobody is notified** (the user, 2026-10-27): no email. The sites' Materials Managers open Main, or
+  refresh it, to read the latest.
 
 ### Dropped from the 2026-10-06 design
 
@@ -693,6 +712,11 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
   kill to a sub (0 when one was already on file), from that sub to the first order since the kill,
   and from the kill to that order, each with how many items it covers; the share of killed items
   with an order is the "Items ordered" card.
+  **Sites** (2026-10-27, the user): the orders follow the site filter like the kills, so a site's
+  Materials Manager picks their sites to see their figures: "Items ordered", how many of them are
+  **short** (fewer eaches ordered than killed, as on Main; on that card) and the flow medians count
+  only orders for the sites chosen. With every site, the totals (orders without a site included).
+  No per-site breakdown.
 
 `/orders` is not a page (2026-10-13); `/subs` came back as the Subs page (2026-10-16).
 
@@ -758,13 +782,12 @@ pool idle time-out) keeps processes warm.
     loads overnight, a day behind). Infor's PO line has the vendor, vendor item, Infor item,
     quantity, buy UOM and its multiplier to eaches, and the ship-to location.
 12. **Feed.** Email vs SFTP; one file per site or one combined file.
-13. **Coordination hub** (from the 2026-10-27 review; section 1b). Not built yet:
-    - Should a Materials Manager have a home site, so the site filter and the order form's site
-      start on it? Roles stay unscoped by site either way.
-    - Should instructions be per site (one per item and site) rather than one free text per item?
-    - Should the sites' Materials Managers be told (e.g. by email) when the MM Lead writes an
-      instruction, or is reading Main enough?
-    - Should the Dashboard show orders and shortfalls per site?
+13. **Coordination hub** (from the 2026-10-27 review; section 1b). **Answered** the same day:
+    - A home site for each Materials Manager: no. They pick their sites with the site filter (the
+      page link keeps it), and the order form starts on the site when just one is picked.
+    - Instructions per site: no, one free-text comment per item ("Will's Comments").
+    - Email when the MM Lead writes one: no. The sites read Main, refreshing it.
+    - The Dashboard per site: yes, through the site filter; with every site, the totals.
 
 ## 9. Design questions — answered 2026-10-13
 

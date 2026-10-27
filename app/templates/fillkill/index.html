@@ -76,9 +76,10 @@
             <th scope="col" class="text-end">PO Lines</th>
             <th scope="col">Latest Reason</th>
             <th scope="col">Subs Status</th>
-            <th scope="col">Picked for Ordering</th>
+            <th scope="col" title="Each pick's Reference SKU, with its latest comment">Picked for Ordering</th>
+            {# Before Vendor Item Detail (the user, 2026-10-27): read before ordering from the tiles. #}
+            <th scope="col" title="The MM Lead's latest comment to the sites' Materials Managers on how to order the item">{{ instruction_label }}</th>
             <th scope="col">Vendor Item Detail</th>
-            <th scope="col" title="The MM Lead's latest instruction to the sites' Materials Managers on how to order the item">MM Instruction</th>
             <th scope="col" title="Orders recorded in these Fill/Kill dates for the sites shown, each with its site">Ordering</th>
             <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, all UOMs, in eaches">Total Killed (EA)</th>
             <th scope="col" class="text-end" title="Ordered in these Fill/Kill dates for the sites shown, all its subs, in eaches: each order's quantity times its QOE. With kills at several sites, each site that's short says so">Total Sub Ordered (EA)</th>

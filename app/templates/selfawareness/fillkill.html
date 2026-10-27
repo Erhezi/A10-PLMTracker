@@ -25,7 +25,8 @@
     </p>
     <p class="mb-0">
       It's where everyone coordinates: nursing's latest comment on each pick and the MM Lead's latest
-      instruction on each item read right on the table. Please record every substitute order here, with
+      comment on each item (<em>{{ instruction_label }}</em>) read right on the table. Nobody is emailed:
+      open Main, or refresh it, to see the latest. Please record every substitute order here, with
       its site (and its PO number if you have it), so everyone can see which sites have ordered.
     </p>
   </section>
@@ -40,7 +41,7 @@
         <tbody>
           <tr><td class="text-nowrap">Viewer</td><td>Seeing everything in the module.</td></tr>
           <tr><td class="text-nowrap">Sub Approver</td><td>Usually nursing. Entering the Reference SKU of a substitute found through suppliers, with a note if useful: it's approved as soon as it's entered, and picked if it's the item's only approved one. Holding or rejecting substitutes later, reviewing proposed ones, picking and unpicking, adding comments, correcting a Reference SKU, and deleting a substitute with a reason.</td></tr>
-          <tr><td class="text-nowrap">MM Lead</td><td>The Materials Management lead. Writing each item's <em>instruction</em> to the sites' Materials Managers: which substitute, how much, for which sites. Picking or unpicking among the approved substitutes, and adding vendor items. Doesn't record orders (unless also given Materials Manager).</td></tr>
+          <tr><td class="text-nowrap">MM Lead</td><td>The Materials Management lead. Writing each item's comment to the sites' Materials Managers (<em>{{ instruction_label }}</em>): which substitute, how much, for which sites. Picking or unpicking among the approved substitutes, and adding vendor items. Doesn't record orders (unless also given Materials Manager).</td></tr>
           <tr><td class="text-nowrap">Materials Manager</td><td>A site's buyer. Adding each substitute's vendor items, the ways to order it (vendor part, vendor, Infor's vendor ID, UOM, QOE), helped by the search of Infor's active contracts; picking or unpicking among the approved substitutes; recording what was ordered from the pick's vendor items, for their site, and adding comments to orders.</td></tr>
           <tr><td class="text-nowrap">Sub Finder</td><td>Proposing substitutes, which wait for a Sub Approver's review; adding vendor items. Kept for a future AI agent that finds substitutes.</td></tr>
           <tr><td class="text-nowrap">Admin</td><td>Assigns these roles in User Control. Inside the module, admins have only the roles they hold, like everyone else.</td></tr>
@@ -90,12 +91,14 @@
       <li class="mb-1"><strong>One row per Infor item.</strong> Its Medline items, one per UOM (such as each and box),
         are listed inside the row, each with its QOE (eaches per unit, from Infor), quantities, reason, substitutes,
         <em>Picked for Ordering</em> (each pick's <em>Reference SKU</em>, on a line of its own, with a
-        <i class="bi bi-chat-left-text-fill"></i> that counts its comments: the latest reads under the pick, and a click shows them all) and <em>Vendor Item Detail</em>: beside each pick, a tile for each way to order it, which a
+        <i class="bi bi-chat-left-text-fill"></i> that counts its comments: the latest reads under the pick, and a click shows them all;
+        Sub Approvers double-click the cell to add a substitute) and <em>Vendor Item Detail</em>: beside each pick, a tile for each way to order it, which a
         Materials Manager clicks to record an order. A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
         <em>Not in Infor</em>.</li>
-      <li class="mb-1"><strong>MM Instruction:</strong> the MM Lead's latest instruction for the item, with who wrote it and when. It stays
-        until they write a new one, whatever dates you look at; <i class="bi bi-chat-square-text"></i> lists every instruction, newest first.
-        MM Leads write one with <em>+ Instruction</em>, or the pencil beside the one in force.</li>
+      <li class="mb-1"><strong>{{ instruction_label }}</strong>, between the pick and its vendor items: the MM Lead's latest comment on how the sites
+        should order the item, with who wrote it and when. It stays until they write a new one, whatever dates you look at;
+        <i class="bi bi-chat-square-text"></i> lists every one, newest first. MM Leads double-click the cell to add one, or use
+        <em>Add comment</em> in the item's panel.</li>
       <li class="mb-1"><strong>Choose what to look at:</strong> click <em>View today</em>, or <em>Select a range</em> and pick the first
         and last <em>Fill/Kill dates</em> (the days Medline's killed lines were ordered; it opens on today), pick sites, and type part of an item number or description.</li>
       <li class="mb-1"><strong>Needs filter:</strong> <em>Needs subs</em> (no live substitute), <em>Needs review</em>
@@ -107,7 +110,7 @@
         quantity times its QOE). Kill lines keep arriving through the day: when the orders fall short, it says how many eaches, in red, so
         you can see which items need another order. Each site orders for itself: when an item was killed at several sites, each site
         that's short says so, and <em>Ordering</em> shows each order's site. With sites chosen, only their kills and orders count.</li>
-      <li class="mb-1"><strong>Click an item</strong> to open its panel: the Infor item's details, the substitutes,
+      <li class="mb-1"><strong>Click an item</strong> to open its panel: the Infor item's details, {{ instruction_label }}, the substitutes,
         the kill lines behind them, the Sub History (every substitute added, reviewed, picked or unpicked before, and every vendor item added or deleted),
         and every order, in a table like the kill lines. Click the <em>Infor item</em> to see all its UOMs together, or a <em>Medline item</em> to
         see only that UOM; the panel switches between the two. Drag the panel's left edge to
@@ -126,7 +129,8 @@
     <p class="mb-0"><strong>Dashboard</strong> shows trends for the chosen dates and sites (<em>Today</em>, the last 7
       or 30 days, all, or dates you pick): kill lines by reason and by site, the most killed items with their
       substitutes, and how substitutes are being reviewed. It also shows how fast killed items move: the median time
-      from a kill to a substitute, from the substitute to an order, and from the kill to the order.</p>
+      from a kill to a substitute, from the substitute to an order, and from the kill to the order. Pick your sites to see
+      their figures, orders and shortfalls included; with every site, it shows the totals.</p>
   </section>
 
   <section class="card shadow-sm border-0 p-4">
@@ -137,7 +141,7 @@
         It's the <em>Reference SKU</em>, their approved reference: often the manufacturer's part, which several vendors may sell. It stays as entered; the Materials Manager works out how to order it. It's <em>approved</em> right away, and <em>picked</em> if it's the item's only approved substitute; with several, the Sub Approver or a Materials Manager picks. Substitutes stay with the item, so the next time it's killed they're already there.</li>
       <li class="mb-2"><strong>Proposed substitutes.</strong> Medline's backorder substitutes appear automatically (and, later, an AI finder's). They're <em>pending review</em> until a Sub Approver approves, holds or rejects them; approving one picks it if it's the only approved one.</li>
       <li class="mb-2"><strong>Instructed.</strong> The MM Lead writes how the sites should order it: which substitute and vendor item, how much,
-        for which sites. Their latest instruction reads on Main for everyone.</li>
+        for which sites. Their latest comment reads on Main for everyone, under <em>{{ instruction_label }}</em>.</li>
       <li class="mb-2"><strong>Changed later.</strong> The Sub Approver can still hold or reject a substitute, pick or unpick, and comment; a Materials Manager or the MM Lead can pick or unpick too. Leaving <em>approved</em> unpicks it. Click a substitute's History to see every change, with who made it and when.</li>
       <li><strong>Ordered.</strong> A Materials Manager adds the pick's <em>vendor items</em>, one for each way to order it: a vendor part, its vendor and vendor ID, and a UOM
         (and QOE, manufacturer part, Infor item, description). The search of Infor's active contracts starts from the Reference SKU and fills one in; for 930103,

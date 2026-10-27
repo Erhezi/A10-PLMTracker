@@ -3,11 +3,11 @@
  */
 
 import {
-  $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
+  $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, config, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
   noQoeBadge, shortName, statusBadge, uomQoe, vendorItemText,
 } from '../common.js';
 import { renderNeeds } from './controls.js';
-import { openInstructionForm, openOrderForm, openVendorItemForm } from './forms.js';
+import { openAddSubForm, openInstructionForm, openOrderForm, openVendorItemForm } from './forms.js';
 import { openPanel } from './panel.js';
 import { api, can, historyUrl, scopeParams, siteName, state, syncLink } from './state.js';
 
@@ -164,11 +164,12 @@ function commentList(history) {
     <div class="text-muted">${esc(fmtDateTime(h.acted_at))} · ${esc(h.actor)}</div><div>${esc(h.comment)}</div></li>`).join('')}</ul>`;
 }
 
-// The instructions, newest first: the first is the one in force.
-function instructionList(instructions) {
-  if (!instructions.length) return '<div class="text-muted">No instructions yet.</div>';
+// The instructions (Will's Comments on the page, 2026-10-27), newest first: the first is the one in
+// force. In the item panel too.
+export function instructionList(instructions) {
+  if (!instructions.length) return '<div class="text-muted">No comments yet.</div>';
   return `<ul class="list-unstyled mb-0">${instructions.map((i, n) => `<li class="mb-2">
-    <div class="text-muted">${esc(fmtDateTime(i.written_at))} · ${esc(i.written_by)}${n === 0 ? ' · in force' : ''}</div>
+    <div class="text-muted">${esc(fmtDateTime(i.written_at))} · ${esc(i.written_by)}${n === 0 ? ' · latest' : ''}</div>
     <div class="fk-instruction-text">${esc(i.instruction)}</div></li>`).join('')}</ul>`;
 }
 
@@ -203,7 +204,7 @@ function toggleComments(button) {
 function toggleInstructions(button) {
   const item = button.dataset.instructions;
   const row = state.rows.find((r) => r.medline_items.includes(item));
-  return togglePopover(button, `Instructions · ${esc(row && row.infor_item ? `Infor item ${row.infor_item}` : item)}`,
+  return togglePopover(button, `${esc(config.instructionLabel)} · ${esc(row && row.infor_item ? `Infor item ${row.infor_item}` : item)}`,
     async () => instructionList((await getJSON(api.instructions, { item })).instructions));
 }
 
@@ -231,25 +232,36 @@ function vendorItemsCell(pick, several) {
   return items.join('') || '<span class="text-muted small">—</span>';
 }
 
-// MM Instruction (2026-10-27): the MM Lead's latest instruction to the sites, the one in force, its
-// first lines (the whole on hover) with who and when. Its icon lists them all; an MM Lead writes a new
-// one from the pencil. Not tied to the Fill/Kill dates: its date says how old it is.
+// Will's Comments (2026-10-27; "MM Instruction" at first): the MM Lead's latest instruction to the
+// sites, the one in force, its first lines (the whole on hover) with who and when. Its icon lists them
+// all. An MM Lead adds one by double-clicking the cell (instructionTd), or from the item panel. Not
+// tied to the Fill/Kill dates: its date says how old it is.
 function instructionCell(row) {
   const info = row.instruction;
-  const item = esc(row.packagings[0].medline_item);
-  const write = can.instruct
-    ? `<button type="button" class="btn btn-link btn-sm p-0 align-baseline text-decoration-none" data-instruct="${item}"
-         title="Write a new instruction for the sites' Materials Managers">${info ? '<i class="bi bi-pencil-square" aria-label="New instruction"></i>'
-        : '<i class="bi bi-plus-lg"></i> Instruction'}</button>` : '';
-  if (!info) return write || '<span class="text-muted small">—</span>';
+  if (!info) return '<span class="text-muted small">—</span>';
   const { latest, count } = info;
-  const all = `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-instructions="${item}"
-      title="${count > 1 ? `All ${count} instructions, newest first` : 'The instruction, with who wrote it and when'}"
-      aria-label="All instructions"><i class="bi bi-chat-square-text"></i>${count > 1 ? `<span class="small ms-1">${count}</span>` : ''}</button>`;
+  const all = `<button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-instructions="${esc(row.packagings[0].medline_item)}"
+      title="${count > 1 ? `All ${count} comments, newest first` : 'The comment, with who wrote it and when'}"
+      aria-label="All comments"><i class="bi bi-chat-square-text"></i>${count > 1 ? `<span class="small ms-1">${count}</span>` : ''}</button>`;
   return `<div class="fk-instruction">
     <div class="fk-instruction-text fk-clamp-3" title="${esc(latest.instruction)}">${esc(latest.instruction)}</div>
     <div class="text-muted text-nowrap" title="${esc(latest.written_by)}">${esc(shortName(latest.written_by))} · ${fmtDateTime(latest.written_at)}
-      ${all} ${write}</div></div>`;
+      ${all}</div></div>`;
+}
+
+// Double-click a cell to write in it (the user, 2026-10-27), for those who may: Will's Comments for
+// an MM Lead, Picked for Ordering for whoever adds subs (a new sub for that line's Medline item).
+const dblClickTd = (attrs, title) => `<td ${attrs} data-dblclick title="${esc(title)}"`;
+
+function instructionTd(row, all) {
+  if (!can.instruct) return `<td data-to-end${all}>`;
+  return `${dblClickTd(`data-to-end${all} data-instruct="${esc(row.packagings[0].medline_item)}"`,
+    `Double-click to add a comment for the sites' Materials Managers`)}>`;
+}
+
+function pickTd(p, split) {
+  if (!can.add_sub) return `<td${split}>`;
+  return `${dblClickTd(`${split.trim()} data-add-sub="${esc(p.medline_item)}"`, `Double-click to add a sub for ${p.medline_item}`)}>`;
 }
 
 function reasonCell(reason) {
@@ -367,10 +379,10 @@ function itemRows(row) {
         <td class="text-end"${own}>${fmtNumber(p.lines)}</td>
         <td${own}>${reasonCell(p.latest_reason)}</td>
         <td role="button" data-open="${esc(p.medline_item)}"${own}>${subsStatusCell(p.subs_status)}${many ? '' : note}</td>`}
-        <td${split}>${pickCell(pick)}</td>
+        ${pickTd(p, split)}${pickCell(pick)}</td>
+        ${first ? `${instructionTd(row, all)}${instructionCell(row)}</td>` : ''}
         <td${split}>${vendorItemsCell(pick, picks.length > 1)}</td>
-        ${first ? `<td data-to-end${all}>${instructionCell(row)}</td>
-          <td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
+        ${first ? `<td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
             title="Orders recorded in these Fill/Kill dates. Click for all of its orders">${ordering}</td>
           <td class="text-end" data-to-end${all}>${killedEachCell(row)}</td>
           <td class="text-end" data-to-end${all}>${subOrderedEachCell(row)}</td>` : ''}
@@ -419,12 +431,6 @@ export function setupTable() {
       toggleInstructions(instructionsButton);
       return;
     }
-    const instructButton = event.target.closest('[data-instruct]');
-    if (instructButton) {
-      closePopover();
-      openInstructionForm(state.rows.find((row) => row.medline_items.includes(instructButton.dataset.instruct)));
-      return;
-    }
     const orderButton = event.target.closest('[data-order-vi]');
     if (orderButton) {
       openOrderForm(Number(orderButton.dataset.orderVi));
@@ -438,5 +444,14 @@ export function setupTable() {
     }
     const opener = event.target.closest('[data-open]');
     if (opener) openPanel(opener.dataset.open, opener.dataset.tab || null, opener.dataset.scope);
+  });
+  // A cell's buttons keep their own click: double-clicking one doesn't open the form too.
+  mainTable.addEventListener('dblclick', (event) => {
+    const cell = event.target.closest('td[data-dblclick]');
+    if (!cell || event.target.closest('button, a')) return;
+    window.getSelection()?.removeAllRanges();  // the word the double-click selected
+    closePopover();
+    if (cell.dataset.instruct) openInstructionForm(state.rows.find((row) => row.medline_items.includes(cell.dataset.instruct)));
+    else if (cell.dataset.addSub) openAddSubForm(cell.dataset.addSub);
   });
 }

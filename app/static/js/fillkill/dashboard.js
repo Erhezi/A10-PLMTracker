@@ -109,7 +109,9 @@ function headline(h) {
     ['Items killed', h.items, ''],
     ['Kill lines', h.lines, ''],
     ['Items with an approved sub', h.items_with_approved_sub, h.share_with_approved_sub != null ? `${h.share_with_approved_sub}% of items` : ''],
-    ['Items ordered', h.items_ordered, h.share_ordered != null ? `${h.share_ordered}% of items` : ''],
+    // Short: fewer eaches ordered than killed, for the sites chosen (2026-10-27), as on Main.
+    ['Items ordered', h.items_ordered, [h.share_ordered != null ? `${h.share_ordered}% of items` : '',
+      h.items_ordered_short ? `${h.items_ordered_short} short` : ''].filter(Boolean).join(' · ')],
     ['Subs added', h.subs_added, ''],
     ['Median time to review', h.median_review_hours != null ? `${h.median_review_hours} h` : '—',
       h.subs_reviewed ? `${h.subs_reviewed} subs reviewed` : 'no subs reviewed yet'],

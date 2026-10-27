@@ -1,16 +1,17 @@
 /* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
  * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
- * a sub or a vendor item, and the MM Lead's instruction (2026-10-27). Boxes lose their leading and
+ * a sub or a vendor item, the MM Lead's instruction ("Will's Comments", 2026-10-27), and a new sub
+ * from Main's Picked for Ordering (2026-10-27). Boxes lose their leading and
  * trailing spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
  */
 
 import {
-  $, NO_VENDOR, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, inforUom,
+  $, NO_VENDOR, STATUS_ORDER, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, inforUom,
   isTheKilledItem, postJSON, trimInput, uomQoe, vendorItemText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
-import { addVendorItemUrl, api, orderUrl, siteName, state, subUrl, vendorItemUrl } from './state.js';
+import { addVendorItemUrl, api, can, orderUrl, siteName, state, subUrl, vendorItemUrl } from './state.js';
 
 const modalEl = $('fk-modal');
 const modal = window.bootstrap ? window.bootstrap.Modal.getOrCreateInstance(modalEl) : null;
@@ -613,9 +614,10 @@ export function openSubEditForm(sub) {
       .then(() => 'Reference SKU corrected.'));
 }
 
-// The MM Lead's instruction to the sites' Materials Managers (2026-10-27), for the Infor item, the
-// main table's row. It becomes the one in force; the earlier ones stay, listed from the table.
-// What each site killed and has ordered in these dates is above it, to write it from.
+// The MM Lead's instruction to the sites' Materials Managers (2026-10-27; "Will's Comments" on the
+// page), for the Infor item, the main table's row: opened by double-clicking its cell, or from the
+// item panel. It becomes the latest; the earlier ones stay. What each site killed and has ordered in
+// these dates is above it, to write it from (the panel's item may not be on the table: no sites then).
 export function openInstructionForm(row) {
   if (!row) return;
   const item = row.packagings[0].medline_item;
@@ -627,18 +629,53 @@ export function openInstructionForm(row) {
     `<div><span class="fw-semibold">${esc(what)}</span> <span class="text-muted">${esc(row.description || '')}</span></div>`,
     sites.length ? `<div><span class="text-muted">In these Fill/Kill dates</span> ${sites.map((s) => `${esc(siteName(s.site))}:
       killed ${eaches(s.killed_each)}, sub ordered ${eaches(s.sub_ordered_each)}`).join(' · ')}</div>` : '',
-    latest ? `<div><span class="text-muted">In force</span> <span class="fk-instruction-text">${esc(latest.instruction)}</span>
+    latest ? `<div><span class="text-muted">Latest</span> <span class="fk-instruction-text">${esc(latest.instruction)}</span>
       <span class="text-muted">· ${esc(latest.written_by)}, ${fmtDateTime(latest.written_at)}</span></div>` : '',
   ];
-  showModal(`Instruction to the sites · ${esc(what)}`, `<div class="fk-form-summary small">${summaryLines.join('')}</div>${fields(`
-    <div class="col-12"><label class="form-label small mb-0" for="fk-m-instruction">Instruction to the sites' Materials Managers *</label>
+  showModal(`${esc(config.instructionLabel)} · ${esc(what)}`, `<div class="fk-form-summary small">${summaryLines.join('')}</div>${fields(`
+    <div class="col-12"><label class="form-label small mb-0" for="fk-m-instruction">Comment for the sites' Materials Managers *</label>
       <textarea class="form-control form-control-sm" id="fk-m-instruction" name="instruction" rows="5" required
                 maxlength="${config.instructionMax || 1000}"
-                placeholder="e.g. White Plains and Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."></textarea>
-      <div class="form-text small">It replaces the instruction in force, on Main for everyone. The earlier ones are kept.</div></div>`)}`,
-  latest ? 'Save new instruction' : 'Save instruction',
+                placeholder="How the sites should order it, e.g. White Plains and Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."></textarea>
+      <div class="form-text small">It shows on Main as the latest, for everyone; the earlier ones are kept. Nobody is emailed:
+        the sites read it on Main.</div></div>`)}`,
+  'Save comment',
   (values) => postJSON(api.instructions, { medline_item: item, instruction: values.instruction })
-    .then(() => `Instruction saved for ${what}.`), { wide: true });
+    .then(() => `Comment saved for ${what}.`), { wide: true });
+  whenModal('shown', () => { const box = $('fk-m-instruction'); if (box) box.focus(); });
+}
+
+// What happened to a new sub: approved on entry (and maybe picked), or waiting for review.
+export function addedMessage(added) {
+  if (added.is_picked) return 'Approved and picked: it is the only approved sub.';
+  return added.status === 'approved' ? 'Approved.' : 'It is pending review.';
+}
+
+// A new sub for a Medline item, from a double-click on its Picked for Ordering cell (2026-10-27): the
+// panel's Add sub, in the modal. Its subs and picks so far are above it.
+export function openAddSubForm(medline) {
+  const row = state.rows.find((r) => r.medline_items.includes(medline));
+  const pack = row ? row.packagings.find((p) => p.medline_item === medline) : null;
+  if (!pack) return;
+  const uoms = killedUoms(medline);
+  const counts = STATUS_ORDER.filter((s) => pack.subs_status[s]).map((s) => `${pack.subs_status[s]} ${config.statusLabels[s].toLowerCase()}`);
+  const what = can.review
+    ? "It's approved as soon as it's added, and picked if it's the only approved sub. The Materials Manager adds what can be ordered for it."
+    : "It waits for a Sub Approver's review.";
+  showModal(`Add a sub · ${esc(medline)}`, `
+    <div class="fk-form-summary small">
+      <div><span class="fw-semibold">${esc(medline)}</span>${uoms ? ` <span class="text-muted">(${esc(uoms)})</span>` : ''}
+        <span class="text-muted">${esc(row.infor_item ? `Infor item ${row.infor_item} · ` : '')}${esc(pack.description || row.description || '')}</span></div>
+      <div><span class="text-muted">Subs on file</span> ${counts.length ? esc(counts.join(' · ')) : 'none'}${pack.picks.length
+        ? ` · <span class="text-muted">picked</span> ${esc(pack.picks.map((s) => s.reference_sku).join(', '))}` : ''}</div>
+    </div>${fields(`
+    ${field('reference_sku', 'Reference SKU *', '', `maxlength="100" required autocomplete="off"
+      placeholder="The part you approved, e.g. the manufacturer's"`, 12)}
+    ${field('comment', 'Note', '', 'maxlength="400" placeholder="Optional: what you know about it, e.g. from the supplier"', 12)}
+    <div class="col-12 small text-muted">${what}</div>`)}`,
+  'Add sub', (values) => postJSON(api.addSub, { medline_item: medline, reference_sku: values.reference_sku, comment: values.comment })
+    .then((data) => `Sub added to ${medline}. ${addedMessage(data.sub)}`));
+  whenModal('shown', () => { const input = $('fk-m-reference_sku'); if (input) input.focus(); });
 }
 
 export function setupForms() {

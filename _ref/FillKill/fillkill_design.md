@@ -10,8 +10,8 @@ end of section 5.
 **Business model renewed 2026-10-27** after a review with the users and stakeholders (section 1b):
 the app is the **central hub** where nursing, the Materials Management lead and the sites' Materials
 Managers coordinate their decisions. Subs and picks still belong to the Medline item, for every
-site; **orders now record the site they were placed for**, and a site can record one by its **PO
-number** alone, checked against Infor the next day.
+site; **orders now record the site they were placed for**, and their PO number when the site
+gives it.
 
 Decisions are marked **Decided**. Items to take to stakeholders are in section 8; the design
 questions in section 9 were answered on 2026-10-13.
@@ -61,7 +61,7 @@ each item.
 |---|---|---|---|
 | Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them, picks, comments on subs | **Picked for Ordering**: each pick's latest sub comment, as text (new) |
 | Materials Management lead (MM manager) | **MM Lead** (new) | How the sites should order: which approved sub and vendor item, how much, for which sites. Picks among approved subs and adds vendor items. Usually doesn't order | **MM Instruction** column: the item's latest instruction (new) |
-| Each site's Materials Managers | Materials Manager | Carry the instruction out: order for their site and record it, with how much they ordered or at least the PO number | **Ordering Status**: each order with its site, and its PO's check against Infor; **Total Sub Ordered (EA)** with what each site is short (new) |
+| Each site's Materials Managers | Materials Manager | Carry the instruction out: order for their site and record it: the sub's vendor item and how much, with the PO number if they have it | **Ordering Status**: each order with its site; **Total Sub Ordered (EA)** with what each site is short (new) |
 | Everyone else | Viewer | Nothing; sees everything | |
 | A future AI finder | Sub Finder | Proposes subs for nursing to review | |
 
@@ -71,14 +71,10 @@ each item.
 2. Nursing enters or reviews subs and picks one. Their comment on a pick reads on the table.
 3. The MM Lead adds the vendor items to order it by and writes the **instruction**, e.g. "Moses and
    Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."
-4. Each site's Materials Manager reads the instruction, orders for their site, and records the order,
-   choosing the **site**: either in full (the vendor item and how much), or at least its **PO
-   number** (section 5, Recording by PO number).
-5. Main shows each site's orders and shortfall at once, so the MM Lead sees which sites have acted
-   and which are short, and writes a new instruction when the situation changes.
-6. The next day, once Infor's PO data has loaded, the app checks every recorded PO number: what the
-   PO ordered, and whether it has a line for the item's subs. A PO recorded alone then counts in
-   the eaches ordered.
+4. Each site's Materials Manager reads the instruction, orders for their site, and records the order:
+   the vendor item, the quantity and the **site**, with the **PO number** if they have it.
+5. Main shows each site's orders and shortfall at once, so the MM Lead sees which sites have
+   recorded and which are short, and writes a new instruction when the situation changes.
 
 **Principles**
 
@@ -89,26 +85,28 @@ each item.
   newest is the one in force.
 - **Responsibilities stay separate.** Nursing decides what is acceptable; the MM Lead decides how to
   order it; the site Materials Managers order. The app records who decided what.
-- **Sites order separately.** An order belongs to one site, which the Materials Manager chooses
-  when recording it. Killed and ordered quantities compare like with like for the sites shown, and
-  the order form's recommendation is for the order's site.
-- **A site shows its order was placed by recording it.** How much was ordered, or at least the PO
-  number: either one is the site's proof the order went out. Recording by PO number is the quick
-  way, so recording costs a site as little as possible. The app checks PO numbers against Infor; it
-  doesn't go looking for orders nobody recorded (below).
+- **Sites order separately.** An order belongs to one site. The Materials Manager is responsible
+  for choosing the right one; the form starts on their site when they've filtered Main to it.
+  Killed and ordered quantities compare like with like for the sites shown, and the order form's
+  recommendation is for the order's site.
+- **Keep it all in one place.** The least a site records is the sub's vendor item and the quantity
+  (its UOM comes with the vendor item): that is what tracks the order. The PO number is optional,
+  and kept so orders can later be linked back to each day's killed items. In practice a site may
+  order as the MM Lead says and record nothing; the app can't make them, so users are asked to
+  record every sub order here, and Main shows the MM Lead which sites haven't.
 
 **Decided** (2026-10-27, the user): a new MM Lead role writes the instructions (site Materials
 Managers can't); Josh's latest comment is the pick's latest sub comment, shown inline, with no new
-nursing note; orders record their site, chosen by the Materials Manager; an order can be recorded
-by its PO number alone, on the item's row, and the full order form stays, with an optional PO
-number.
+nursing note; orders record their site, chosen by the Materials Manager; the Record order form gets
+an optional PO number. An order recorded by PO number alone (a "+ PO" on the row, checked against
+Infor's PO lines the next day) was drafted the same day and dropped by the user: the quantity is the
+record, and nothing is matched against Infor in this deploy.
 
 **Considered, not planned: finding orders in Infor that nobody recorded.** The app could search
 Infor's PO lines for the subs' vendor items after each kill and show "Found in Infor". The user
 decided against it (2026-10-27): searching that way is inefficient and error-prone (routine orders
 of the same item would look like sub orders, and Infor's ship-to locations would have to be mapped
-to Medline's sites). Whether an order happened is tracked through what the sites record: a quantity
-or a PO number, the PO checked against Infor.
+to Medline's sites). Whether an order happened is tracked through what the sites record.
 
 ## 2. Source file — Medline "LUM Fill-Kill Report v2"
 
@@ -392,9 +390,9 @@ rest:
 | Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when |
 | Vendor Item Detail | per pick, on its line (2026-10-20; beside its pick from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
 | MM Instruction | (2026-10-27) for the Infor item: the MM Lead's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts the instructions and opens them all, newest first, in a popover; an MM Lead writes a new one from there ("+ Instruction" when there's none). It isn't tied to the Fill/Kill dates: an instruction stays in force until a newer one replaces it, and its date shows how old it is |
-| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); an order recorded by PO number shows the PO and its check against Infor instead of a quantity until Infor has it ("PO 3000564756 · Moses · 10/27 · awaiting Infor"), then what Infor says it ordered. **"+ PO"** below, for Materials Managers, records an order by PO number (2026-10-27). Click the rest for the Orders tab, which has all of them |
+| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
 | Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates at the sites shown, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE. Killed at several sites: each site's eaches on hover |
-| Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates for the sites shown, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Killed at several sites (2026-10-27): a red line per site that's short ("Moses: 20 EA short"), since each site orders for itself. An order recorded by PO number counts once Infor confirms it, by Infor's quantity and buy UOM multiplier; until then a grey "+1 PO awaiting Infor" says some ordering isn't counted yet, and that site's shortfall says "at least". Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
+| Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates for the sites shown, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Killed at several sites (2026-10-27): a red line per site that's short ("Moses: 20 EA short"), since each site orders for itself. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
 
 The **Needs filter** counts Infor items, over all their Medline items' subs, picks and orders.
 
@@ -559,8 +557,8 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 
   | Field | Notes |
   |---|---|
-  | Site | (2026-10-27) the Medline Sold-To the order is for, **required** on new orders and **chosen by the Materials Manager** (the user: to make per-site ordering work, they must choose it). It starts on a site only when the site filter shows just that one, which they chose themselves; otherwise it's blank until chosen, never guessed from where the item was killed. The recommendation below is for this site, and follows it when it's changed. Orders recorded before 2026-10-27 have none ("Site not recorded"); a correction can add it |
-  | PO number | (2026-10-27) optional here: Infor's PO, so the order is checked against Infor the next day like one recorded by PO number |
+  | Site | (2026-10-27) the Medline Sold-To the order is for, **required** on new orders. The Materials Manager is responsible for choosing the right one (the user: per-site ordering works only if they do). It starts on the site the filter shows when it shows just one, as when a Materials Manager has filtered Main to their own site; otherwise it's blank until chosen, never guessed from where the item was killed. The recommendation below is for this site, and follows it when it's changed. Orders recorded before 2026-10-27 have none ("Site not recorded"); a correction can add it |
+  | PO number | (2026-10-27) **optional**: Infor's PO number, digits only (company 3000's are 10, e.g. 3000564756), kept so orders can later be linked back to the day's killed items. Shown with the order and found by the orders' search; not checked against Infor in this deploy (Infor's PO data loads overnight, a day behind) |
   | Quantity | in the vendor item's UOM. **Recommended** (2026-10-21, the user; 10-20 used the kills alone; per site from 2026-10-27): what's still needed **at the order's site**, the Infor item's eaches killed there less its sub orders for that site in these dates, over the vendor item's QOE, rounded up to whole units (1,300 EA still needed for a CA/1000: 1.3, so 2 CA; 10 EA for a CA/50: 1 CA). Pre-filled with it only when this Medline item was killed in one UOM, the vendor item has that UOM (CS read as CA) and QOE (an EA without a QOE is 1), and it comes out whole (killed 30 EA, 10 EA ordered: 20). Otherwise blank, with the recommendation as the box's hint, and a red box shows what was killed (each UOM with its QOE), what's been ordered, what's still needed and the recommendation. Already covered: a yellow box says nothing more is needed. A QOE missing on the vendor item, a UOM killed or an order already placed: a red **No QOE** warning says which, and there's no recommendation. Vendor items without a QOE (other than EA) carry a *no QOE* badge on Main and in the panel |
   | Ordered By | the user |
   | Ordered DT | defaults to now; editable |
@@ -577,40 +575,6 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
   vendor, vendor ID, UOM and QOE included. Every change is kept in the same audit-log history.
 - **Any site** (2026-10-27): a Materials Manager can record orders for any site. Roles aren't scoped
   by site (section 4); the site says who the order is for, not who may place it.
-
-### Recording by PO number (2026-10-27)
-
-The quick way for a site's Materials Manager to show an order was placed: the user isn't sure the
-sites will fill in a full order, and a PO number is all they need to put down. The full order form
-stays (above) for anyone who wants the order counted in eaches today.
-
-- **On the item's row:** "+ PO" under Ordering Status opens a small form: **PO number** and **site**,
-  both required, an optional comment, and the ordered date (now, editable). No sub, vendor item or
-  quantity: Infor's PO says what was ordered. The order belongs to the Infor item's row, as the MM
-  Lead's instruction does.
-- **PO numbers** are Infor's: 10 digits (company 3000's look like 3000564756). The same PO can be
-  recorded on several items (one PO, several lines), but only once per item and site.
-- **It counts as an order at once:** whenever its site is shown, Ordering Status says *ordered* and
-  the item leaves *needs order*. It doesn't count in Total Sub Ordered (EA) until Infor has it.
-- **Checked against Infor the next day.** Infor's PO data (`PLMPreprocessorShared.infor.
-  PURCHASEORDER_LINE`) loads overnight, so a PO placed today is there tomorrow (on 10/27 its newest
-  lines were created 10/26 at 20:18). Each recorded PO number, from either form, shows one of:
-
-  | Check | When | Shown |
-  |---|---|---|
-  | Awaiting Infor | the PO isn't in Infor yet, up to the second day after it was recorded | grey: "awaiting Infor (shows tomorrow)" |
-  | Confirmed | a line of the PO is for one of the item's subs: its vendor ID and vendor part are a vendor item's, or its Infor item is a vendor item's or the Infor item itself | green ✓, with what the line ordered: quantity, buy UOM and vendor item. Its eaches (quantity less cancelled, times Infor's buy UOM multiplier) count in Total Sub Ordered (EA) for the order's site. A full order whose quantity differs from Infor's says so in yellow |
-  | No line for this item | the PO is in Infor, but none of its lines is for the item's subs | yellow, with the PO's lines (vendor item, description, quantity), so the MM Lead can see what was ordered and add the vendor item if it's a sub nobody recorded |
-  | Not in Infor | still missing after the second day | red: "PO not found in Infor: check the number"; the Materials Manager corrects it |
-
-  The ship-to on Infor's PO (e.g. MOSES RECEIVING) is shown next to the site the Materials Manager
-  chose, but isn't checked against it: Infor's ship-to locations aren't mapped to Medline's sites.
-- **Read live from Infor**, only for the PO numbers recorded, through a view in `FillKill`; nothing
-  is copied. To measure on O2 when built; if it's slow, a nightly step in the A13 pipeline can copy
-  the recorded POs' lines instead.
-- **Corrections, voids and comments** work as for any order; correcting the PO number checks the new
-  one.
-- **Period:** not recorded (stakeholder item 8.5).
 
 ### Instructions (MM Lead, 2026-10-27)
 
@@ -660,7 +624,7 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
 | `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied at go-live (`10_kill_lines.sql`) |
 | `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
 | `SubVendorItem` | way to order a sub (2026-10-20) | sub_id, vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom) |
-| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, vendor_item_id, **site** (Medline's Sold-To code, 2026-10-27; none on older orders), **po_number** (2026-10-27), quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with. **Two kinds** (2026-10-27): a full order has the sub, vendor item and quantity (PO number optional); one recorded by PO number has the PO number, the site and the row's Medline item, and no sub, vendor item, quantity or vendor until Infor's PO says what it was, so those columns allow none |
+| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, vendor_item_id, **site** (Medline's Sold-To code, 2026-10-27; none on older orders), **po_number** (Infor's, optional, 2026-10-27), quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
 | `ItemInstruction` | instruction by an MM Lead (2026-10-27) | infor_item (none for a Medline item not in Infor), medline_item (written from), instruction (≤1,000), written_by, written_at. Never changed or deleted; the newest per row is in force |
 | `History` | change or comment on a sub, a vendor item or an order | entity (sub / vendoritem / order), id, medline_item, action, from → to, comment (≤400), by, at; drives the timelines and the pick and order histories. Comments are rows here, so none is ever overwritten. |
 
@@ -692,7 +656,7 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     recorded after the kills shown. It follows the table's site filter (2026-10-27), so a site's
     Materials Manager sees their site's orders. Columns (2026-10-20): Order Date, Site (2026-10-27),
     Medline Item, its Infor Item, Sub (the vendor part ordered), QOE, Ordered (`21 BX`, the UOM grey
-    as in the main table), PO (2026-10-27: the PO number and its check against Infor), Vendor (its
+    as in the main table), PO (2026-10-27: the PO number, when given), Vendor (its
     vendor ID), Vendor Name, Ordered By, Latest Comment. A search box keeps the orders whose numbers
     have every word typed: the Medline item, its Infor item, the vendor part ordered, the sub's
     Reference SKU, the vendor item's manufacturer part or Infor item, or the PO number (2026-10-27)
@@ -788,9 +752,11 @@ pool idle time-out) keeps processes warm.
 9. **Critical tag.** Per Medline item, set by the Sub Approver (nursing). Deferred from v1.
 10. **PLM conversion.** Approved subs (especially for discontinued items) feeding PLM conversion
     pairs. Future goal.
-11. **Order confirmation and fill rate.** Checking recorded orders against `PURCHASEORDER_LINE`:
-    **planned 2026-10-27** for orders with a PO number (section 5, Recording by PO number). A
-    fill-rate measure (needs Infor PO lines as the denominator): later.
+11. **Order confirmation and fill rate.** Checking recorded orders against `PURCHASEORDER_LINE`,
+    and a fill-rate measure (needs Infor PO lines as the denominator). Later. Since 2026-10-27
+    orders can carry Infor's PO number, which such a check would join on (`PO`; Infor's PO data
+    loads overnight, a day behind). Infor's PO line has the vendor, vendor item, Infor item,
+    quantity, buy UOM and its multiplier to eaches, and the ship-to location.
 12. **Feed.** Email vs SFTP; one file per site or one combined file.
 13. **Coordination hub** (from the 2026-10-27 review; section 1b). Not built yet:
     - Should a Materials Manager have a home site, so the site filter and the order form's site
@@ -869,9 +835,9 @@ Questions:
    deploy #2. **Built** 2026-10-13 (plan v2 W1–W5); released with deploy #1 from `main` on
    2026-10-21.
 4. **Coordination hub** (2026-10-27, branch `fillkill-deploy2`; section 1b): the MM Lead role and
-   its instructions, sites on orders, recording by PO number with its check against Infor, and
-   nursing's latest comment on Main. A script on O2 (the instructions table, the order's site and PO
-   number, the PO check view, the role) before the app goes out, then a web-server deploy.
+   its instructions, sites and PO numbers on orders, and nursing's latest comment on Main. A script
+   on O2 (the instructions table, the order's site and PO number, the role) before the app goes out,
+   then a web-server deploy.
 
 ## 11. Advanced (semantic) search — evaluated 2026-10-14, parked
 

@@ -1,11 +1,16 @@
 # Fill/Kill Management — design notes
 
-Living draft. Last updated 2026-10-13.
+Living draft. Last updated 2026-10-27.
 
 **Revamped 2026-10-08 after meeting users and stakeholders.** The workflow is now **per Medline
 item, with no site distinction**: sites are only a filter, and subs, picks and orders belong to the
 item. This replaces the per-site, per-line design of 2026-10-06; what was dropped is listed at the
 end of section 5.
+
+**Business model renewed 2026-10-27** after a review with the users and stakeholders (section 1b):
+the app is the **central hub** where nursing, the Materials Management lead and the sites' Materials
+Managers coordinate their decisions. Subs and picks still belong to the Medline item, for every
+site; **orders now record the site they were placed for**.
 
 Decisions are marked **Decided**. Items to take to stakeholders are in section 8; the design
 questions in section 9 were answered on 2026-10-13.
@@ -17,7 +22,10 @@ questions in section 9 were answered on 2026-10-13.
 - **Site** = a Medline Sold-To account (Moses, Wakefield, Einstein).
 - **Department** = a Medline Ship-To under a site (4E, ICU, ED…).
 - **Kill line** = one row of the Medline file (a partial fill counts as a kill).
-- **Sub** = a substitute recorded for a Medline item: a vendor plus that vendor's part number.
+- **Sub** = a substitute recorded for a Medline item: its Reference SKU, with vendor items to order
+  it by (section 5).
+- **Instruction** = the MM Lead's word to the sites' Materials Managers on how to order an item
+  (2026-10-27).
 
 ## 1. Scope
 
@@ -25,16 +33,63 @@ questions in section 9 were answered on 2026-10-13.
   Management**, with PLM Tracker and Fill/Kill Management as its modules. Same Flask app, same
   `/plm` mount on the server's IIS, same users and login. New pages live under
   `/plm/fillkill/...`; existing PLM URLs do not change.
-- Tracks Medline's fill/kill exceptions on company 3000 requisitions, rolled up per Medline item.
-  Sub Finders record substitutes, a Sub Approver reviews and picks them, and a Materials Manager
-  records what was ordered.
+- Tracks Medline's fill/kill exceptions on company 3000 requisitions, rolled up per Infor item.
+  Nursing approves substitutes and picks them, the MM Lead tells the sites how to order, and each
+  site's Materials Managers order and record what they ordered (section 1b).
 - **v1 is functional but simple.**
   - The main table rolls up the kill lines for a chosen date range (default: today) and the chosen
-    sites, one row per Medline item.
-  - Sites are only a filter. Subs, picks and orders belong to the Medline item, not to a site.
+    sites, one row per Infor item.
+  - Subs and picks belong to the Medline item, for every site. Orders belong to the Medline item
+    and, since 2026-10-27, to the site they were placed for; the site filter applies to them too.
   - Earlier days stay in the database untouched. Nothing is closed or carried over.
 
-  **Decided** (2026-10-08).
+  **Decided** (2026-10-08; sites on orders 2026-10-27).
+
+## 1b. Business model — the app as the coordination hub (renewed 2026-10-27)
+
+**What changed.** The user reviewed the app with the stakeholders. The Materials Management manager
+(Will) won't usually order himself: he guides the Materials Managers at each site on how they
+should order. The nursing manager (Josh) wants his latest comment readable on the table without
+opening anything. So the app is no longer one team's worklist. It is the **central hub** where the
+parties who decide and the people who order coordinate, and where everyone sees the latest word on
+each item.
+
+**The parties**
+
+| Party | Fill/Kill role | Decides | What Main shows of it |
+|---|---|---|---|
+| Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them, picks, comments on subs | **Picked for Ordering**: each pick's latest sub comment, as text (new) |
+| Materials Management lead (MM manager) | **MM Lead** (new) | How the sites should order: which approved sub and vendor item, how much, for which sites. Picks among approved subs and adds vendor items. Usually doesn't order | **MM Instruction** column: the item's latest instruction (new) |
+| Each site's Materials Managers | Materials Manager | Carry the instruction out: order for their site and record it | **Ordering Status**: each order with its site; **Total Sub Ordered (EA)** with what each site is short (new) |
+| Everyone else | Viewer | Nothing; sees everything | |
+| A future AI finder | Sub Finder | Proposes subs for nursing to review | |
+
+**The flow, per item**
+
+1. Medline kills lines at one or more sites. Main shows them per Infor item, with Medline's reasons.
+2. Nursing enters or reviews subs and picks one. Their comment on a pick reads on the table.
+3. The MM Lead adds the vendor items to order it by and writes the **instruction**, e.g. "Moses and
+   Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."
+4. Each site's Materials Manager reads the instruction, orders for their site, and records the order
+   with that **site**.
+5. Main shows each site's orders and shortfall, so the MM Lead sees which sites have acted and which
+   are short, and writes a new instruction when the situation changes.
+
+**Principles**
+
+- **One latest word per party, on the table.** Main shows nursing's latest comment on each pick and
+  the MM Lead's latest instruction on each item. The full threads open from them, so nobody needs
+  the panel to know where things stand.
+- **Nothing is overwritten.** Instructions are kept like comments: who, when, every one of them. The
+  newest is the one in force.
+- **Responsibilities stay separate.** Nursing decides what is acceptable; the MM Lead decides how to
+  order it; the site Materials Managers order. The app records who decided what.
+- **Sites order separately.** An order belongs to one site. Killed and ordered quantities compare
+  like with like for the sites shown, and the order form's recommendation is for the order's site.
+
+**Decided** (2026-10-27, the user): a new MM Lead role writes the instructions (site Materials
+Managers can't); Josh's latest comment is the pick's latest sub comment, shown inline, with no new
+nursing note; orders record their site.
 
 ## 2. Source file — Medline "LUM Fill-Kill Report v2"
 
@@ -166,7 +221,7 @@ were. **Decided.**
     | Module | Roles |
     |---|---|
     | `plm` | `viewer` or `editor` (one at most) |
-    | `fillkill` | `viewer` alone, or any of `sub_finder`, `sub_approver`, `materials_manager` |
+    | `fillkill` | `viewer` alone, or any of `sub_finder`, `sub_approver`, `materials_manager`, `mm_lead` |
 - **PLM on the server:**
   - Viewers can open PLM pages and read data, including the dashboard filters and exports.
   - Editors can also change data.
@@ -185,7 +240,8 @@ Fill/Kill roles (named 2026-10-13; earlier drafts called them A, B and C):
 |---|---|---|
 | Viewer | `viewer` | Seeing everything in the module, without changing anything |
 | Sub Approver | `sub_approver` | Nursing. Entering a sub's Reference SKU (approved on entry; picked when it's the item's only approved sub); holding, rejecting and approving subs; picking and unpicking; comments on subs; correcting a Reference SKU; deleting a sub |
-| Materials Manager | `materials_manager` | Adding each sub's vendor items (vendor part, vendor, vendor ID, UOM, QOE, ...), with the contract search; recording orders for the picks' vendor items; comments on orders |
+| Materials Manager | `materials_manager` | A site's buyer. Adding each sub's vendor items (vendor part, vendor, vendor ID, UOM, QOE, ...), with the contract search; recording orders for the picks' vendor items, each for a site; comments on orders |
+| MM Lead | `mm_lead` | (2026-10-27) The Materials Management lead. Writing each item's instruction to the sites' Materials Managers; picking and unpicking; adding vendor items. Doesn't record orders unless also given Materials Manager |
 | Sub Finder | `sub_finder` | Proposing subs, pending review; adding vendor items. Kept for a future AI finder |
 
 **Revised 2026-10-15 after the stakeholder review.** Nursing should do as little as possible, and
@@ -213,18 +269,28 @@ gather options from suppliers by email and phone, and nursing filters them. So:
 4. A sub is one Reference SKU per Medline item; its vendor items can wait for the Materials Manager.
 
 Capabilities: `add_sub` = Sub Approver, Sub Finder (enter, correct the Reference SKU, delete);
-`review` = Sub Approver (status, comments on subs); `pick` = Sub Approver, Materials Manager (pick
-and unpick an approved sub; 2026-10-21, the user: it was the Sub Approver's alone, in `review`);
-`details` = Materials Manager, Sub Finder (add, correct and delete vendor items, with the contract
-and vendor searches); `order` = Materials Manager.
+`review` = Sub Approver (status, comments on subs); `pick` = Sub Approver, Materials Manager, MM
+Lead (pick and unpick an approved sub; 2026-10-21, the user: it was the Sub Approver's alone, in
+`review`; MM Lead from 2026-10-27); `details` = Materials Manager, Sub Finder, MM Lead (add, correct
+and delete vendor items, with the contract and vendor searches); `order` = Materials Manager;
+`instruct` = MM Lead (write an item's instruction, 2026-10-27).
+
+**Renewed 2026-10-27** (section 1b). The Materials Management lead guides the sites' Materials
+Managers rather than ordering, so they get a role of their own, **MM Lead**. It writes the item's
+instruction, which the sites' Materials Managers can read but not write, and it can pick and add
+vendor items, since choosing what to order is part of guiding how to order. It can't record orders:
+a lead who also orders is given Materials Manager as well.
 
 - **The Sub Approver decides what is clinically acceptable and which sub to use; the Materials
   Manager records what was ordered.** Today the Sub Approver is usually nursing. **Decided.**
 - **Combinations:**
   - Viewer is held alone: it can't be combined with the other roles, which can all view.
     **Decided** (2026-10-13).
-  - In practice nursing holds **Sub Approver**, Materials Managers **Materials Manager**, and
-    others **Viewer**. Sub Finder is kept for a future AI agent that finds subs.
+  - In practice nursing holds **Sub Approver**, the sites' Materials Managers **Materials
+    Manager**, the Materials Management lead **MM Lead** (2026-10-27), and others **Viewer**. Sub
+    Finder is kept for a future AI agent that finds subs.
+  - MM Lead combines with Materials Manager (a lead who also orders). It isn't refused with Sub
+    Approver: the rule below separates approving from ordering, and the MM Lead doesn't order.
   - Sub Approvers and Sub Finders add subs; a Materials Manager doesn't (revised 2026-10-15; was
     "only Sub Finders", 9.7).
   - Sub Approver and Materials Manager may not be the same person; User Control refuses the
@@ -241,8 +307,9 @@ and vendor searches); `order` = Materials Manager.
 
 **One operating page for every role** (2026-10-13). **Decided.** Everyone works on the Main page
 and sees the same thing; what they can do on it follows their roles. Nursing enters subs (approved
-on entry) and reviews and picks right there, and Materials Managers add vendor items and record
-orders from the picks' vendor items (revised 2026-10-15 and 2026-10-20, section 4).
+on entry) and reviews and picks right there, the MM Lead writes each item's instruction, and the
+sites' Materials Managers add vendor items and record orders for their site from the picks' vendor
+items (revised 2026-10-15, 2026-10-20 and 2026-10-27, sections 1b and 4).
 The full sub list and the order log are tables (or cards) on the same page, not pages of their own.
 Trends and analytics live on a separate Dashboard page (section 7).
 
@@ -256,15 +323,19 @@ Trends and analytics live on a separate Dashboard page (section 7).
   **Select a range** (the boxes open). Default (2026-10-20): **today** on the live server
   (`ProductionConfig.FILLKILL_OPEN_ON`); locally the newest day with lines, since O2's data can end
   days ago.
-- **Site filter:** one or more sites. Default: all.
+- **Site filter:** one or more sites. Default: all. It applies to the kill lines and, since
+  2026-10-27, to the orders: with sites chosen, only their orders count in Ordering Status, Total Sub
+  Ordered (EA), the Needs filter and the orders under the table. Orders recorded before sites were
+  (no site) count only when every site is shown.
 - **Needs filter:** All · Needs subs · Needs review · Needs pick · Needs order · Ordered (9.8):
   - *needs subs*: no sub that is pending review, approved or on hold
   - *needs review*: at least one sub pending review
   - *needs pick*: at least one approved sub, none picked
   - *needs details*: a pick without a vendor, vendor ID or UOM, not ordered yet (2026-10-19): the
     Materials Manager's to-do list
-  - *needs order*: at least one pick, and no order in the range
-  - *ordered*: an order in the range
+  - *needs order*: at least one pick, and no order in the range for the sites shown
+  - *ordered*: an order in the range for the sites shown (2026-10-27: an order for another site
+    doesn't count)
 - **Search:** every word typed must appear in the Infor item, a packaging's Medline or customer
   item, Medline's description, Infor's long description, or the commodity code or its description (the commodity
   isn't shown in the table). Item numbers also match without dashes, spaces, dots or slashes:
@@ -299,11 +370,12 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to Materials Managers and Sub Finders, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments (pointing at it shows the latest) and opens them all, newest first, in a popover, for everyone, without the panel |
+| Picked for Ordering | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when |
 | Vendor Item Detail | per pick, on its line (2026-10-20; beside its pick from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
-| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
-| Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE |
-| Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
+| MM Instruction | (2026-10-27) for the Infor item: the MM Lead's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts the instructions and opens them all, newest first, in a popover; an MM Lead writes a new one from there ("+ Instruction" when there's none). It isn't tied to the Fill/Kill dates: an instruction stays in force until a newer one replaces it, and its date shows how old it is |
+| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
+| Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates at the sites shown, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE. Killed at several sites: each site's eaches on hover |
+| Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates for the sites shown, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Killed at several sites (2026-10-27): a red line per site that's short ("Moses: 20 EA short"), since each site orders for itself. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
 
 The **Needs filter** counts Infor items, over all their Medline items' subs, picks and orders.
 
@@ -333,7 +405,8 @@ item in the UOM list narrows to it. A Medline item's subs section still lists su
 not on it yet. The API returns the whole Infor item either way; the page filters.
 
 - **Item details** at the top: the Infor item and whether it's active (or *not found*), its long
-  description, its commodity code and description, and the manufacturer (2026-10-14).
+  description, its commodity code and description, and the manufacturer (2026-10-14); and the MM
+  Lead's latest instruction, with who and when (2026-10-27).
 - **UOMs:** each Medline item with its UOM and QOE, the ⚠ where Medline's customer item isn't the
   Infor item, and *not killed in these dates*.
 - **Subs:** one section per Medline item; each sub's card has its Reference SKU, status, pick,
@@ -348,9 +421,10 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 - **Width:** drag the panel's left edge (or arrow keys on it) to resize; remembered per browser,
   double-click resets (2026-10-15).
 - **Order history:** every order for the item across all days and subs, with edits and voids
-  (9.3). A table like the kill lines (2026-10-20; cards before): ordered, vendor part (for its
-  Reference SKU), quantity with UOM/QOE, vendor and ID, who, the latest comment; Correct, Void,
-  Comment and History open from icons, the last two in a line under the row.
+  (9.3). A table like the kill lines (2026-10-20; cards before): ordered, site (2026-10-27),
+  vendor part (for its Reference SKU), quantity with UOM/QOE, vendor and ID, who, the latest
+  comment; Correct, Void, Comment and History open from icons, the last two in a line under the row.
+  Every site's orders, whatever the site filter: it is the item's whole history.
 
 **Decided** (2026-10-13).
 
@@ -466,7 +540,8 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 
   | Field | Notes |
   |---|---|
-  | Quantity | in the vendor item's UOM. **Recommended** (2026-10-21, the user; 10-20 used the kills alone): what's still needed, the Infor item's Total Killed (EA) less its Total Sub Ordered (EA) in these dates (Main's columns), over the vendor item's QOE, rounded up to whole units (1,300 EA still needed for a CA/1000: 1.3, so 2 CA; 10 EA for a CA/50: 1 CA). Pre-filled with it only when this Medline item was killed in one UOM, the vendor item has that UOM (CS read as CA) and QOE (an EA without a QOE is 1), and it comes out whole (killed 30 EA, 10 EA ordered: 20). Otherwise blank, with the recommendation as the box's hint, and a red box shows what was killed (each UOM with its QOE), what's been ordered, what's still needed and the recommendation. Already covered: a yellow box says nothing more is needed. A QOE missing on the vendor item, a UOM killed or an order already placed: a red **No QOE** warning says which, and there's no recommendation. Vendor items without a QOE (other than EA) carry a *no QOE* badge on Main and in the panel |
+  | Site | (2026-10-27) the Medline Sold-To the order is for, **required** on new orders. Chosen from the sites; it starts on the one site the filter shows, or else the one site the Infor item was killed at in these dates, and is blank (to choose) otherwise. The recommendation below is for this site, and follows it when it's changed. Orders recorded before 2026-10-27 have none ("Site not recorded"); a correction can add it |
+  | Quantity | in the vendor item's UOM. **Recommended** (2026-10-21, the user; 10-20 used the kills alone; per site from 2026-10-27): what's still needed **at the order's site**, the Infor item's eaches killed there less its sub orders for that site in these dates, over the vendor item's QOE, rounded up to whole units (1,300 EA still needed for a CA/1000: 1.3, so 2 CA; 10 EA for a CA/50: 1 CA). Pre-filled with it only when this Medline item was killed in one UOM, the vendor item has that UOM (CS read as CA) and QOE (an EA without a QOE is 1), and it comes out whole (killed 30 EA, 10 EA ordered: 20). Otherwise blank, with the recommendation as the box's hint, and a red box shows what was killed (each UOM with its QOE), what's been ordered, what's still needed and the recommendation. Already covered: a yellow box says nothing more is needed. A QOE missing on the vendor item, a UOM killed or an order already placed: a red **No QOE** warning says which, and there's no recommendation. Vendor items without a QOE (other than EA) carry a *no QOE* badge on Main and in the panel |
   | Ordered By | the user |
   | Ordered DT | defaults to now; editable |
   | Comments | entries of up to 400 characters each, with who and when; Materials Managers add more later (9.7) |
@@ -478,9 +553,29 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
   through a sub like everything else, e.g. Medline + the same or the case-pack part number. The
   Sub Approver approves it, and the Materials Manager adds a vendor item in the new UOM and records
   the order with it.
-- **Corrections:** the Materials Manager can correct or void an order, its vendor part, vendor,
-  vendor ID, UOM and QOE included. Every change is kept in the same audit-log history.
+- **Corrections:** the Materials Manager can correct or void an order, its site, vendor part,
+  vendor, vendor ID, UOM and QOE included. Every change is kept in the same audit-log history.
+- **Any site** (2026-10-27): a Materials Manager can record orders for any site. Roles aren't scoped
+  by site (section 4); the site says who the order is for, not who may place it.
 - **Period:** not recorded (stakeholder item 8.5).
+
+### Instructions (MM Lead, 2026-10-27)
+
+The MM Lead's word to the sites' Materials Managers on how to order an item: which sub and vendor
+item, how much, which sites, until when. Free text, so one instruction can speak to every site.
+
+- **Per Infor item**, the main table's row: the MM Lead orders against the Infor item's combined need
+  (Total Killed (EA)). A Medline item not in Infor has its own, like its row. Stored with the Infor
+  item and the Medline item it was written from; when a Medline item without an Infor item gets one
+  later, its instructions move to the Infor item's row.
+- **Kept like comments:** up to 1,000 characters each (instructions name several sites, so more
+  than a comment's 400), with who and when; none is changed or deleted. The newest is the one in
+  force; to lift one, the MM Lead writes a new one (e.g. "No special instruction: order the pick as
+  usual").
+- **Not tied to the Fill/Kill dates**, like picks: an instruction stays until replaced, and shows its
+  date.
+- **Who:** written by MM Leads only (`instruct`); read by everyone, on Main, in the item panel, and in
+  the popover listing them all.
 
 ### Dropped from the 2026-10-06 design
 
@@ -512,7 +607,8 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
 | `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied at go-live (`10_kill_lines.sql`) |
 | `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
 | `SubVendorItem` | way to order a sub (2026-10-20) | sub_id, vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom) |
-| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, vendor_item_id, quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
+| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, vendor_item_id, **site** (Medline's Sold-To code, 2026-10-27; none on older orders), quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
+| `ItemInstruction` | instruction by an MM Lead (2026-10-27) | infor_item (none for a Medline item not in Infor), medline_item (written from), instruction (≤1,000), written_by, written_at. Never changed or deleted; the newest per row is in force |
 | `History` | change or comment on a sub, a vendor item or an order | entity (sub / vendoritem / order), id, medline_item, action, from → to, comment (≤400), by, at; drives the timelines and the pick and order histories. Comments are rows here, so none is ever overwritten. |
 
 **Notes on the item and quantity views**
@@ -540,9 +636,10 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     their own** (default: the last 30 days; Today / 7 / 30 days), independent of the table's, so a
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
-    recorded after the kills shown. Columns (2026-10-20): Order Date, Medline Item, its Infor Item,
-    Sub (the vendor part ordered), QOE, Ordered (`21 BX`, the UOM grey as
-    in the main table), Vendor (its vendor ID), Vendor Name, Ordered By, Latest Comment. A search
+    recorded after the kills shown. It follows the table's site filter (2026-10-27), so a site's
+    Materials Manager sees their site's orders. Columns (2026-10-20): Order Date, Site (2026-10-27),
+    Medline Item, its Infor Item, Sub (the vendor part ordered), QOE, Ordered (`21 BX`, the UOM grey
+    as in the main table), Vendor (its vendor ID), Vendor Name, Ordered By, Latest Comment. A search
     box keeps the orders whose numbers have every word typed: the Medline item, its Infor item, the
     vendor part ordered, the sub's Reference SKU, or the vendor item's manufacturer part or Infor
     item (dashes optional). An order keeps what it was placed with (vendor part, vendor ID, vendor
@@ -614,7 +711,8 @@ pool idle time-out) keeps processes warm.
 2. **Lifecycle beyond today.** Nothing closes, and any date range can be reviewed. Is any analysis
    wanted on history?
 3. **Separating approval and ordering.** One person can't currently be both Sub Approver and
-   Materials Manager. Confirm that is wanted.
+   Materials Manager. Confirm that is wanted. (2026-10-27: the MM Lead role isn't part of the rule,
+   since it doesn't order.)
 4. **Approval level.** **Answered 2026-10-08:** per Medline item, for all sites.
 5. **Ordering level and coverage** (for the director).
    - **Level:** answered 2026-10-08, per Medline item.
@@ -639,6 +737,13 @@ pool idle time-out) keeps processes warm.
 11. **Order confirmation and fill rate.** Checking recorded orders against `PURCHASEORDER_LINE`,
     and a fill-rate measure (needs Infor PO lines as the denominator). Later.
 12. **Feed.** Email vs SFTP; one file per site or one combined file.
+13. **Coordination hub** (from the 2026-10-27 review; section 1b). Not built yet:
+    - Should a Materials Manager have a home site, so the site filter and the order form's site
+      start on it? Roles stay unscoped by site either way.
+    - Should instructions be per site (one per item and site) rather than one free text per item?
+    - Should the sites' Materials Managers be told (e.g. by email) when the MM Lead writes an
+      instruction, or is reading Main enough?
+    - Should the Dashboard show orders and shortfalls per site?
 
 ## 9. Design questions — answered 2026-10-13
 
@@ -706,7 +811,11 @@ Questions:
 
    No web-server deploy needed.
 3. **Workflow**: the Main page (with its subs and orders tables) and the Dashboard. Web-server
-   deploy #2. **Built** 2026-10-13 (plan v2 W1–W5); next is UAT, then the deploy.
+   deploy #2. **Built** 2026-10-13 (plan v2 W1–W5); released with deploy #1 from `main` on
+   2026-10-21.
+4. **Coordination hub** (2026-10-27, branch `fillkill-deploy2`; section 1b): the MM Lead role and
+   its instructions, sites on orders, nursing's latest comment on Main. A script on O2 (the new
+   table, the order's site column, the role) before the app goes out, then a web-server deploy.
 
 ## 11. Advanced (semantic) search — evaluated 2026-10-14, parked
 

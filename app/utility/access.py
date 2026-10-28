@@ -33,9 +33,9 @@ PLM_EDITOR = "editor"
 
 ROLE_VIEWER = "viewer"                        # sees the module; held alone
 ROLE_SUB_FINDER = "sub_finder"                # proposes subs, pending review (kept for a future AI finder)
-ROLE_SUB_APPROVER = "sub_approver"            # nursing: enters vendor parts (approved on entry), reviews, picks, comments
-ROLE_MATERIALS_MANAGER = "materials_manager"  # a site's buyer: adds vendor items, picks, records orders
-ROLE_MM_LEAD = "mm_lead"                      # the Materials Management lead: instructs the sites, picks, adds vendor items
+ROLE_SUB_APPROVER = "sub_approver"            # nursing: enters subs (approved on entry), reviews, comments
+ROLE_MATERIALS_MANAGER = "materials_manager"  # a site's buyer: adds vendor items, records orders
+ROLE_MM_LEAD = "mm_lead"                      # MM/SCM: instructs the sites, adds vendor items
 
 
 @dataclass(frozen=True)
@@ -80,11 +80,9 @@ MODULES = {
             "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
             # Enter a vendor part, correct it, delete a sub (a Sub Approver's entries are approved).
             "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_SUB_APPROVER}),
-            # Set a sub's status, comment on subs.
+            # Set a sub's status, comment on subs. Every approved sub can be ordered: "pick" (choosing
+            # among them, 2026-10-21 to 10-28) is gone, and Hold or Reject is how nursing stops one.
             "review": frozenset({ROLE_SUB_APPROVER}),
-            # Pick or unpick an approved sub (2026-10-21: Materials Managers too; it was in "review";
-            # 2026-10-27: MM Leads, choosing what the sites order). "Prefer" on the page from 2026-10-28.
-            "pick": frozenset({ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
             # A sub's vendor items: vendor part, vendor, vendor ID, UOM, QOE (2026-10-15, 10-20).
             "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER, ROLE_MM_LEAD}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
@@ -104,7 +102,6 @@ FILLKILL_FUNCTIONS = (
     ("Correct a sub's Reference SKU, or delete a sub with a reason", "add_sub"),
     ("Approve, hold or reject a sub", "review"),
     ("Comment on a sub", "review"),
-    ("Mark an approved sub preferred, or unprefer it", "pick"),
     ("Add, correct or delete a sub's vendor items (vendor item details), with the contract and vendor searches", "details"),
     ("Record an order from a vendor item", "order"),
     ("Correct or void an order; comment on an order", "order"),
@@ -241,7 +238,6 @@ DENIED_MESSAGES = {
     (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
     (FILLKILL, "details"): "Only Materials Managers, MM/SCM and Sub Finders can add or change a sub's vendor items.",
     (FILLKILL, "review"): "Only Sub Approvers can review or comment on subs.",
-    (FILLKILL, "pick"): "Only Sub Approvers, Materials Managers and MM/SCM can prefer or unprefer subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
     (FILLKILL, "instruct"): "Only MM/SCM can write an item's instruction.",
 }

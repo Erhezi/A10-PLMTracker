@@ -113,7 +113,7 @@ def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer)
     assert config["default"] == {"start": "2026-09-30", "end": "2026-09-30"}  # P4
     assert config["bounds"] == {"first": "2026-09-28", "last": "2026-09-30"}
     assert [s["name"] for s in config["sites"]] == ["WHITE PLAINS", "test site"]
-    assert config["can"] == {"view": True, "add_sub": False, "review": False, "pick": False, "details": False, "order": False,
+    assert config["can"] == {"view": True, "add_sub": False, "review": False, "details": False, "order": False,
                              "instruct": False}
     assert 'aria-current="page">Main</a>' in page
 
@@ -177,14 +177,13 @@ CUP_ITEM = {"vendor_part": "88885", "vendor": "CARDINAL HEALTH", "vendor_id": CA
 
 def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_item_and_orders(
         app, viewer, finder_approver, finder_manager):
-    # Nursing (a Sub Approver) enters the Reference SKU and a note: approved, and picked as the
-    # item's only approved sub (2026-10-15).
+    # Nursing (a Sub Approver) enters the Reference SKU and a note: approved on entry (2026-10-15),
+    # so it can be ordered (2026-10-28: without being picked).
     status, data = post(finder_approver, "/fillkill/api/subs",
                         {"medline_item": "DYND70294BH", "reference_sku": "88885", "comment": "Same cup"})
     assert status == 201, data
     sub_id = data["sub"]["sub_id"]
-    assert (data["sub"]["reference_sku"], data["sub"]["status"], data["sub"]["is_picked"], data["sub"]["vendor_items"]) == (
-        "88885", "approved", True, [])
+    assert (data["sub"]["reference_sku"], data["sub"]["status"], data["sub"]["vendor_items"]) == ("88885", "approved", [])
 
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
@@ -202,10 +201,10 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
     row = next(r for r in main["rows"] if "DYND70294BH" in r["medline_items"])
     assert row["needs"] == ["needs_order"]
-    [pick] = row["picks"]
-    assert (pick["reference_sku"], [v["vendor_part"] for v in pick["vendor_items"]]) == ("88885", ["88885"])
+    [approved] = row["approved_subs"]  # Approved by Nursing
+    assert (approved["reference_sku"], [v["vendor_part"] for v in approved["vendor_items"]]) == ("88885", ["88885"])
     # Its comments icon: how many, and the latest (2026-10-21).
-    assert (pick["comments"], pick["latest_comment"]["comment"], pick["latest_comment"]["actor"]) == (
+    assert (approved["comments"], approved["latest_comment"]["comment"], approved["latest_comment"]["actor"]) == (
         1, "Same cup", "nurse@example.org")
 
     status, data = post(finder_manager, "/fillkill/api/orders", {"quantity": 30})
@@ -242,16 +241,15 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     [sub] = [s for p in panel["packagings"] for s in p["subs"]]
     assert (sub["latest_comment"]["comment"], [v["vendor_part"] for v in sub["vendor_items"]]) == ("Same cup", ["88885"])
     # Sub History: the sub's steps, and its vendor items added (2026-10-20).
-    assert [(h["entity"], h["action"], h["label"]) for h in panel["pick_history"]] == [
-        ("vendoritem", "created", "88885: 88885 (CARDINAL HEALTH, BX)"), ("sub", "pick", "88885"),
-        ("sub", "status", "88885"), ("sub", "created", "88885")]
+    assert [(h["entity"], h["action"], h["label"]) for h in panel["sub_history"]] == [
+        ("vendoritem", "created", "88885: 88885 (CARDINAL HEALTH, BX)"), ("sub", "status", "88885"), ("sub", "created", "88885")]
     assert len(panel["orders"]) == 1 and len(panel["lines"]) == 3
     assert [l["test_purpose"] for l in panel["lines"] if l["is_test"]] == ["Sites: a real line copied under a second site."]
     assert panel["details"]["description"] == "CUP,DENTURE"
 
     _, history = get(viewer, f"/fillkill/api/history/sub/{sub_id}")
     assert [(h["entity"], h["action"]) for h in history["history"]] == [
-        ("vendoritem", "created"), ("sub", "pick"), ("sub", "status"), ("sub", "comment"), ("sub", "created")]
+        ("vendoritem", "created"), ("sub", "status"), ("sub", "comment"), ("sub", "created")]
     _, history = get(viewer, f"/fillkill/api/history/vendoritem/{item['vendor_item_id']}")
     assert [(h["action"], h["actor"]) for h in history["history"]] == [("created", "mm@example.org")]
 
@@ -288,12 +286,12 @@ ITEM_PAYLOAD = {"vendor_part": "OM1", "vendor": "OWENS & MINOR", "vendor_id": OW
     ("finder_manager", "/fillkill/api/vendor-items/{item}/edit", {"uom": "EA"}, True),
     ("finder_manager", "/fillkill/api/vendor-items/{item}/delete", {"reason": "no longer sold"}, True),
     ("finder_approver", "/fillkill/api/orders", {"vendor_item_id": "{item}", "site": WP, "quantity": 1}, False),
-    ("viewer", "/fillkill/api/subs/{sub}/pick", {}, False),
+    ("finder_manager", "/fillkill/api/subs/{sub}/status", {"status": "hold", "comment": "recalled"}, False),
     ("viewer", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, False),
     ("finder_manager", "/fillkill/api/subs/{sub}/delete", {"reason": "dup"}, True),
 ])
 def test_each_action_needs_its_role(app, request, finder_approver, who, path, payload, allowed):
-    # A Sub Finder's sub: pending review (nursing's would be approved and picked), with a vendor item.
+    # A Sub Finder's sub: pending review (nursing's would be approved), with a vendor item.
     manager = request.getfixturevalue("finder_manager")
     _, data = post(manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
     sub_id = data["sub"]["sub_id"]
@@ -311,28 +309,26 @@ def test_each_action_needs_its_role(app, request, finder_approver, who, path, pa
         assert data["error"] == "forbidden"
 
 
-def test_materials_managers_pick_and_unpick_too(app):
-    # Picking among the approved subs is the Sub Approver's and the Materials Manager's (2026-10-21);
-    # the status and the subs' comments stay the Sub Approver's.
+def test_nursing_holds_or_rejects_a_sub_with_a_reason_and_picking_is_gone(app):
+    # Every approved sub can be ordered (2026-10-28): nursing stops one by holding or rejecting it,
+    # with a reason if they like, kept as its comment. The status stays the Sub Approver's.
     nurse = client(app, "nurse4@example.org", plm=None, fillkill=("sub_approver",))
     manager = client(app, "mm4@example.org", plm=None, fillkill=("materials_manager",))
-    finder = client(app, "finder4@example.org", plm=None, fillkill=("sub_finder",))
     _, data = post(nurse, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
-    first = data["sub"]["sub_id"]  # approved and picked: the only approved one
-    _, data = post(nurse, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM2"})
-    second = data["sub"]["sub_id"]  # approved
-    status, data = post(manager, f"/fillkill/api/subs/{first}/unpick", {"expected_status": "approved"})
-    assert (status, data["sub"]["is_picked"]) == (200, False), data
-    status, data = post(manager, f"/fillkill/api/subs/{second}/pick", {"expected_status": "approved"})
-    assert (status, data["sub"]["is_picked"]) == (200, True), data
-    _, data = get(manager, f"/fillkill/api/history/sub/{second}")
-    assert (data["history"][0]["action"], data["history"][0]["actor"]) == ("pick", "mm4@example.org")
-    status, data = post(manager, f"/fillkill/api/subs/{second}/status", {"status": "hold"})
+    sub_id = data["sub"]["sub_id"]
+    assert "is_picked" not in data["sub"]
+    status, data = post(nurse, f"/fillkill/api/subs/{sub_id}/status",
+                        {"status": "hold", "comment": " Recalled by the maker ", "expected_status": "approved"})
+    assert (status, data["sub"]["status"]) == (200, "hold"), data
+    _, data = get(manager, f"/fillkill/api/history/sub/{sub_id}")  # newest first
+    assert [(h["action"], h["comment"]) for h in data["history"][:2]] == [
+        ("comment", "Hold: Recalled by the maker"), ("status", None)]
+    status, data = post(manager, f"/fillkill/api/subs/{sub_id}/status", {"status": "approved"})
     assert status == 403 and "Only Sub Approvers can review or comment on subs." in data["message"]
-    assert post(manager, f"/fillkill/api/subs/{second}/comments", {"comment": "ok"})[0] == 403
-    status, data = post(finder, f"/fillkill/api/subs/{first}/pick", {})
-    assert status == 403 and "Only Sub Approvers, Materials Managers and MM/SCM can prefer" in data["message"]
-    assert (page_config(manager)["can"]["pick"], page_config(manager)["can"]["review"]) == (True, False)
+    assert post(manager, f"/fillkill/api/subs/{sub_id}/comments", {"comment": "ok"})[0] == 403
+    # Picking is gone: no such action, nor anyone able to.
+    assert post(nurse, f"/fillkill/api/subs/{sub_id}/pick", {})[0] == 404
+    assert "pick" not in page_config(manager)["can"]
 
 
 def test_rule_errors_and_conflicts_come_back_as_messages(app, finder_approver, finder_manager):
@@ -341,8 +337,6 @@ def test_rule_errors_and_conflicts_come_back_as_messages(app, finder_approver, f
 
     _, data = post(finder_manager, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "P"})
     sub_id = data["sub"]["sub_id"]  # a Sub Finder's: pending review
-    status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/pick", {})
-    assert status == 400 and "Only an approved sub" in data["message"]
 
     post(finder_approver, f"/fillkill/api/subs/{sub_id}/status", {"status": "rejected"})
     status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/status",
@@ -352,7 +346,7 @@ def test_rule_errors_and_conflicts_come_back_as_messages(app, finder_approver, f
     _, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/vendor-items", ITEM_PAYLOAD)
     status, data = post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "site": WP,
                                                        "quantity": 1})
-    assert status == 409 and "isn't preferred" in data["message"]
+    assert status == 409 and "Only an approved sub can be ordered, and P is rejected" in data["message"]
     status, data = post(finder_manager, "/fillkill/api/vendor-items/999/edit", {"uom": "EA"})
     assert status == 404 and "That vendor item no longer exists" in data["message"]
     assert post(finder_manager, "/fillkill/api/vendor-items/1/move", {})[0] == 404
@@ -624,7 +618,7 @@ def test_packagings_of_one_infor_item_share_a_row_and_see_each_others_subs(app, 
     _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-28", end="2026-09-30")
     packs = {p["medline_item"]: p for p in panel["packagings"]}
     [here] = packs["MDS2585HX"]["subs"]
-    assert (here["status"], here["is_picked"]) == ("approved", True)
+    assert here["status"] == "approved"
     assert [o["medline_item"] for o in here["approved_elsewhere"]] == ["MDS2585H"]
     assert [o["reference_sku"] for o in packs["MDS2585HX"]["other_subs"]] == ["OM-9"]
 
@@ -665,7 +659,6 @@ def test_deleting_a_sub_hides_it_and_shows_in_sub_history(app, viewer, finder_ap
     manager = client(app, "mm3@example.org", plm=None, fillkill=("materials_manager",))
     _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
     sub_id = data["sub"]["sub_id"]
-    post(finder_approver, f"/fillkill/api/subs/{sub_id}/unpick", {})  # entered approved and picked
     status, data = post(manager, f"/fillkill/api/subs/{sub_id}/delete", {"reason": "dup"})
     assert status == 403 and "delete" in data["message"]
     status, data = post(finder_approver, f"/fillkill/api/subs/{sub_id}/delete", {"reason": ""})
@@ -676,7 +669,7 @@ def test_deleting_a_sub_hides_it_and_shows_in_sub_history(app, viewer, finder_ap
 
     _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-28", end="2026-09-30")
     assert [s for p in panel["packagings"] for s in p["subs"]] == []
-    assert [(h["action"], h["label"], h["comment"]) for h in panel["pick_history"]][0] == (
+    assert [(h["action"], h["label"], h["comment"]) for h in panel["sub_history"]][0] == (
         "delete", "OM1", "Owens doesn't carry it any more")
     _, library = get(viewer, "/fillkill/api/subs")
     assert library["subs"] == []
@@ -730,7 +723,8 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     header, *lines = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     box, case = [dict(zip(header, line)) for line in lines]
     assert (box["Medline Item"], box["Medline Item's Infor Item"], box["Reference SKU"], box["Sub Vendor Name"], box["Status"],
-            box["Preferred"], box["Orders"]) == ("DYND70294BH", "100339", "88885", "CARDINAL HEALTH", "Approved", "Yes", "1")
+            box["Orders"]) == ("DYND70294BH", "100339", "88885", "CARDINAL HEALTH", "Approved", "1")
+    assert "Preferred" not in header and "Picked" not in header  # picking is gone (2026-10-28)
     assert (box["Sub Vendor Part"], box["Sub Vendor ID"], box["Sub UOM"], box["Sub QOE"], box["Vendor Item By"]) == (
         "88885", CARDINAL, "BX", "100.0", "mm@example.org")
     assert (case["Sub Vendor Part"], case["Sub Manufacturer Part"], case["Sub Vendor ID"], case["Sub UOM"], case["Sub ID"]) == (
@@ -752,12 +746,12 @@ def lead(app):
 
 
 def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, lead, finder_manager):
-    assert page_config(lead)["can"] == {"view": True, "add_sub": False, "review": False, "pick": True, "details": True,
+    assert page_config(lead)["can"] == {"view": True, "add_sub": False, "review": False, "details": True,
                                        "order": False, "instruct": True}
     # Called Will's Comments on the page for now (the user, 2026-10-27), before Vendor Item Detail.
     assert page_config(lead)["instructionLabel"] == "Will's Comments"
     page = lead.get("/fillkill/").get_data(as_text=True)
-    assert page.index("Nursing's Recommendation</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
+    assert page.index("Approved by Nursing</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
     assert status == 403 and "Only MM/SCM" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403

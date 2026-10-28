@@ -11,7 +11,7 @@ import { customerFlag } from './table.js';
 
 export function renderPanelTab(tab, view) {
   if (tab === 'lines') return linesTab(view.lines, view.many);
-  if (tab === 'picks') return picksTab(view.history, view.many);
+  if (tab === 'history') return historyTab(view.history, view.many);
   if (tab === 'orders') return ordersTab(view.orders, view.many);
   return subsTab(view);
 }
@@ -38,7 +38,7 @@ function subsTab(view) {
 // Subs on the Infor item's other UOMs, not on this one yet.
 function otherSubs(p) {
   if (!p.other_subs.length) return '';
-  return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review and prefer it here:</div>
+  return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review it here:</div>
     <ul class="list-group list-group-flush small mb-2">${p.other_subs.map((o) => `
       <li class="list-group-item px-0 d-flex flex-wrap gap-2 align-items-center">
         <span class="fw-semibold">${esc(o.reference_sku)}</span>
@@ -51,7 +51,7 @@ function otherSubs(p) {
 }
 
 // A sub's vendor items (2026-10-20): each a way to order it, the Materials Manager's or a Sub
-// Finder's. A Materials Manager records an order for one of the pick's.
+// Finder's. A Materials Manager records an order for one of an approved sub's.
 function vendorItemList(sub) {
   const items = sub.vendor_items || [];
   if (!items.length) return '';
@@ -62,7 +62,7 @@ function vendorItemList(sub) {
       `added by ${esc(v.entered_by)} ${fmtDateTime(v.create_dt)}`,
     ].filter(Boolean).join(' · ');
     const actions = [];
-    if (can.order && sub.is_picked) {
+    if (can.order && sub.status === 'approved') {
       actions.push(`<button type="button" class="btn btn-sm btn-primary py-0" data-act="order" data-vi="${v.vendor_item_id}">Record order</button>`);
     }
     if (can.details) {
@@ -95,24 +95,13 @@ function subCard(sub) {
     actions.push(`<select class="form-select form-select-sm w-auto" data-act="status" data-sub="${sub.sub_id}" data-expected="${sub.status}" aria-label="Status">
       ${sub.status === 'pending_review' ? '<option value="" selected disabled>Set status…</option>' : ''}${options.join('')}</select>`);
   }
-  // Sub Approvers and Materials Managers pick among the approved subs (2026-10-21), MM/SCM too: "Prefer"
-  // on the page from 2026-10-28 (the user: it means preferred), pick in the code and its URLs.
-  if (can.pick && sub.status === 'approved') {
-    actions.push(sub.is_picked
-      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-act="unpick" data-sub="${sub.sub_id}" data-expected="${sub.status}">Unprefer</button>`
-      : `<button type="button" class="btn btn-sm btn-success" data-act="pick" data-sub="${sub.sub_id}" data-expected="${sub.status}"><i class="bi bi-star"></i> Prefer</button>`);
-  }
   if (can.details) {
     actions.push(`<button type="button" class="btn btn-sm btn-outline-primary" data-act="add-vi" data-sub="${sub.sub_id}"><i
       class="bi bi-plus-lg"></i> Vendor item</button>`);
   }
   if (can.add_sub) {
     actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Correct Reference SKU</button>`);
-    // The preferred sub can't be deleted until it's unpreferred (the server refuses it too).
-    actions.push(sub.is_picked
-      ? `<span class="d-inline-block" tabindex="0" title="It's preferred: unprefer it first">
-           <button type="button" class="btn btn-sm btn-outline-danger" disabled>Delete</button></span>`
-      : `<button type="button" class="btn btn-sm btn-outline-danger" data-act="delete-sub" data-sub="${sub.sub_id}">Delete</button>`);
+    actions.push(`<button type="button" class="btn btn-sm btn-outline-danger" data-act="delete-sub" data-sub="${sub.sub_id}">Delete</button>`);
   }
   actions.push(`<button type="button" class="btn btn-sm btn-link" data-act="history" data-entity="sub" data-id="${sub.sub_id}">History</button>`);
 
@@ -122,11 +111,11 @@ function subCard(sub) {
       <button class="btn btn-outline-secondary" type="submit">Add</button>
     </form>` : '';
 
-  return `<div class="card mb-2 ${sub.is_picked ? 'border-success' : ''}">
+  return `<div class="card mb-2 ${sub.status === 'approved' ? 'border-success' : ''}">
     <div class="card-body p-2">
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span><span class="fw-semibold">${esc(sub.reference_sku)}</span> <span class="small text-muted">Reference SKU</span></span>
-        ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-star-fill"></i> Preferred</span>' : ''}${detailsNeeded}
+        ${statusBadge(sub.status)}${detailsNeeded}
         ${(sub.approved_elsewhere || []).map((o) => `<span class="badge text-success border border-success bg-white"
             title="Approved by ${esc(o.approved_by || '')} ${fmtDateTime(o.approved_at)}"><i class="bi bi-box-seam"></i>
             Approved for ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}</span>`).join(' ')}
@@ -142,8 +131,7 @@ function subCard(sub) {
 }
 
 // Nursing enters the Reference SKU, and a note if they like (2026-10-15, 10-20). A Sub Approver's
-// entry is approved on entry, and picked when it's the only approved sub; the Materials Manager adds
-// its vendor items.
+// entry is approved on entry, so it can be ordered; the Materials Manager adds its vendor items.
 function addSubForm(packs) {
   // Several UOMs: which Medline item the sub is for (the one clicked, unless changed).
   const target = packs.length > 1 ? `
@@ -152,7 +140,7 @@ function addSubForm(packs) {
             <option value="${esc(p.medline_item)}" ${p.medline_item === state.panelItem ? 'selected' : ''}>${esc(p.medline_item)} (${esc(p.um)})</option>`).join('')}
           </select></div>` : '';
   const what = can.review
-    ? "It's approved as soon as it's added, and preferred if it's the only approved sub. The Materials Manager adds what can be ordered for it."
+    ? "It's approved as soon as it's added, so it can be ordered: the Materials Manager adds its vendor items."
     : "It waits for a Sub Approver's review.";
   return `
     <div class="border rounded p-2 bg-light">
@@ -200,8 +188,6 @@ function describe(h) {
   switch (h.action) {
     case 'created': return { order: 'Recorded the order', vendoritem: 'Added the vendor item' }[h.entity] || 'Added the sub';
     case 'status': return `Status ${esc(labels[h.from_value] || h.from_value)} → ${statusBadge(h.to_value)}`;
-    case 'pick': return h.comment ? esc(h.comment) : 'Preferred';
-    case 'unpick': return h.comment ? esc(h.comment) : 'No longer preferred';
     case 'comment': return `Comment: ${esc(h.comment)}`;
     case 'edit': return `Changed ${vendorItem ? "the vendor item's " : ''}${esc(FIELD_LABELS[h.field] || String(h.field || '').replace(/_/g, ' '))}:
       ${value(h.from_value)} → ${value(h.to_value)}`;
@@ -221,8 +207,8 @@ export function timeline(entries, withLabel, withItem) {
         ? ` <span class="text-muted">on ${esc(h.medline_item)}</span>` : ''} · ${describe(h)}</li>`).join('')}</ul>`;
 }
 
-function picksTab(history, many) {
-  return `<p class="small text-muted mb-2">Every sub added, reviewed, preferred and unpreferred for ${many ? 'these Medline items' : 'this Medline item'},
+function historyTab(history, many) {
+  return `<p class="small text-muted mb-2">Every sub added, reviewed or deleted for ${many ? 'these Medline items' : 'this Medline item'},
     and every vendor item added and deleted, newest first.</p>
     ${timeline(history, true, many)}`;
 }

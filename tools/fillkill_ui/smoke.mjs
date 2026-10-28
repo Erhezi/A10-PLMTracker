@@ -162,7 +162,7 @@ const SITE_B = '0000000002';
 // The text of the last two cells (Total Killed (EA), Total Sub Ordered (EA)) of the item with this Medline item.
 const lastCells = (item) => `[...[...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes(${JSON.stringify(item)}))
   .rows[0].cells].slice(-2).map((c) => c.innerText.replace(/\\s+/g, ' ').trim()).join('|')`;
-// The main table's line whose Nursing's Recommendation cell is this Reference SKU.
+// The main table's line whose Approved by Nursing cell is this Reference SKU.
 const lineOf = (sku) => `[...document.querySelectorAll('#fk-main tbody.fk-item > tr')].find((tr) => [...tr.cells]
   .some((c) => c.innerText.trim() === ${JSON.stringify(sku)}))`;
 
@@ -203,10 +203,10 @@ const steps = [
     await waitFor(`document.querySelectorAll('#fk-panel-content tbody tr').length === 2`, 'two kill lines');
     await click('[data-panel-focus="MDS2585HC"]');
     await waitFor(`document.querySelectorAll('#fk-panel-content tbody tr').length === 1`, "one UOM's kill line");
-    await click('[data-panel-tab="picks"]');
+    await click('[data-panel-tab="history"]');
     await panelSays('Nothing yet.');
   }],
-  ['Nursing adds a Reference SKU: approved, and preferred as the only one', async () => {
+  ['Nursing adds a Reference SKU: approved, so it can be ordered', async () => {
     await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
     await waitFor(`document.getElementById('fk-panel-title').innerText === 'DYND70294BH'`, 'DYND70294BH in the panel');
     await click('[data-panel-tab="subs"]');
@@ -214,17 +214,17 @@ const steps = [
     await setValue('#fk-add-sku', '88885');
     await setValue('#fk-add-comment', 'From the supplier by phone');
     await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
-    await panelSays('Approved and preferred');
+    await panelSays('Approved: it can be ordered.');
     expect((await text('#fk-panel-content')).includes('Vendor item needed'), 'no "Vendor item needed"');
-    // Nursing's Recommendation is the Reference SKU, with a pencil until there's something to order (2026-10-20).
+    // Approved by Nursing shows the Reference SKU, with a pencil until there's something to order (2026-10-20).
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('88885')
-      && b.querySelector('[data-add-vi] .bi-pencil-square'))`, 'the pick, with its pencil, in the table');
+      && b.querySelector('[data-add-vi] .bi-pencil-square'))`, 'the approved sub, with its pencil, in the table');
     // Its comments beside it (2026-10-21): the icon counts them and opens them; a click elsewhere closes them.
     const chat = `[...document.querySelectorAll('#fk-main [data-comments]')].find((b) => b.closest('td').innerText.includes('88885'))`;
     await waitFor(`${chat} && ${chat}.innerText.trim() === '1'`, 'the comments icon, counting 1');
-    // The latest reads under the pick, with who and when (2026-10-27, for the nursing manager).
-    const said = await evaluate(`${chat}.closest('td').querySelector('.fk-pick-comment').innerText.replace(/\\s+/g, ' ').trim()`);
-    expect(said.startsWith('From the supplier by phone all ·'), `the comment under the pick: ${said}`);
+    // The latest reads under the sub, with who and when (2026-10-27, for the nursing manager).
+    const said = await evaluate(`${chat}.closest('td').querySelector('.fk-sub-comment').innerText.replace(/\\s+/g, ' ').trim()`);
+    expect(said.startsWith('From the supplier by phone all ·'), `the comment under the sub: ${said}`);
     await evaluate(`${chat}.click()`);
     await waitFor(`(document.querySelector('.fk-comments-popover') || {}).innerText?.includes('From the supplier by phone')`,
       'the comment in its popover');
@@ -258,7 +258,7 @@ const steps = [
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     await panelSays('Vendor item added.');
-    // Main: the pick keeps its Reference SKU, without the pencil; the vendor item is a tile beside it.
+    // Main: the sub keeps its Reference SKU, without the pencil; the vendor item is a tile beside it.
     await waitFor(`document.querySelector('#fk-main [data-order-vi]')`, 'a vendor item tile in the table');
     const tile = await text('#fk-main [data-order-vi]');
     expect(tile.includes('88885') && tile.includes('BX') && tile.includes('1000001 · CARDINAL HEALTH'), `the tile: ${tile}`);
@@ -340,10 +340,22 @@ const steps = [
     await waitFor(`${more}.classList.contains('d-none')`, 'the history to close');
     await click('[data-panel-tab="subs"]');
   }],
-  ['Putting the preferred sub on hold', async () => {
+  ['Putting a sub on hold, with a reason: it leaves Approved by Nursing', async () => {
+    // Nursing doesn't want it ordered any more (2026-10-28): Hold asks why, optionally, and the
+    // select keeps the status it has until that's saved.
     await setValue('#fk-panel-content select[data-act="status"]', 'hold');
-    await panelSays('Status set to');
-    await click('[data-panel-tab="picks"]');
+    await modalOpen();
+    await waitFor(`document.activeElement.id === 'fk-m-comment'`, 'the cursor in the reason');
+    expect(await evaluate(`document.querySelector('#fk-panel-content select[data-act="status"]').value`) === 'approved',
+      'the select says Hold before it is saved');
+    await setValue('#fk-m-comment', 'Recalled by the maker');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    await panelSays('Status set to Hold.');
+    await panelSays('Hold: Recalled by the maker');  // its comment, on its card
+    await waitFor(`![...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes('DYND70294BH')).innerText.includes('88885')`, '88885 to leave Approved by Nursing and its tiles');
+    expect(await evaluate(`[...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes('DYND70294BH')).innerText.includes('Ordered')`), 'its order left Main with it');
+    await click('[data-panel-tab="history"]');
     await panelSays('88885');
     await panelSays('Added the vendor item');
   }],
@@ -357,7 +369,7 @@ const steps = [
     await setValue('#fk-add-sku', '  88885-CS  ');
     expect(await evaluate(`document.getElementById('fk-add-sku').value`) === '88885-CS', 'the spaces stayed');
     await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
-    await panelSays('Approved and preferred');
+    await panelSays('Approved: it can be ordered.');
     await click('#fk-panel-content [data-act="add-vi"]');
     await modalOpen();
     const line = `[...document.querySelectorAll('[data-contract]')].find((b) => b.querySelector('.fw-semibold').innerText === '88885-CS')`;
@@ -418,7 +430,7 @@ const steps = [
     await click('[data-act="show-add"]');
     await setValue('#fk-add-sku', 'S1');
     await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
-    await panelSays('Approved and preferred');
+    await panelSays('Approved: it can be ordered.');
     for (const [part, uom] of [['S1-EA', 'EA'], ['S1-BX', 'BX']]) {
       await click('#fk-panel-content [data-act="add-vi"]');
       await modalOpen();
@@ -488,49 +500,45 @@ const steps = [
     await waitFor(`document.getElementById('fk-dash-range').innerText === '${m}/${d}/${y} to ${m}/${d}/${y}'`, 'the range on today');
     await waitFor(`document.querySelectorAll('#fk-dash-top tr').length === 2`, "today's two items");
   }],
-  ['A nurse: no vendor items, and their Reference SKU is the preferred one', async () => {
+  ['A nurse: no vendor items, and their Reference SKU is approved on Main', async () => {
     await go('/dev-login?as=nurse', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
     await waitFor(`document.querySelector('[data-act="show-add"]')`, 'Add sub');
     await click('[data-act="show-add"]');
     await setValue('#fk-add-sku', 'GLV-2');
     await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
-    await panelSays('Approved and preferred');
+    await panelSays('Approved: it can be ordered.');
     expect(await count('#fk-panel-content [data-act="add-vi"]') === 0, 'a nurse can add vendor items');
     expect(await count('#fk-panel-content [data-act="order"]') === 0, 'a nurse sees "Record order"');
-    // Their pick is in the table without the pencil: adding its vendor items is the Materials
+    // Their sub is in the table without the pencil: adding its vendor items is the Materials
     // Manager's, and a pencil they can't use looked broken (2026-10-21).
-    await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2'))`, 'the pick');
+    await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2'))`, 'the approved sub');
     expect(await count('#fk-main .bi-pencil-square, #fk-main [data-add-vi]') === 0, 'a nurse sees the pencil or can open the vendor item form');
     // A second sub from Main, without the panel (2026-10-27): a double-click on the Medline item's
-    // Nursing's Recommendation cell opens the form.
+    // Approved by Nursing cell opens the form.
     await go('/dev-login?as=nurse', `${MAIN_READY} && ${lineOf('GLV-2')}`, 'the main table');
     await dblclick(`${lineOf('GLV-2')}.querySelector('td[data-add-sub="MDS2585H"]')`, "GLV-2's cell");
     await modalOpen();
     const about = (await text('.fk-form-summary')).replace(/\s+/g, ' ');
-    expect(about.includes('MDS2585H (BX/100)') && about.includes('1 approved · preferred GLV-2'), `the add-sub form's summary: ${about}`);
+    expect(about.includes('MDS2585H (BX/100)') && about.includes('1 approved Approved by Nursing GLV-2'), `the add-sub form's summary: ${about}`);
     await waitFor(`document.activeElement.id === 'fk-m-reference_sku'`, 'the cursor in the Reference SKU');
     await setValue('#fk-m-reference_sku', 'GLV-3');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2')
       && b.innerText.replace(/\\s+/g, ' ').includes('Approved 2'))`, 'two approved subs on MDS2585H');
-    // A second pick on the same UOM gets a line of its own in the table (2026-10-21).
-    await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
-    const glv3 = `[...document.querySelectorAll('#fk-panel-content .card')].find((c) => c.querySelector('.fw-semibold').innerText === 'GLV-3')`;
-    await waitFor(`${glv3} && ${glv3}.querySelector('[data-act="pick"]')`, 'Prefer on GLV-3');
-    await evaluate(`${glv3}.querySelector('[data-act="pick"]').click()`);
-    await panelSays('Preferred.');
+    // A second approved sub on the same UOM gets a line of its own in the table (2026-10-21), and
+    // nothing to choose between them: both can be ordered (2026-10-28).
     await waitFor(`${lineOf('GLV-3')} && !${lineOf('GLV-3')}.innerText.includes('GLV-2')`, 'GLV-3 on a line of its own');
   }],
   ['A Materials Manager finds the vendor ID by name, or uses 0000000', async () => {
     await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
-    // Two picks on MDS2585H: each pick's "+ Vendor item for" is on its own line, beside it (2026-10-21).
+    // Two approved subs on MDS2585H: each one's "+ Vendor item for" is on its own line, beside it (2026-10-21).
     for (const [mine, other] of [['GLV-2', 'GLV-3'], ['GLV-3', 'GLV-2']]) {
       const text = await evaluate(`${lineOf(mine)}.innerText`);
       expect(text.includes(`Vendor item for ${mine}`) && !text.includes(other), `${mine}'s line: ${text}`);
     }
-    // From the pick's pencil on Main.
+    // From the sub's pencil on Main.
     const pencil = `[...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes('GLV-2')).querySelector('[data-add-vi]')`;
     await waitFor(pencil, "GLV-2's pencil");
     await evaluate(`${pencil}.click()`);
@@ -613,14 +621,10 @@ const steps = [
     const items = await evaluate(`${card}.querySelector('.fk-vendor-items').innerText`);
     expect(items.includes('B-D930103CSZ') && items.includes('BX/40') && items.includes('B-D930103CS ') && items.includes('CA/400'),
       `the vendor items: ${items}`);
-    // A Materials Manager prefers and unprefers too (2026-10-21); the status stays the Sub Approver's.
+    // The status stays the Sub Approver's, and there's no picking (2026-10-28).
     expect(await evaluate(`${card}.querySelector('select[data-act="status"]') === null`), 'a Materials Manager can set the status');
-    await evaluate(`${card}.querySelector('[data-act="unpick"]').click()`);
-    await panelSays('No longer preferred.');
-    await waitFor(`${card} && ${card}.querySelector('[data-act="pick"]')`, 'Prefer on the 930103 sub');
-    await evaluate(`${card}.querySelector('[data-act="pick"]').click()`);
-    await panelSays('Preferred.');
-    // Main: the preferred sub is 930103, with a tile for each.
+    expect(await count('#fk-panel-content [data-act="pick"], #fk-panel-content [data-act="unpick"]') === 0, 'a pick button');
+    // Main: the approved sub is 930103, with a tile for each.
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('930103')
       && b.querySelectorAll('[data-order-vi]').length === 2)`, 'two tiles for 930103');
   }],
@@ -630,10 +634,10 @@ const steps = [
     await go('/dev-login?as=lead', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     expect(await count('#fk-main button[data-order-vi]') === 0 && await count('#fk-main div.fk-vi-tile') >= 1,
       'MM/SCM can click a tile to record an order');
-    // Between the recommendation and its vendor items (the user, 2026-10-27).
+    // Between the approved subs and their vendor items (the user, 2026-10-27).
     const heads = await evaluate(`[...document.querySelectorAll('#fk-main thead th')].map((th) => th.innerText.trim())`);
     const at = heads.indexOf("Will's Comments");
-    expect(at > 0 && heads[at - 1] === "Nursing's Recommendation" && heads[at + 1] === 'Vendor Item Detail', `the columns: ${heads.join(', ')}`);
+    expect(at > 0 && heads[at - 1] === 'Approved by Nursing' && heads[at + 1] === 'Vendor Item Detail', `the columns: ${heads.join(', ')}`);
     // A double-click on its cell opens the form.
     await dblclick(`document.querySelector('#fk-main td[data-instruct="DYND70294BH"]')`, "the item's cell");
     await modalOpen();
@@ -653,13 +657,13 @@ const steps = [
     await panelSays('Site B: 1 BX of 88885 today.');
     await click('#fk-panel-body [data-act="instruct"]');
     await modalOpen();
-    await setValue('#fk-m-instruction', 'All sites: order the pick as usual.');
+    await setValue('#fk-m-instruction', 'All sites: order 930103 as usual.');
     await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
     await modalClosed();
     await panelSays('Comment saved for Infor item 100339.');
     await click('#fk-panel-body [data-act="instructions"]');
     await waitFor(`document.getElementById('fk-panel-instructions').innerText.includes('Site B: 1 BX of 88885 today.')`, 'both comments in the panel');
-    await waitFor(`${cell}.innerText.includes('All sites: order the pick as usual.')`, 'the latest on Main');
+    await waitFor(`${cell}.innerText.includes('All sites: order 930103 as usual.')`, 'the latest on Main');
     // A Materials Manager reads them, all of them in the popover, and can't write one.
     await go('/dev-login?as=mm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     await waitFor(cell, 'the comment');
@@ -670,7 +674,7 @@ const steps = [
     await evaluate('document.body.click()');
     await waitFor(`!document.querySelector('.fk-comments-popover')`, 'the popover to close');
     await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
-    await panelSays('All sites: order the pick as usual.');
+    await panelSays('All sites: order 930103 as usual.');
     expect(await count('#fk-panel-body [data-act="instruct"]') === 0, 'a Materials Manager has Add comment');
   }],
   ['A viewer: nothing to change', async () => {
@@ -681,7 +685,7 @@ const steps = [
       'a viewer can change subs');
     expect(await count('#fk-main [data-order-vi], #fk-main [data-add-vi]') === 0, 'a viewer can record orders or add vendor items');
     expect(await count('#fk-main td[data-dblclick]') === 0, 'a viewer has cells to double-click');
-    expect(await count('#fk-main .bi-pencil-square') === 0, 'a viewer sees the pencil of a pick without vendor items (GLV-3)');
+    expect(await count('#fk-main .bi-pencil-square') === 0, 'a viewer sees the pencil of a sub without vendor items (GLV-3)');
     expect(await count('#fk-main div.fk-vi-tile') >= 3, 'a viewer sees no vendor item tiles');
   }],
 ];

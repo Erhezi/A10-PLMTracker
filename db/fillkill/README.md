@@ -186,7 +186,7 @@ Then `09_verify.sql` once more.
 ## The coordination release (branch `fillkill-deploy2`, 2026-10-27)
 
 The business model of 10/27 (design section 1b): an **MM Lead** role writes each item's instruction to
-the sites' Materials Managers, Main shows each pick's latest comment under it, and **orders record
+the sites' Materials Managers, Main shows each approved sub's latest comment under it, and **orders record
 their site** (and Infor's PO number, optional). It needs `02` and `12` again, then the app deploy.
 
 **Before the deploy**
@@ -211,9 +211,10 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
 6. Tell the sites' Materials Managers: every order now needs its **site** (the form starts on it
    when Main is filtered to just their site), the PO number is optional, and MM/SCM's
    comment is in the **Will's Comments** column (no email: open or refresh Main). Tell MM/SCM to
-   double-click that column's cell to write one, and nursing that a double-click on **Nursing's
-   Recommendation** ("Picked for Ordering" until 10/28) adds a sub. Tell everyone that a pick is now
-   **preferred**: *Prefer* and *Unprefer* in the item panel, *Needs preference* in the Needs filter.
+   double-click that column's cell to write one, and nursing that a double-click on **Approved
+   by Nursing** ("Picked for Ordering" until 10/28) adds a sub. Tell everyone that picking is gone:
+   every sub nursing approved can be ordered, and nursing stops one by putting it on Hold or
+   rejecting it (with a reason if they like).
 
 **O2 on 10/27** (read before and after the reset): `02` and `12` already run, `09` all `PASS`,
 wmcelwaine holds MM/SCM, `mm_lead` (with Materials Manager and Sub Finder). `90` ran at the user's request

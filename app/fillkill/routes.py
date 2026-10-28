@@ -17,7 +17,7 @@ from flask_login import current_user, login_required
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
-from ..models.fillkill import INSTRUCTION_MAX, SUB_SOURCES, SUB_STATUSES
+from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_SOURCES, SUB_STATUSES
 from .rules import INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
@@ -139,6 +139,7 @@ def index():
         # A UOM typed another way, and Infor's for it (CS is CA): the forms change it as it's typed.
         "uomAliases": services.uom_aliases(),
         "instructionMax": INSTRUCTION_MAX,  # an MM Lead's instruction (2026-10-27)
+        "reasonMax": REASON_MAX,  # why a sub was put on hold or rejected (2026-10-28)
         "instructionLabel": INSTRUCTION_LABEL,
         "api": {
             "main": url_for("fillkill.api_main"),
@@ -278,7 +279,7 @@ EXPORT_COLUMNS = (
     ("Sub Vendor Part", "vendor_part"), ("Sub Manufacturer Part", "manufacturer_part"), ("Sub Infor Item", "infor_item"),
     ("Sub Vendor ID", "vendor_id"), ("Sub Vendor Name", "vendor"), ("Sub Description", "description"),
     ("Sub UOM", "uom"), ("Sub QOE", "qoe"), ("Status", "status"),
-    ("Preferred", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
+    ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
     ("Approved By", "approved_by"), ("Approved", "approved_at"),
     ("Vendor Item By", "vendor_item_by"), ("Vendor Item Added", "vendor_item_added"), ("Orders", "orders"),
     ("Last Ordered", "last_ordered"), ("Updated", "update_dt"), ("Latest Comment", "latest_comment"),
@@ -301,8 +302,6 @@ def _csv_cell(key: str, value):
         return STATUS_LABELS.get(value, value)
     if key == "source":
         return SOURCE_LABELS.get(value, value)
-    if key == "is_picked":
-        return "Yes" if value else "No"
     if key == "latest_comment":
         value = value["comment"] if value else None
     if isinstance(value, datetime):
@@ -403,8 +402,7 @@ def api_vendors():
 # --- actions --------------------------------------------------------------------------------
 
 def _sub_payload(sub):
-    # picked_instead: the sub that became the pick when this one stopped being approved.
-    return {"sub": queries.sub_dict(sub), "picked_instead": getattr(sub, "picked_instead", None)}
+    return {"sub": queries.sub_dict(sub)}
 
 
 @bp.post("/api/subs")
@@ -423,9 +421,7 @@ def api_add_sub():
 # Sub actions: which capability each needs, and the service that does it.
 SUB_ACTIONS = {
     "edit": "add_sub",
-    "status": "review",
-    "pick": "pick",  # Sub Approvers and Materials Managers (2026-10-21)
-    "unpick": "pick",
+    "status": "review",  # with an optional reason, kept as a comment (2026-10-28)
     "comments": "review",
     "delete": "add_sub",
 }
@@ -446,11 +442,7 @@ def api_sub_action(sub_id, action):
     if action == "edit":
         sub = services.edit_sub(sub_id, data, me)
     elif action == "status":
-        sub = services.set_status(sub_id, data.get("status"), me, expected_status=expected)
-    elif action == "pick":
-        sub = services.pick(sub_id, me, expected_status=expected)
-    elif action == "unpick":
-        sub = services.unpick(sub_id, me, expected_status=expected)
+        sub = services.set_status(sub_id, data.get("status"), me, expected_status=expected, reason=data.get("comment"))
     elif action == "delete":
         sub = services.delete_sub(sub_id, data.get("reason"), me, expected_status=expected)
     else:

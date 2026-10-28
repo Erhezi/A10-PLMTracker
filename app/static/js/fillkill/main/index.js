@@ -36,5 +36,5 @@ loadMain();
 loadOrders();
 
 // A link can open an item's panel: ?item=<Medline item>, with &scope=infor for all its UOMs and
-// &tab=subs|lines|picks|orders (the Subs page and the Dashboard link to it).
+// &tab=subs|lines|history|orders (the Subs page and the Dashboard link to it).
 if (linked.get('item')) openPanel(linked.get('item'), linked.get('tab'), linked.get('scope'));

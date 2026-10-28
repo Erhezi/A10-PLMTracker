@@ -1291,7 +1291,7 @@ tbody td.col-repl { background: #f5fbff; }
 .fk-contract-list { max-height: 15rem; }
 .fk-vendor-list { max-height: 11rem; }
 .fk-main .fk-desc { max-width: 22rem; }
-/* Vendor items (2026-10-20): a tile each, what can be ordered for a pick. The vendor's line inherits
+/* Vendor items (2026-10-20): a tile each, what can be ordered for an approved sub. The vendor's line inherits
    the tile's color, so it stays readable on a hovered button. */
 .fk-vi-tile { display: block; width: 100%; max-width: 17rem; text-align: start; padding: 0.125rem 0.5rem;
               margin-bottom: 0.25rem; line-height: 1.3; font-size: inherit; }
@@ -1301,7 +1301,7 @@ div.fk-vi-tile { border: 1px solid var(--bs-border-color); border-radius: var(--
 /* One <tbody> per Infor item: its UOMs highlight together, with lighter lines between them. */
 .fk-main > tbody.fk-item:hover > tr > * { --bs-table-bg-state: var(--bs-table-hover-bg); }
 .fk-main > tbody.fk-item > tr:not(:last-child) > td:not([data-to-end]) { border-bottom-style: dashed; }
-.fk-main > tbody.fk-item > tr:not(:last-child) > td.fk-pick-split { border-bottom-style: dotted; }  /* between picks of a UOM */
+.fk-main > tbody.fk-item > tr:not(:last-child) > td.fk-sub-split { border-bottom-style: dotted; }  /* between approved subs of a UOM */
 .fk-main > tbody.fk-item > tr.fk-total > td { font-size: 0.875rem; }
 .fk-flag { margin-left: 0.125rem; }
 .fk-panel.offcanvas-end { width: min(44rem, 100vw); }
@@ -1319,18 +1319,18 @@ div.fk-vi-tile { border: 1px solid var(--bs-border-color); border-radius: var(--
 /* The item panel's kill lines and orders (2026-10-21): smaller than .small, to fit the panel. */
 .fk-panel-table { font-size: 0.75rem; }
 .fk-panel-table > :not(caption) > * > * { padding: 0.2rem 0.3rem; }
-/* A pick's comments on Main (2026-10-21): a popover whose list scrolls past a few comments. */
+/* An approved sub's comments on Main (2026-10-21): a popover whose list scrolls past a few comments. */
 .fk-comments-popover { --bs-popover-max-width: 22rem; --bs-popover-font-size: 0.8rem; }
 .fk-comments-popover .popover-body { max-height: 18rem; overflow-y: auto; }
-/* The coordination hub on Main (2026-10-27): a pick's latest comment under it, and the MM Lead's
+/* The coordination hub on Main (2026-10-27): an approved sub's latest comment under it, and the MM Lead's
    instruction, a few lines each (the whole on hover); each order's site, cut short when long. */
 .fk-clamp-2, .fk-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .fk-clamp-2 { -webkit-line-clamp: 2; line-clamp: 2; }
 .fk-clamp-3 { -webkit-line-clamp: 3; line-clamp: 3; }
-.fk-pick-comment { max-width: 15rem; font-size: 0.8rem; line-height: 1.3; margin-top: 0.125rem; }
+.fk-sub-comment { max-width: 15rem; font-size: 0.8rem; line-height: 1.3; margin-top: 0.125rem; }
 .fk-instruction { min-width: 12rem; max-width: 18rem; font-size: 0.8rem; line-height: 1.3; }
 .fk-instruction-text { white-space: pre-line; }
-/* A cell to double-click to write in (Will's Comments, Nursing's Recommendation; 2026-10-27): outlined
+/* A cell to double-click to write in (Will's Comments, Approved by Nursing; 2026-10-27): outlined
    under the pointer, so it reads as one (an outline: Bootstrap paints a cell's background with its box-shadow). */
 .fk-main td[data-dblclick]:hover { outline: 1px solid var(--bs-primary-border-subtle); outline-offset: -1px; }
 .fk-site { display: inline-block; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

@@ -19,9 +19,11 @@ SCHEMA = "FillKill"
 SUB_STATUSES = ("pending_review", "approved", "hold", "rejected")
 SUB_SOURCES = ("manual", "medline_pbo", "llm")
 HISTORY_ENTITIES = ("sub", "vendoritem", "order")
+# pick and unpick: none written since 2026-10-28, when picking went; the table still allows them.
 HISTORY_ACTIONS = ("created", "status", "pick", "unpick", "comment", "edit", "void", "delete")
 
 TEXT_MAX = 400  # comments and void reasons
+REASON_MAX = TEXT_MAX - 20  # a Hold or Reject reason, kept as a comment after "Rejected: " (2026-10-28)
 INSTRUCTION_MAX = 1000  # an MM Lead's instruction: it may speak to every site (2026-10-27)
 
 
@@ -31,7 +33,7 @@ def _one_of(column: str, values) -> str:
 
 class Sub(db.Model):
     """A sub of a Medline item: the Reference SKU a Sub Approver (nursing) or a Sub Finder entered,
-    its review status and whether it's the Approver's Pick (2026-10-20). What can be ordered for it,
+    and its review status: every approved sub can be ordered (2026-10-28). What can be ordered for it,
     a vendor's part in a UOM, are its vendor items (VendorItem): the Materials Manager's or the Sub
     Finder's. A Reference SKU is often the manufacturer's part, which several vendors sell.
 
@@ -61,6 +63,8 @@ class Sub(db.Model):
     # As entered: nursing's approved reference, or Medline's PBO number. Often the manufacturer's part.
     reference_sku = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="pending_review")
+    # Picked among the approved subs, 2026-10-20 to 10-28: always 0 since picking went (the table's
+    # CHECKs still name it).
     is_picked = db.Column(db.Boolean, nullable=False, default=False)
     source = db.Column(db.String(20), nullable=False)
     entered_by = db.Column(db.String(255), nullable=False)
@@ -122,7 +126,7 @@ class VendorItem(db.Model):
 
 
 class SubOrder(db.Model):
-    """An order a Materials Manager recorded for a vendor item of a picked sub, for a site. It keeps
+    """An order a Materials Manager recorded for a vendor item of an approved sub, for a site. It keeps
     what it was placed with (vendor part, vendor, vendor ID, UOM, QOE), whatever happens to the
     vendor item."""
 

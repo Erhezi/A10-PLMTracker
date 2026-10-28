@@ -14,7 +14,7 @@ SITE, SITES = "WP", ("WP", "test site")  # Medline Sold-To codes
 
 
 def sub(**kwargs):
-    base = dict(status="pending_review", is_picked=False, reference_sku="930103")
+    base = dict(status="pending_review", reference_sku="930103", label=lambda: "930103")
     return SimpleNamespace(**{**base, **kwargs})
 
 
@@ -120,7 +120,7 @@ def test_the_same_part_from_another_vendor_or_another_medline_part_is_a_sub():
         rules.check_not_the_killed_item("MMO2329H", values)
 
 
-# --- status and picks ----------------------------------------------------------------
+# --- status and reasons ---------------------------------------------------------------
 
 @pytest.mark.parametrize("new", ["approved", "hold", "rejected"])
 def test_an_approver_sets_approved_hold_or_rejected(new):
@@ -132,42 +132,43 @@ def test_pending_review_is_only_where_a_sub_starts():
     refused(lambda: rules.check_status_change(sub(status="hold"), "hold"), says="already Hold")
 
 
-def test_only_an_approved_sub_can_be_picked():
-    refused(lambda: rules.check_pick(sub(status="hold")), says="Only an approved sub")
-    refused(lambda: rules.check_pick(sub(status="approved", is_picked=True)), status=409)
-    rules.check_pick(sub(status="approved"))
-    refused(lambda: rules.check_unpick(sub(status="approved")), status=409)
+def test_a_hold_or_reject_reason_is_optional_and_leaves_room_for_the_status():
+    assert rules.clean_status_reason("  ") is None
+    assert rules.clean_status_reason(" Recalled ") == "Recalled"
+    refused(lambda: rules.clean_status_reason("x" * 381), says="Reason is longer than 380")
 
 
 # --- orders --------------------------------------------------------------------------
 
-def test_an_order_needs_a_picked_sub():
-    refused(lambda: rules.check_new_order(sub(status="approved"), vendor_item(), {"site": SITE, "quantity": 5}, now=NOW, sites=SITES),
-            status=409, says="isn't preferred")
+@pytest.mark.parametrize("status, says", [("pending_review", "pending review"), ("hold", "on hold"), ("rejected", "rejected")])
+def test_an_order_needs_an_approved_sub(status, says):
+    # Every approved sub can be ordered (2026-10-28); nursing stops one by holding or rejecting it.
+    refused(lambda: rules.check_new_order(sub(status=status), vendor_item(), {"site": SITE, "quantity": 5}, now=NOW, sites=SITES),
+            status=409, says=f"Only an approved sub can be ordered, and 930103 is {says}")
 
 
 def test_an_order_takes_what_it_is_placed_with_from_the_vendor_item():
-    picked = sub(status="approved", is_picked=True)
-    clean = rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": "15", "uom": "EA", "vendor": "Owens"}, now=NOW, sites=SITES)
+    approved = sub(status="approved")
+    clean = rules.check_new_order(approved, vendor_item(), {"site": SITE, "quantity": "15", "uom": "EA", "vendor": "Owens"}, now=NOW, sites=SITES)
     assert (clean["quantity"], clean["vendor_part"], clean["uom"], clean["qoe"], clean["vendor"], clean["vendor_id"]) == (
         15, "B-D930103CSZ", "BX", Decimal("40"), "Medline", "1000931")
     assert clean["ordered_dt"] is None  # "now", set when saved
-    assert rules.check_new_order(picked, vendor_item(qoe=None), {"site": SITE, "quantity": 1}, now=NOW, sites=SITES)["qoe"] is None
+    assert rules.check_new_order(approved, vendor_item(qoe=None), {"site": SITE, "quantity": 1}, now=NOW, sites=SITES)["qoe"] is None
 
 
 @pytest.mark.parametrize("quantity", [0, -3, "2.5", "", None])
 def test_quantity_is_a_whole_number_above_zero(quantity):
-    refused(lambda: rules.check_new_order(sub(status="approved", is_picked=True), vendor_item(),
+    refused(lambda: rules.check_new_order(sub(status="approved"), vendor_item(),
                                           {"site": SITE, "quantity": quantity}, now=NOW, sites=SITES))
 
 
 def test_ordered_date_can_be_earlier_but_not_in_the_future():
-    picked = sub(status="approved", is_picked=True)
-    clean = rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "2026-10-12T09:15"}, now=NOW, sites=SITES)
+    approved = sub(status="approved")
+    clean = rules.check_new_order(approved, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "2026-10-12T09:15"}, now=NOW, sites=SITES)
     assert clean["ordered_dt"] == datetime(2026, 10, 12, 9, 15)
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "2026-10-14"}, now=NOW, sites=SITES),
+    refused(lambda: rules.check_new_order(approved, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "2026-10-14"}, now=NOW, sites=SITES),
             says="future")
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "10/12/2026"}, now=NOW, sites=SITES),
+    refused(lambda: rules.check_new_order(approved, vendor_item(), {"site": SITE, "quantity": 1, "ordered_dt": "10/12/2026"}, now=NOW, sites=SITES),
             says="must look like")
 
 
@@ -198,17 +199,17 @@ def test_history_values_are_written_plainly():
 # --- an order's site and PO number, an instruction (2026-10-27) --------------------------------
 
 def test_an_order_is_for_a_known_site_and_may_carry_infors_po_number():
-    picked = sub(status="approved", is_picked=True)
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"quantity": 1}, now=NOW, sites=SITES),
+    approved = sub(status="approved")
+    refused(lambda: rules.check_new_order(approved, vendor_item(), {"quantity": 1}, now=NOW, sites=SITES),
             says="Choose the site")
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": "MOSES", "quantity": 1}, now=NOW, sites=SITES),
+    refused(lambda: rules.check_new_order(approved, vendor_item(), {"site": "MOSES", "quantity": 1}, now=NOW, sites=SITES),
             says="isn't one of the sites")
-    clean = rules.check_new_order(picked, vendor_item(), {"site": " WP ", "quantity": 1, "po_number": " 3000564756 "},
+    clean = rules.check_new_order(approved, vendor_item(), {"site": " WP ", "quantity": 1, "po_number": " 3000564756 "},
                                   now=NOW, sites=SITES)
     assert (clean["site"], clean["po_number"]) == ("WP", "3000564756")
-    assert rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "po_number": ""},
+    assert rules.check_new_order(approved, vendor_item(), {"site": SITE, "quantity": 1, "po_number": ""},
                                  now=NOW, sites=SITES)["po_number"] is None
-    refused(lambda: rules.check_new_order(picked, vendor_item(), {"site": SITE, "quantity": 1, "po_number": "PO-3000564756"},
+    refused(lambda: rules.check_new_order(approved, vendor_item(), {"site": SITE, "quantity": 1, "po_number": "PO-3000564756"},
                                           now=NOW, sites=SITES), says="digits only")
 
 

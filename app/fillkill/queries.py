@@ -195,7 +195,7 @@ def sub_dict(sub: Sub, vendor_items=()) -> dict:
     """A sub, with its live vendor items (what can be ordered for it, 2026-10-20)."""
     return {
         "sub_id": sub.sub_id, "medline_item": sub.medline_item, "reference_sku": sub.reference_sku,
-        "status": sub.status, "is_picked": bool(sub.is_picked), "source": sub.source,
+        "status": sub.status, "source": sub.source,
         "entered_by": sub.entered_by, "create_dt": sub.create_dt, "update_dt": sub.update_dt,
         "vendor_items": list(vendor_items),
     }
@@ -283,11 +283,11 @@ def main_table_inputs(scope: Scope) -> dict:
     details = [row for row in every if row["Medline Item"] in items]
     family = family_rows((row.get("Infor Item") for row in details), every)
     subs = subs_for_items(items | {row["Medline Item"] for row in family})
-    # A pick's comments: how many and the latest, for its comments icon on Main (2026-10-21), the
-    # latest shown under it (2026-10-27).
-    latest = _latest_comments("sub", [s["sub_id"] for s in subs if s["is_picked"]])
+    # An approved sub's comments (a pick's until 2026-10-28): how many and the latest, for its
+    # comments icon on Main (2026-10-21), the latest shown under it (2026-10-27).
+    latest = _latest_comments("sub", [s["sub_id"] for s in subs if s["status"] == "approved"])
     for sub in subs:
-        if sub["is_picked"]:
+        if sub["status"] == "approved":
             found = latest.get(sub["sub_id"])
             sub["comments"] = found["count"] if found else 0
             sub["latest_comment"] = found
@@ -400,7 +400,7 @@ def _vendor_item_labels(items, *, with_sub: bool = True) -> dict[tuple, str]:
 
 def item_panel(medline_item: str, scope: Scope) -> dict:
     """The Infor item ``medline_item`` belongs to: every packaging (Medline item) Medline has killed
-    under it, with their subs, kill lines in the scope, pick history and orders. A Medline item
+    under it, with their subs, kill lines in the scope, sub history and orders. A Medline item
     Infor can't place is shown on its own."""
     every = item_view_rows(must_have={medline_item})
     own = [row for row in every if row["Medline Item"] == medline_item]
@@ -477,10 +477,10 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     # Killed in the range first, then the Infor item's other packagings.
     packagings.sort(key=lambda p: (not p["killed_in_range"], p["medline_item"]))
 
-    # Subs added, reviewed, picked, unpicked and deleted, and vendor items added and deleted.
-    picks = db.session.execute(
+    # Subs added, reviewed and deleted, and vendor items added and deleted.
+    sub_history = db.session.execute(
         select(History).where(
-            History.medline_item.in_(members), History.action.in_(("created", "status", "pick", "unpick", "delete")),
+            History.medline_item.in_(members), History.action.in_(("created", "status", "delete")),
             History.entity.in_(("sub", "vendoritem")),
             or_(History.entity == "sub", History.action.in_(("created", "delete"))),
         ).order_by(History.acted_at.desc(), History.history_id.desc())
@@ -504,7 +504,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
         },
         "packagings": packagings,
         "lines": lines,
-        "pick_history": [_history_dict(row, labels) for row in picks],
+        "sub_history": [_history_dict(row, labels) for row in sub_history],
         "orders": [{**order_dict(o), "latest_comment": order_comments.get(o.order_id)} for o in orders],
         "latest_reason": rollup.latest_of(latest_reasons(scope, members).values()),
     }

@@ -2,7 +2,7 @@
 
 The main table has one row per **Infor item** (Materials Managers' choice, 2026-10-14). Its Medline
 items are its **packagings**, listed inside the row; a Medline item Infor can't place stands alone.
-Subs, picks and orders still belong to a Medline item.
+Subs and orders still belong to a Medline item.
 
 Inputs, all plain dicts:
   qty_rows     vw_MedlineFillKillQtyAgg rows already filtered to the dates and sites:
@@ -10,7 +10,7 @@ Inputs, all plain dicts:
                Sold-To, for the per-site figures (2026-10-27)
   item_rows    vw_MedlineFillKillItemCollection rows of the Medline items in the range
   subs         subs of those Medline items and of their Infor items' other Medline items:
-               sub_id, medline_item, reference_sku, status, is_picked, vendor_items
+               sub_id, medline_item, reference_sku, status, vendor_items
   orders       non-voided orders dated inside the range (2026-10-20) for its sites (2026-10-27), for
                the same Medline items: medline_item, order_id, site, quantity, uom, qoe, ordered_dt
   reasons      {medline_item: {comment, reason, reason_date, order_date, order_time}}: the latest
@@ -26,12 +26,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-NEEDS = ("needs_subs", "needs_review", "needs_pick", "needs_details", "needs_order", "ordered")
+# "needs_pick" until 2026-10-28, when picking went: every approved sub can be ordered.
+NEEDS = ("needs_subs", "needs_review", "needs_details", "needs_order", "ordered")
 NEEDS_LABELS = {
     "needs_subs": "Needs subs",
     "needs_review": "Needs review",
-    "needs_pick": "Needs preference",  # "Needs pick" until 2026-10-28
-    "needs_details": "Needs details",  # a pick without a vendor item yet: the Materials Manager's
+    "needs_details": "Needs details",  # nothing to order yet: the Materials Manager's
     "needs_order": "Needs order",
     "ordered": "Ordered",
 }
@@ -121,20 +121,19 @@ def subs_status(subs) -> dict[str, int]:
     return counts
 
 
-def needs_flags(counts: dict[str, int], *, has_pick: bool, ordered: bool, details_missing: bool = False) -> list[str]:
-    """Design §5 Needs filter. An item can need more than one thing (e.g. review and order).
-    ``details_missing``: a pick has no vendor item yet, nothing to order (2026-10-20); once
-    ordered, it's done."""
+def needs_flags(counts: dict[str, int], *, ordered: bool, details_missing: bool = False) -> list[str]:
+    """Design §5 Needs filter. An item can need more than one thing (e.g. review and order). Every
+    approved sub can be ordered (2026-10-28). ``details_missing``: no approved sub has a vendor item
+    yet, so there's nothing to order (2026-10-20); once ordered, it's done."""
     flags = []
+    approved = counts.get("approved", 0) > 0
     if counts.get("pending_review", 0) + counts.get("approved", 0) + counts.get("hold", 0) == 0:
         flags.append("needs_subs")
     if counts.get("pending_review", 0) > 0:
         flags.append("needs_review")
-    if counts.get("approved", 0) > 0 and not has_pick:
-        flags.append("needs_pick")
-    if has_pick and details_missing and not ordered:  # an order took the details
+    if approved and details_missing and not ordered:  # an order took the details
         flags.append("needs_details")
-    if has_pick and not ordered:
+    if approved and not ordered:
         flags.append("needs_order")
     if ordered:
         flags.append("ordered")
@@ -296,7 +295,8 @@ def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> di
         "lines": qty["lines"],
         "latest_reason": reason,
         "subs_status": subs_status(item_subs),
-        "picks": sorted((s for s in item_subs if s.get("is_picked")), key=lambda s: s["sub_id"]),  # oldest first
+        # Approved by Nursing on Main (2026-10-28; the picks before), oldest first.
+        "approved_subs": sorted((s for s in item_subs if s["status"] == "approved"), key=lambda s: s["sub_id"]),
         "orders": orders,
     }
 
@@ -336,7 +336,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), 
         here = {p["medline_item"] for p in packagings}
         row_subs = [s for p in packagings for s in subs_by_item.get(p["medline_item"], [])]
         counts = subs_status(row_subs)
-        picks = [s for p in packagings for s in p["picks"]]
+        approved_subs = [s for p in packagings for s in p["approved_subs"]]
         row_orders = sorted((o for p in packagings for o in p["orders"]), key=_order_key, reverse=True)
         ordered = bool(row_orders)
         quantities_ = [q for p in packagings for q in p["quantities"]]
@@ -364,7 +364,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), 
             } if all(q["each"] is not None for q in quantities_) else None,
             "latest_reason": latest_of(p["latest_reason"] for p in packagings),
             "subs_status": counts,
-            "picks": picks,
+            "approved_subs": approved_subs,
             "approved_other_packagings": list(elsewhere.values()),
             "orders": row_orders,  # dated inside the range, newest first
             # Killed and ordered in these dates, in eaches (2026-10-21): kill lines keep coming in
@@ -377,8 +377,8 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), 
             # The MM Lead's instruction in force, and how many there have been (2026-10-27).
             "instruction": instruction_summary(row_instructions(infor, here, instructions)),
             "ordering_status": "ordered" if ordered else "no order",
-            "needs": needs_flags(counts, has_pick=bool(picks), ordered=ordered,
-                                 details_missing=any(not p.get("vendor_items") for p in picks)),
+            "needs": needs_flags(counts, ordered=ordered,
+                                 details_missing=not any(s.get("vendor_items") for s in approved_subs)),
         })
     rows.sort(key=sort_key)
     return rows

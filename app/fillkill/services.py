@@ -221,44 +221,12 @@ def _open_orders(sub: Sub) -> int:
     ).scalar()
 
 
-def _auto_pick(sub: Sub, actor: str, now: datetime) -> None:
-    """A sub that has just been approved is picked when it's its Medline item's only approved one
-    (2026-10-15). With others approved, the Sub Approver picks."""
-    others = db.session.execute(
-        select(func.count()).select_from(Sub).where(
-            Sub.medline_item == sub.medline_item, Sub.sub_id != sub.sub_id,
-            Sub.status == "approved", Sub.deleted_at.is_(None),
-        )
-    ).scalar()
-    if sub.status == "approved" and not sub.is_picked and not others:
-        sub.is_picked = True
-        _history("sub", sub.sub_id, sub.medline_item, "pick", actor, now,
-                 comment="Preferred automatically: the only approved sub.")
-
-
-def _pick_the_one_left(sub: Sub, actor: str, now: datetime) -> Sub | None:
-    """The pick was held or rejected: when one approved sub is left on the Medline item, it becomes
-    the pick (2026-10-19). With several left, the Sub Approver picks. Returns the one picked."""
-    left = db.session.execute(
-        select(Sub).where(Sub.medline_item == sub.medline_item, Sub.sub_id != sub.sub_id,
-                          Sub.status == "approved", Sub.deleted_at.is_(None))
-    ).scalars().all()
-    if len(left) != 1 or left[0].is_picked:
-        return None
-    other = left[0]
-    other.is_picked = True
-    other.update_dt = now
-    _history("sub", other.sub_id, other.medline_item, "pick", actor, now,
-             comment=f"Preferred automatically: the only approved sub left after {sub.label()} was put on {rules.STATUS_LABELS[sub.status]}.")
-    return other
-
-
 # --- subs: entering, correcting, deleting ------------------------------------------------------
 
 def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = False) -> Sub:
     """A new sub: its Reference SKU. With ``approve`` (a Sub Approver entering it) it's approved on
-    entry, and picked when it's the item's only approved sub; otherwise it waits for review (a Sub
-    Finder, Medline's PBO subs, a future AI finder)."""
+    entry, so it can be ordered; otherwise it waits for review (a Sub Finder, Medline's PBO subs, a
+    future AI finder)."""
     clean = rules.check_new_sub(data)
 
     def action():
@@ -266,7 +234,7 @@ def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = F
         now = now_ny_naive()
         sub = Sub(
             medline_item=clean["medline_item"], reference_sku=clean["reference_sku"],
-            status="pending_review", is_picked=False, source=source, entered_by=actor,
+            status="pending_review", source=source, entered_by=actor,
             create_dt=now, update_dt=now,
         )
         db.session.add(sub)
@@ -278,7 +246,6 @@ def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = F
             sub.status = "approved"
             _history("sub", sub.sub_id, sub.medline_item, "status", actor, now,
                      field="status", from_value="pending_review", to_value="approved")
-            _auto_pick(sub, actor, now)
         return sub
 
     return _run(action)
@@ -306,8 +273,8 @@ def edit_sub(sub_id: int, data: dict, actor: str) -> Sub:
 
 
 def delete_sub(sub_id: int, reason, actor: str, *, expected_status: str | None = None) -> Sub:
-    """Hide a sub everywhere, keeping its row and history (who, when, why). Refused for the
-    sub picked for ordering and for a sub with orders that aren't voided."""
+    """Hide a sub everywhere, keeping its row and history (who, when, why). Refused for a sub
+    with orders that aren't voided."""
     def action():
         sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
@@ -327,57 +294,24 @@ def delete_sub(sub_id: int, reason, actor: str, *, expected_status: str | None =
 
 # --- subs (Sub Approver) -------------------------------------------------------------
 
-def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str | None = None) -> Sub:
-    """S1, S2: leaving 'approved' unpicks the sub, recorded as its own History row; the one
-    approved sub left, if there's just one, becomes the pick. ``sub.picked_instead`` names it."""
+def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str | None = None,
+               reason=None) -> Sub:
+    """S1, S2: approve, hold or reject. Every approved sub can be ordered; on hold or rejected it
+    can't, and its orders so far stay (2026-10-28, the user: picking among approved subs is gone).
+    ``reason``, if nursing gives one, is kept as the sub's comment, after its new status."""
     def action():
         sub = _live_sub(sub_id)
         _ensure_current(sub, expected_status)
         status = rules.check_status_change(sub, new_status)
+        why = rules.clean_status_reason(reason)
         now = now_ny_naive()
         _history("sub", sub.sub_id, sub.medline_item, "status", actor, now,
                  field="status", from_value=sub.status, to_value=status)
-        was_picked = bool(sub.is_picked)
-        if was_picked and status != "approved":
-            sub.is_picked = False
-            _history("sub", sub.sub_id, sub.medline_item, "unpick", actor, now,
-                     comment="No longer preferred: it isn't approved any more.")
+        if why:
+            _history("sub", sub.sub_id, sub.medline_item, "comment", actor, now,
+                     comment=f"{rules.STATUS_LABELS[status]}: {why}")
         sub.status = status
         sub.update_dt = now
-        sub.picked_instead = None
-        if status == "approved":
-            _auto_pick(sub, actor, now)
-        elif was_picked:
-            other = _pick_the_one_left(sub, actor, now)
-            sub.picked_instead = other.label() if other else None
-        return sub
-
-    return _run(action)
-
-
-def pick(sub_id: int, actor: str, *, expected_status: str | None = None) -> Sub:
-    def action():
-        sub = _live_sub(sub_id)
-        _ensure_current(sub, expected_status)
-        rules.check_pick(sub)
-        now = now_ny_naive()
-        sub.is_picked = True
-        sub.update_dt = now
-        _history("sub", sub.sub_id, sub.medline_item, "pick", actor, now)
-        return sub
-
-    return _run(action)
-
-
-def unpick(sub_id: int, actor: str, *, expected_status: str | None = None) -> Sub:
-    def action():
-        sub = _live_sub(sub_id)
-        _ensure_current(sub, expected_status)
-        rules.check_unpick(sub)
-        now = now_ny_naive()
-        sub.is_picked = False
-        sub.update_dt = now
-        _history("sub", sub.sub_id, sub.medline_item, "unpick", actor, now)
         return sub
 
     return _run(action)
@@ -477,7 +411,7 @@ def delete_vendor_item(vendor_item_id: int, reason, actor: str) -> VendorItem:
 # --- orders (Materials Manager) -------------------------------------------------------
 
 def record_order(vendor_item_id: int, data: dict, actor: str, *, expected_status: str | None = None) -> SubOrder:
-    """An order for a vendor item of a pick (2026-10-20), for the site the Materials Manager chose,
+    """An order for a vendor item of an approved sub (2026-10-20), for the site the Materials Manager chose,
     with Infor's PO number if they gave it (2026-10-27). It keeps the vendor item's vendor part,
     vendor, vendor ID, UOM and QOE."""
     sites = site_codes()

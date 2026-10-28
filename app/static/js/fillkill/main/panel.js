@@ -7,8 +7,8 @@ import {
   $, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, postJSON, trimOnChange,
 } from '../common.js';
 import {
-  addedMessage, openInstructionForm, openOrderEditForm, openOrderForm, openSubDeleteForm, openSubEditForm,
-  openVendorItemDeleteForm, openVendorItemForm, openVoidForm,
+  addedMessage, openInstructionForm, openOrderEditForm, openOrderForm, openStatusForm, openSubDeleteForm,
+  openSubEditForm, openVendorItemDeleteForm, openVendorItemForm, openVoidForm,
 } from './forms.js';
 import { afterChange } from './refresh.js';
 import { api, can, historyUrl, orderUrl, scopeParams, state, subUrl, syncLink } from './state.js';
@@ -61,7 +61,7 @@ function panelView() {
     packs,
     lines,
     orders: data.orders.filter(mine),
-    history: data.pick_history.filter(mine),
+    history: data.sub_history.filter(mine),
     many: packs.length > 1,
     reason: whole ? data.latest_reason : lines[0],  // lines are newest first
   };
@@ -83,7 +83,7 @@ function renderPanel(message) {
   const tabs = [
     ['subs', `Subs <span class="badge text-bg-light">${subs}</span>`],
     ['lines', `Kill lines <span class="badge text-bg-light">${view.lines.length}</span>`],
-    ['picks', 'Sub History'],
+    ['history', 'Sub History'],
     ['orders', `Orders <span class="badge text-bg-light">${view.orders.length}</span>`],
   ];
   $('fk-panel-body').innerHTML = `
@@ -220,10 +220,6 @@ async function onClick(event) {
   }
   if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-sku').focus(); return; }
   if (what === 'hide-add') { $('fk-add-sub').classList.add('d-none'); return; }
-  if (what === 'pick' || what === 'unpick') {
-    await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Preferred.' : 'No longer preferred.');
-    return;
-  }
   if (what === 'order') { openOrderForm(Number(button.dataset.vi)); return; }
   if (what === 'copy-sub') {
     const target = button.dataset.item;
@@ -275,13 +271,19 @@ function showOrderMore(inside) {
   more.classList.toggle('d-none', !open);
 }
 
+// Approving takes effect at once. Hold and Reject stop the sub being ordered (2026-10-28): a form
+// asks why, optionally, and the select shows the status it has until that's saved.
 async function onStatusChange(event) {
   const select = event.target.closest('select[data-act="status"]');
   if (!select || !select.value) return;
-  await act(subUrl(select.dataset.sub, 'status'), { status: select.value, expected_status: select.dataset.expected },
-    (data) => `Status set to ${config.statusLabels[select.value]}.${data.sub.is_picked && select.value === 'approved'
-      ? ' Preferred too: it is the only approved sub.' : ''}${data.picked_instead
-      ? ` ${data.picked_instead} is preferred now: the only approved sub left.` : ''}`);
+  const status = select.value;
+  if (status === 'hold' || status === 'rejected') {
+    select.value = select.dataset.expected === 'pending_review' ? '' : select.dataset.expected;
+    openStatusForm(panelSubs().find((s) => s.sub_id === Number(select.dataset.sub)), status);
+    return;
+  }
+  await act(subUrl(select.dataset.sub, 'status'), { status, expected_status: select.dataset.expected },
+    `Status set to ${config.statusLabels[status]}.`);
 }
 
 async function onSubmit(event) {

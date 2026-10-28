@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
-from ..models.fillkill import INSTRUCTION_MAX, SUB_STATUSES, TEXT_MAX
+from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_STATUSES, TEXT_MAX
 
 # What a Sub Approver can set; pending_review is only where a sub starts (S1).
 REVIEW_STATUSES = ("approved", "hold", "rejected")
@@ -217,22 +217,14 @@ def check_status_change(sub, new_status) -> str:
     return new_status
 
 
-def check_pick(sub) -> None:
-    if sub.status != "approved":
-        raise RuleError("Only an approved sub can be preferred.")
-    if sub.is_picked:
-        raise RuleError("The sub is already preferred.", 409)
-
-
-def check_unpick(sub) -> None:
-    if not sub.is_picked:
-        raise RuleError("The sub isn't preferred.", 409)
+def clean_status_reason(value) -> str | None:
+    """Why a sub was put on hold or rejected (2026-10-28), if nursing says: optional. It's kept as
+    the sub's comment after its new status ("Hold: ..."), so it leaves room for that."""
+    return clean_text(value, label="Reason", max_len=REASON_MAX)
 
 
 def check_delete(sub, reason) -> str:
-    """A sub is deleted with a reason. The preferred one (picked) stays until it's unpreferred."""
-    if sub.is_picked:
-        raise RuleError(f"{sub.label()} is preferred; it has to be unpreferred before it's deleted.", 409)
+    """A sub is deleted with a reason (orders voided first: the service checks)."""
     return clean_comment(reason, label="Reason")
 
 
@@ -282,12 +274,16 @@ def check_vendor_item_changes(item, data: dict, *, uoms: dict | None = None) -> 
 # --- orders --------------------------------------------------------------------
 
 def check_orderable(sub) -> None:
-    if not sub.is_picked:
-        raise RuleError("Orders are recorded against a preferred sub, and this one isn't preferred.", 409)
+    """Every sub nursing approved can be ordered (the user, 2026-10-28: picking among them is gone);
+    one on hold or rejected can't."""
+    if sub.status != "approved":
+        state = {"hold": "on hold", "rejected": "rejected"}.get(sub.status, "pending review")
+        raise RuleError(f"Only an approved sub can be ordered, and {sub.label()} is {state}.", 409)
 
 
 def check_new_order(sub, item, data: dict, *, now: datetime | None = None, sites=()) -> dict:
-    """An order for a vendor item of a picked sub (S3; 2026-10-20), for one of ``sites`` (2026-10-27),
+    """An order for a vendor item of an approved sub (S3; 2026-10-20, a picked one until 2026-10-28),
+    for one of ``sites`` (2026-10-27),
     with Infor's PO number if given. It keeps the vendor item's vendor part, vendor, vendor ID, UOM
     and QOE."""
     check_orderable(sub)

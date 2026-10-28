@@ -10,9 +10,9 @@ def qty(item, um, ordered, filled, lines=1):
             "killed": ordered - filled, "lines": lines}
 
 
-def sub(sub_id, item, status, picked=False, vendor_items=()):
+def sub(sub_id, item, status, vendor_items=()):
     return {"sub_id": sub_id, "medline_item": item, "reference_sku": f"P{sub_id}", "status": status,
-            "is_picked": picked, "vendor_items": list(vendor_items)}
+            "vendor_items": list(vendor_items)}
 
 
 def test_quantities_add_up_across_dates_and_sites_but_never_across_uoms():
@@ -50,28 +50,39 @@ def test_item_details_merge_and_say_when_rows_disagree():
     assert details["B"]["infor_item"] is None
 
 
-@pytest.mark.parametrize("counts, has_pick, ordered, missing, expected", [
-    ({}, False, False, False, ["needs_subs"]),
-    ({"rejected": 2}, False, False, False, ["needs_subs"]),
-    ({"hold": 1}, False, False, False, []),
-    ({"pending_review": 1}, False, False, False, ["needs_review"]),
-    ({"approved": 1}, False, False, False, ["needs_pick"]),
-    ({"approved": 1}, True, False, False, ["needs_order"]),
-    ({"approved": 1}, True, False, True, ["needs_details", "needs_order"]),  # nursing's pick, no vendor item yet
-    ({"approved": 1, "pending_review": 1}, True, False, False, ["needs_review", "needs_order"]),
-    ({"approved": 1}, True, True, False, ["ordered"]),
-    ({"approved": 1}, True, True, True, ["ordered"]),  # ordered, whatever its vendor items
-    ({"rejected": 1}, False, True, False, ["needs_subs", "ordered"]),  # ordered from a pick since rejected
+@pytest.mark.parametrize("counts, ordered, missing, expected", [
+    ({}, False, False, ["needs_subs"]),
+    ({"rejected": 2}, False, False, ["needs_subs"]),
+    ({"hold": 1}, False, False, []),
+    ({"pending_review": 1}, False, False, ["needs_review"]),
+    ({"approved": 1}, False, False, ["needs_order"]),  # every approved sub can be ordered (2026-10-28)
+    ({"approved": 1}, False, True, ["needs_details", "needs_order"]),  # no vendor item yet: nothing to order
+    ({"approved": 1, "pending_review": 1}, False, False, ["needs_review", "needs_order"]),
+    ({"approved": 1}, True, False, ["ordered"]),
+    ({"approved": 1}, True, True, ["ordered"]),  # ordered, whatever its vendor items
+    ({"rejected": 1}, True, False, ["needs_subs", "ordered"]),  # ordered before it was rejected
 ])
-def test_needs_flags(counts, has_pick, ordered, missing, expected):
-    assert rollup.needs_flags(counts, has_pick=has_pick, ordered=ordered, details_missing=missing) == expected
+def test_needs_flags(counts, ordered, missing, expected):
+    assert rollup.needs_flags(counts, ordered=ordered, details_missing=missing) == expected
+
+
+def test_an_item_needs_details_only_when_no_approved_sub_has_a_vendor_item():
+    def needs(*subs):
+        return rollup.build_main_rows(qty_rows=[qty("A", "BX", 10, 0, lines=1)], item_rows=[], subs=list(subs),
+                                      orders=[], reasons={})[0]["needs"]
+    assert needs(sub(1, "A", "approved"), sub(2, "A", "approved")) == ["needs_details", "needs_order"]
+    # One of them can be ordered: the item needs an order, not details.
+    assert needs(sub(1, "A", "approved"), sub(2, "A", "approved", vendor_items=[{"vendor_item_id": 5}])) == ["needs_order"]
+    # A held sub's vendor items don't count: it can't be ordered.
+    assert needs(sub(1, "A", "approved"), sub(2, "A", "hold", vendor_items=[{"vendor_item_id": 5}])) == [
+        "needs_details", "needs_order"]
 
 
 def test_main_rows_without_infor_items_stand_alone():
     rows = rollup.build_main_rows(
         qty_rows=[qty("A", "BX", 10, 0, lines=3), qty("B", "EA", 4, 0, lines=1), qty("C", "EA", 1, 0, lines=3)],
         item_rows=[{"Medline Item": "A", "Item Description": "GLOVE", "Infor Item Consistency": 1}],
-        subs=[sub(1, "A", "approved", picked=True), sub(2, "A", "rejected"), sub(3, "B", "pending_review"),
+        subs=[sub(1, "A", "approved"), sub(2, "A", "rejected"), sub(3, "B", "pending_review"),
               sub(4, "Z", "approved")],  # Z isn't killed in the range: not shown
         orders=[{"medline_item": "A", "order_id": 9}],
         reasons={"A": {"comment": "MBO - ERD is 11/30/2026", "reason": "MBO", "reason_date": "2026-11-30"}},
@@ -84,13 +95,13 @@ def test_main_rows_without_infor_items_stand_alone():
     assert a["description"] == "GLOVE"
     assert a["packagings"][0]["consistent"] is False  # no Infor item: flagged
     assert a["subs_status"] == {"approved": 1, "hold": 0, "pending_review": 0, "rejected": 1}
-    assert [p["sub_id"] for p in a["picks"]] == [1]
+    assert [s["sub_id"] for s in a["approved_subs"]] == [1]  # Approved by Nursing on Main
     assert (a["ordering_status"], [o["order_id"] for o in a["orders"]], a["needs"]) == ("ordered", [9], ["ordered"])
     assert a["latest_reason"]["reason"] == "MBO"
     assert (b["ordering_status"], b["needs"]) == ("no order", ["needs_review"])
     assert (c["description"], c["needs"], c["latest_reason"]) == (None, ["needs_subs"], None)
     assert rollup.needs_counts(rows) == {
-        "all": 3, "needs_subs": 1, "needs_review": 1, "needs_pick": 0, "needs_details": 0, "needs_order": 0, "ordered": 1,
+        "all": 3, "needs_subs": 1, "needs_review": 1, "needs_details": 0, "needs_order": 0, "ordered": 1,
     }
     assert [r["key"] for r in rollup.most_killed(rows, 2)] == ["M:A", "M:C"]  # 3 lines each; A killed more
 

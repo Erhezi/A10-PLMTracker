@@ -1,7 +1,7 @@
 /* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
  * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
- * a sub or a vendor item, the MM Lead's instruction ("Will's Comments", 2026-10-27), and a new sub
- * from Main's Nursing's Recommendation (2026-10-27). Boxes lose their leading and
+ * a sub or a vendor item, put a sub on hold or reject it (2026-10-28), the MM Lead's instruction
+ * ("Will's Comments", 2026-10-27), and a new sub from Main's Approved by Nursing (2026-10-27). Boxes lose their leading and
  * trailing spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
  */
 
@@ -78,8 +78,8 @@ function nowLocal() {
   return d.toISOString().slice(0, 16);
 }
 
-// Subs from the panel (any UOM) and the main table's picks.
-const knownSubs = () => panelSubs().concat(...state.rows.map((row) => row.picks));
+// Subs from the panel (any UOM) and the main table's approved ones.
+const knownSubs = () => panelSubs().concat(...state.rows.map((row) => row.approved_subs));
 
 // A vendor item and its sub, from the panel or the main table.
 function findVendorItem(id) {
@@ -526,7 +526,7 @@ function siteSelect(selected, { required = true, col = 'col-12 col-md-5' } = {})
 const poField = (value, col) => field('po_number', 'PO number', value, `maxlength="20" inputmode="numeric" autocomplete="off"
   placeholder="Optional: Infor's PO, e.g. 3000564756" title="Infor's PO number, digits only. Optional: it links the order back to the killed items later."`, col);
 
-// Recording an order for a vendor item of a pick: it's placed with the vendor item's vendor part,
+// Recording an order for a vendor item of an approved sub: it's placed with the vendor item's vendor part,
 // vendor, vendor ID, UOM and QOE (2026-10-20), for the site the Materials Manager chooses, with
 // Infor's PO number if they have it (2026-10-27). The site starts on the one the filter shows, when
 // it shows just one (a Materials Manager looking at their own site); otherwise they choose it.
@@ -575,6 +575,22 @@ export function openOrderEditForm(order) {
     ${vendorFields(order)}
     ${field('ordered_dt', 'Ordered', String(order.ordered_dt || '').slice(0, 16), 'type="datetime-local"', 'col-12 col-md-6')}`),
   'Save correction', (values) => postJSON(orderUrl(order.order_id, 'edit'), values).then(() => 'Order corrected.'), { wide: true });
+}
+
+// Hold or Reject (2026-10-28): the sub can't be ordered then, and leaves Approved by Nursing on Main.
+// Nursing may say why: the reason is kept as the sub's comment, after its new status.
+export function openStatusForm(sub, status) {
+  if (!sub) return;
+  const label = config.statusLabels[status];
+  const verb = status === 'hold' ? 'Put on Hold' : 'Reject';
+  showModal(`${verb} · ${esc(sub.reference_sku)}`, fields(`
+    <div class="col-12 small text-muted">${esc(sub.reference_sku)} on ${esc(sub.medline_item)}. ${status === 'hold'
+      ? "On hold, it can't be ordered and leaves Approved by Nursing on Main, until you approve it again."
+      : "Rejected, it can't be ordered and leaves Approved by Nursing on Main."} Its orders so far stay.</div>
+    ${field('comment', 'Reason', '', `maxlength="${config.reasonMax}" placeholder="Optional: why, for the Materials Managers"`, 12)}`),
+  verb, (values) => postJSON(subUrl(sub.sub_id, 'status'), { status, comment: values.comment, expected_status: sub.status })
+    .then(() => `Status set to ${label}.`));
+  whenModal('shown', () => { const box = $('fk-m-comment'); if (box) box.focus(); });
 }
 
 // Deleting a sub needs a reason; the sub's row and history stay.
@@ -645,14 +661,13 @@ export function openInstructionForm(row) {
   whenModal('shown', () => { const box = $('fk-m-instruction'); if (box) box.focus(); });
 }
 
-// What happened to a new sub: approved on entry (and maybe preferred), or waiting for review.
+// What happened to a new sub: approved on entry, so it can be ordered, or waiting for review.
 export function addedMessage(added) {
-  if (added.is_picked) return 'Approved and preferred: it is the only approved sub.';
-  return added.status === 'approved' ? 'Approved.' : 'It is pending review.';
+  return added.status === 'approved' ? 'Approved: it can be ordered.' : 'It is pending review.';
 }
 
-// A new sub for a Medline item, from a double-click on its Nursing's Recommendation cell (2026-10-27): the
-// panel's Add sub, in the modal. Its subs so far, and the preferred ones, are above it.
+// A new sub for a Medline item, from a double-click on its Approved by Nursing cell (2026-10-27): the
+// panel's Add sub, in the modal. Its subs so far, and the approved ones, are above it.
 export function openAddSubForm(medline) {
   const row = state.rows.find((r) => r.medline_items.includes(medline));
   const pack = row ? row.packagings.find((p) => p.medline_item === medline) : null;
@@ -660,14 +675,14 @@ export function openAddSubForm(medline) {
   const uoms = killedUoms(medline);
   const counts = STATUS_ORDER.filter((s) => pack.subs_status[s]).map((s) => `${pack.subs_status[s]} ${config.statusLabels[s].toLowerCase()}`);
   const what = can.review
-    ? "It's approved as soon as it's added, and preferred if it's the only approved sub. The Materials Manager adds what can be ordered for it."
+    ? "It's approved as soon as it's added, so it can be ordered: the Materials Manager adds its vendor items."
     : "It waits for a Sub Approver's review.";
   showModal(`Add a sub · ${esc(medline)}`, `
     <div class="fk-form-summary small">
       <div><span class="fw-semibold">${esc(medline)}</span>${uoms ? ` <span class="text-muted">(${esc(uoms)})</span>` : ''}
         <span class="text-muted">${esc(row.infor_item ? `Infor item ${row.infor_item} · ` : '')}${esc(pack.description || row.description || '')}</span></div>
-      <div><span class="text-muted">Subs on file</span> ${counts.length ? esc(counts.join(' · ')) : 'none'}${pack.picks.length
-        ? ` · <span class="text-muted">preferred</span> ${esc(pack.picks.map((s) => s.reference_sku).join(', '))}` : ''}</div>
+      <div><span class="text-muted">Subs on file</span> ${counts.length ? esc(counts.join(' · ')) : 'none'}</div>${pack.approved_subs.length
+        ? `<div><span class="text-muted">Approved by Nursing</span> ${esc(pack.approved_subs.map((s) => s.reference_sku).join(', '))}</div>` : ''}
     </div>${fields(`
     ${field('reference_sku', 'Reference SKU *', '', `maxlength="100" required autocomplete="off"
       placeholder="The part you approved, e.g. the manufacturer's"`, 12)}

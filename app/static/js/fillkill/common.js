@@ -157,5 +157,5 @@ export const formValues = (form) => Object.fromEntries([...new FormData(form).en
   .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
 
 // An item's panel on Main, from the Subs page or the Dashboard: ?item=<Medline item>, with
-// scope 'infor' for all its UOMs and a tab (subs, lines, picks, orders).
+// scope 'infor' for all its UOMs and a tab (subs, lines, history, orders).
 export const itemLink = (item, scope, tab) => url(config.mainPage, { item, scope, tab });

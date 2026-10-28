@@ -20,7 +20,7 @@ def test_fillkill_docs_are_public_with_a_docs_page_row(sqlite_app):
     assert ">PLM Tracker</a>" in page  # the other docs tab
     assert 'class="nav-link active" href="/doc/fillkill">Docs</a>' in page
     # The MM Lead's instructions by the name Main gives them (2026-10-27).
-    assert "<strong>Will&#39;s Comments</strong>, between the recommendation and its vendor items" in page
+    assert "<strong>Will&#39;s Comments</strong>, between the approved substitutes and their vendor items" in page
 
 
 def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):
@@ -32,11 +32,11 @@ def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):
     page = sqlite_app.test_client().get("/doc/fillkill").get_data(as_text=True)
     table = page[page.index('id="who-can-do-what"'):]
     table = table[:table.index("</table>")]
-    pick = table[table.index("Mark an approved sub preferred, or unprefer it"):]
-    pick = pick[:pick.index("</tr>")]
+    vendor = table[table.index("Add, correct or delete a sub&#39;s vendor items"):]
+    vendor = vendor[:vendor.index("</tr>")]
     # Viewer, Sub Approver, MM/SCM, Materials Manager, Sub Finder
     assert [cell.startswith('<i class="bi bi-check-lg') for cell in
-            [part.split(">", 1)[1].strip() for part in pick.split('<td class="text-center"')[1:]]] == [False, True, True, True, False]
+            [part.split(">", 1)[1].strip() for part in vendor.split('<td class="text-center"')[1:]]] == [False, False, True, True, True]
 
 
 def test_docs_link_follows_the_active_module(sqlite_app):

@@ -24,14 +24,15 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
 @pytest.mark.parametrize("roles, expected", [
     (("viewer",), {"view"}),
     (("sub_finder",), {"view", "add_sub", "details"}),
-    (("sub_approver",), {"view", "add_sub", "review", "pick"}),  # nursing enters subs (2026-10-15)
-    (("materials_manager",), {"view", "details", "pick", "order"}),  # vendor items, picks (2026-10-21), orders
-    (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "pick", "order"}),
-    (("sub_finder", "sub_approver"), {"view", "add_sub", "details", "review", "pick"}),
-    # The Materials Management lead (2026-10-27): instructs the sites, picks, adds vendor items; orders
-    # only with Materials Manager too.
-    (("mm_lead",), {"view", "pick", "details", "instruct"}),
-    (("mm_lead", "materials_manager"), {"view", "pick", "details", "instruct", "order"}),
+    # No "pick" from 2026-10-28: every approved sub can be ordered, and nursing holds or rejects one.
+    (("sub_approver",), {"view", "add_sub", "review"}),  # nursing enters subs (2026-10-15)
+    (("materials_manager",), {"view", "details", "order"}),  # vendor items, orders
+    (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "order"}),
+    (("sub_finder", "sub_approver"), {"view", "add_sub", "details", "review"}),
+    # MM/SCM (2026-10-27, "MM Lead" until 10-28): instructs the sites, adds vendor items; orders only
+    # with Materials Manager too.
+    (("mm_lead",), {"view", "details", "instruct"}),
+    (("mm_lead", "materials_manager"), {"view", "details", "instruct", "order"}),
     ((), set()),
 ])
 def test_fillkill_capabilities_follow_roles(roles, expected):

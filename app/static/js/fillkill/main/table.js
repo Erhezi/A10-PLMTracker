@@ -114,37 +114,37 @@ function otherPackagingNote(approved) {
     ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
 }
 
-// Nursing's Recommendation (named so 2026-10-28; "Picked for Ordering" from 2026-10-21, "Approver's
-// Pick" before): each preferred sub (a pick, in the code), always the Reference SKU nursing entered
-// (2026-10-20). With no vendor item yet there's nothing to order: for whoever adds
-// them, a pencil says so and opens the form.
-function pickCell(pick) {
-  if (!pick) return '<span class="text-muted small">—</span>';
-  const title = `No vendor item yet: nothing to order for ${pick.reference_sku}`;
+// Approved by Nursing (2026-10-28, the user: every approved sub can be ordered; the picks among
+// them before, "Picked for Ordering" from 2026-10-21, "Approver's Pick" before that): each approved
+// sub, the Reference SKU nursing entered (2026-10-20). With no vendor item yet there's nothing to
+// order: for whoever adds them, a pencil says so and opens the form.
+function approvedCell(sub) {
+  if (!sub) return '<span class="text-muted small">—</span>';
+  const title = `No vendor item yet: nothing to order for ${sub.reference_sku}`;
   // Only for those who can add a vendor item, whom it takes to the form (2026-10-21): to others it
   // looked like a button that didn't work. Everyone has the Needs details filter.
-  const pencil = needsDetails(pick) && can.details
-    ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-add-vi="${pick.sub_id}"
-         title="${esc(title)}. Add one." aria-label="Add a vendor item for ${esc(pick.reference_sku)}"><i
+  const pencil = needsDetails(sub) && can.details
+    ? ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline" data-add-vi="${sub.sub_id}"
+         title="${esc(title)}. Add one." aria-label="Add a vendor item for ${esc(sub.reference_sku)}"><i
          class="bi bi-pencil-square text-warning"></i></button>`
     : '';
   // Its comments, in a popover (2026-10-21): filled with a count when there are some.
-  const n = pick.comments || 0;
-  const latest = pick.latest_comment;
+  const n = sub.comments || 0;
+  const latest = sub.latest_comment;
   const about = n ? `${n} comment${n > 1 ? 's' : ''}; the latest, by ${latest.actor}: ${latest.comment}` : 'No comments yet';
-  const chat = ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline${n ? '' : ' text-muted'}" data-comments="${pick.sub_id}"
-      title="${esc(about)}" aria-label="Comments on ${esc(pick.reference_sku)}"><i
+  const chat = ` <button type="button" class="btn btn-link btn-sm p-0 align-baseline${n ? '' : ' text-muted'}" data-comments="${sub.sub_id}"
+      title="${esc(about)}" aria-label="Comments on ${esc(sub.reference_sku)}"><i
       class="bi ${n ? 'bi-chat-left-text-fill' : 'bi-chat-left'}"></i>${n ? `<span class="small ms-1">${n}</span>` : ''}</button>`;
   // The latest, as text under it (2026-10-27): nursing's word reads on the table, without a click.
-  const said = n ? `<div class="fk-pick-comment" title="${esc(`${latest.comment}\n${latest.actor}, ${fmtDateTime(latest.acted_at)}`)}">
+  const said = n ? `<div class="fk-sub-comment" title="${esc(`${latest.comment}\n${latest.actor}, ${fmtDateTime(latest.acted_at)}`)}">
       <div class="fk-clamp-2">${esc(latest.comment)}</div>
       <div class="text-muted text-nowrap">${esc(shortName(latest.actor))} · ${fmtDate(latest.acted_at)}</div></div>` : '';
-  return `<div class="text-nowrap"><span class="fw-semibold">${esc(pick.reference_sku)}</span>${pencil}${chat}</div>${said}`;
+  return `<div class="text-nowrap"><span class="fw-semibold">${esc(sub.reference_sku)}</span>${pencil}${chat}</div>${said}`;
 }
 
-// --- a pick's comments, an item's instructions ----------------------------------------------
+// --- an approved sub's comments, an item's instructions --------------------------------------
 
-// A pick's comments (2026-10-21), or the item's instructions (2026-10-27), newest first, in a
+// An approved sub's comments (2026-10-21), or the item's instructions (2026-10-27), newest first, in a
 // popover beside them, so they can be read without opening the item's panel. One is open at a time;
 // a click elsewhere or Escape closes it. They're read first and the popover shown with them:
 // Bootstrap hides a manual popover whose content is changed while it shows.
@@ -197,8 +197,8 @@ async function togglePopover(button, title, load) {
 }
 
 function toggleComments(button) {
-  const pick = state.rows.flatMap((row) => row.picks).find((s) => s.sub_id === Number(button.dataset.comments));
-  return togglePopover(button, `Comments · ${esc(pick ? pick.reference_sku : '')}`,
+  const sub = state.rows.flatMap((row) => row.approved_subs).find((s) => s.sub_id === Number(button.dataset.comments));
+  return togglePopover(button, `Comments · ${esc(sub ? sub.reference_sku : '')}`,
     async () => commentList((await getJSON(historyUrl('sub', button.dataset.comments))).history));
 }
 
@@ -209,17 +209,17 @@ function toggleInstructions(button) {
     async () => instructionList((await getJSON(api.instructions, { item })).instructions));
 }
 
-// Vendor Item Detail: a tile per vendor ID, vendor part and UOM of the pick beside it (2026-10-20).
-// A Materials Manager records an order from one; whoever adds vendor items can add another here.
-// ``several``: the UOM has more than one pick, so the add button names its pick.
-function vendorItemsCell(pick, several) {
-  if (!pick) return '<span class="text-muted small">—</span>';
-  const items = (pick.vendor_items || []).map((v) => {
+// Vendor Item Detail: a tile per vendor ID, vendor part and UOM of the approved sub beside it
+// (2026-10-20). A Materials Manager records an order from one; whoever adds vendor items can add
+// another here. ``several``: the UOM has more than one approved sub, so the add button names its sub.
+function vendorItemsCell(sub, several) {
+  if (!sub) return '<span class="text-muted small">—</span>';
+  const items = (sub.vendor_items || []).map((v) => {
     // The vendor ID first: a long vendor name is cut short, never the ID.
     const id = v.vendor_id === NO_VENDOR.id ? 'Not in Infor' : v.vendor_id;
     const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(uomQoe(v))}${noQoeBadge(v)}</div>
       <div class="fk-vi-vendor text-truncate">${esc(id)} · ${esc(v.vendor)}</div>`;
-    const title = [vendorItemText(v), v.description, several ? `For ${pick.reference_sku}` : '']
+    const title = [vendorItemText(v), v.description, several ? `For ${sub.reference_sku}` : '']
       .filter(Boolean).join('\n');
     return can.order
       ? `<button type="button" class="btn btn-sm btn-outline-primary fk-vi-tile" data-order-vi="${v.vendor_item_id}"
@@ -227,8 +227,8 @@ function vendorItemsCell(pick, several) {
       : `<div class="fk-vi-tile" title="${esc(title)}">${body}</div>`;
   });
   if (can.details) {
-    items.push(`<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none d-block" data-add-vi="${pick.sub_id}"><i
-      class="bi bi-plus-lg"></i> Vendor item${several ? ` for ${esc(pick.reference_sku)}` : ''}</button>`);
+    items.push(`<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none d-block" data-add-vi="${sub.sub_id}"><i
+      class="bi bi-plus-lg"></i> Vendor item${several ? ` for ${esc(sub.reference_sku)}` : ''}</button>`);
   }
   return items.join('') || '<span class="text-muted small">—</span>';
 }
@@ -251,7 +251,7 @@ function instructionCell(row) {
 }
 
 // Double-click a cell to write in it (the user, 2026-10-27), for those who may: Will's Comments for
-// MM/SCM, Nursing's Recommendation for whoever adds subs (a new sub for that line's Medline item).
+// MM/SCM, Approved by Nursing for whoever adds subs (a new sub for that line's Medline item).
 const dblClickTd = (attrs, title) => `<td ${attrs} data-dblclick title="${esc(title)}"`;
 
 function instructionTd(row, all) {
@@ -260,7 +260,7 @@ function instructionTd(row, all) {
     `Double-click to add a comment for the sites' Materials Managers`)}>`;
 }
 
-function pickTd(p, split) {
+function approvedTd(p, split) {
   if (!can.add_sub) return `<td${split}>`;
   return `${dblClickTd(`${split.trim()} data-add-sub="${esc(p.medline_item)}"`, `Double-click to add a sub for ${p.medline_item}`)}>`;
 }
@@ -341,13 +341,13 @@ function subOrderedEachCell(row) {
 
 // --- rows ------------------------------------------------------------------------------------
 
-// A line per pick (2026-10-21), so each pick's vendor items sit beside it; a UOM's other cells span
-// its picks' lines, and the Infor item's span them all. A cell that reaches the item's last line has
+// A line per approved sub (2026-10-21, per pick until 2026-10-28), so its vendor items sit beside
+// it; a UOM's other cells span its subs' lines, and the Infor item's span them all. A cell that reaches the item's last line has
 // data-to-end: no dashed line under it (app.css).
 function itemRows(row) {
   const packs = row.packagings;
   const many = packs.length > 1;
-  const lines = packs.map((p) => Math.max(1, p.picks.length));
+  const lines = packs.map((p) => Math.max(1, p.approved_subs.length));
   const span = (n) => (n > 1 ? ` rowspan="${n}"` : '');
   const all = span(lines.reduce((sum, n) => sum + n, 0) + (many ? 1 : 0));
   const inactive = row.infor_active && row.infor_active !== 'Yes'
@@ -363,12 +363,12 @@ function itemRows(row) {
   const note = otherPackagingNote(row.approved_other_packagings);
   const trs = [];
   packs.forEach((p, i) => {
-    const picks = p.picks.length ? p.picks : [null];
+    const subs = p.approved_subs.length ? p.approved_subs : [null];
     const own = span(lines[i]) + (many ? '' : ' data-to-end');
-    picks.forEach((pick, j) => {
+    subs.forEach((sub, j) => {
       const first = i === 0 && j === 0;
-      // Between two picks of a UOM, a lighter line than between UOMs.
-      const split = j < picks.length - 1 ? ' class="fk-pick-split"' : '';
+      // Between two approved subs of a UOM, a lighter line than between UOMs.
+      const split = j < subs.length - 1 ? ' class="fk-sub-split"' : '';
       trs.push(`<tr>
         ${first ? `<td data-to-end${all}>${infor}${count}</td>` : ''}
         ${j ? '' : `<td${own}>${packagingCell(p)}</td>`}
@@ -380,9 +380,9 @@ function itemRows(row) {
         <td class="text-end"${own}>${fmtNumber(p.lines)}</td>
         <td${own}>${reasonCell(p.latest_reason)}</td>
         <td role="button" data-open="${esc(p.medline_item)}"${own}>${subsStatusCell(p.subs_status)}${many ? '' : note}</td>`}
-        ${pickTd(p, split)}${pickCell(pick)}</td>
+        ${approvedTd(p, split)}${approvedCell(sub)}</td>
         ${first ? `${instructionTd(row, all)}${instructionCell(row)}</td>` : ''}
-        <td${split}>${vendorItemsCell(pick, picks.length > 1)}</td>
+        <td${split}>${vendorItemsCell(sub, subs.length > 1)}</td>
         ${first ? `<td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
             title="Orders recorded in these Fill/Kill dates. Click for all of its orders">${ordering}</td>
           <td class="text-end" data-to-end${all}>${killedEachCell(row)}</td>
@@ -414,7 +414,7 @@ function totalRow(row, note) {
 }
 
 export function setupTable() {
-  // A pick's comments, or an item's instructions, close on a click outside them, or Escape.
+  // An approved sub's comments, or an item's instructions, close on a click outside them, or Escape.
   document.addEventListener('click', (event) => {
     if ((openPopover || loadingPopover) && !event.target.closest('.fk-comments-popover, [data-comments], [data-instructions]')) {
       closePopover();
@@ -440,7 +440,7 @@ export function setupTable() {
     const addButton = event.target.closest('[data-add-vi]');
     if (addButton) {
       const subId = Number(addButton.dataset.addVi);
-      openVendorItemForm(state.rows.flatMap((row) => row.picks).find((s) => s.sub_id === subId));
+      openVendorItemForm(state.rows.flatMap((row) => row.approved_subs).find((s) => s.sub_id === subId));
       return;
     }
     const opener = event.target.closest('[data-open]');

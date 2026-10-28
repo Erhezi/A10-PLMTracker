@@ -114,7 +114,8 @@ function otherPackagingNote(approved) {
     ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
 }
 
-// Picked for Ordering (named so 2026-10-21; "Approver's Pick" before) is always the Reference SKU
+// Nursing's Pick (named so 2026-10-28; "Picked for Ordering" from 2026-10-21, "Approver's Pick"
+// before) is always the Reference SKU
 // nursing entered (2026-10-20). With no vendor item yet there's nothing to order: for whoever adds
 // them, a pencil says so and opens the form.
 function pickCell(pick) {
@@ -250,7 +251,7 @@ function instructionCell(row) {
 }
 
 // Double-click a cell to write in it (the user, 2026-10-27), for those who may: Will's Comments for
-// an MM Lead, Picked for Ordering for whoever adds subs (a new sub for that line's Medline item).
+// an MM Lead, Nursing's Pick for whoever adds subs (a new sub for that line's Medline item).
 const dblClickTd = (attrs, title) => `<td ${attrs} data-dblclick title="${esc(title)}"`;
 
 function instructionTd(row, all) {

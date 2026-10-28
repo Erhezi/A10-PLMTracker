@@ -757,7 +757,7 @@ def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, 
     # Called Will's Comments on the page for now (the user, 2026-10-27), before Vendor Item Detail.
     assert page_config(lead)["instructionLabel"] == "Will's Comments"
     page = lead.get("/fillkill/").get_data(as_text=True)
-    assert page.index("Picked for Ordering</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
+    assert page.index("Nursing's Pick</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
     assert status == 403 and "Only MM Leads" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403

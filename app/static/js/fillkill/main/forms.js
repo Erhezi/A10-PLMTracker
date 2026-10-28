@@ -1,7 +1,7 @@
 /* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
  * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
  * a sub or a vendor item, the MM Lead's instruction ("Will's Comments", 2026-10-27), and a new sub
- * from Main's Picked for Ordering (2026-10-27). Boxes lose their leading and
+ * from Main's Nursing's Pick (2026-10-27). Boxes lose their leading and
  * trailing spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
  */
 
@@ -651,7 +651,7 @@ export function addedMessage(added) {
   return added.status === 'approved' ? 'Approved.' : 'It is pending review.';
 }
 
-// A new sub for a Medline item, from a double-click on its Picked for Ordering cell (2026-10-27): the
+// A new sub for a Medline item, from a double-click on its Nursing's Pick cell (2026-10-27): the
 // panel's Add sub, in the modal. Its subs and picks so far are above it.
 export function openAddSubForm(medline) {
   const row = state.rows.find((r) => r.medline_items.includes(medline));

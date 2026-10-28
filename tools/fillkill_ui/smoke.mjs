@@ -162,7 +162,7 @@ const SITE_B = '0000000002';
 // The text of the last two cells (Total Killed (EA), Total Sub Ordered (EA)) of the item with this Medline item.
 const lastCells = (item) => `[...[...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes(${JSON.stringify(item)}))
   .rows[0].cells].slice(-2).map((c) => c.innerText.replace(/\\s+/g, ' ').trim()).join('|')`;
-// The main table's line whose Picked for Ordering cell is this Reference SKU.
+// The main table's line whose Nursing's Pick cell is this Reference SKU.
 const lineOf = (sku) => `[...document.querySelectorAll('#fk-main tbody.fk-item > tr')].find((tr) => [...tr.cells]
   .some((c) => c.innerText.trim() === ${JSON.stringify(sku)}))`;
 
@@ -216,7 +216,7 @@ const steps = [
     await evaluate(`document.getElementById('fk-add-form').requestSubmit()`);
     await panelSays('Approved and picked');
     expect((await text('#fk-panel-content')).includes('Vendor item needed'), 'no "Vendor item needed"');
-    // Picked for Ordering is the Reference SKU, with a pencil until there's something to order (2026-10-20).
+    // Nursing's Pick is the Reference SKU, with a pencil until there's something to order (2026-10-20).
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('88885')
       && b.querySelector('[data-add-vi] .bi-pencil-square'))`, 'the pick, with its pencil, in the table');
     // Its comments beside it (2026-10-21): the icon counts them and opens them; a click elsewhere closes them.
@@ -503,7 +503,7 @@ const steps = [
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('GLV-2'))`, 'the pick');
     expect(await count('#fk-main .bi-pencil-square, #fk-main [data-add-vi]') === 0, 'a nurse sees the pencil or can open the vendor item form');
     // A second sub from Main, without the panel (2026-10-27): a double-click on the Medline item's
-    // Picked for Ordering cell opens the form.
+    // Nursing's Pick cell opens the form.
     await go('/dev-login?as=nurse', `${MAIN_READY} && ${lineOf('GLV-2')}`, 'the main table');
     await dblclick(`${lineOf('GLV-2')}.querySelector('td[data-add-sub="MDS2585H"]')`, "GLV-2's cell");
     await modalOpen();
@@ -633,7 +633,7 @@ const steps = [
     // Between the pick and its vendor items (the user, 2026-10-27).
     const heads = await evaluate(`[...document.querySelectorAll('#fk-main thead th')].map((th) => th.innerText.trim())`);
     const at = heads.indexOf("Will's Comments");
-    expect(at > 0 && heads[at - 1] === 'Picked for Ordering' && heads[at + 1] === 'Vendor Item Detail', `the columns: ${heads.join(', ')}`);
+    expect(at > 0 && heads[at - 1] === "Nursing's Pick" && heads[at + 1] === 'Vendor Item Detail', `the columns: ${heads.join(', ')}`);
     // A double-click on its cell opens the form.
     await dblclick(`document.querySelector('#fk-main td[data-instruct="DYND70294BH"]')`, "the item's cell");
     await modalOpen();

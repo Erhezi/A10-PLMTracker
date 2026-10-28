@@ -211,8 +211,8 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
 6. Tell the sites' Materials Managers: every order now needs its **site** (the form starts on it
    when Main is filtered to just their site), the PO number is optional, and the MM Lead's
    instruction is in the **Will's Comments** column (no email: open or refresh Main). Tell the MM
-   Lead to double-click that column's cell to write one, and nursing that a double-click on Picked
-   for Ordering adds a sub.
+   Lead to double-click that column's cell to write one, and nursing that a double-click on
+   **Nursing's Pick** ("Picked for Ordering" until 10/28) adds a sub.
 
 **O2 on 10/27** (read before and after the reset): `02` and `12` already run, `09` all `PASS`,
 wmcelwaine holds MM Lead (with Materials Manager and Sub Finder). `90` ran at the user's request

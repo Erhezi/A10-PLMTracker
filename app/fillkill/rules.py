@@ -219,20 +219,20 @@ def check_status_change(sub, new_status) -> str:
 
 def check_pick(sub) -> None:
     if sub.status != "approved":
-        raise RuleError("Only an approved sub can be picked.")
+        raise RuleError("Only an approved sub can be preferred.")
     if sub.is_picked:
-        raise RuleError("The sub is already picked.", 409)
+        raise RuleError("The sub is already preferred.", 409)
 
 
 def check_unpick(sub) -> None:
     if not sub.is_picked:
-        raise RuleError("The sub isn't picked.", 409)
+        raise RuleError("The sub isn't preferred.", 409)
 
 
 def check_delete(sub, reason) -> str:
-    """A sub is deleted with a reason. One picked for ordering stays until it's unpicked."""
+    """A sub is deleted with a reason. The preferred one (picked) stays until it's unpreferred."""
     if sub.is_picked:
-        raise RuleError(f"{sub.label()} is picked for ordering; it has to be unpicked before it's deleted.", 409)
+        raise RuleError(f"{sub.label()} is preferred; it has to be unpreferred before it's deleted.", 409)
     return clean_comment(reason, label="Reason")
 
 
@@ -283,7 +283,7 @@ def check_vendor_item_changes(item, data: dict, *, uoms: dict | None = None) -> 
 
 def check_orderable(sub) -> None:
     if not sub.is_picked:
-        raise RuleError("Orders are recorded against a picked sub, and this one isn't picked.", 409)
+        raise RuleError("Orders are recorded against a preferred sub, and this one isn't preferred.", 409)
 
 
 def check_new_order(sub, item, data: dict, *, now: datetime | None = None, sites=()) -> dict:

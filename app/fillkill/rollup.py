@@ -30,7 +30,7 @@ NEEDS = ("needs_subs", "needs_review", "needs_pick", "needs_details", "needs_ord
 NEEDS_LABELS = {
     "needs_subs": "Needs subs",
     "needs_review": "Needs review",
-    "needs_pick": "Needs pick",
+    "needs_pick": "Needs preference",  # "Needs pick" until 2026-10-28
     "needs_details": "Needs details",  # a pick without a vendor item yet: the Materials Manager's
     "needs_order": "Needs order",
     "ordered": "Ordered",

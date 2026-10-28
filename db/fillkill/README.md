@@ -206,16 +206,17 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
 
 **After the deploy**
 
-5. In User Control, give the Materials Management lead **MM Lead**. Add Materials Manager only if
+5. In User Control, give the Materials Management lead **MM/SCM** (`mm_lead`; "MM Lead" until 10/28). Add Materials Manager only if
    they record orders themselves. The sites' Materials Managers keep Materials Manager.
 6. Tell the sites' Materials Managers: every order now needs its **site** (the form starts on it
-   when Main is filtered to just their site), the PO number is optional, and the MM Lead's
-   instruction is in the **Will's Comments** column (no email: open or refresh Main). Tell the MM
-   Lead to double-click that column's cell to write one, and nursing that a double-click on
-   **Nursing's Pick** ("Picked for Ordering" until 10/28) adds a sub.
+   when Main is filtered to just their site), the PO number is optional, and MM/SCM's
+   comment is in the **Will's Comments** column (no email: open or refresh Main). Tell MM/SCM to
+   double-click that column's cell to write one, and nursing that a double-click on **Nursing's
+   Recommendation** ("Picked for Ordering" until 10/28) adds a sub. Tell everyone that a pick is now
+   **preferred**: *Prefer* and *Unprefer* in the item panel, *Needs preference* in the Needs filter.
 
 **O2 on 10/27** (read before and after the reset): `02` and `12` already run, `09` all `PASS`,
-wmcelwaine holds MM Lead (with Materials Manager and Sub Finder). `90` ran at the user's request
+wmcelwaine holds MM/SCM, `mm_lead` (with Materials Manager and Sub Finder). `90` ran at the user's request
 (7 subs, 4 vendor items, 2 orders, 39 history rows, all UAT; saved to CSV first), so the workflow
 starts empty. Left: steps 3, 4 and the deploy.
 

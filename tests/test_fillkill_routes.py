@@ -331,7 +331,7 @@ def test_materials_managers_pick_and_unpick_too(app):
     assert status == 403 and "Only Sub Approvers can review or comment on subs." in data["message"]
     assert post(manager, f"/fillkill/api/subs/{second}/comments", {"comment": "ok"})[0] == 403
     status, data = post(finder, f"/fillkill/api/subs/{first}/pick", {})
-    assert status == 403 and "Only Sub Approvers, Materials Managers and MM Leads can pick" in data["message"]
+    assert status == 403 and "Only Sub Approvers, Materials Managers and MM/SCM can prefer" in data["message"]
     assert (page_config(manager)["can"]["pick"], page_config(manager)["can"]["review"]) == (True, False)
 
 
@@ -352,7 +352,7 @@ def test_rule_errors_and_conflicts_come_back_as_messages(app, finder_approver, f
     _, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/vendor-items", ITEM_PAYLOAD)
     status, data = post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": data["vendor_item"]["vendor_item_id"], "site": WP,
                                                        "quantity": 1})
-    assert status == 409 and "isn't picked" in data["message"]
+    assert status == 409 and "isn't preferred" in data["message"]
     status, data = post(finder_manager, "/fillkill/api/vendor-items/999/edit", {"uom": "EA"})
     assert status == 404 and "That vendor item no longer exists" in data["message"]
     assert post(finder_manager, "/fillkill/api/vendor-items/1/move", {})[0] == 404
@@ -730,7 +730,7 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     header, *lines = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     box, case = [dict(zip(header, line)) for line in lines]
     assert (box["Medline Item"], box["Medline Item's Infor Item"], box["Reference SKU"], box["Sub Vendor Name"], box["Status"],
-            box["Picked"], box["Orders"]) == ("DYND70294BH", "100339", "88885", "CARDINAL HEALTH", "Approved", "Yes", "1")
+            box["Preferred"], box["Orders"]) == ("DYND70294BH", "100339", "88885", "CARDINAL HEALTH", "Approved", "Yes", "1")
     assert (box["Sub Vendor Part"], box["Sub Vendor ID"], box["Sub UOM"], box["Sub QOE"], box["Vendor Item By"]) == (
         "88885", CARDINAL, "BX", "100.0", "mm@example.org")
     assert (case["Sub Vendor Part"], case["Sub Manufacturer Part"], case["Sub Vendor ID"], case["Sub UOM"], case["Sub ID"]) == (
@@ -757,9 +757,9 @@ def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, 
     # Called Will's Comments on the page for now (the user, 2026-10-27), before Vendor Item Detail.
     assert page_config(lead)["instructionLabel"] == "Will's Comments"
     page = lead.get("/fillkill/").get_data(as_text=True)
-    assert page.index("Nursing's Pick</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
+    assert page.index("Nursing's Recommendation</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
-    assert status == 403 and "Only MM Leads" in data["message"]
+    assert status == 403 and "Only MM/SCM" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403
     assert post(lead, "/fillkill/api/instructions", {"medline_item": "NOT-KILLED", "instruction": "x"})[0] == 404
     status, data = post(lead, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": " "})

@@ -143,7 +143,7 @@ def test_only_an_approved_sub_can_be_picked():
 
 def test_an_order_needs_a_picked_sub():
     refused(lambda: rules.check_new_order(sub(status="approved"), vendor_item(), {"site": SITE, "quantity": 5}, now=NOW, sites=SITES),
-            status=409, says="isn't picked")
+            status=409, says="isn't preferred")
 
 
 def test_an_order_takes_what_it_is_placed_with_from_the_vendor_item():

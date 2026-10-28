@@ -221,7 +221,7 @@ async function onClick(event) {
   if (what === 'show-add') { $('fk-add-sub').classList.remove('d-none'); $('fk-add-sku').focus(); return; }
   if (what === 'hide-add') { $('fk-add-sub').classList.add('d-none'); return; }
   if (what === 'pick' || what === 'unpick') {
-    await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Picked.' : 'Unpicked.');
+    await act(subUrl(subId, what), { expected_status: button.dataset.expected }, what === 'pick' ? 'Preferred.' : 'No longer preferred.');
     return;
   }
   if (what === 'order') { openOrderForm(Number(button.dataset.vi)); return; }
@@ -280,8 +280,8 @@ async function onStatusChange(event) {
   if (!select || !select.value) return;
   await act(subUrl(select.dataset.sub, 'status'), { status: select.value, expected_status: select.dataset.expected },
     (data) => `Status set to ${config.statusLabels[select.value]}.${data.sub.is_picked && select.value === 'approved'
-      ? ' Picked too: it is the only approved sub.' : ''}${data.picked_instead
-      ? ` ${data.picked_instead} is the pick now: the only approved sub left.` : ''}`);
+      ? ' Preferred too: it is the only approved sub.' : ''}${data.picked_instead
+      ? ` ${data.picked_instead} is preferred now: the only approved sub left.` : ''}`);
 }
 
 async function onSubmit(event) {

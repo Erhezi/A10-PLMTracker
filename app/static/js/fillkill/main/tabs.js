@@ -38,7 +38,7 @@ function subsTab(view) {
 // Subs on the Infor item's other UOMs, not on this one yet.
 function otherSubs(p) {
   if (!p.other_subs.length) return '';
-  return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review and pick it here:</div>
+  return `<div class="small text-muted mb-1">On other UOMs, not on ${esc(p.medline_item)} yet. Add one to review and prefer it here:</div>
     <ul class="list-group list-group-flush small mb-2">${p.other_subs.map((o) => `
       <li class="list-group-item px-0 d-flex flex-wrap gap-2 align-items-center">
         <span class="fw-semibold">${esc(o.reference_sku)}</span>
@@ -95,11 +95,12 @@ function subCard(sub) {
     actions.push(`<select class="form-select form-select-sm w-auto" data-act="status" data-sub="${sub.sub_id}" data-expected="${sub.status}" aria-label="Status">
       ${sub.status === 'pending_review' ? '<option value="" selected disabled>Set status…</option>' : ''}${options.join('')}</select>`);
   }
-  // Sub Approvers and Materials Managers pick among the approved subs (2026-10-21).
+  // Sub Approvers and Materials Managers pick among the approved subs (2026-10-21), MM/SCM too: "Prefer"
+  // on the page from 2026-10-28 (the user: it means preferred), pick in the code and its URLs.
   if (can.pick && sub.status === 'approved') {
     actions.push(sub.is_picked
-      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-act="unpick" data-sub="${sub.sub_id}" data-expected="${sub.status}">Unpick</button>`
-      : `<button type="button" class="btn btn-sm btn-success" data-act="pick" data-sub="${sub.sub_id}" data-expected="${sub.status}"><i class="bi bi-hand-index-thumb"></i> Pick</button>`);
+      ? `<button type="button" class="btn btn-sm btn-outline-secondary" data-act="unpick" data-sub="${sub.sub_id}" data-expected="${sub.status}">Unprefer</button>`
+      : `<button type="button" class="btn btn-sm btn-success" data-act="pick" data-sub="${sub.sub_id}" data-expected="${sub.status}"><i class="bi bi-star"></i> Prefer</button>`);
   }
   if (can.details) {
     actions.push(`<button type="button" class="btn btn-sm btn-outline-primary" data-act="add-vi" data-sub="${sub.sub_id}"><i
@@ -107,9 +108,9 @@ function subCard(sub) {
   }
   if (can.add_sub) {
     actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary" data-act="edit-sub" data-sub="${sub.sub_id}">Correct Reference SKU</button>`);
-    // A sub picked for ordering can't be deleted until it's unpicked (the server refuses it too).
+    // The preferred sub can't be deleted until it's unpreferred (the server refuses it too).
     actions.push(sub.is_picked
-      ? `<span class="d-inline-block" tabindex="0" title="It's picked for ordering: unpick it first">
+      ? `<span class="d-inline-block" tabindex="0" title="It's preferred: unprefer it first">
            <button type="button" class="btn btn-sm btn-outline-danger" disabled>Delete</button></span>`
       : `<button type="button" class="btn btn-sm btn-outline-danger" data-act="delete-sub" data-sub="${sub.sub_id}">Delete</button>`);
   }
@@ -125,7 +126,7 @@ function subCard(sub) {
     <div class="card-body p-2">
       <div class="d-flex flex-wrap gap-2 align-items-center">
         <span><span class="fw-semibold">${esc(sub.reference_sku)}</span> <span class="small text-muted">Reference SKU</span></span>
-        ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-check2"></i> Picked</span>' : ''}${detailsNeeded}
+        ${statusBadge(sub.status)}${sub.is_picked ? ' <span class="badge text-bg-success"><i class="bi bi-star-fill"></i> Preferred</span>' : ''}${detailsNeeded}
         ${(sub.approved_elsewhere || []).map((o) => `<span class="badge text-success border border-success bg-white"
             title="Approved by ${esc(o.approved_by || '')} ${fmtDateTime(o.approved_at)}"><i class="bi bi-box-seam"></i>
             Approved for ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}</span>`).join(' ')}
@@ -151,7 +152,7 @@ function addSubForm(packs) {
             <option value="${esc(p.medline_item)}" ${p.medline_item === state.panelItem ? 'selected' : ''}>${esc(p.medline_item)} (${esc(p.um)})</option>`).join('')}
           </select></div>` : '';
   const what = can.review
-    ? "It's approved as soon as it's added, and picked if it's the only approved sub. The Materials Manager adds what can be ordered for it."
+    ? "It's approved as soon as it's added, and preferred if it's the only approved sub. The Materials Manager adds what can be ordered for it."
     : "It waits for a Sub Approver's review.";
   return `
     <div class="border rounded p-2 bg-light">
@@ -199,8 +200,8 @@ function describe(h) {
   switch (h.action) {
     case 'created': return { order: 'Recorded the order', vendoritem: 'Added the vendor item' }[h.entity] || 'Added the sub';
     case 'status': return `Status ${esc(labels[h.from_value] || h.from_value)} → ${statusBadge(h.to_value)}`;
-    case 'pick': return h.comment ? esc(h.comment) : 'Picked';
-    case 'unpick': return h.comment ? esc(h.comment) : 'Unpicked';
+    case 'pick': return h.comment ? esc(h.comment) : 'Preferred';
+    case 'unpick': return h.comment ? esc(h.comment) : 'No longer preferred';
     case 'comment': return `Comment: ${esc(h.comment)}`;
     case 'edit': return `Changed ${vendorItem ? "the vendor item's " : ''}${esc(FIELD_LABELS[h.field] || String(h.field || '').replace(/_/g, ' '))}:
       ${value(h.from_value)} → ${value(h.to_value)}`;
@@ -221,7 +222,7 @@ export function timeline(entries, withLabel, withItem) {
 }
 
 function picksTab(history, many) {
-  return `<p class="small text-muted mb-2">Every sub added, reviewed, picked and unpicked for ${many ? 'these Medline items' : 'this Medline item'},
+  return `<p class="small text-muted mb-2">Every sub added, reviewed, preferred and unpreferred for ${many ? 'these Medline items' : 'this Medline item'},
     and every vendor item added and deleted, newest first.</p>
     ${timeline(history, true, many)}`;
 }

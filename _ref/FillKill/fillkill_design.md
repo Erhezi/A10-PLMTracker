@@ -27,6 +27,9 @@ questions in section 9 were answered on 2026-10-13.
   it by (section 5).
 - **Instruction** = the MM Lead's word to the sites' Materials Managers on how to order an item
   (2026-10-27).
+- **MM/SCM** = the role coded `mm_lead`, called MM Lead until 2026-10-28; this document still says
+  MM Lead. **Preferred** = a picked sub, as the page says it from 2026-10-28; this document and the
+  code still say pick (section 1b).
 
 ## 1. Scope
 
@@ -59,8 +62,8 @@ each item.
 
 | Party | Fill/Kill role | Decides | What Main shows of it |
 |---|---|---|---|
-| Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them, picks, comments on subs | **Nursing's Pick**: each pick's latest sub comment, as text (new) |
-| Materials Management lead (MM manager) | **MM Lead** (new) | How the sites should order: which approved sub and vendor item, how much, for which sites. Picks among approved subs and adds vendor items. Usually doesn't order | **Will's Comments** column ("MM Instruction" at first): the item's latest instruction (new) |
+| Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them, picks, comments on subs | **Nursing's Recommendation**: each preferred sub's latest comment, as text (new) |
+| Materials Management lead (MM manager) | **MM/SCM** (new; "MM Lead" until 2026-10-28) | How the sites should order: which approved sub and vendor item, how much, for which sites. Picks among approved subs and adds vendor items. Usually doesn't order | **Will's Comments** column ("MM Instruction" at first): the item's latest instruction (new) |
 | Each site's Materials Managers | Materials Manager | Carry the instruction out: order for their site and record it: the sub's vendor item and how much, with the PO number if they have it | **Ordering Status**: each order with its site; **Total Sub Ordered (EA)** with what each site is short (new) |
 | Everyone else | Viewer | Nothing; sees everything | |
 | A future AI finder | Sub Finder | Proposes subs for nursing to review | |
@@ -106,13 +109,23 @@ record, and nothing is matched against Infor in this deploy.
 - The instructions' column is called **Will's Comments** for now (one label in the code,
   `rules.INSTRUCTION_LABEL`), and sits **before Vendor Item Detail**: read before ordering from the tiles.
 - **Double-click to write.** An MM Lead double-clicks the Will's Comments cell to add one; nursing
-  (Sub Approvers, Sub Finders) double-click a Nursing's Pick cell to add a sub for its Medline item.
+  (Sub Approvers, Sub Finders) double-click a Nursing's Recommendation cell to add a sub for its Medline item.
   Both open a small modal. The item panel has an **Add comment** button too, like its Add sub.
 - **One free-text comment per item**, not one per site: it names the sites it speaks to.
 - **Nobody is emailed.** The sites' Materials Managers open Main, or refresh it, to read the latest.
 - **No home site.** A Materials Manager picks their sites with the site filter, which reveals their
   site's figures (and keeps them in the page link); with every site chosen, the totals show. Main and
   the Dashboard alike.
+
+**Renamed** (2026-10-28, the user), so the names say what each thing is:
+- The pick column is **Nursing's Recommendation** ("Picked for Ordering" before; "Nursing's Pick"
+  that morning).
+- A pick is **preferred** on the page: *Prefer* and *Unprefer* in the item panel, a *Preferred*
+  badge, *Needs preference* in the Needs filter. Only the words changed: the code and the database
+  still say pick (`is_picked`, the History actions `pick` and `unpick`, `needs_pick`, the API's
+  `/pick` and `/unpick`), and an order is still recorded against a preferred sub.
+- The MM Lead role shows as **MM/SCM**, for the function rather than a rank above the sites'
+  Materials Managers. Its code stays `mm_lead`, so nobody's roles change.
 
 **Considered, not planned: finding orders in Infor that nobody recorded.** The app could search
 Infor's PO lines for the subs' vendor items after each kill and show "Found in Infor". The user
@@ -270,7 +283,7 @@ Fill/Kill roles (named 2026-10-13; earlier drafts called them A, B and C):
 | Viewer | `viewer` | Seeing everything in the module, without changing anything |
 | Sub Approver | `sub_approver` | Nursing. Entering a sub's Reference SKU (approved on entry; picked when it's the item's only approved sub); holding, rejecting and approving subs; picking and unpicking; comments on subs; correcting a Reference SKU; deleting a sub |
 | Materials Manager | `materials_manager` | A site's buyer. Adding each sub's vendor items (vendor part, vendor, vendor ID, UOM, QOE, ...), with the contract search; recording orders for the picks' vendor items, each for a site; comments on orders |
-| MM Lead | `mm_lead` | (2026-10-27) The Materials Management lead. Writing each item's instruction to the sites' Materials Managers; picking and unpicking; adding vendor items. Doesn't record orders unless also given Materials Manager |
+| MM/SCM | `mm_lead` | (2026-10-27; "MM Lead" until 2026-10-28) Coordinating how the sites order. Writing each item's instruction to the sites' Materials Managers; picking and unpicking; adding vendor items. Doesn't record orders unless also given Materials Manager |
 | Sub Finder | `sub_finder` | Proposing subs, pending review; adding vendor items. Kept for a future AI finder |
 
 **Revised 2026-10-15 after the stakeholder review.** Nursing should do as little as possible, and
@@ -356,7 +369,7 @@ Trends and analytics live on a separate Dashboard page (section 7).
   2026-10-27, to the orders: with sites chosen, only their orders count in Ordering Status, Total Sub
   Ordered (EA), the Needs filter and the orders under the table. Orders recorded before sites were
   (no site) count only when every site is shown.
-- **Needs filter:** All · Needs subs · Needs review · Needs pick · Needs order · Ordered (9.8):
+- **Needs filter:** All · Needs subs · Needs review · Needs preference ("Needs pick" until 2026-10-28) · Needs order · Ordered (9.8):
   - *needs subs*: no sub that is pending review, approved or on hold
   - *needs review*: at least one sub pending review
   - *needs pick*: at least one approved sub, none picked
@@ -399,7 +412,7 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Nursing's Pick | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too; "Picked for Ordering" until the user renamed it on 2026-10-28) per UOM: each pick's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the picks |
+| Nursing's Recommendation | ("Approver's Pick" until 2026-10-21, when Materials Managers could pick too; "Picked for Ordering" until 2026-10-28, then "Nursing's Pick" for a morning) per UOM: each preferred sub's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest pick first), the UOM's other cells spanning its picks' lines. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each pick (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the picks |
 | Will's Comments | (2026-10-27; "MM Instruction" until the user renamed it and moved it before Vendor Item Detail the same day) for the Infor item: the MM Lead's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts them and opens them all, newest first, in a popover. An MM Lead **double-clicks the cell** to write a new one (no button in the cell; the cell is outlined under the pointer, and says so on hover), or uses the panel's Add comment. It isn't tied to the Fill/Kill dates: the latest stays in force until a newer one replaces it, and its date shows how old it is |
 | Vendor Item Detail | per pick, on its line (2026-10-20; beside its pick from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
 | Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
@@ -523,8 +536,8 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
 - **History:** clicking a sub shows its history as an audit-log timeline, with who and when:
   creation, every status change, pick and unpick, comments, and its vendor items added, corrected
   and deleted (2026-10-20). **Decided.**
-- **Picking:** approved subs light up a **Pick** button. The Sub Approver or a Materials Manager
-  (2026-10-21) can pick one or more (usually one), and picked subs appear under Nursing's Pick. A
+- **Picking** (*preferred* on the page from 2026-10-28): approved subs light up a **Prefer** button (**Pick** before). The Sub Approver or a Materials Manager
+  (2026-10-21) can pick one or more (usually one), and preferred subs appear under Nursing's Recommendation. A
   pick stays, across days, until one of them unpicks it or the Sub Approver changes the sub's status
   (9.2); a sub that stops being *approved* is unpicked automatically. Which subs are approved stays
   the Sub Approver's call; the Materials Manager can choose among them, e.g. the one that can be

@@ -74,7 +74,7 @@ MODULES = {
             (ROLE_SUB_FINDER, "Sub Finder"),
             (ROLE_SUB_APPROVER, "Sub Approver"),
             (ROLE_MATERIALS_MANAGER, "Materials Manager"),
-            (ROLE_MM_LEAD, "MM Lead"),
+            (ROLE_MM_LEAD, "MM/SCM"),  # "MM Lead" until 2026-10-28 (the user): the function, not a rank
         ),
         capabilities={
             "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
@@ -83,7 +83,7 @@ MODULES = {
             # Set a sub's status, comment on subs.
             "review": frozenset({ROLE_SUB_APPROVER}),
             # Pick or unpick an approved sub (2026-10-21: Materials Managers too; it was in "review";
-            # 2026-10-27: MM Leads, choosing what the sites order).
+            # 2026-10-27: MM Leads, choosing what the sites order). "Prefer" on the page from 2026-10-28.
             "pick": frozenset({ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
             # A sub's vendor items: vendor part, vendor, vendor ID, UOM, QOE (2026-10-15, 10-20).
             "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER, ROLE_MM_LEAD}),
@@ -104,7 +104,7 @@ FILLKILL_FUNCTIONS = (
     ("Correct a sub's Reference SKU, or delete a sub with a reason", "add_sub"),
     ("Approve, hold or reject a sub", "review"),
     ("Comment on a sub", "review"),
-    ("Pick or unpick a sub for ordering", "pick"),
+    ("Mark an approved sub preferred, or unprefer it", "pick"),
     ("Add, correct or delete a sub's vendor items (vendor item details), with the contract and vendor searches", "details"),
     ("Record an order from a vendor item", "order"),
     ("Correct or void an order; comment on an order", "order"),
@@ -239,11 +239,11 @@ DENIED_MESSAGES = {
     (PLM, "edit"): "Your PLM Tracker role is Viewer, so you can't make changes.",
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
     (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
-    (FILLKILL, "details"): "Only Materials Managers, MM Leads and Sub Finders can add or change a sub's vendor items.",
+    (FILLKILL, "details"): "Only Materials Managers, MM/SCM and Sub Finders can add or change a sub's vendor items.",
     (FILLKILL, "review"): "Only Sub Approvers can review or comment on subs.",
-    (FILLKILL, "pick"): "Only Sub Approvers, Materials Managers and MM Leads can pick or unpick subs.",
+    (FILLKILL, "pick"): "Only Sub Approvers, Materials Managers and MM/SCM can prefer or unprefer subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
-    (FILLKILL, "instruct"): "Only MM Leads can write an item's instruction.",
+    (FILLKILL, "instruct"): "Only MM/SCM can write an item's instruction.",
 }
 
 

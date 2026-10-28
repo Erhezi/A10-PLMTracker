@@ -278,7 +278,7 @@ EXPORT_COLUMNS = (
     ("Sub Vendor Part", "vendor_part"), ("Sub Manufacturer Part", "manufacturer_part"), ("Sub Infor Item", "infor_item"),
     ("Sub Vendor ID", "vendor_id"), ("Sub Vendor Name", "vendor"), ("Sub Description", "description"),
     ("Sub UOM", "uom"), ("Sub QOE", "qoe"), ("Status", "status"),
-    ("Picked", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
+    ("Preferred", "is_picked"), ("Source", "source"), ("Entered By", "entered_by"), ("Entered", "create_dt"),
     ("Approved By", "approved_by"), ("Approved", "approved_at"),
     ("Vendor Item By", "vendor_item_by"), ("Vendor Item Added", "vendor_item_added"), ("Orders", "orders"),
     ("Last Ordered", "last_ordered"), ("Updated", "update_dt"), ("Latest Comment", "latest_comment"),

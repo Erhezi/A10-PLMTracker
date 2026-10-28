@@ -62,7 +62,7 @@ function render(subs, limit, deleted) {
         ${s.medline_infor_item ? `<div class="small text-muted">${esc(s.medline_infor_item)}</div>` : ''}</td>
       <td class="fw-semibold">${esc(s.reference_sku)}</td>
       <td>${items}</td>
-      <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Picked</span>' : ''}${removed}</td>
+      <td>${statusBadge(s.status)}${s.is_picked ? ' <span class="badge text-bg-success">Preferred</span>' : ''}${removed}</td>
       <td class="small text-nowrap">${s.orders ? `${s.orders} · last ${fmtDate(s.last_ordered)}` : '<span class="text-muted">—</span>'}</td>
       <td class="small">${entered}<div class="text-muted text-nowrap">${fmtDateTime(s.create_dt)}</div></td>
       <td class="small">${s.approved_by ? `${esc(s.approved_by)}<div class="text-muted text-nowrap">${fmtDateTime(s.approved_at)}</div>`

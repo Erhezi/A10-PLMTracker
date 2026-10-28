@@ -233,7 +233,7 @@ def _auto_pick(sub: Sub, actor: str, now: datetime) -> None:
     if sub.status == "approved" and not sub.is_picked and not others:
         sub.is_picked = True
         _history("sub", sub.sub_id, sub.medline_item, "pick", actor, now,
-                 comment="Picked automatically: the only approved sub.")
+                 comment="Preferred automatically: the only approved sub.")
 
 
 def _pick_the_one_left(sub: Sub, actor: str, now: datetime) -> Sub | None:
@@ -249,7 +249,7 @@ def _pick_the_one_left(sub: Sub, actor: str, now: datetime) -> Sub | None:
     other.is_picked = True
     other.update_dt = now
     _history("sub", other.sub_id, other.medline_item, "pick", actor, now,
-             comment=f"Picked automatically: the only approved sub left after {sub.label()} was put on {rules.STATUS_LABELS[sub.status]}.")
+             comment=f"Preferred automatically: the only approved sub left after {sub.label()} was put on {rules.STATUS_LABELS[sub.status]}.")
     return other
 
 
@@ -341,7 +341,7 @@ def set_status(sub_id: int, new_status: str, actor: str, *, expected_status: str
         if was_picked and status != "approved":
             sub.is_picked = False
             _history("sub", sub.sub_id, sub.medline_item, "unpick", actor, now,
-                     comment="Unpicked automatically: no longer approved.")
+                     comment="No longer preferred: it isn't approved any more.")
         sub.status = status
         sub.update_dt = now
         sub.picked_instead = None

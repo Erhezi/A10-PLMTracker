@@ -91,7 +91,7 @@ def test_nursing_enters_a_reference_sku_approved_and_picked_when_its_the_only_ap
         ("created", None, None, None, None, APPROVER),
         ("comment", None, None, None, "From Owens' email: 200 in stock", APPROVER),
         ("status", "status", "pending_review", "approved", None, APPROVER),
-        ("pick", None, None, None, "Picked automatically: the only approved sub.", APPROVER),
+        ("pick", None, None, None, "Preferred automatically: the only approved sub.", APPROVER),
     ]
     second = nurse_sub(reference_sku="B1")  # another approved one: the Sub Approver picks
     assert (second.status, second.is_picked) == ("approved", False)
@@ -286,7 +286,7 @@ def test_no_order_without_a_pick(ctx):
     second = nurse_sub(reference_sku="B1")  # approved, but not the pick
     item = vendor_item(second, vendor_part="B1")
     refused(lambda: services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 1}, MANAGER),
-            status=409, says="isn't picked")
+            status=409, says="isn't preferred")
     services().set_status(second.sub_id, "hold", OTHER_APPROVER)
     refused(lambda: services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 1}, MANAGER, expected_status="approved"),
             status=409, says="now Hold")
@@ -369,7 +369,7 @@ def test_a_deleted_sub_keeps_its_row_and_history_and_leaves_every_list(ctx):
 
 def test_the_approvers_pick_and_a_sub_with_orders_cant_be_deleted(ctx):
     sub, item = approved_and_picked()
-    refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="unpicked before")
+    refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="unpreferred before")
     order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 3}, MANAGER)
     services().unpick(sub.sub_id, APPROVER)
     refused(lambda: services().delete_sub(sub.sub_id, "not needed", FINDER), status=409, says="void it before")

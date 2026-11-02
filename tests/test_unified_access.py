@@ -207,8 +207,11 @@ def state(app, email):
 def test_user_control_shows_a_row_per_user_with_every_module(sqlite_app, admin):
     make_user(sqlite_app, "nurse@example.org", role=None, requested="fillkill", active=False)
     page = admin.get("/admin/user-control").get_data(as_text=True)
-    for heading in ("Admin", "PLM Tracker", "Fill/Kill Management"):
+    for heading in ("Admin", "PLM Tracker"):
         assert f">{heading}</th>" in page
+    # Order Timing has no roles to give: the Fill/Kill heading says it comes with them (2026-10-30).
+    assert ">Fill/Kill Management\n" in page and ">includes Order Timing</span></th>" in page
+    assert "role_ordertiming" not in page
     assert 'type="radio" name="role_plm" value=""' in page  # No access
     assert 'type="radio" name="role_plm" value="editor"' in page
     assert 'type="checkbox" name="role_fillkill" value="viewer" form="access-2" id="fillkill-2-viewer" data-exclusive="1"' in page

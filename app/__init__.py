@@ -96,6 +96,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None, config_ove
     from .admin.routes import admin_bp
     from .selfawareness.routes import bp as selfawareness_bp
     from .fillkill.routes import bp as fillkill_bp
+    from .ordertiming.routes import bp as ordertiming_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(collector_bp)
@@ -105,6 +106,7 @@ def create_app(env: str | None = None, url_prefix: str | None = None, config_ove
     app.register_blueprint(admin_bp)
     app.register_blueprint(selfawareness_bp)
     app.register_blueprint(fillkill_bp)
+    app.register_blueprint(ordertiming_bp)
 
     if url_prefix:
         # WSGI middleware so IIS-hosted app sees the correct SCRIPT_NAME

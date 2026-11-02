@@ -1,5 +1,5 @@
 """Fill/Kill workflow tables (schema FillKill): subs, their vendor items, orders, their history, and
-the MM Lead's instructions.
+SCM's instructions.
 
 db/fillkill/12_workflow_tables.sql creates these tables. The constraints are
 spelled out here with the same names, because the app's startup (db.create_all)
@@ -24,7 +24,7 @@ HISTORY_ACTIONS = ("created", "status", "pick", "unpick", "comment", "edit", "vo
 
 TEXT_MAX = 400  # comments and void reasons
 REASON_MAX = TEXT_MAX - 20  # a Hold or Reject reason, kept as a comment after "Rejected: " (2026-10-28)
-INSTRUCTION_MAX = 1000  # an MM Lead's instruction: it may speak to every site (2026-10-27)
+INSTRUCTION_MAX = 1000  # an SCM instruction: it may speak to every site (2026-10-27)
 
 
 def _one_of(column: str, values) -> str:
@@ -182,7 +182,7 @@ class SubOrder(db.Model):
 
 
 class ItemInstruction(db.Model):
-    """An MM Lead's instruction to the sites' Materials Managers on how to order an item (2026-10-27):
+    """An SCM instruction to the sites' Materials Managers on how to order an item (2026-10-27):
     which sub, how much, which sites. One thread per Infor item, the main table's row, or per Medline
     item when it isn't in Infor. Never changed or deleted: the newest is the one in force."""
 

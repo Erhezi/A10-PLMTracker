@@ -500,6 +500,17 @@ const steps = [
     await waitFor(`document.getElementById('fk-dash-range').innerText === '${m}/${d}/${y} to ${m}/${d}/${y}'`, 'the range on today');
     await waitFor(`document.querySelectorAll('#fk-dash-top tr').length === 2`, "today's two items");
   }],
+  ['Order Timing, a module of its own: a Viewer opens its Main and Dashboard, empty for now', async () => {
+    // 2026-10-30: any Fill/Kill role views it; Medline's order feed isn't ready yet.
+    const current = (label) => evaluate(`[...document.querySelectorAll('a[aria-current="page"]')].map((a) => a.innerText.trim()).join('|') === ${JSON.stringify(label)}`);
+    await go('/dev-login?as=viewer&next=/fillkill/', MAIN_READY, 'Main');
+    await click('.module-nav a[href$="/ordertiming/"]');
+    await waitFor(`document.getElementById('ot-main-empty')`, "Order Timing's Main");
+    expect(await current('Order Timing|Main'), 'Order Timing and its Main are not the current module and page');
+    await click('.page-nav a[href$="/ordertiming/dashboard"]');
+    await waitFor(`document.getElementById('ot-dash-empty')`, "Order Timing's Dashboard");
+    expect(await current('Order Timing|Dashboard'), 'Order Timing and its Dashboard are not the current module and page');
+  }],
   ['A nurse: no vendor items, and their Reference SKU is approved on Main', async () => {
     await go('/dev-login?as=nurse', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     await click('#fk-main button[data-open="MDS2585H"]:not([data-scope])');
@@ -628,19 +639,20 @@ const steps = [
     await waitFor(`[...document.querySelectorAll('#fk-main tbody.fk-item')].some((b) => b.innerText.includes('930103')
       && b.querySelectorAll('[data-order-vi]').length === 2)`, 'two tiles for 930103');
   }],
-  ["MM/SCM writes Will's Comments; the sites read them on Main", async () => {
-    // 2026-10-27: the Materials Management lead guides the sites' Materials Managers and doesn't
+  ["SCM writes SCM Comments; the sites read them on Main", async () => {
+    // 2026-10-27: SCM guides the sites' Materials Managers and doesn't
     // order: no tiles to click, but the item's comment to write.
-    await go('/dev-login?as=lead', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    await go('/dev-login?as=scm', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     expect(await count('#fk-main button[data-order-vi]') === 0 && await count('#fk-main div.fk-vi-tile') >= 1,
-      'MM/SCM can click a tile to record an order');
+      'SCM can click a tile to record an order');
     // Between the approved subs and their vendor items (the user, 2026-10-27).
     const heads = await evaluate(`[...document.querySelectorAll('#fk-main thead th')].map((th) => th.innerText.trim())`);
-    const at = heads.indexOf("Will's Comments");
+    const at = heads.indexOf("SCM Comments");
     expect(at > 0 && heads[at - 1] === 'Approved by Nursing' && heads[at + 1] === 'Vendor Item Detail', `the columns: ${heads.join(', ')}`);
     // A double-click on its cell opens the form.
     await dblclick(`document.querySelector('#fk-main td[data-instruct="DYND70294BH"]')`, "the item's cell");
     await modalOpen();
+    expect((await text('label[for="fk-m-instruction"]')).startsWith('Comment from SCM'), "the box isn't labelled Comment from SCM");
     const summary = (await text('.fk-form-summary')).replace(/\s+/g, ' ');
     expect(summary.includes('Infor item 100339') && summary.includes('SAMPLE SITE A: killed 5 EA, sub ordered 100 EA'),
       `the comment form's summary: ${summary}`);
@@ -651,7 +663,7 @@ const steps = [
     const cell = `document.querySelector('#fk-main [data-instructions="DYND70294BH"]')?.closest('td')`;
     await waitFor(`${cell} && ${cell}.querySelector('.fk-instruction-text').innerText.includes('Site B: 1 BX of 88885 today.')`,
       'the comment on Main');
-    expect((await evaluate(`${cell}.innerText`)).includes('lead ·'), 'no who and when under it');
+    expect((await evaluate(`${cell}.innerText`)).includes('scm ·'), 'no who and when under it');
     // Or from the item's panel: Add comment (the user: a button, like Add sub).
     await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
     await panelSays('Site B: 1 BX of 88885 today.');
@@ -670,7 +682,7 @@ const steps = [
     expect(await count('#fk-main td[data-instruct]') === 0, 'a Materials Manager can write comments');
     await click('#fk-main [data-instructions="DYND70294BH"]');
     await waitFor(`(document.querySelector('.fk-comments-popover') || {}).innerText?.includes('Site B: 1 BX')`, 'the comments popover');
-    expect((await text('.fk-comments-popover')).includes("Will's Comments"), "the popover isn't titled Will's Comments");
+    expect((await text('.fk-comments-popover')).includes("SCM Comments"), "the popover isn't titled SCM Comments");
     await evaluate('document.body.click()');
     await waitFor(`!document.querySelector('.fk-comments-popover')`, 'the popover to close');
     await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
@@ -687,7 +699,25 @@ const steps = [
     expect(await count('#fk-main td[data-dblclick]') === 0, 'a viewer has cells to double-click');
     expect(await count('#fk-main .bi-pencil-square') === 0, 'a viewer sees the pencil of a sub without vendor items (GLV-3)');
     expect(await count('#fk-main div.fk-vi-tile') >= 3, 'a viewer sees no vendor item tiles');
+    expect(await count('#fk-reset') === 0, 'a viewer has Reset data');
   }],
+  // Last: it empties what the steps before added (2026-11-02, the development server only).
+  ['An admin resets the data: every sub, vendor item, order and comment goes', async () => {
+    await go('/dev-login?as=all', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
+    expect(await count('#fk-main .fk-vi-tile') >= 1, 'no subs to reset');
+    await click('#fk-reset');
+    await modalOpen();
+    expect((await text('#fk-modal-form')).includes('sqlite (in memory)'), "the form doesn't name the database");
+    await setValue('#fk-m-confirm', 'reset');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await waitFor(`(document.getElementById('fk-modal-message') || {}).innerText?.includes('Type RESET to confirm.')`, 'the refusal');
+    await setValue('#fk-m-confirm', 'RESET');
+    await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
+    await modalClosed();
+    await waitFor(`document.getElementById('fk-reset-note').innerText.startsWith('Reset: ')`, 'what was deleted');
+    await waitFor(`document.querySelectorAll('#fk-main tbody.fk-item').length && !document.querySelector('#fk-main .fk-vi-tile')`,
+      'no subs left on Main');
+  }, { refusals: [/\/api\/reset$/] }],  // "reset" isn't RESET
 ];
 
 await send('Runtime.enable');

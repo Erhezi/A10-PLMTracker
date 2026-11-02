@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
+from .. import db
+from ..config import Config
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
@@ -109,6 +112,21 @@ def capabilities(user) -> dict:
     return {cap: can(user, FILLKILL, cap) for cap in MODULES[FILLKILL].capabilities}
 
 
+def reset_config() -> dict | None:
+    """Main's Reset data button (2026-11-02): for admins, on the development server only
+    (FILLKILL_RESET), with the database it empties for its confirmation."""
+    if not (current_app.config.get("FILLKILL_RESET") and is_admin(current_user)):
+        return None
+    url = db.engine.url
+    mssql = url.get_backend_name().startswith("mssql")
+    return {
+        "url": url_for("fillkill.api_reset"),
+        "database": Config.describe_db() if mssql else f"{url.get_backend_name()} ({url.database or 'in memory'})",
+        # O2 is the live app's database too: its Fill/Kill data goes with it.
+        "live": mssql and not os.getenv("DATABASE_URL") and current_app.config.get("DB_TARGET") == "O2",
+    }
+
+
 # --- pages ------------------------------------------------------------------------------
 
 @bp.route("/")
@@ -138,9 +156,10 @@ def index():
         "medlineVendorIds": list(MEDLINE_VENDOR_IDS),
         # A UOM typed another way, and Infor's for it (CS is CA): the forms change it as it's typed.
         "uomAliases": services.uom_aliases(),
-        "instructionMax": INSTRUCTION_MAX,  # an MM Lead's instruction (2026-10-27)
+        "instructionMax": INSTRUCTION_MAX,  # an SCM instruction (2026-10-27)
         "reasonMax": REASON_MAX,  # why a sub was put on hold or rejected (2026-10-28)
         "instructionLabel": INSTRUCTION_LABEL,
+        "reset": reset_config(),
         "api": {
             "main": url_for("fillkill.api_main"),
             "item": url_for("fillkill.api_item"),
@@ -349,7 +368,7 @@ def api_orders():
 @login_required
 @require_module(FILLKILL, "view")
 def api_instructions():
-    """Every MM Lead instruction for the main table's row of ?item=<Medline item>, newest first."""
+    """Every SCM instruction for the main table's row of ?item=<Medline item>, newest first."""
     medline_item = (request.args.get("item") or "").strip()
     if not medline_item:
         raise RuleError("Which item?")
@@ -510,7 +529,7 @@ def api_order_action(order_id, action):
     return ok({"order": queries.order_dict(order)})
 
 
-# The MM Lead's instructions to the sites (2026-10-27).
+# SCM's instructions to the sites (2026-10-27).
 
 @bp.post("/api/instructions")
 @login_required
@@ -524,3 +543,19 @@ def api_add_instruction():
         raise RuleError(f"{medline_item} isn't a Medline item in the fill/kill data.", 404)
     row = services.add_instruction(medline_item, data.get("instruction"), current_user.email)
     return ok({"instruction": queries.instruction_dict(row)}, 201)
+
+
+# The development server's Reset data (2026-11-02).
+
+@bp.post("/api/reset")
+@login_required
+@require_module(FILLKILL, "view")
+def api_reset():
+    """Empty the Fill/Kill workflow (services.reset_workflow): admins, on the development server only."""
+    if not current_app.config.get("FILLKILL_RESET"):
+        raise RuleError("Resetting the data is only offered on the development server.", 404)
+    if not is_admin(current_user):
+        raise RuleError("Only admins can reset the data.", 403)
+    if (body().get("confirm") or "").strip() != "RESET":
+        raise RuleError("Type RESET to confirm.")
+    return ok({"deleted": services.reset_workflow(current_user.email)})

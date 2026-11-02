@@ -1,5 +1,5 @@
 -- Fill/Kill workflow tables: subs, their vendor items, orders, the history of every change and
--- comment, and the MM Lead's instructions. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1),
+-- comment, and SCM's instructions. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1),
 -- and again before the coordination release (2026-10-27). Safe to re-run.
 --
 --   Sub            a sub of a Medline item: the Reference SKU nursing (or a Sub Finder) entered,
@@ -11,7 +11,7 @@
 --                  vendor ID, UOM and QOE it was placed with
 --   History        one row per change or comment on a sub, a vendor item or an order (comments
 --                  live only here)
---   ItemInstruction  an MM Lead's instruction to the sites on how to order an item (2026-10-27),
+--   ItemInstruction  an SCM instruction to the sites on how to order an item (2026-10-27),
 --                  per Infor item; never changed, the newest is in force
 --
 -- app/models/fillkill.py carries the same constraint names, so a table the app's startup

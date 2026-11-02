@@ -57,7 +57,7 @@ class User(db.Model, UserMixin):
 
 ROLE_CHECK_SQL = (
     "(module = 'plm' AND role IN ('viewer', 'editor'))"
-    " OR (module = 'fillkill' AND role IN ('viewer', 'sub_finder', 'sub_approver', 'materials_manager', 'mm_lead'))"
+    " OR (module = 'fillkill' AND role IN ('viewer', 'sub_finder', 'sub_approver', 'materials_manager', 'scm'))"
 )
 
 

@@ -1,4 +1,4 @@
--- Empties the Fill/Kill workflow: every sub, vendor item, order, history row and MM Lead
+-- Empties the Fill/Kill workflow: every sub, vendor item, order, history row and SCM
 -- instruction, and 12's copy of Sub from before vendor items if it's still there. New ones number
 -- from 1 again (2026-10-20).
 -- Only if asked (plan v2 P8): by default, subs and orders entered during UAT are kept at go-live.

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from .. import db
@@ -483,10 +483,10 @@ def comment_on_order(order_id: int, text, actor: str) -> SubOrder:
     return _run(action)
 
 
-# --- instructions (MM Lead) ---------------------------------------------------------------
+# --- instructions (SCM) -------------------------------------------------------------------
 
 def add_instruction(medline_item: str, text, actor: str) -> ItemInstruction:
-    """An MM Lead's instruction to the sites on how to order an item (2026-10-27). It belongs to the
+    """An SCM instruction to the sites on how to order an item (2026-10-27). It belongs to the
     Infor item of ``medline_item``, the main table's row (to the Medline item when Infor has none).
     Instructions are never changed: a new one replaces the last as the one in force."""
     instruction = rules.clean_instruction(text)
@@ -500,3 +500,37 @@ def add_instruction(medline_item: str, text, actor: str) -> ItemInstruction:
         return row
 
     return _run(action)
+
+
+# --- reset (development server only) ----------------------------------------------------------
+
+RESET_TABLES = (ItemInstruction, History, SubOrder, VendorItem, Sub)  # each before what it points at
+
+
+def reset_workflow(actor: str) -> dict:
+    """Empty the Fill/Kill workflow, as db/fillkill/90_reset_workflow.sql does (2026-11-02, the user):
+    every SCM instruction, history row, order, vendor item and sub. The kill lines are Medline's and
+    stay. Only the development server offers it (routes.api_reset). Returns the rows deleted per table."""
+    def action():
+        return {model.__tablename__: db.session.execute(delete(model)).rowcount for model in RESET_TABLES}
+
+    deleted = _run(action)
+    log.warning("Fill/Kill workflow reset by %s: %s", actor, deleted)
+    _renumber()
+    return deleted
+
+
+def _renumber() -> None:
+    """On SQL Server, new rows number from 1 again, as after 90 (a table that never had rows already
+    does). Needs ALTER on the tables: without it the numbers just carry on."""
+    if not db.engine.url.get_backend_name().startswith("mssql"):
+        return  # SQLite numbers from the highest id left: from 1 in an empty table
+    for model in RESET_TABLES:
+        name = f"[{model.__table__.schema}].[{model.__tablename__}]"
+        try:
+            db.session.execute(text(
+                f"IF (SELECT [last_value] FROM sys.identity_columns WHERE [object_id] = OBJECT_ID(N'{name}')) IS NOT NULL "
+                f"DBCC CHECKIDENT ('{name}', RESEED, 0) WITH NO_INFOMSGS"))
+            _commit()
+        except SQLAlchemyError:
+            log.exception("Fill/Kill reset: couldn't renumber %s", name)

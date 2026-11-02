@@ -2,9 +2,10 @@
 -- unified access 2026-10-12. Run on O2, database PLM, BEFORE deploy #1. Safe to re-run.
 --
 --   plm       viewer | editor                         at most one of the two
---   fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager, mm_lead
+--   fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager, scm
 --             (sub_approver + materials_manager together only for admins; the app checks
---             both rules, 09_verify.sql reports any breach). mm_lead since 2026-10-27.
+--             both rules, 09_verify.sql reports any breach). scm (SCM) since 2026-10-27, coded
+--             mm_lead until 2026-11-02: this script renames those rows.
 --
 -- Admin is not a row here: it is the app-level role in users.user_role ('admin' or 'user'),
 -- and grants nothing inside a module, so admins get no roles by default.
@@ -26,7 +27,7 @@ BEGIN
             REFERENCES [PLM].[users] ([user_id]) ON DELETE CASCADE,
         CONSTRAINT [CK_UserModuleRole_role] CHECK (
                ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
-            OR ([module] = 'fillkill' AND [role] IN ('viewer', 'sub_finder', 'sub_approver', 'materials_manager', 'mm_lead'))
+            OR ([module] = 'fillkill' AND [role] IN ('viewer', 'sub_finder', 'sub_approver', 'materials_manager', 'scm'))
         )
     );
 END;
@@ -99,7 +100,7 @@ END;
 
 -- Allowed roles per module. Replaces earlier versions: the Fill/Kill-only CHECK, one
 -- that also allowed module 'app', ones with the old Fill/Kill role codes, and ones without
--- mm_lead (the MM Lead, 2026-10-27).
+-- scm (SCM, 2026-10-27; coded mm_lead until 2026-11-02).
 IF EXISTS (SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_fillkill_role')
 BEGIN
@@ -109,18 +110,20 @@ END;
 IF EXISTS (SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = @table AND name = N'CK_UserModuleRole_role'
              AND (definition LIKE N'%''app''%' OR definition NOT LIKE N'%sub[_]finder%'
-                  OR definition NOT LIKE N'%mm[_]lead%'))
+                  OR definition NOT LIKE N'%''scm''%'))
 BEGIN
     ALTER TABLE [PLM].[UserModuleRole] DROP CONSTRAINT [CK_UserModuleRole_role];
     PRINT 'Dropped an earlier CK_UserModuleRole_role';
 END;
 
--- Fill/Kill roles renamed 2026-10-13 (they were A/B/C in the design discussions).
+-- Fill/Kill roles renamed 2026-10-13 (they were A/B/C in the design discussions), and
+-- mm_lead to scm on 2026-11-02 (the role shows as SCM; it was the MM Lead).
 UPDATE r SET r.[role] = m.[new_role]
 FROM [PLM].[UserModuleRole] AS r
 JOIN (VALUES ('proposer', 'sub_finder'),
              ('clinical', 'sub_approver'),
-             ('materials', 'materials_manager')) AS m ([old_role], [new_role])
+             ('materials', 'materials_manager'),
+             ('mm_lead', 'scm')) AS m ([old_role], [new_role])
   ON r.[role] = m.[old_role]
 WHERE r.[module] = 'fillkill';
 PRINT CONCAT('Fill/Kill roles renamed: ', @@ROWCOUNT);
@@ -137,7 +140,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
 BEGIN
     ALTER TABLE [PLM].[UserModuleRole] ADD CONSTRAINT [CK_UserModuleRole_role] CHECK (
            ([module] = 'plm'      AND [role] IN ('viewer', 'editor'))
-        OR ([module] = 'fillkill' AND [role] IN ('viewer', 'sub_finder', 'sub_approver', 'materials_manager', 'mm_lead'))
+        OR ([module] = 'fillkill' AND [role] IN ('viewer', 'sub_finder', 'sub_approver', 'materials_manager', 'scm'))
     );
     PRINT 'Added CK_UserModuleRole_role';
 END;

@@ -741,27 +741,27 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
 # --- the coordination hub (2026-10-27) -----------------------------------------------------------
 
 @pytest.fixture
-def lead(app):
-    return client(app, "lead@example.org", plm=None, fillkill=("mm_lead",))
+def scm(app):
+    return client(app, "scm@example.org", plm=None, fillkill=("scm",))
 
 
-def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, lead, finder_manager):
-    assert page_config(lead)["can"] == {"view": True, "add_sub": False, "review": False, "details": True,
+def test_scm_writes_the_instruction_the_sites_read_on_main(app, viewer, scm, finder_manager):
+    assert page_config(scm)["can"] == {"view": True, "add_sub": False, "review": False, "details": True,
                                        "order": False, "instruct": True}
-    # Called Will's Comments on the page for now (the user, 2026-10-27), before Vendor Item Detail.
-    assert page_config(lead)["instructionLabel"] == "Will's Comments"
-    page = lead.get("/fillkill/").get_data(as_text=True)
-    assert page.index("Approved by Nursing</th>") < page.index("Will&#39;s Comments</th>") < page.index(">Vendor Item Detail</th>")
+    # Called SCM Comments on the page (the user, 2026-11-02; "Will's Comments" from 10-27), before Vendor Item Detail.
+    assert page_config(scm)["instructionLabel"] == "SCM Comments"
+    page = scm.get("/fillkill/").get_data(as_text=True)
+    assert page.index("Approved by Nursing</th>") < page.index("SCM Comments</th>") < page.index(">Vendor Item Detail</th>")
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
-    assert status == 403 and "Only MM/SCM" in data["message"]
+    assert status == 403 and "Only SCM" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403
-    assert post(lead, "/fillkill/api/instructions", {"medline_item": "NOT-KILLED", "instruction": "x"})[0] == 404
-    status, data = post(lead, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": " "})
+    assert post(scm, "/fillkill/api/instructions", {"medline_item": "NOT-KILLED", "instruction": "x"})[0] == 404
+    status, data = post(scm, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": " "})
     assert status == 400 and "Instruction is required" in data["message"]
     for text in ("Hold until Friday", "White Plains: 2 BX of OM1. Test site: use stock."):
-        status, data = post(lead, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": text})
+        status, data = post(scm, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": text})
         assert status == 201, data
-    assert (data["instruction"]["infor_item"], data["instruction"]["written_by"]) == ("999999", "lead@example.org")
+    assert (data["instruction"]["infor_item"], data["instruction"]["written_by"]) == ("999999", "scm@example.org")
 
     # On Main, the latest is in force; it isn't tied to the Fill/Kill dates.
     _, main = get(viewer, "/fillkill/api/main", start="2026-09-29", end="2026-09-29")
@@ -775,9 +775,9 @@ def test_the_mm_lead_writes_the_instruction_the_sites_read_on_main(app, viewer, 
         "White Plains: 2 BX of OM1. Test site: use stock.", "Hold until Friday"]  # newest first
     assert get(viewer, "/fillkill/api/instructions")[0] == 400
     _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-28", end="2026-09-30")
-    assert panel["instruction"]["latest"]["written_by"] == "lead@example.org"
-    # The MM Lead doesn't record orders.
-    status, data = post(lead, "/fillkill/api/orders", {"vendor_item_id": 1, "site": WP, "quantity": 1})
+    assert panel["instruction"]["latest"]["written_by"] == "scm@example.org"
+    # SCM doesn't record orders.
+    status, data = post(scm, "/fillkill/api/orders", {"vendor_item_id": 1, "site": WP, "quantity": 1})
     assert status == 403 and "Only Materials Managers" in data["message"]
 
 
@@ -815,3 +815,50 @@ def test_orders_are_for_a_site_and_the_site_filter_applies_to_them(app, viewer, 
         _, dash = get(viewer, "/fillkill/api/dashboard", **params)
         assert (dash["headline"]["items_ordered"], dash["headline"]["items_ordered_short"]) == (ordered, short), sites
         assert dash["flow"]["items_ordered"] == ordered, sites
+
+
+# --- the development server's Reset data (2026-11-02) -------------------------------------------
+
+def test_only_admins_on_the_development_server_are_offered_reset_data(app, viewer):
+    from app.config import DevelopmentConfig, ProductionConfig
+    assert DevelopmentConfig.FILLKILL_RESET and ProductionConfig.FILLKILL_RESET is False  # never on the live server
+    admin = client(app, "boss@example.org", role="admin", plm=None, fillkill=("viewer",))
+    assert page_config(admin)["reset"] == {"url": "/fillkill/api/reset", "database": "sqlite (in memory)", "live": False}
+    page = admin.get("/fillkill/").get_data(as_text=True)
+    assert page.index('id="fk-data-as-of"') < page.index('id="fk-reset"')  # beside the latest line update
+    # Not for anyone else, admin or not, and not with FILLKILL_RESET off.
+    assert page_config(viewer)["reset"] is None and 'id="fk-reset"' not in viewer.get("/fillkill/").get_data(as_text=True)
+    status, data = post(viewer, "/fillkill/api/reset", {"confirm": "RESET"})
+    assert status == 403 and data["message"] == "Only admins can reset the data."
+    app.config["FILLKILL_RESET"] = False
+    assert page_config(admin)["reset"] is None and 'id="fk-reset"' not in admin.get("/fillkill/").get_data(as_text=True)
+    assert post(admin, "/fillkill/api/reset", {"confirm": "RESET"})[0] == 404
+
+
+def test_reset_data_empties_the_workflow_and_keeps_the_kill_lines(app, viewer, finder_approver, finder_manager):
+    from app.models.fillkill import History, ItemInstruction, Sub, SubOrder, VendorItem
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "DYND70294BH", "reference_sku": "88885"})
+    sub_id = data["sub"]["sub_id"]
+    _, data = post(finder_manager, f"/fillkill/api/subs/{sub_id}/vendor-items", CUP_ITEM)
+    status, data = post(finder_manager, "/fillkill/api/orders", {
+        "vendor_item_id": data["vendor_item"]["vendor_item_id"], "site": WP, "quantity": 3, "expected_status": "approved"})
+    assert status == 201, data
+    scm = client(app, "scm2@example.org", plm=None, fillkill=("scm",))
+    assert post(scm, "/fillkill/api/instructions", {"medline_item": "DYND70294BH", "instruction": "Order 88885"})[0] == 201
+    admin = client(app, "boss@example.org", role="admin", plm=None, fillkill=("viewer",))
+
+    status, data = post(admin, "/fillkill/api/reset", {"confirm": "reset"})
+    assert status == 400 and data["message"] == "Type RESET to confirm."
+    status, data = post(admin, "/fillkill/api/reset", {"confirm": " RESET "})
+    assert status == 200, data
+    assert data["deleted"] == {"Sub": 1, "SubVendorItem": 1, "SubOrder": 1, "ItemInstruction": 1,
+                               "History": data["deleted"]["History"]} and data["deleted"]["History"] >= 3
+    with app.app_context():
+        assert [m.query.count() for m in (Sub, VendorItem, SubOrder, History, ItemInstruction)] == [0, 0, 0, 0, 0]
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30")
+    cup = next(r for r in main["rows"] if r["infor_item"] == "100339")
+    assert (cup["approved_subs"], cup["orders"], cup["instruction"]) == ([], [], None)
+    assert cup["killed_each"] == 30.0  # Medline's kill lines stay
+    # Numbered from 1 again.
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "DYND70294BH", "reference_sku": "88885"})
+    assert data["sub"]["sub_id"] == 1

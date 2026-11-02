@@ -19,7 +19,7 @@
         {% for key, module in modules.items() %}
         <div class="form-check">
           <input class="form-check-input" type="checkbox" name="modules" value="{{ key }}" id="module-{{ key }}" />
-          <label class="form-check-label" for="module-{{ key }}">{{ module.label }}</label>
+          <label class="form-check-label" for="module-{{ key }}">{{ module.label }}{% if included[key] %} <span class="text-muted">(includes {{ included[key]|join(', ') }})</span>{% endif %}</label>
         </div>
         {% endfor %}
         <div class="form-text">An admin approves your account and grants access to each module.</div>

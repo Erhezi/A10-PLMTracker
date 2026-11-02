@@ -21,11 +21,11 @@
       The main table rolls those lines up <strong>per Infor item</strong> for the dates and sites you
       choose. For each item, nursing (Sub Approver) enters the substitutes that are clinically acceptable,
       approved on entry: every approved substitute can be ordered;
-      MM/SCM tells the sites how to order it; and each site's Materials Manager adds the ways to order it
+      SCM tells the sites how to order it; and each site's Materials Manager adds the ways to order it
       (its vendor items) and records what they ordered, for their site.
     </p>
     <p class="mb-0">
-      It's where everyone coordinates: nursing's latest comment on each approved substitute and MM/SCM's latest
+      It's where everyone coordinates: nursing's latest comment on each approved substitute and SCM's latest
       comment on each item (<em>{{ instruction_label }}</em>) read right on the table. Nobody is emailed:
       open Main, or refresh it, to see the latest. Please record every substitute order here, with
       its site (and its PO number if you have it), so everyone can see which sites have ordered.
@@ -42,7 +42,7 @@
         <tbody>
           <tr><td class="text-nowrap">Viewer</td><td>Seeing everything in the module.</td></tr>
           <tr><td class="text-nowrap">Sub Approver</td><td>Usually nursing. Entering the Reference SKU of a substitute found through suppliers, with a note if useful: it's approved as soon as it's entered, so it can be ordered. Reviewing proposed ones; putting a substitute on hold or rejecting it, with a reason if useful, when it shouldn't be ordered any more; adding comments, correcting a Reference SKU, and deleting a substitute with a reason.</td></tr>
-          <tr><td class="text-nowrap">MM/SCM</td><td>Coordinating how the sites order. Writing each item's comment to the sites' Materials Managers (<em>{{ instruction_label }}</em>): which substitute, how much, for which sites. Adding vendor items. Doesn't record orders (unless also given Materials Manager).</td></tr>
+          <tr><td class="text-nowrap">SCM</td><td>Coordinating how the sites order. Writing each item's comment to the sites' Materials Managers (<em>{{ instruction_label }}</em>): which substitute, how much, for which sites. Adding vendor items. Doesn't record orders (unless also given Materials Manager).</td></tr>
           <tr><td class="text-nowrap">Materials Manager</td><td>A site's buyer. Adding each substitute's vendor items, the ways to order it (vendor part, vendor, Infor's vendor ID, UOM, QOE), helped by the search of Infor's active contracts; recording what was ordered from an approved substitute's vendor items, for their site, and adding comments to orders.</td></tr>
           <tr><td class="text-nowrap">Sub Finder</td><td>Proposing substitutes, which wait for a Sub Approver's review; adding vendor items. Kept for a future AI agent that finds substitutes.</td></tr>
           <tr><td class="text-nowrap">Admin</td><td>Assigns these roles in User Control. Inside the module, admins have only the roles they hold, like everyone else.</td></tr>
@@ -51,7 +51,7 @@
     </div>
     <p class="small text-muted mb-0">
       Viewer is held on its own; the other roles can view too. Nursing holds Sub Approver, whoever
-      coordinates the sites MM/SCM, and the sites' Materials Managers Materials Manager. Sub Approver and Materials
+      coordinates the sites SCM, and the sites' Materials Managers Materials Manager. Sub Approver and Materials
       Manager stay with different people, so the person who approves isn't the person who orders (admins excepted).
     </p>
 
@@ -96,9 +96,9 @@
         Sub Approvers double-click the cell to add a substitute) and <em>Vendor Item Detail</em>: beside each one, a tile for each way to order it, which a
         Materials Manager clicks to record an order. A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
         <em>Not in Infor</em>.</li>
-      <li class="mb-1"><strong>{{ instruction_label }}</strong>, between the approved substitutes and their vendor items: MM/SCM's latest comment on how the sites
+      <li class="mb-1"><strong>{{ instruction_label }}</strong>, between the approved substitutes and their vendor items: SCM's latest comment on how the sites
         should order the item, with who wrote it and when. It stays until they write a new one, whatever dates you look at;
-        <i class="bi bi-chat-square-text"></i> lists every one, newest first. MM/SCM double-click the cell to add one, or use
+        <i class="bi bi-chat-square-text"></i> lists every one, newest first. SCM double-click the cell to add one, or use
         <em>Add comment</em> in the item's panel.</li>
       <li class="mb-1"><strong>Choose what to look at:</strong> click <em>View today</em>, or <em>Select a range</em> and choose the first
         and last <em>Fill/Kill dates</em> (the days Medline's killed lines were ordered; it opens on today), choose sites, and type part of an item number or description.</li>
@@ -141,7 +141,7 @@
       <li class="mb-2"><strong>Substitute entered.</strong> Nursing gathers options from suppliers (emails, calls) and enters the part number of the one they choose, with a note if useful.
         It's the <em>Reference SKU</em>, their approved reference: often the manufacturer's part, which several vendors may sell. It stays as entered; the Materials Manager works out how to order it. It's <em>approved</em> right away: approved by nursing means clinically acceptable, and every approved substitute can be ordered. Substitutes stay with the item, so the next time it's killed they're already there.</li>
       <li class="mb-2"><strong>Proposed substitutes.</strong> Medline's backorder substitutes appear automatically (and, later, an AI finder's). They're <em>pending review</em> until a Sub Approver approves, holds or rejects them.</li>
-      <li class="mb-2"><strong>Instructed.</strong> MM/SCM writes how the sites should order it: which substitute and vendor item, how much,
+      <li class="mb-2"><strong>Instructed.</strong> SCM writes how the sites should order it: which substitute and vendor item, how much,
         for which sites. Their latest comment reads on Main for everyone, under <em>{{ instruction_label }}</em>.</li>
       <li class="mb-2"><strong>Changed later.</strong> When nursing no longer wants a substitute ordered, the Sub Approver puts it on <em>Hold</em> or <em>rejects</em> it, with a reason if useful (kept as its comment): it leaves <em>Approved by Nursing</em> and can't be ordered until it's approved again. Its orders so far stay. Click a substitute's History to see every change, with who made it and when.</li>
       <li><strong>Ordered.</strong> A Materials Manager adds an approved substitute's <em>vendor items</em>, one for each way to order it: a vendor part, its vendor and vendor ID, and a UOM

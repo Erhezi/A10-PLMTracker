@@ -29,10 +29,10 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
     (("materials_manager",), {"view", "details", "order"}),  # vendor items, orders
     (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "order"}),
     (("sub_finder", "sub_approver"), {"view", "add_sub", "details", "review"}),
-    # MM/SCM (2026-10-27, "MM Lead" until 10-28): instructs the sites, adds vendor items; orders only
+    # SCM (2026-10-27; coded mm_lead until 11-02): instructs the sites, adds vendor items; orders only
     # with Materials Manager too.
-    (("mm_lead",), {"view", "details", "instruct"}),
-    (("mm_lead", "materials_manager"), {"view", "details", "instruct", "order"}),
+    (("scm",), {"view", "details", "instruct"}),
+    (("scm", "materials_manager"), {"view", "details", "instruct", "order"}),
     ((), set()),
 ])
 def test_fillkill_capabilities_follow_roles(roles, expected):
@@ -123,13 +123,13 @@ def test_module_row_lists_only_modules_you_can_open(sqlite_app):
         fillkill_only = access.build_nav(fake_user(fillkill=("viewer",)))
         admin = access.build_nav(fake_user(admin=True, plm="viewer"))
         nobody = access.build_nav(fake_user())
-    assert [m["key"] for m in fillkill_only["modules"]] == ["fillkill"]
+    assert [m["key"] for m in fillkill_only["modules"]] == ["fillkill", "ordertiming"]  # Order Timing comes with it
     assert [m["key"] for m in admin["modules"]] == ["plm"]  # admin adds no modules
     assert nobody["modules"] == []
 
 
-def test_mm_lead_combines_with_the_other_roles_but_not_viewer():
-    # Not part of the Sub Approver + Materials Manager rule: the MM Lead doesn't order (2026-10-27).
-    assert access.validate_roles(admin=False, roles={FILLKILL: {"mm_lead", "materials_manager"}}) is None
-    assert access.validate_roles(admin=False, roles={FILLKILL: {"mm_lead", "sub_approver"}}) is None
-    assert "can't be combined" in access.validate_roles(admin=False, roles={FILLKILL: {"mm_lead", "viewer"}})
+def test_scm_combines_with_the_other_roles_but_not_viewer():
+    # Not part of the Sub Approver + Materials Manager rule: SCM doesn't order (2026-10-27).
+    assert access.validate_roles(admin=False, roles={FILLKILL: {"scm", "materials_manager"}}) is None
+    assert access.validate_roles(admin=False, roles={FILLKILL: {"scm", "sub_approver"}}) is None
+    assert "can't be combined" in access.validate_roles(admin=False, roles={FILLKILL: {"scm", "viewer"}})

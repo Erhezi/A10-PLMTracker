@@ -56,7 +56,7 @@ INDEXES = {
 CHECKS = {
     ("FillKill", "CK_History_action"): ("'delete'", "12_workflow_tables.sql"),
     ("FillKill", "CK_History_entity"): ("'vendoritem'", "12_workflow_tables.sql"),
-    ("PLM", "CK_UserModuleRole_role"): ("'mm_lead'", "02_user_module_role.sql"),
+    ("PLM", "CK_UserModuleRole_role"): ("'scm'", "02_user_module_role.sql"),
 }
 
 # Procedures, the version marker in their body, and whether the app runs them.

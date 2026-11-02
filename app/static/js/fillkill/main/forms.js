@@ -1,7 +1,7 @@
 /* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
  * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
- * a sub or a vendor item, put a sub on hold or reject it (2026-10-28), the MM Lead's instruction
- * ("Will's Comments", 2026-10-27), and a new sub from Main's Approved by Nursing (2026-10-27). Boxes lose their leading and
+ * a sub or a vendor item, put a sub on hold or reject it (2026-10-28), SCM's instruction
+ * ("SCM Comments", 2026-10-27; "Will's Comments" until 11-02), and a new sub from Main's Approved by Nursing (2026-10-27). Boxes lose their leading and
  * trailing spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
  */
 
@@ -41,7 +41,8 @@ function hideModal() {
 
 // ``body`` is the form's HTML; ``onSubmit`` gets the form's values and returns a promise of the
 // message to show. ``wide``: the vendor item and order forms get the room they need (2026-10-20).
-function showModal(title, body, submitLabel, onSubmit, { wide = false } = {}) {
+// ``danger``: a red button, for what can't be undone.
+function showModal(title, body, submitLabel, onSubmit, { wide = false, danger = false } = {}) {
   formItem = null;
   orderForm = null;
   modalEl.querySelector('.modal-dialog').classList.toggle('modal-lg', wide);
@@ -50,7 +51,7 @@ function showModal(title, body, submitLabel, onSubmit, { wide = false } = {}) {
       <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
     <div class="modal-body"><div id="fk-modal-message"></div>${body}</div>
     <div class="modal-footer"><button type="button" class="btn btn-sm btn-link" data-bs-dismiss="modal">Cancel</button>
-      <button type="submit" class="btn btn-sm btn-primary">${submitLabel}</button></div>`;
+      <button type="submit" class="btn btn-sm ${danger ? 'btn-danger' : 'btn-primary'}">${submitLabel}</button></div>`;
   modalSubmit = onSubmit;
   openModal();
 }
@@ -630,7 +631,7 @@ export function openSubEditForm(sub) {
       .then(() => 'Reference SKU corrected.'));
 }
 
-// The MM Lead's instruction to the sites' Materials Managers (2026-10-27; "Will's Comments" on the
+// SCM's instruction to the sites' Materials Managers (2026-10-27; "SCM Comments" on the
 // page), for the Infor item, the main table's row: opened by double-clicking its cell, or from the
 // item panel. It becomes the latest; the earlier ones stay. What each site killed and has ordered in
 // these dates is above it, to write it from (the panel's item may not be on the table: no sites then).
@@ -649,7 +650,7 @@ export function openInstructionForm(row) {
       <span class="text-muted">· ${esc(latest.written_by)}, ${fmtDateTime(latest.written_at)}</span></div>` : '',
   ];
   showModal(`${esc(config.instructionLabel)} · ${esc(what)}`, `<div class="fk-form-summary small">${summaryLines.join('')}</div>${fields(`
-    <div class="col-12"><label class="form-label small mb-0" for="fk-m-instruction">Comment for the sites' Materials Managers *</label>
+    <div class="col-12"><label class="form-label small mb-0" for="fk-m-instruction">Comment from SCM *</label>
       <textarea class="form-control form-control-sm" id="fk-m-instruction" name="instruction" rows="5" required
                 maxlength="${config.instructionMax || 1000}"
                 placeholder="How the sites should order it, e.g. White Plains and Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."></textarea>
@@ -693,7 +694,31 @@ export function openAddSubForm(medline) {
   whenModal('shown', () => { const input = $('fk-m-reference_sku'); if (input) input.focus(); });
 }
 
+// The development server's Reset data, for admins (2026-11-02; config.reset only there): empties the
+// workflow, as db/fillkill/90_reset_workflow.sql does. The server wants RESET typed.
+const RESET_TABLES = [['Sub', 'subs'], ['SubVendorItem', 'vendor items'], ['SubOrder', 'orders'],
+  ['History', 'history rows'], ['ItemInstruction', 'SCM comments']];
+
+export function openResetForm() {
+  const reset = config.reset;
+  if (!reset) return;
+  showModal('Reset the Fill/Kill data', fields(`
+    <div class="col-12 small">Deletes every sub, vendor item, order, history row and SCM comment in
+      <strong>${esc(reset.database)}</strong>, as <code>db/fillkill/90_reset_workflow.sql</code> does. It can't be undone.
+      Medline's kill lines stay, and Medline's backorder substitutes come back the next time Main loads.</div>
+    ${reset.live ? `<div class="col-12">${alertBox("This is O2, the live app's database: the live app's Fill/Kill data goes too.", 'warning')}</div>` : ''}
+    ${field('confirm', 'Type RESET to confirm *', '', 'required autocomplete="off"', 12)}`),
+  'Reset data', async (values) => {
+    const data = await postJSON(reset.url, { confirm: values.confirm });
+    const message = `Reset: ${RESET_TABLES.map(([table, label]) => `${fmtNumber(data.deleted[table] || 0)} ${label}`).join(', ')} deleted.`;
+    $('fk-reset-note').textContent = message;  // the panel, where messages go, is usually closed
+    return message;
+  }, { danger: true });
+}
+
 export function setupForms() {
+  const resetButton = $('fk-reset');
+  if (resetButton) resetButton.addEventListener('click', openResetForm);
   modalEl.addEventListener('show.bs.modal', () => { modalPhase = 'showing'; });
   modalEl.addEventListener('shown.bs.modal', () => { modalPhase = 'shown'; });
   modalEl.addEventListener('hide.bs.modal', () => { modalPhase = 'hiding'; });

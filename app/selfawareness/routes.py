@@ -103,7 +103,12 @@ def fillkill():
 
 
 # The columns, in the order "Who does what" lists the roles.
-FILLKILL_ROLE_COLUMNS = ("viewer", "sub_approver", "mm_lead", "materials_manager", "sub_finder")
+FILLKILL_ROLE_COLUMNS = ("viewer", "sub_approver", "scm", "materials_manager", "sub_finder")
+
+
+@bp.route("/ordertiming")
+def ordertiming():
+    return render_template("selfawareness/ordertiming.html")
 
 
 @bp.route("/workflow-video")

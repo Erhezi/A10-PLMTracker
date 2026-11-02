@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Docs · Order Timing{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column gap-3">
+  <header class="doc-hero card shadow-sm border-0 p-4">
+    <h1 class="h4 fw-semibold mb-1">Order Timing Docs</h1>
+    <p class="mb-0 text-muted">
+      When Medline receives our orders and fills them through the day.
+    </p>
+  </header>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">What it does</h2>
+    <p class="mb-2">
+      Medline sends a data feed of the EDI orders it received from us, which it fills through the day.
+      Order Timing will show that feed: <strong>Main</strong> for the orders themselves, and the
+      <strong>Dashboard</strong> for trends. It's for looking only: nothing is entered here.
+    </p>
+    <p class="mb-0">
+      That data isn't ready yet, so both pages are empty for now.
+    </p>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">Who can see it</h2>
+    <p class="mb-0">
+      Everyone with a Fill/Kill Management role, whichever it is. Order Timing has no roles of its own: to
+      get access, ask an admin for a Fill/Kill role.
+    </p>
+  </section>
+</div>
+{% endblock %}

@@ -302,7 +302,7 @@ def main_table_inputs(scope: Scope) -> dict:
     }
 
 
-# --- the MM Lead's instructions (2026-10-27) --------------------------------------------------
+# --- SCM's instructions (2026-10-27) ----------------------------------------------------------
 
 def instruction_dict(row: ItemInstruction) -> dict:
     return {

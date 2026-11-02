@@ -11,6 +11,13 @@
     {% for role in roles %}<span class="badge text-bg-light border ms-1">{{ role }}</span>{% endfor %}
   </span>
   <span class="ms-auto small" id="fk-data-as-of" aria-live="polite"></span>
+  {% if config.reset %}
+  {# Admins, on the development server only (FILLKILL_RESET, 2026-11-02): empties the workflow, as 90 does. #}
+  <button type="button" class="btn btn-sm btn-outline-danger py-0" id="fk-reset"
+          title="Development server only: delete every sub, vendor item, order, history row and SCM comment">
+    <i class="bi bi-arrow-counterclockwise"></i> Reset data</button>
+  <span class="small text-success" id="fk-reset-note" aria-live="polite"></span>
+  {% endif %}
 </div>
 
 {% if health %}
@@ -78,7 +85,7 @@
             <th scope="col">Subs Status</th>
             <th scope="col" title="Every sub nursing approved, each of which can be ordered: its Reference SKU, with its latest comment">Approved by Nursing</th>
             {# Before Vendor Item Detail (the user, 2026-10-27): read before ordering from the tiles. #}
-            <th scope="col" title="MM/SCM's latest comment to the sites' Materials Managers on how to order the item">{{ instruction_label }}</th>
+            <th scope="col" title="SCM's latest comment to the sites' Materials Managers on how to order the item">{{ instruction_label }}</th>
             <th scope="col">Vendor Item Detail</th>
             <th scope="col" title="Orders recorded in these Fill/Kill dates for the sites shown, each with its site">Ordering</th>
             <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, all UOMs, in eaches">Total Killed (EA)</th>

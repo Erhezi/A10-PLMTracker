@@ -45,8 +45,9 @@
                         <th scope="col" class="text-uppercase small fw-semibold sortable" data-sort-type="text">Name <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold sortable text-center align-middle" data-sort-type="text">Access <span class="sort-indicator"></span></th>
                         <th scope="col" class="text-uppercase small fw-semibold text-center" title="Can approve accounts and assign module roles">Admin</th>
-                        {% for module in modules.values() %}
-                        <th scope="col" class="text-uppercase small fw-semibold">{{ module.label }}</th>
+                        {% for key, module in modules.items() %}
+                        <th scope="col" class="text-uppercase small fw-semibold">{{ module.label }}{% if included[key] %}
+                            <span class="d-block fw-normal" style="text-transform: none;" title="Any {{ module.label }} role also opens these">includes {{ included[key]|join(', ') }}</span>{% endif %}</th>
                         {% endfor %}
                         <th scope="col" class="text-uppercase small fw-semibold text-center">Actions</th>
                     </tr>

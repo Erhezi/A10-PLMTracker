@@ -6,8 +6,10 @@ from ..models import now_ny_naive
 from ..utility.msgraph import send_mail
 from ..utility.access import (
     FILLKILL,
+    INCLUDED_MODULES,
     MODULES,
     PLM,
+    ROLE_MODULES,
     apply_access,
     is_admin,
     role_summary,
@@ -48,7 +50,7 @@ def user_control():
         {
             'user': u,
             'admin': is_admin(u),
-            'roles': {key: roles_in(u, key) for key in MODULES},
+            'roles': {key: roles_in(u, key) for key in ROLE_MODULES},
             'requested': [
                 MODULES[key].label
                 for key in (u.requested_modules or '').split(',')
@@ -57,7 +59,7 @@ def user_control():
         }
         for u in users
     ]
-    return render_template('admin/user_control.html', rows=rows, modules=MODULES)
+    return render_template('admin/user_control.html', rows=rows, modules=ROLE_MODULES, included=INCLUDED_MODULES)
 
 
 @admin_bp.route('/update-access/<string:user_email>', methods=['POST'])

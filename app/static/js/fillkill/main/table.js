@@ -165,7 +165,7 @@ function commentList(history) {
     <div class="text-muted">${esc(fmtDateTime(h.acted_at))} · ${esc(h.actor)}</div><div>${esc(h.comment)}</div></li>`).join('')}</ul>`;
 }
 
-// The instructions (Will's Comments on the page, 2026-10-27), newest first: the first is the one in
+// The instructions (SCM Comments on the page, 2026-10-27), newest first: the first is the one in
 // force. In the item panel too.
 export function instructionList(instructions) {
   if (!instructions.length) return '<div class="text-muted">No comments yet.</div>';
@@ -233,9 +233,9 @@ function vendorItemsCell(sub, several) {
   return items.join('') || '<span class="text-muted small">—</span>';
 }
 
-// Will's Comments (2026-10-27; "MM Instruction" at first): the MM Lead's latest instruction to the
+// SCM Comments (2026-10-27; "MM Instruction" at first): SCM's latest instruction to the
 // sites, the one in force, its first lines (the whole on hover) with who and when. Its icon lists them
-// all. An MM Lead adds one by double-clicking the cell (instructionTd), or from the item panel. Not
+// all. SCM adds one by double-clicking the cell (instructionTd), or from the item panel. Not
 // tied to the Fill/Kill dates: its date says how old it is.
 function instructionCell(row) {
   const info = row.instruction;
@@ -250,14 +250,14 @@ function instructionCell(row) {
       ${all}</div></div>`;
 }
 
-// Double-click a cell to write in it (the user, 2026-10-27), for those who may: Will's Comments for
-// MM/SCM, Approved by Nursing for whoever adds subs (a new sub for that line's Medline item).
+// Double-click a cell to write in it (the user, 2026-10-27), for those who may: SCM Comments for
+// SCM, Approved by Nursing for whoever adds subs (a new sub for that line's Medline item).
 const dblClickTd = (attrs, title) => `<td ${attrs} data-dblclick title="${esc(title)}"`;
 
 function instructionTd(row, all) {
   if (!can.instruct) return `<td data-to-end${all}>`;
   return `${dblClickTd(`data-to-end${all} data-instruct="${esc(row.packagings[0].medline_item)}"`,
-    `Double-click to add a comment for the sites' Materials Managers`)}>`;
+    `Double-click to add an SCM comment`)}>`;
 }
 
 function approvedTd(p, split) {

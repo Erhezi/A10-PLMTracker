@@ -128,6 +128,10 @@ class Config:
     # Fill/Kill's Main opens on "today", or on the "latest" day with kill lines. Locally that's the
     # latest (O2's lines may end days ago); the live server opens on today (ProductionConfig).
     FILLKILL_OPEN_ON = os.getenv("FILLKILL_OPEN_ON", "latest")
+    # Main's Reset data button, for admins: empties the Fill/Kill workflow as
+    # db/fillkill/90_reset_workflow.sql does (2026-11-02). Only the development server
+    # offers it (DevelopmentConfig); never the live one.
+    FILLKILL_RESET = False
 
     @classmethod
     def validate(cls):
@@ -146,6 +150,7 @@ class DevelopmentConfig(Config):
     # Allow override to SQLite for quick dev (set USE_SQLITE=1)
     if os.getenv("USE_SQLITE") == "1":
         SQLALCHEMY_DATABASE_URI = "sqlite:///plm_dev.db"
+    FILLKILL_RESET = os.getenv("FILLKILL_RESET", "1") not in {"0", "false", "False"}  # FILLKILL_RESET=0 hides it
 
 class ProductionConfig(Config):
     DEBUG = False

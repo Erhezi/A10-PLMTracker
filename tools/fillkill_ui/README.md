@@ -6,7 +6,7 @@ a change. Nothing in `app/` imports this folder, and it doesn't need to go to th
 | File | What it does |
 | --- | --- |
 | `dev_server.py` | Runs the real app on an in-memory SQLite database at http://127.0.0.1:5099, with sample data or O2's data copied read-only. |
-| `smoke.mjs` | Drives headless Edge through Main, the item panel, the forms, the Subs page and the Dashboard on the sample data, and fails on anything that doesn't show up or any browser error. |
+| `smoke.mjs` | Drives headless Edge through Main, the item panel, the forms, the Subs page and the Dashboard on the sample data (and Order Timing's two empty pages), ends by resetting the data with Main's Reset data button, and fails on anything that doesn't show up or any browser error. |
 
 ## Is it safe?
 
@@ -31,10 +31,10 @@ Then open http://127.0.0.1:5099/dev-login. Add `?as=` to sign in with fewer role
 
 | `?as=` | App role | Fill/Kill roles |
 | --- | --- | --- |
-| `all` (default) | admin | Sub Finder, Sub Approver, Materials Manager, MM/SCM |
+| `all` (default) | admin | Sub Finder, Sub Approver, Materials Manager, SCM |
 | `nurse` | user | Sub Approver |
 | `mm` | user | Materials Manager |
-| `lead` | user | MM/SCM |
+| `scm` | user | SCM |
 | `finder` | user | Sub Finder |
 | `viewer` | user | Viewer |
 

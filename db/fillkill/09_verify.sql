@@ -31,12 +31,13 @@ SELECT 'deleting a user deletes their UserModuleRole rows',
              AND delete_referential_action_desc = N'CASCADE'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
-SELECT 'UserModuleRole accepts only known roles for plm and fillkill, MM Lead included (02, 2026-10-27)',
+SELECT 'UserModuleRole accepts only known roles for plm and fillkill, SCM as scm (02, 2026-11-02)',
        CASE WHEN EXISTS (
            SELECT 1 FROM sys.check_constraints
            WHERE parent_object_id = OBJECT_ID(N'[PLM].[UserModuleRole]')
              AND definition LIKE '%editor%' AND definition LIKE '%sub[_]approver%'
-             AND definition LIKE '%materials[_]manager%' AND definition LIKE '%mm[_]lead%'
+             AND definition LIKE '%materials[_]manager%' AND definition LIKE '%''scm''%'
+             AND definition NOT LIKE '%mm[_]lead%'
              AND definition NOT LIKE '%''app''%'
        ) THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
@@ -290,7 +291,7 @@ IF COL_LENGTH(N'FillKill.SubOrder', N'site') IS NOT NULL AND OBJECT_ID(N'[FillKi
                CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[SubOrder] WHERE [site] IS NULL), '' of '',
                       (SELECT COUNT(*) FROM [FillKill].[SubOrder])) AS [result]
         UNION ALL
-        SELECT ''MM Lead instructions'',
+        SELECT ''SCM instructions'',
                CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[ItemInstruction]), '' on '',
                       (SELECT COUNT(DISTINCT COALESCE([infor_item], [medline_item])) FROM [FillKill].[ItemInstruction]),
                       '' item(s)'');

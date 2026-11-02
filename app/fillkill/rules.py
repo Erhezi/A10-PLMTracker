@@ -37,9 +37,9 @@ LABELS = {"medline_item": "Medline item", "reference_sku": "Reference SKU", "ven
 NO_VENDOR_ID = "0000000"
 NO_VENDOR_LABEL = "Vendor not available in system"
 
-# What Main, its panel and the help page call the MM Lead's instructions: named for the MM Lead who
-# writes them, for now (the user, 2026-10-27; "MM Instruction" before).
-INSTRUCTION_LABEL = "Will's Comments"
+# What Main, its panel and the help page call SCM's instructions: named for the role that writes
+# them (the user, 2026-11-02; "Will's Comments" from 2026-10-27, "MM Instruction" before).
+INSTRUCTION_LABEL = "SCM Comments"
 
 # Medline's vendor IDs in Infor (2026-10-20): MEDLINE INDUSTRIES INC, its physician office (LUM) and
 # decasing (custom packs) accounts, and its JIT tote program. A vendor item from one of them whose
@@ -191,7 +191,7 @@ def clean_comment(value, *, label: str = "Comment") -> str:
 
 
 def clean_instruction(value) -> str:
-    """An MM Lead's instruction to the sites (2026-10-27): longer than a comment, since it may speak
+    """An SCM instruction to the sites (2026-10-27): longer than a comment, since it may speak
     to every site."""
     return clean_text(value, label="Instruction", max_len=INSTRUCTION_MAX, required=True)
 

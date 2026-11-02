@@ -17,7 +17,7 @@ Inputs, all plain dicts:
                comment in the range
   family_rows  item-view rows (Medline Item, UM, Customer Item #, Infor Item) of every Medline item
                Medline has killed under the Infor items in the range
-  instructions the MM Lead's instructions for those Infor items, and for Medline items Infor had
+  instructions SCM's instructions for those Infor items, and for Medline items Infor had
                none for (2026-10-27), oldest first: infor_item, medline_item, instruction, written_by,
                written_at
 """
@@ -374,7 +374,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), 
             "sub_ordered_each": eaches((o.get("quantity"), o.get("uom"), o.get("qoe")) for o in row_orders),
             # The same per site (2026-10-27): each site orders for itself.
             "sites": site_figures(packagings, site_kills, factors, row_orders),
-            # The MM Lead's instruction in force, and how many there have been (2026-10-27).
+            # SCM's instruction in force, and how many there have been (2026-10-27).
             "instruction": instruction_summary(row_instructions(infor, here, instructions)),
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, ordered=ordered,

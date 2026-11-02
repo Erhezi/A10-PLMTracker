@@ -6,7 +6,9 @@ roles) or 'user'. Being an admin grants nothing inside a module: what anyone,
 admins included, can do there is set in ``PLM.UserModuleRole``:
 
     plm       viewer | editor                           at most one of the two
-    fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager, mm_lead
+    fillkill  viewer alone, or any of sub_finder, sub_approver, materials_manager, scm
+
+Order Timing (``ordertiming``, 2026-10-30) has no roles of its own: any Fill/Kill role can view it.
 
 Routes and templates ask ``can(user, module, capability)`` and ``is_admin(user)``
 instead of checking role codes.
@@ -22,6 +24,7 @@ from flask_login import current_user
 
 PLM = "plm"
 FILLKILL = "fillkill"
+ORDERTIMING = "ordertiming"
 
 # App-level roles (users.user_role). Accounts the previous release marked
 # 'view-only' count as 'user' until db/fillkill/04_after_deploy.sql renames them.
@@ -35,7 +38,8 @@ ROLE_VIEWER = "viewer"                        # sees the module; held alone
 ROLE_SUB_FINDER = "sub_finder"                # proposes subs, pending review (kept for a future AI finder)
 ROLE_SUB_APPROVER = "sub_approver"            # nursing: enters subs (approved on entry), reviews, comments
 ROLE_MATERIALS_MANAGER = "materials_manager"  # a site's buyer: adds vendor items, records orders
-ROLE_MM_LEAD = "mm_lead"                      # MM/SCM: instructs the sites, adds vendor items
+ROLE_SCM = "scm"                              # instructs the sites, adds vendor items ("mm_lead" until 2026-11-02)
+FILLKILL_ANY_ROLE = frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_SCM})
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,7 @@ class Module:
     capabilities: dict[str, frozenset[str]] = field(default_factory=dict)
     single_role: bool = False                   # True: hold at most one role
     exclusive_roles: frozenset[str] = frozenset()  # roles that can't be combined with others
+    roles_from: str | None = None               # no roles of its own: checks this module's instead
 
     @property
     def role_codes(self) -> tuple[str, ...]:
@@ -74,24 +79,38 @@ MODULES = {
             (ROLE_SUB_FINDER, "Sub Finder"),
             (ROLE_SUB_APPROVER, "Sub Approver"),
             (ROLE_MATERIALS_MANAGER, "Materials Manager"),
-            (ROLE_MM_LEAD, "MM/SCM"),  # "MM Lead" until 2026-10-28 (the user): the function, not a rank
+            (ROLE_SCM, "SCM"),  # the user: "MM Lead" until 2026-10-28, "MM/SCM" until 11-02
         ),
         capabilities={
-            "view": frozenset({ROLE_VIEWER, ROLE_SUB_FINDER, ROLE_SUB_APPROVER, ROLE_MATERIALS_MANAGER, ROLE_MM_LEAD}),
+            "view": FILLKILL_ANY_ROLE,
             # Enter a vendor part, correct it, delete a sub (a Sub Approver's entries are approved).
             "add_sub": frozenset({ROLE_SUB_FINDER, ROLE_SUB_APPROVER}),
             # Set a sub's status, comment on subs. Every approved sub can be ordered: "pick" (choosing
             # among them, 2026-10-21 to 10-28) is gone, and Hold or Reject is how nursing stops one.
             "review": frozenset({ROLE_SUB_APPROVER}),
             # A sub's vendor items: vendor part, vendor, vendor ID, UOM, QOE (2026-10-15, 10-20).
-            "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER, ROLE_MM_LEAD}),
+            "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER, ROLE_SCM}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
             # Write an item's instruction to the sites' Materials Managers (2026-10-27).
-            "instruct": frozenset({ROLE_MM_LEAD}),
+            "instruct": frozenset({ROLE_SCM}),
         },
         exclusive_roles=frozenset({ROLE_VIEWER}),  # the other roles can already view
     ),
+    # Medline's feed of the EDI orders it received and fills through the day (2026-10-30), for
+    # display. Nobody is given an Order Timing role: every Fill/Kill role can view it.
+    ORDERTIMING: Module(
+        key=ORDERTIMING,
+        label="Order Timing",
+        roles=(),
+        capabilities={"view": FILLKILL_ANY_ROLE},
+        roles_from=FILLKILL,
+    ),
 }
+
+# The modules User Control and registration offer: those with roles of their own, and for each,
+# the modules its roles open too (Fill/Kill: Order Timing).
+ROLE_MODULES = {key: module for key, module in MODULES.items() if not module.roles_from}
+INCLUDED_MODULES = {key: [m.label for m in MODULES.values() if m.roles_from == key] for key in ROLE_MODULES}
 
 # What each Fill/Kill capability lets someone do, one thing a line, for the "Who can do what" table
 # on the module's help page (2026-10-21). Its ticks come from the capabilities above, so the page
@@ -139,7 +158,7 @@ def can(user, module: str, capability: str) -> bool:
     allowed = MODULES[module].capabilities[capability]  # KeyError on a typo, on purpose
     if not _authenticated(user):
         return False
-    return bool(roles_in(user, module) & allowed)
+    return bool(roles_in(user, MODULES[module].roles_from or module) & allowed)
 
 
 def accessible_modules(user) -> list[Module]:
@@ -236,10 +255,11 @@ DENIED_MESSAGES = {
     (PLM, "edit"): "Your PLM Tracker role is Viewer, so you can't make changes.",
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
     (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
-    (FILLKILL, "details"): "Only Materials Managers, MM/SCM and Sub Finders can add or change a sub's vendor items.",
+    (FILLKILL, "details"): "Only Materials Managers, SCM and Sub Finders can add or change a sub's vendor items.",
     (FILLKILL, "review"): "Only Sub Approvers can review or comment on subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
-    (FILLKILL, "instruct"): "Only MM/SCM can write an item's instruction.",
+    (FILLKILL, "instruct"): "Only SCM can write an item's instruction.",
+    (ORDERTIMING, "view"): "You don't have access to Order Timing. It comes with any Fill/Kill role: ask an admin for one.",
 }
 
 
@@ -332,11 +352,16 @@ def _fillkill_pages(user):
             _page("Dashboard", "fillkill.dashboard_page")]
 
 
-MODULE_HOMES = {PLM: "collector.groups", FILLKILL: "fillkill.index"}
-MODULE_PAGES = {PLM: _plm_pages, FILLKILL: _fillkill_pages}
+def _ordertiming_pages(user):
+    return [_page("Main", "ordertiming.index"), _page("Dashboard", "ordertiming.dashboard_page")]
+
+
+MODULE_HOMES = {PLM: "collector.groups", FILLKILL: "fillkill.index", ORDERTIMING: "ordertiming.index"}
+MODULE_PAGES = {PLM: _plm_pages, FILLKILL: _fillkill_pages, ORDERTIMING: _ordertiming_pages}
 
 DOCS_BLUEPRINT = "selfawareness"
-DOCS_ENDPOINTS = {PLM: "selfawareness.index", FILLKILL: "selfawareness.fillkill"}
+DOCS_ENDPOINTS = {PLM: "selfawareness.index", FILLKILL: "selfawareness.fillkill",
+                  ORDERTIMING: "selfawareness.ordertiming"}
 
 
 def _docs_pages():
@@ -352,8 +377,8 @@ def build_nav(user):
     blueprint = request.blueprint
     if blueprint in PLM_BLUEPRINTS:
         active = PLM
-    elif blueprint == FILLKILL:
-        active = FILLKILL
+    elif blueprint in (FILLKILL, ORDERTIMING):
+        active = blueprint
     elif blueprint == DOCS_BLUEPRINT:
         active = "docs"
     else:
@@ -379,9 +404,10 @@ def build_nav(user):
         pages = []
         page_row_label = ""
 
-    # The Docs link opens the docs of the module you're in.
-    in_fillkill = active == FILLKILL or request.endpoint == DOCS_ENDPOINTS[FILLKILL]
-    docs_url = url_for(DOCS_ENDPOINTS[FILLKILL] if in_fillkill else DOCS_ENDPOINTS[PLM])
+    # The Docs link opens the docs of the module you're in (or whose docs you're reading).
+    docs_for = next((key for key, endpoint in DOCS_ENDPOINTS.items()
+                     if active == key or request.endpoint == endpoint), PLM)
+    docs_url = url_for(DOCS_ENDPOINTS[docs_for])
 
     return {
         "modules": modules,

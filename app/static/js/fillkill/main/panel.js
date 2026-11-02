@@ -111,8 +111,8 @@ function itemDetails(d) {
     <dt class="col-sm-4 text-muted fw-normal">${esc(label)}</dt><dd class="col-sm-8 mb-1">${esc(value)}</dd>`).join('')}</dl>`;
 }
 
-// Will's Comments (2026-10-27): the MM Lead's latest instruction for the item, for everyone. An MM
-// Lead adds one here (the user: a button, like the subs' Add sub) or by double-clicking its cell on
+// SCM Comments (2026-10-27): SCM's latest instruction for the item, for everyone. SCM adds
+// one here (the user: a button, like the subs' Add sub) or by double-clicking its cell on
 // Main; with several, they all open under it.
 function instructionBlock(instruction) {
   const latest = instruction && instruction.latest;

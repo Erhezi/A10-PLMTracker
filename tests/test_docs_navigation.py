@@ -19,8 +19,8 @@ def test_fillkill_docs_are_public_with_a_docs_page_row(sqlite_app):
     assert 'aria-current="page">Fill/Kill Management</a>' in page
     assert ">PLM Tracker</a>" in page  # the other docs tab
     assert 'class="nav-link active" href="/doc/fillkill">Docs</a>' in page
-    # The MM Lead's instructions by the name Main gives them (2026-10-27).
-    assert "<strong>Will&#39;s Comments</strong>, between the approved substitutes and their vendor items" in page
+    # SCM's instructions by the name Main gives them (2026-10-27).
+    assert "<strong>SCM Comments</strong>, between the approved substitutes and their vendor items" in page
 
 
 def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):
@@ -34,7 +34,7 @@ def test_fillkill_docs_say_who_can_do_what_from_the_role_rules(sqlite_app):
     table = table[:table.index("</table>")]
     vendor = table[table.index("Add, correct or delete a sub&#39;s vendor items"):]
     vendor = vendor[:vendor.index("</tr>")]
-    # Viewer, Sub Approver, MM/SCM, Materials Manager, Sub Finder
+    # Viewer, Sub Approver, SCM, Materials Manager, Sub Finder
     assert [cell.startswith('<i class="bi bi-check-lg') for cell in
             [part.split(">", 1)[1].strip() for part in vendor.split('<td class="text-center"')[1:]]] == [False, False, True, True, True]
 
@@ -55,8 +55,8 @@ def test_docs_page_row_without_login(sqlite_app):
         nav = access.build_nav(anonymous)
     assert nav["modules"] == []
     assert nav["active"] == "docs"
-    assert [p["label"] for p in nav["pages"]] == ["PLM Tracker", "Fill/Kill Management"]
-    assert [p["active"] for p in nav["pages"]] == [True, False]
+    assert [p["label"] for p in nav["pages"]] == ["PLM Tracker", "Fill/Kill Management", "Order Timing"]
+    assert [p["active"] for p in nav["pages"]] == [True, False, False]
 
 
 def test_navbar_has_no_app_name_text(sqlite_app):

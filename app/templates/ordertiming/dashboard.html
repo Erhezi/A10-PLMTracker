@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Order Timing Dashboard — Item Management{% endblock %}
+
+{% block content %}
+{# Order Timing's Dashboard (2026-10-30): read-only for every Fill/Kill role. Trends from Medline's
+   order feed; empty until that data is ready. #}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
+  <h1 class="h4 fw-semibold mb-0">Order Timing Dashboard</h1>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-body text-center text-muted py-5" id="ot-dash-empty">
+    <i class="bi bi-bar-chart-line fs-2 d-block mb-2" aria-hidden="true"></i>
+    <p class="mb-1">This page will show trends in when Medline receives and fills our EDI orders, from Medline's
+      own data feed.</p>
+    <p class="small mb-0">That data isn't ready yet, so there's nothing to show here.</p>
+  </div>
+</div>
+{% endblock %}

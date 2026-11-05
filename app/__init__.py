@@ -3,6 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import MetaData, text
+from urllib.parse import quote
+from werkzeug.utils import redirect
+from werkzeug.wsgi import get_path_info
 import os
 
 from .config import config_map
@@ -17,20 +20,40 @@ csrf = CSRFProtect()
 
 
 class PathPrefixMiddleware:
-    """Adjust SCRIPT_NAME/PATH_INFO when the app is mounted under a URL prefix."""
+    """Mount the app under a URL prefix and redirect requests from outside it.
+
+    wfastcgi passes the full URL in PATH_INFO with SCRIPT_NAME blank. Outside the
+    prefix a page can't work: its stylesheet link 404s, and the session cookie
+    (Path=<prefix>) never comes back, so login fails.
+    """
 
     def __init__(self, app, prefix: str):
         self.app = app
         self.prefix = prefix
 
     def __call__(self, environ, start_response):
-        if self.prefix:
-            path_info = environ.get("PATH_INFO", "")
-            if path_info.startswith(self.prefix):
-                environ["SCRIPT_NAME"] = self.prefix
-                stripped = path_info[len(self.prefix):]
-                environ["PATH_INFO"] = stripped if stripped else "/"
+        path_info = environ.get("PATH_INFO", "")
+        if path_info == self.prefix or path_info.startswith(f"{self.prefix}/"):
+            environ["SCRIPT_NAME"] = self.prefix
+            environ["PATH_INFO"] = path_info[len(self.prefix):] or "/"
+        elif environ.get("SCRIPT_NAME", "").rstrip("/") != self.prefix:
+            return self._redirect_into_prefix(environ, start_response)
+        # Otherwise the server stripped the prefix itself; redirecting would loop.
         return self.app(environ, start_response)
+
+    def _redirect_into_prefix(self, environ, start_response):
+        path = get_path_info(environ)
+        # /PLM/x is the mount in the wrong case. It can't be served as is: browsers
+        # match the cookie path case-sensitively, so it becomes /plm/x, not /plm/PLM/x.
+        size = len(self.prefix)
+        if path[:size].lower() == self.prefix.lower() and path[size:size + 1] in ("", "/"):
+            path = path[size:]
+        # 307 keeps a POST a POST, and browsers don't remember it the way they do a 301.
+        target = self.prefix + quote(path)
+        query = environ.get("QUERY_STRING")
+        if query:
+            target += f"?{query}"
+        return redirect(target, code=307)(environ, start_response)
 
 
 def _normalized_prefix(raw: str | None) -> str:

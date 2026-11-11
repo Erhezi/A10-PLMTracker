@@ -66,6 +66,16 @@ def test_needs_flags(counts, ordered, missing, expected):
     assert rollup.needs_flags(counts, ordered=ordered, details_missing=missing) == expected
 
 
+@pytest.mark.parametrize("counts, ordered, expected", [
+    # A vendor item without a sub (2026-11-02) can be ordered: no details needed, whatever the subs.
+    ({}, False, ["needs_subs", "needs_order"]),
+    ({"approved": 1}, False, ["needs_order"]),
+    ({}, True, ["needs_subs", "ordered"]),
+])
+def test_needs_flags_with_a_vendor_item_without_a_sub(counts, ordered, expected):
+    assert rollup.needs_flags(counts, ordered=ordered, details_missing=True, without_sub=True) == expected
+
+
 def test_an_item_needs_details_only_when_no_approved_sub_has_a_vendor_item():
     def needs(*subs):
         return rollup.build_main_rows(qty_rows=[qty("A", "BX", 10, 0, lines=1)], item_rows=[], subs=list(subs),
@@ -76,6 +86,19 @@ def test_an_item_needs_details_only_when_no_approved_sub_has_a_vendor_item():
     # A held sub's vendor items don't count: it can't be ordered.
     assert needs(sub(1, "A", "approved"), sub(2, "A", "hold", vendor_items=[{"vendor_item_id": 5}])) == [
         "needs_details", "needs_order"]
+
+
+def test_a_vendor_item_without_a_sub_can_be_ordered():
+    """What SCM directs when no sub nursing approved is available (2026-11-02): the item needs an
+    order, not details; it still has no sub."""
+    def row(*subs, without=()):
+        return rollup.build_main_rows(qty_rows=[qty("A", "BX", 10, 0, lines=1)], item_rows=[], subs=list(subs),
+                                      orders=[], reasons={}, item_vendor_items={"A": list(without)})[0]
+    found = row(without=[{"vendor_item_id": 7}])
+    assert found["needs"] == ["needs_subs", "needs_order"]
+    assert [v["vendor_item_id"] for v in found["packagings"][0]["vendor_items"]] == [7]
+    assert row(sub(1, "A", "approved"), without=[{"vendor_item_id": 7}])["needs"] == ["needs_order"]
+    assert row(sub(1, "A", "approved"))["packagings"][0]["vendor_items"] == []
 
 
 def test_main_rows_without_infor_items_stand_alone():

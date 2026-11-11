@@ -121,7 +121,8 @@ def flow_hours(first_kill: dict, subs, orders) -> dict:
     """How fast killed items move (2026-10-19), as medians in hours over the Medline items killed
     in the dates: from the first kill to a sub (0 when one was already on file), from that sub to
     the item's first order since the kill, and from the kill to that order. Items still waiting
-    aren't in a median; the counts say how many are."""
+    aren't in a median; the counts say how many are. An item ordered before it had a sub (a vendor
+    item without one, as SCM directs, 2026-11-02) counts in kill to order only."""
     first_sub: dict[str, datetime] = {}
     for sub in subs:
         created = _moment(sub["create_dt"])
@@ -133,20 +134,21 @@ def flow_hours(first_kill: dict, subs, orders) -> dict:
     kill_to_sub, sub_to_order, kill_to_order = [], [], []
     for item, killed in first_kill.items():
         killed = _moment(killed)
+        after = [moment for moment in order_times.get(item, []) if moment >= killed]
+        ordered = min(after) if after else None
+        if ordered is not None:
+            kill_to_order.append(_hours(killed, ordered))
         if item not in first_sub:
             continue
         entered = max(first_sub[item], killed)  # a sub already on file counts from the kill
         kill_to_sub.append(_hours(killed, entered))
-        after = [moment for moment in order_times.get(item, []) if moment >= killed]
-        if after:
-            ordered = min(after)
+        if ordered is not None and ordered >= entered:
             sub_to_order.append(_hours(entered, ordered))
-            kill_to_order.append(_hours(killed, ordered))
     return {
         "items": len(first_kill),
         "kill_to_sub": _median(kill_to_sub), "items_with_sub": len(kill_to_sub),
-        "sub_to_order": _median(sub_to_order), "kill_to_order": _median(kill_to_order),
-        "items_ordered": len(kill_to_order),
+        "sub_to_order": _median(sub_to_order), "items_sub_ordered": len(sub_to_order),
+        "kill_to_order": _median(kill_to_order), "items_ordered": len(kill_to_order),
     }
 
 

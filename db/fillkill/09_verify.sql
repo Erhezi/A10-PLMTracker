@@ -198,6 +198,24 @@ SELECT 'one live vendor item per sub, vendor ID, vendor part and UOM: UX_SubVend
                     AND i.is_unique = 1 AND i.has_filter = 1 AND ic.is_included_column = 0) = 'sub_id,vendor_id,vendor_part,uom'
             THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
+-- A vendor item without a sub is for a Medline item, as SCM directs (12's step 4).
+SELECT 'vendor items without a sub (12, 2026-11-02): SubVendorItem.medline_item, sub_id may be empty on SubVendorItem and SubOrder, their index and checks',
+       CASE WHEN COL_LENGTH(N'FillKill.SubVendorItem', N'medline_item') IS NOT NULL
+             AND COLUMNPROPERTY(OBJECT_ID(N'[FillKill].[SubVendorItem]'), N'sub_id', 'AllowsNull') = 1
+             AND COLUMNPROPERTY(OBJECT_ID(N'[FillKill].[SubOrder]'), N'sub_id', 'AllowsNull') = 1
+             AND EXISTS (SELECT 1 FROM sys.indexes
+                         WHERE object_id = OBJECT_ID(N'[FillKill].[SubVendorItem]') AND name = N'UX_SubVendorItem_vendor_part_uom'
+                           AND filter_definition LIKE N'%sub_id%')
+             AND (SELECT STRING_AGG(c.name, ',') WITHIN GROUP (ORDER BY ic.key_ordinal)
+                  FROM sys.indexes AS i
+                  JOIN sys.index_columns AS ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                  JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                  WHERE i.object_id = OBJECT_ID(N'[FillKill].[SubVendorItem]') AND i.name = N'UX_SubVendorItem_item_vendor_part_uom'
+                    AND i.is_unique = 1 AND i.has_filter = 1 AND ic.is_included_column = 0) = 'medline_item,vendor_id,vendor_part,uom'
+             AND OBJECT_ID(N'[FillKill].[CK_SubVendorItem_sub_or_item]', N'C') IS NOT NULL
+             AND OBJECT_ID(N'[FillKill].[CK_SubOrder_sub_or_vendor_item]', N'C') IS NOT NULL
+            THEN 'PASS' ELSE 'FAIL: re-run 12' END
+UNION ALL
 -- The names app/models/fillkill.py uses; if the app created a table first, its constraints match.
 SELECT 'workflow constraints have their standard names (12)',
        CASE WHEN (
@@ -295,4 +313,20 @@ IF COL_LENGTH(N'FillKill.SubOrder', N'site') IS NOT NULL AND OBJECT_ID(N'[FillKi
                CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[ItemInstruction]), '' on '',
                       (SELECT COUNT(DISTINCT COALESCE([infor_item], [medline_item])) FROM [FillKill].[ItemInstruction]),
                       '' item(s)'');
+    ');
+
+-- Vendor items without a sub (12, 2026-11-02), once its column exists.
+IF COL_LENGTH(N'FillKill.SubVendorItem', N'medline_item') IS NOT NULL
+    EXEC (N'
+        SELECT ''every order without a sub is for a vendor item without one, of its Medline item'' AS [check],
+               CASE WHEN NOT EXISTS (
+                   SELECT 1 FROM [FillKill].[SubOrder] AS o
+                   LEFT JOIN [FillKill].[SubVendorItem] AS v ON v.[vendor_item_id] = o.[vendor_item_id]
+                   WHERE o.[sub_id] IS NULL
+                     AND (v.[vendor_item_id] IS NULL OR v.[sub_id] IS NOT NULL OR v.[medline_item] <> o.[medline_item])
+               ) THEN ''PASS'' ELSE ''FAIL'' END AS [result]
+        UNION ALL
+        SELECT ''vendor items without a sub (live), and orders of them'',
+               CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[SubVendorItem] WHERE [sub_id] IS NULL AND [deleted_at] IS NULL),
+                      '' / '', (SELECT COUNT(*) FROM [FillKill].[SubOrder] WHERE [sub_id] IS NULL));
     ');

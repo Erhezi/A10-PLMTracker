@@ -65,8 +65,8 @@ each item.
 
 | Party | Fill/Kill role | Decides | What Main shows of it |
 |---|---|---|---|
-| Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them (which stops them being ordered), comments on subs | **Approved by Nursing**: every approved sub, each with its latest comment, as text (new) |
-| Materials Management lead (MM manager) | **SCM** (new; "MM Lead" until 2026-10-28, "MM/SCM" until 11-02) | How the sites should order: which approved sub and vendor item, how much, for which sites. Adds vendor items. Usually doesn't order | **SCM Comments** column ("MM Instruction" at first, "Will's Comments" until 2026-11-02): the item's latest instruction (new) |
+| Nursing (the nursing manager and nurses) | Sub Approver | What is clinically acceptable: enters and approves subs, holds or rejects them (which stops them being ordered), comments on subs | **Sub Approved by Nursing** (2026-11-02; Approved by Nursing before): every approved sub, each with its latest comment, as text (new) |
+| Materials Management lead (MM manager) | **SCM** (new; "MM Lead" until 2026-10-28, "MM/SCM" until 11-02) | How the sites should order: which approved sub and vendor item, how much, for which sites. Adds vendor items, with no approved sub too (2026-11-02). Usually doesn't order | **SCM Comments** column ("MM Instruction" at first, "Will's Comments" until 2026-11-02): the item's latest instruction (new) |
 | Each site's Materials Managers | Materials Manager | Carry the instruction out: order for their site and record it: the sub's vendor item and how much, with the PO number if they have it | **Ordering Status**: each order with its site; **Total Sub Ordered (EA)** with what each site is short (new) |
 | Everyone else | Viewer | Nothing; sees everything | |
 | A future AI finder | Sub Finder | Proposes subs for nursing to review | |
@@ -113,7 +113,7 @@ record, and nothing is matched against Infor in this deploy.
 - The instructions' column is called **SCM Comments** (2026-11-02; Will's Comments until then; one label in the code,
   `rules.INSTRUCTION_LABEL`), and sits **before Vendor Item Detail**: read before ordering from the tiles.
 - **Double-click to write.** SCM double-clicks the SCM Comments cell to add one; nursing
-  (Sub Approvers, Sub Finders) double-click an Approved by Nursing cell to add a sub for its Medline item.
+  (Sub Approvers, Sub Finders) double-click a Sub Approved by Nursing cell to add a sub for its Medline item.
   Both open a small modal. The item panel has an **Add comment** button too, like its Add sub.
 - **One free-text comment per item**, not one per site: it names the sites it speaks to.
 - **Nobody is emailed.** The sites' Materials Managers open Main, or refresh it, to read the latest.
@@ -130,7 +130,7 @@ record, and nothing is matched against Infor in this deploy.
   reason if they like. The reason is kept as the sub's comment ("Hold: ..."), so it reads on its
   card. The sub leaves Main's column and can't be ordered until it's approved again; its orders so
   far stay.
-- Main's pick column is **Approved by Nursing** ("Picked for Ordering" before; "Nursing's Pick" and
+- Main's pick column is **Approved by Nursing** (**Sub Approved by Nursing** from 2026-11-02; "Picked for Ordering" before; "Nursing's Pick" and
   "Nursing's Recommendation" for a morning): every approved sub, a line each, with its latest
   comment and its vendor items beside it.
 - *Needs details* now means no approved sub has a vendor item yet, so nothing can be ordered.
@@ -426,9 +426,9 @@ rest:
 | PO Lines | per UOM, and their total |
 | Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
-| Approved by Nursing | (2026-10-28: every approved sub, since every one can be ordered; before, the picks: "Approver's Pick" until 2026-10-21, "Picked for Ordering" until 2026-10-28) per UOM: each approved sub's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest first), the UOM's other cells spanning its subs' lines. A sub put on hold or rejected leaves it. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the approved ones |
+| Sub Approved by Nursing | ("Approved by Nursing" from 2026-10-28 until the user renamed it on 2026-11-02; 2026-10-28: every approved sub, since every one can be ordered; before, the picks: "Approver's Pick" until 2026-10-21, "Picked for Ordering" until 2026-10-28) per UOM: each approved sub's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest first), the UOM's other cells spanning its subs' lines. A sub put on hold or rejected leaves it. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the approved ones |
 | SCM Comments | (2026-10-27; "MM Instruction" until the user renamed it and moved it before Vendor Item Detail the same day, "Will's Comments" until 2026-11-02) for the Infor item: SCM's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts them and opens them all, newest first, in a popover. SCM **double-clicks the cell** to write a new one (no button in the cell; the cell is outlined under the pointer, and says so on hover), or uses the panel's Add comment. It isn't tied to the Fill/Kill dates: the latest stays in force until a newer one replaces it, and its date shows how old it is |
-| Vendor Item Detail | per approved sub, on its line (2026-10-20; beside it from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another |
+| Vendor Item Detail | per approved sub, on its line (2026-10-20; beside it from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another. **Without a sub** (2026-11-02, the user): on the UOM's line with no approved sub (the only line when none is approved, an extra one once it has vendor items without a sub), the tiles of its vendor items without a sub, and, for Materials Managers and SCM, "+ Vendor item" to add one (section Ordering) |
 | Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
 | Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates at the sites shown, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE. Killed at several sites: each site's eaches on hover |
 | Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates for the sites shown, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Killed at several sites (2026-10-27): a red line per site that's short ("Moses: 20 EA short"), since each site orders for itself. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
@@ -543,7 +543,10 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
   (and, until 2026-10-28, for a picked one).
 - **Every sub needs the Sub Approver's approval**, including the same product from another vendor
   or in another UOM. Those usually mean buying on a different contract, so the Sub Approver should
-  see that even though they judge only item equivalence. **Decided.**
+  see that even though they judge only item equivalence. **Decided.** **Changed 2026-11-02 (the
+  user):** when SCM directs the sites to order something no sub nursing approved covers (e.g. "order
+  the same original item 345678 from BD", or a sub item nursing hasn't approved), ordering doesn't
+  wait for one: see *Vendor items without a sub* under Ordering.
 - **Statuses** (9.1): new subs start as *Pending Review*. *Hold* is the Sub Approver's deliberate
   "not now", so it's told apart from subs nobody has looked at yet. Rejecting needs no comment; the
   history records who rejected it and when (9.9). **Decided.**
@@ -615,6 +618,26 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
   vendor, vendor ID, UOM and QOE included. Every change is kept in the same audit-log history.
 - **Any site** (2026-10-27): a Materials Manager can record orders for any site. Roles aren't scoped
   by site (section 4); the site says who the order is for, not who may place it.
+- **Vendor items without a sub** (2026-11-02, the user): when SCM's instruction is to order from an
+  alternative vendor (e.g. "order same original item 345678 from BD") or a sub item nursing hasn't
+  approved (e.g. "order sub item MDS12345 from Medline"), there may be no approved sub to hang a
+  vendor item on. So a vendor item can belong to the **Medline item itself**, with no sub, and it can
+  be ordered as it is (no nursing approval, no status). **Built:**
+  - Who: Materials Managers and SCM (capability `direct`). Not Sub Finders, kept for a future AI
+    finder, whose finds should go through nursing.
+  - Where: on Main, "+ Vendor item" under Vendor Item Detail on the UOM's line without an approved
+    sub; in the item panel, a *Vendor items without a sub* block per Medline item (also when it has
+    approved subs). The form is the usual vendor item form; its contract search starts from the
+    Infor item, to find the same item from other vendors. The Medline item itself from Medline is
+    still refused.
+  - Orders of one have no sub (`SubOrder.sub_id` empty) and count like any other: Ordering, Total
+    Sub Ordered (EA), the recommendation. The panel's Orders tab says "no sub, as SCM directs".
+  - Needs: such a vendor item makes the item *Needs order* (until ordered) and never *Needs
+    details*; *Needs subs* still shows while it has no live sub. Dashboard: it counts in kill to
+    order, not in sub to order.
+  - Not on the Subs page or its export, which list subs.
+  - Database: `12`'s step 4 (`SubVendorItem.medline_item`, `sub_id` may be empty on `SubVendorItem`
+    and `SubOrder`, a unique index and two CHECKs).
 
 ### Instructions (SCM, 2026-10-27; "SCM Comments" on the page)
 
@@ -636,7 +659,9 @@ item, how much, which sites, until when. Free text, so one instruction can speak
 - **Where it's written:** a double-click on the item's SCM Comments cell, or Add comment in its
   panel, opens a modal: each site's killed and sub-ordered eaches in these dates and the latest
   comment above a box for the new one, labelled *Comment from SCM* (2026-11-02; "Comment for the
-  sites' Materials Managers" before).
+  sites' Materials Managers" before), whose hint shows the kind of thing it says (the user, 2026-11-02):
+  "Comments from SCM (Will), e.g. autosub in place, scan again; order sub item MDS12345 from Medline;
+  order same original item 345678 from BD."
 - **Nobody is notified** (the user, 2026-10-27): no email. The sites' Materials Managers open Main, or
   refresh it, to read the latest.
 
@@ -671,8 +696,8 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
 | `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied at go-live (`10_kill_lines.sql`) |
 | `Site` | Medline Sold-To account (2026-10-30) | sold_to (Medline's code, leading zeros kept, the same value as SubOrder.site), sold_to_name, site_short_name (Moses / Wakefield / Einstein). 10 Montefiore accounts. Kept by `15_sites.sql`. The app doesn't read it yet |
 | `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
-| `SubVendorItem` | way to order a sub (2026-10-20) | sub_id, vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom) |
-| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id, vendor_item_id, **site** (Medline's Sold-To code, 2026-10-27; none on older orders), **po_number** (Infor's, optional, 2026-10-27), quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
+| `SubVendorItem` | way to order a sub (2026-10-20), or a Medline item without a sub (2026-11-02) | sub_id, or none and then **medline_item** (exactly one of the two, `CK_SubVendorItem_sub_or_item`), vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom), and without a sub per (medline_item, vendor_id, vendor_part, uom) |
+| `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id (none for a vendor item without a sub, 2026-11-02; then it has its vendor_item_id), vendor_item_id, **site** (Medline's Sold-To code, 2026-10-27; none on older orders), **po_number** (Infor's, optional, 2026-10-27), quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
 | `ItemInstruction` | instruction by SCM (2026-10-27) | infor_item (none for a Medline item not in Infor), medline_item (written from), instruction (≤1,000), written_by, written_at. Never changed or deleted; the newest per row is in force |
 | `History` | change or comment on a sub, a vendor item or an order | entity (sub / vendoritem / order), id, medline_item, action, from → to, comment (≤400), by, at; drives the timelines and the pick and order histories. Comments are rows here, so none is ever overwritten. |
 

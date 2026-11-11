@@ -3,8 +3,8 @@
  */
 
 import {
-  NO_VENDOR, REASON_LABEL, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails, noQoeBadge, statusBadge, uomQoe,
-  vendorText,
+  NO_VENDOR, REASON_LABEL, REFERENCE_SKU_HINT, SUB_NOTE_HINT, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails,
+  noQoeBadge, statusBadge, uomQoe, vendorText,
 } from '../common.js';
 import { can, siteName, state } from './state.js';
 import { customerFlag } from './table.js';
@@ -31,8 +31,24 @@ function subsTab(view) {
         <span class="fw-normal small text-muted">${esc(p.um)}${p.killed_in_range ? '' : ' · not killed in these dates'}</span></h3>` : '';
     const own = p.subs.length ? p.subs.map(subCard).join('')
       : `<p class="text-muted small mb-2">No subs yet for ${many ? esc(p.medline_item) : 'this item'}.</p>`;
-    return head + own + otherSubs(p);
+    return head + own + withoutSub(p) + otherSubs(p);
   }).join('');
+}
+
+// Vendor items without a sub (2026-11-02, the user): what SCM directs the sites to order for the
+// Medline item when no sub nursing approved is available, e.g. the same item from another vendor.
+// Materials Managers and SCM add them; they're ordered like a sub's.
+function withoutSub(p) {
+  const items = p.vendor_items || [];
+  if (!items.length && !can.direct) return '';
+  const add = can.direct ? `<button type="button" class="btn btn-sm btn-outline-primary py-0" data-act="add-item-vi"
+      data-item="${esc(p.medline_item)}"><i class="bi bi-plus-lg"></i> Vendor item</button>` : '';
+  return `<div class="card mb-2"><div class="card-body p-2 small">
+    <div class="d-flex flex-wrap gap-2 align-items-center"><span class="fw-semibold me-auto">Vendor items without a sub</span>${add}</div>
+    <div class="text-muted">As SCM directs when no sub nursing approved is available, e.g. the same item from another vendor.
+      They can be ordered as they are.</div>
+    ${items.length ? vendorItemList(items, null) : ''}
+  </div></div>`;
 }
 
 // Subs on the Infor item's other UOMs, not on this one yet.
@@ -51,10 +67,13 @@ function otherSubs(p) {
 }
 
 // A sub's vendor items (2026-10-20): each a way to order it, the Materials Manager's or a Sub
-// Finder's. A Materials Manager records an order for one of an approved sub's.
-function vendorItemList(sub) {
-  const items = sub.vendor_items || [];
+// Finder's. A Materials Manager records an order for one of an approved sub's, or for one without a
+// sub (``sub`` null, 2026-11-02), whose vendor items only Materials Managers and SCM change.
+function vendorItemList(items, sub) {
   if (!items.length) return '';
+  const orderable = !sub || sub.status === 'approved';
+  const changes = sub ? can.details : can.direct;
+  const subId = sub ? sub.sub_id : '';
   return `<ul class="list-unstyled small mb-0 mt-1 fk-vendor-items">${items.map((v) => {
     const facts = [
       v.manufacturer_part ? `Mfr part ${esc(v.manufacturer_part)}` : '',
@@ -62,13 +81,13 @@ function vendorItemList(sub) {
       `added by ${esc(v.entered_by)} ${fmtDateTime(v.create_dt)}`,
     ].filter(Boolean).join(' · ');
     const actions = [];
-    if (can.order && sub.status === 'approved') {
+    if (can.order && orderable) {
       actions.push(`<button type="button" class="btn btn-sm btn-primary py-0" data-act="order" data-vi="${v.vendor_item_id}">Record order</button>`);
     }
-    if (can.details) {
-      actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-act="edit-vi" data-sub="${sub.sub_id}"
+    if (changes) {
+      actions.push(`<button type="button" class="btn btn-sm btn-outline-secondary py-0" data-act="edit-vi" data-sub="${subId}"
         data-vi="${v.vendor_item_id}">Correct</button>`);
-      actions.push(`<button type="button" class="btn btn-sm btn-outline-danger py-0" data-act="delete-vi" data-sub="${sub.sub_id}"
+      actions.push(`<button type="button" class="btn btn-sm btn-outline-danger py-0" data-act="delete-vi" data-sub="${subId}"
         data-vi="${v.vendor_item_id}">Delete</button>`);
     }
     return `<li class="d-flex flex-wrap gap-2 align-items-center py-1">
@@ -121,7 +140,7 @@ function subCard(sub) {
             Approved for ${esc(o.medline_item)}${o.um ? ` (${esc(o.um)})` : ''}</span>`).join(' ')}
       </div>
       <div class="small text-muted">Added by ${source}, ${fmtDateTime(sub.create_dt)} · updated ${fmtDateTime(sub.update_dt)}</div>
-      ${vendorItemList(sub)}
+      ${vendorItemList(sub.vendor_items || [], sub)}
       ${comment}
       <div class="d-flex flex-wrap gap-2 align-items-center mt-2">${actions.join('')}</div>
       ${commentBox}
@@ -147,10 +166,10 @@ function addSubForm(packs) {
       <form id="fk-add-form" class="row g-2" novalidate>${target}
         <div class="col-6"><label class="form-label small mb-0" for="fk-add-sku">Reference SKU *</label>
           <input class="form-control form-control-sm" id="fk-add-sku" name="reference_sku" maxlength="100" required
-                 placeholder="The part you approved, e.g. the manufacturer's"></div>
+                 placeholder="${esc(REFERENCE_SKU_HINT)}"></div>
         <div class="col-12"><label class="form-label small mb-0" for="fk-add-comment">Note</label>
           <input class="form-control form-control-sm" id="fk-add-comment" name="comment" maxlength="400"
-                 placeholder="Optional: what you know about it, e.g. from the supplier"></div>
+                 placeholder="${esc(SUB_NOTE_HINT)}"></div>
         <div class="col-12 small text-muted">${what}</div>
         <div class="col-12"><button type="submit" class="btn btn-sm btn-primary">Add sub</button>
           <button type="button" class="btn btn-sm btn-link" data-act="hide-add">Cancel</button></div>
@@ -247,7 +266,8 @@ function orderRows(o, many, columns) {
       ${many ? `<td class="text-nowrap">${esc(o.medline_item)}</td>` : ''}
       <td>${o.site ? esc(siteName(o.site)) : '<span class="text-muted">Site not recorded</span>'}${o.po_number
         ? `<div class="text-muted text-nowrap">PO ${esc(o.po_number)}</div>` : ''}</td>
-      <td><span class="fw-semibold">${esc(o.vendor_part)}</span><div class="text-muted">for ${esc(o.reference_sku)}</div></td>
+      <td><span class="fw-semibold">${esc(o.vendor_part)}</span><div class="text-muted">${o.reference_sku
+        ? `for ${esc(o.reference_sku)}` : 'no sub, as SCM directs'}</div></td>
       <td class="text-end text-nowrap"><span class="${voided ? 'text-decoration-line-through' : ''}">${fmtNumber(o.quantity)}</span>
         <span class="text-muted">${esc(uomQoe(o))}</span></td>
       <td>${esc(o.vendor)}${vendorId ? `<div class="text-muted">${esc(vendorId)}</div>` : ''}</td>

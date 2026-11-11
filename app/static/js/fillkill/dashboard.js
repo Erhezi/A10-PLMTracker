@@ -131,7 +131,7 @@ function flow(f) {
   const items = (n) => `${n} of ${f.items} Medline item${f.items === 1 ? '' : 's'}`;
   const cards = [
     ['Kill to first sub', duration(f.kill_to_sub), `median, ${items(f.items_with_sub)} (a sub on file counts as 0)`],
-    ['Sub to order', duration(f.sub_to_order), `median, ${items(f.items_ordered)}`],
+    ['Sub to order', duration(f.sub_to_order), `median, ${items(f.items_sub_ordered)}`],
     ['Kill to order', duration(f.kill_to_order), `median, ${items(f.items_ordered)}`],
   ];
   $('fk-dash-flow').innerHTML = cards.map(([label, value, note]) => `

@@ -203,8 +203,10 @@ async function onClick(event) {
   if (!button) return;
   const { act: what } = button.dataset;
   const subId = Number(button.dataset.sub);
-  const sub = () => panelSubs().find((s) => s.sub_id === subId);
-  const vendorItem = () => (sub() ? sub().vendor_items.find((v) => v.vendor_item_id === Number(button.dataset.vi)) : null);
+  const sub = () => (subId ? panelSubs().find((s) => s.sub_id === subId) || null : null);
+  // A sub's vendor item, or one without a sub (2026-11-02).
+  const vendorItem = () => (sub() ? sub().vendor_items : state.panelData.packagings.flatMap((p) => p.vendor_items || []))
+    .find((v) => v.vendor_item_id === Number(button.dataset.vi)) || null;
   if (what === 'instruct') { openInstructionForm(instructionRow()); return; }
   if (what === 'instructions') {
     const target = $('fk-panel-instructions');
@@ -235,6 +237,7 @@ async function onClick(event) {
   }
   if (what === 'edit-sub') { openSubEditForm(sub()); return; }
   if (what === 'add-vi') { openVendorItemForm(sub()); return; }
+  if (what === 'add-item-vi') { openVendorItemForm(null, null, button.dataset.item); return; }
   if (what === 'edit-vi') { openVendorItemForm(sub(), vendorItem()); return; }
   if (what === 'delete-vi') { openVendorItemDeleteForm(sub(), vendorItem()); return; }
   if (what === 'delete-sub') { openSubDeleteForm(sub()); return; }

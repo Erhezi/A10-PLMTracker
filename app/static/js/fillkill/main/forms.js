@@ -1,13 +1,14 @@
-/* Main: the forms in the modal: a vendor item (with the contract search, the vendor search by name
- * and the vendor ID check), record, correct and void an order, correct a sub's Reference SKU, delete
- * a sub or a vendor item, put a sub on hold or reject it (2026-10-28), SCM's instruction
- * ("SCM Comments", 2026-10-27; "Will's Comments" until 11-02), and a new sub from Main's Approved by Nursing (2026-10-27). Boxes lose their leading and
- * trailing spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
+/* Main: the forms in the modal: a vendor item, a sub's or one without a sub (2026-11-02) (with the
+ * contract search, the vendor search by name and the vendor ID check), record, correct and void an
+ * order, correct a sub's Reference SKU, delete a sub or a vendor item, put a sub on hold or reject it
+ * (2026-10-28), SCM's instruction ("SCM Comments", 2026-10-27; "Will's Comments" until 11-02), and a
+ * new sub from Main's Sub Approved by Nursing (2026-10-27). Boxes lose their leading and trailing
+ * spaces when left, and a UOM typed another way becomes Infor's (2026-10-20).
  */
 
 import {
-  $, NO_VENDOR, STATUS_ORDER, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, formValues, getJSON, inforUom,
-  isTheKilledItem, postJSON, trimInput, uomQoe, vendorItemText,
+  $, NO_VENDOR, REFERENCE_SKU_HINT, STATUS_ORDER, SUB_NOTE_HINT, alertBox, config, debounce, esc, fmtDateTime, fmtNumber,
+  formValues, getJSON, inforUom, isTheKilledItem, postJSON, trimInput, uomQoe, vendorItemText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
@@ -82,13 +83,26 @@ function nowLocal() {
 // Subs from the panel (any UOM) and the main table's approved ones.
 const knownSubs = () => panelSubs().concat(...state.rows.map((row) => row.approved_subs));
 
-// A vendor item and its sub, from the panel or the main table.
+// Vendor items without a sub (2026-11-02), from the panel and the main table.
+const knownWithoutSub = () => (state.panelData ? state.panelData.packagings : [])
+  .concat(...state.rows.map((row) => row.packagings)).flatMap((p) => p.vendor_items || []);
+
+// A vendor item and its sub (null for one without a sub), from the panel or the main table.
 function findVendorItem(id) {
   for (const sub of knownSubs()) {
     const item = (sub.vendor_items || []).find((v) => v.vendor_item_id === id);
     if (item) return { sub, item };
   }
-  return { sub: null, item: null };
+  return { sub: null, item: knownWithoutSub().find((v) => v.vendor_item_id === id) || null };
+}
+
+// The Infor item of a Medline item, from the main table or the panel: what a vendor item without a
+// sub is searched for on the contracts first (the same item from another vendor).
+function inforItemOf(medline) {
+  const row = state.rows.find((r) => r.medline_items.includes(medline));
+  if (row) return row.infor_item || '';
+  const data = state.panelData;
+  return data && data.packagings.some((p) => p.medline_item === medline) ? data.infor_item || '' : '';
 }
 
 // The killed Medline item's UOM with its QOE, as "BX/25" (several: "BX/25, EA/1"): from the panel,
@@ -102,14 +116,17 @@ function killedUoms(medline) {
 }
 
 // What a form is about, at its top: the sub (its Reference SKU) for the killed Medline item, with
-// that item's UOM/QOE, and, when there is one, the vendor item.
-function summary(sub, item, more) {
-  const uoms = killedUoms(sub.medline_item);
+// that item's UOM/QOE, and, when there is one, the vendor item. No sub (2026-11-02): the Medline
+// item ``medline`` itself, as SCM directs.
+function summary(sub, item, more, medline) {
+  const forItem = sub ? sub.medline_item : medline;
+  const uoms = killedUoms(forItem);
+  const killed = `${esc(forItem)}${uoms ? ` (${esc(uoms)})` : ''}`;
   return `
     <div class="fk-form-summary small">
-      <div><span class="text-muted">Reference SKU</span> <span class="fw-semibold">${esc(sub.reference_sku)}</span>
-        <span class="text-muted">for ${esc(sub.medline_item)}${uoms ? ` (${esc(uoms)})` : ''}${sub.source === 'medline_pbo'
-          ? ' · Medline PBO' : ''}</span></div>
+      <div>${sub ? `<span class="text-muted">Reference SKU</span> <span class="fw-semibold">${esc(sub.reference_sku)}</span>
+        <span class="text-muted">for ${killed}${sub.source === 'medline_pbo' ? ' · Medline PBO' : ''}</span>`
+        : `<span class="text-muted">No sub, as SCM directs, for</span> <span class="fw-semibold">${killed}</span>`}</div>
       ${item ? `<div><span class="text-muted">Vendor item</span> <span class="fw-semibold">${esc(vendorItemText(item))}</span>${item.description
         ? ` <span class="text-muted">· ${esc(item.description)}</span>` : ''}</div>` : ''}${more || ''}
     </div>`;
@@ -382,14 +399,15 @@ function vendorFields(v) {
 
 // The contract search and the vendor item it fills in, each a section (the Materials Manager's or a
 // Sub Finder's): a vendor's part in a UOM, with its manufacturer part and Infor item (2026-10-20).
-function vendorItemSections(sub, item) {
+// ``searchFor``: what the search starts with.
+function vendorItemSections(searchFor, item) {
   const v = item || {};
   return section("Find it on Infor's contracts", `
     <div class="col-12">
       <input type="search" class="form-control form-control-sm" id="fk-contract-q" autocomplete="off"
              aria-label="Search Infor's active contracts"
              placeholder="Vendor item, manufacturer number, Infor item, or words, e.g. 930103 chloraprep bx"
-             value="${esc(item ? item.vendor_part : sub.reference_sku)}">
+             value="${esc(searchFor)}">
       <div id="fk-contract-results" class="small mt-1"></div></div>`,
   'optional: choosing a line fills in the vendor item below')
   + section('Vendor item', `
@@ -410,17 +428,30 @@ function searchForIt() {
 }
 
 // A vendor item: added to a sub, or corrected (2026-10-20). The sub's Reference SKU stays as entered.
-export function openVendorItemForm(sub, item) {
-  if (!sub) return;
-  const note = item ? '' : `<div class="text-muted">A way to order it: each vendor ID, vendor part and UOM is a vendor item
-    of its own.</div>`;
-  showModal(item ? `Correct a vendor item · ${esc(item.vendor_part)}` : `Add a vendor item · ${esc(sub.reference_sku)}`,
-    summary(sub, item, note) + vendorItemSections(sub, item), item ? 'Save correction' : 'Add vendor item',
-    (values) => (item
-      ? postJSON(vendorItemUrl(item.vendor_item_id, 'edit'), values).then(() => 'Vendor item corrected.')
-      : postJSON(addVendorItemUrl(sub.sub_id), values).then(() => 'Vendor item added.')),
+// Without a sub (2026-11-02, the user): for the Medline item ``medline`` itself, as SCM directs when
+// no sub nursing approved is available; its contract search starts with the Infor item, to find
+// the same item from another vendor.
+export function openVendorItemForm(sub, item, medline) {
+  const forItem = sub ? sub.medline_item : medline || (item && item.medline_item);
+  if (!forItem) return;
+  let note = '';
+  if (!item) {
+    note = sub
+      ? `<div class="text-muted">A way to order it: each vendor ID, vendor part and UOM is a vendor item of its own.</div>`
+      : `<div class="text-muted">No sub nursing approved is needed: what SCM directs the sites to order for ${esc(forItem)},
+          e.g. the same item from another vendor. It can be ordered as it is.</div>`;
+  }
+  const searchFor = item ? item.vendor_part : (sub ? sub.reference_sku : inforItemOf(forItem));
+  showModal(item ? `Correct a vendor item · ${esc(item.vendor_part)}` : `Add a vendor item · ${esc(sub ? sub.reference_sku : forItem)}`,
+    summary(sub, item, note, forItem) + vendorItemSections(searchFor, item), item ? 'Save correction' : 'Add vendor item',
+    (values) => {
+      if (item) return postJSON(vendorItemUrl(item.vendor_item_id, 'edit'), values).then(() => 'Vendor item corrected.');
+      const added = sub ? postJSON(addVendorItemUrl(sub.sub_id), values)
+        : postJSON(api.addItemVendorItem, { ...values, medline_item: forItem });
+      return added.then(() => 'Vendor item added.');
+    },
     { wide: true });
-  formItem = sub.medline_item;
+  formItem = forItem;
   killedItemCheck();
   searchForIt();
 }
@@ -527,25 +558,28 @@ function siteSelect(selected, { required = true, col = 'col-12 col-md-5' } = {})
 const poField = (value, col) => field('po_number', 'PO number', value, `maxlength="20" inputmode="numeric" autocomplete="off"
   placeholder="Optional: Infor's PO, e.g. 3000564756" title="Infor's PO number, digits only. Optional: it links the order back to the killed items later."`, col);
 
-// Recording an order for a vendor item of an approved sub: it's placed with the vendor item's vendor part,
+// Recording an order for a vendor item of an approved sub (or of no sub, as SCM directs, 2026-11-02):
+// it's placed with the vendor item's vendor part,
 // vendor, vendor ID, UOM and QOE (2026-10-20), for the site the Materials Manager chooses, with
 // Infor's PO number if they have it (2026-10-27). The site starts on the one the filter shows, when
 // it shows just one (a Materials Manager looking at their own site); otherwise they choose it.
 export function openOrderForm(vendorItemId) {
   const { sub, item } = findVendorItem(vendorItemId);
   if (!item) return;
-  const medline = sub.medline_item;
+  const medline = sub ? sub.medline_item : item.medline_item;
   const row = state.rows.find((r) => r.medline_items.includes(medline));
   const site = state.sites.length === 1 ? state.sites[0] : '';
   const check = orderCheck(medline, row, item, site);
   const hint = check.recommended != null ? `placeholder="Recommended: ${check.recommended}"` : '';
-  showModal(`Record an order · ${esc(medline)}`, `${summary(sub, item)}<div id="fk-order-check">${check.html}</div>` + section('Order', `
+  showModal(`Record an order · ${esc(medline)}`, `${summary(sub, item, '', medline)}<div id="fk-order-check">${check.html}</div>` + section('Order', `
     ${siteSelect(site)}
     ${field('quantity', `Quantity (${esc(item.uom)}) *`, check.quantity, `type="number" min="1" step="1" required ${hint}`, 'col-6 col-md-3')}
     ${poField('', 'col-6 col-md-4')}
     ${field('ordered_dt', 'Ordered', nowLocal(), 'type="datetime-local"', 'col-6 col-md-4')}
     ${field('comment', 'Comment', '', 'maxlength="400"', 'col-12 col-md-8')}`),
-  'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, { vendor_item_id: vendorItemId, expected_status: 'approved' }))
+  'Record order', (values) => postJSON(api.recordOrder, Object.assign(values, {
+    vendor_item_id: vendorItemId, expected_status: sub ? 'approved' : undefined,
+  }))
     .then(() => `Order recorded for ${siteName(values.site)}.`), { wide: true });
   orderForm = { medline, row, item, filled: check.quantity };
 }
@@ -578,7 +612,7 @@ export function openOrderEditForm(order) {
   'Save correction', (values) => postJSON(orderUrl(order.order_id, 'edit'), values).then(() => 'Order corrected.'), { wide: true });
 }
 
-// Hold or Reject (2026-10-28): the sub can't be ordered then, and leaves Approved by Nursing on Main.
+// Hold or Reject (2026-10-28): the sub can't be ordered then, and leaves Sub Approved by Nursing on Main.
 // Nursing may say why: the reason is kept as the sub's comment, after its new status.
 export function openStatusForm(sub, status) {
   if (!sub) return;
@@ -586,8 +620,8 @@ export function openStatusForm(sub, status) {
   const verb = status === 'hold' ? 'Put on Hold' : 'Reject';
   showModal(`${verb} · ${esc(sub.reference_sku)}`, fields(`
     <div class="col-12 small text-muted">${esc(sub.reference_sku)} on ${esc(sub.medline_item)}. ${status === 'hold'
-      ? "On hold, it can't be ordered and leaves Approved by Nursing on Main, until you approve it again."
-      : "Rejected, it can't be ordered and leaves Approved by Nursing on Main."} Its orders so far stay.</div>
+      ? "On hold, it can't be ordered and leaves Sub Approved by Nursing on Main, until you approve it again."
+      : "Rejected, it can't be ordered and leaves Sub Approved by Nursing on Main."} Its orders so far stay.</div>
     ${field('comment', 'Reason', '', `maxlength="${config.reasonMax}" placeholder="Optional: why, for the Materials Managers"`, 12)}`),
   verb, (values) => postJSON(subUrl(sub.sub_id, 'status'), { status, comment: values.comment, expected_status: sub.status })
     .then(() => `Status set to ${label}.`));
@@ -608,8 +642,9 @@ export function openSubDeleteForm(sub) {
 // Deleting a vendor item needs a reason too; refused while it has orders that aren't voided.
 export function openVendorItemDeleteForm(sub, item) {
   if (!item) return;
+  const forWhat = sub ? sub.reference_sku : `${item.medline_item}, without a sub`;
   showModal(`Delete a vendor item · ${esc(item.vendor_part)}`, fields(`
-    <div class="col-12 small text-muted">${esc(vendorItemText(item))}, for ${esc(sub.reference_sku)}. It can't be ordered
+    <div class="col-12 small text-muted">${esc(vendorItemText(item))}, for ${esc(forWhat)}. It can't be ordered
       any more; its orders, and who deleted it, when and why, stay.</div>
     ${field('reason', 'Why? *', '', 'maxlength="400" required', 12)}`),
   'Delete vendor item', (values) => postJSON(vendorItemUrl(item.vendor_item_id, 'delete'), { reason: values.reason })
@@ -653,7 +688,7 @@ export function openInstructionForm(row) {
     <div class="col-12"><label class="form-label small mb-0" for="fk-m-instruction">Comment from SCM *</label>
       <textarea class="form-control form-control-sm" id="fk-m-instruction" name="instruction" rows="5" required
                 maxlength="${config.instructionMax || 1000}"
-                placeholder="How the sites should order it, e.g. White Plains and Wakefield: 2 CA of B-D930103CS each. Einstein: use stock until Friday."></textarea>
+                placeholder="Comments from SCM (Will), e.g. autosub in place, scan again; order sub item MDS12345 from Medline; order same original item 345678 from BD."></textarea>
       <div class="form-text small">It shows on Main as the latest, for everyone; the earlier ones are kept. Nobody is emailed:
         the sites read it on Main.</div></div>`)}`,
   'Save comment',
@@ -667,7 +702,7 @@ export function addedMessage(added) {
   return added.status === 'approved' ? 'Approved: it can be ordered.' : 'It is pending review.';
 }
 
-// A new sub for a Medline item, from a double-click on its Approved by Nursing cell (2026-10-27): the
+// A new sub for a Medline item, from a double-click on its Sub Approved by Nursing cell (2026-10-27): the
 // panel's Add sub, in the modal. Its subs so far, and the approved ones, are above it.
 export function openAddSubForm(medline) {
   const row = state.rows.find((r) => r.medline_items.includes(medline));
@@ -683,11 +718,11 @@ export function openAddSubForm(medline) {
       <div><span class="fw-semibold">${esc(medline)}</span>${uoms ? ` <span class="text-muted">(${esc(uoms)})</span>` : ''}
         <span class="text-muted">${esc(row.infor_item ? `Infor item ${row.infor_item} · ` : '')}${esc(pack.description || row.description || '')}</span></div>
       <div><span class="text-muted">Subs on file</span> ${counts.length ? esc(counts.join(' · ')) : 'none'}</div>${pack.approved_subs.length
-        ? `<div><span class="text-muted">Approved by Nursing</span> ${esc(pack.approved_subs.map((s) => s.reference_sku).join(', '))}</div>` : ''}
+        ? `<div><span class="text-muted">Sub Approved by Nursing</span> ${esc(pack.approved_subs.map((s) => s.reference_sku).join(', '))}</div>` : ''}
     </div>${fields(`
     ${field('reference_sku', 'Reference SKU *', '', `maxlength="100" required autocomplete="off"
-      placeholder="The part you approved, e.g. the manufacturer's"`, 12)}
-    ${field('comment', 'Note', '', 'maxlength="400" placeholder="Optional: what you know about it, e.g. from the supplier"', 12)}
+      placeholder="${esc(REFERENCE_SKU_HINT)}"`, 12)}
+    ${field('comment', 'Note', '', `maxlength="400" placeholder="${esc(SUB_NOTE_HINT)}"`, 12)}
     <div class="col-12 small text-muted">${what}</div>`)}`,
   'Add sub', (values) => postJSON(api.addSub, { medline_item: medline, reference_sku: values.reference_sku, comment: values.comment })
     .then((data) => `Sub added to ${medline}. ${addedMessage(data.sub)}`));

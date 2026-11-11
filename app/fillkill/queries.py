@@ -183,8 +183,10 @@ def latest_reasons(scope: Scope, items=None) -> dict[str, dict]:
 
 
 def vendor_item_dict(item: VendorItem) -> dict:
+    """``sub_id`` None: one without a sub, for its Medline item itself (2026-11-02)."""
     return {
-        "vendor_item_id": item.vendor_item_id, "sub_id": item.sub_id, "vendor_part": item.vendor_part,
+        "vendor_item_id": item.vendor_item_id, "sub_id": item.sub_id, "medline_item": item.item_for,
+        "vendor_part": item.vendor_part,
         "vendor": item.vendor, "vendor_id": item.vendor_id, "uom": item.uom, "qoe": item.qoe,
         "manufacturer_part": item.manufacturer_part, "infor_item": item.infor_item, "description": item.description,
         "entered_by": item.entered_by, "create_dt": item.create_dt, "update_dt": item.update_dt,
@@ -216,6 +218,20 @@ def vendor_items_of(sub_ids) -> dict[int, list[dict]]:
 def _sub_dicts(subs) -> list[dict]:
     items = vendor_items_of(s.sub_id for s in subs)
     return [sub_dict(s, items.get(s.sub_id, [])) for s in subs]
+
+
+def item_vendor_items(medline_items) -> dict[str, list[dict]]:
+    """Per Medline item: its live vendor items without a sub (2026-11-02), oldest first: what SCM
+    directs the sites to order when no sub nursing approved is available."""
+    found: dict[str, list[dict]] = {}
+    for chunk in _chunks(sorted(set(medline_items))):
+        for item in db.session.execute(
+            select(VendorItem).where(VendorItem.sub_id.is_(None), VendorItem.medline_item.in_(chunk),
+                                     VendorItem.deleted_at.is_(None))
+            .order_by(VendorItem.create_dt, VendorItem.vendor_item_id)
+        ).scalars():
+            found.setdefault(item.medline_item, []).append(vendor_item_dict(item))
+    return found
 
 
 def subs_for_items(items) -> list[dict]:
@@ -299,6 +315,7 @@ def main_table_inputs(scope: Scope) -> dict:
         "reasons": latest_reasons(scope),
         "family_rows": family,
         "instructions": instructions_for({row.get("Infor Item") for row in details}, items),
+        "item_vendor_items": item_vendor_items(items),
     }
 
 
@@ -393,9 +410,9 @@ def _history_dict(row: History, labels: dict[tuple, str]) -> dict:
 
 def _vendor_item_labels(items, *, with_sub: bool = True) -> dict[tuple, str]:
     """A vendor item's History rows are labelled with it, after its sub's Reference SKU when they
-    may be read beside other subs'."""
-    return {("vendoritem", i.vendor_item_id): f"{i.sub.reference_sku}: {i.label()}" if with_sub else i.label()
-            for i in items}
+    may be read beside other subs' (or "No sub" for one without, 2026-11-02)."""
+    return {("vendoritem", i.vendor_item_id): f"{i.sub.reference_sku if i.sub else 'No sub'}: {i.label()}"
+            if with_sub else i.label() for i in items}
 
 
 def item_panel(medline_item: str, scope: Scope) -> dict:
@@ -421,8 +438,10 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
         select(Sub).where(Sub.medline_item.in_(members)).order_by(Sub.create_dt, Sub.sub_id)
     ).scalars().all()
     every_item = db.session.execute(
-        select(VendorItem).where(VendorItem.sub_id.in_([s.sub_id for s in every_sub] or [0]))
+        select(VendorItem).where(or_(VendorItem.sub_id.in_([s.sub_id for s in every_sub] or [0]),
+                                     and_(VendorItem.sub_id.is_(None), VendorItem.medline_item.in_(members))))
     ).scalars().all()
+    no_sub = item_vendor_items(members)
     # Deleted ones too, for the history.
     labels = {("sub", s.sub_id): s.label() for s in every_sub} | _vendor_item_labels(every_item)
     subs = [s for s in every_sub if s.deleted_at is None]
@@ -473,6 +492,7 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
             "killed_in_range": item in killed,
             "subs": annotated,
             "other_subs": other_subs,
+            "vendor_items": no_sub.get(item, []),  # without a sub, as SCM directs (2026-11-02)
         })
     # Killed in the range first, then the Infor item's other packagings.
     packagings.sort(key=lambda p: (not p["killed_in_range"], p["medline_item"]))

@@ -113,8 +113,8 @@ def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer)
     assert config["default"] == {"start": "2026-09-30", "end": "2026-09-30"}  # P4
     assert config["bounds"] == {"first": "2026-09-28", "last": "2026-09-30"}
     assert [s["name"] for s in config["sites"]] == ["WHITE PLAINS", "test site"]
-    assert config["can"] == {"view": True, "add_sub": False, "review": False, "details": False, "order": False,
-                             "instruct": False}
+    assert config["can"] == {"view": True, "add_sub": False, "review": False, "details": False, "direct": False,
+                             "order": False, "instruct": False}
     assert 'aria-current="page">Main</a>' in page
 
 
@@ -747,11 +747,12 @@ def scm(app):
 
 def test_scm_writes_the_instruction_the_sites_read_on_main(app, viewer, scm, finder_manager):
     assert page_config(scm)["can"] == {"view": True, "add_sub": False, "review": False, "details": True,
-                                       "order": False, "instruct": True}
+                                       "direct": True, "order": False, "instruct": True}
     # Called SCM Comments on the page (the user, 2026-11-02; "Will's Comments" from 10-27), before Vendor Item Detail.
     assert page_config(scm)["instructionLabel"] == "SCM Comments"
     page = scm.get("/fillkill/").get_data(as_text=True)
-    assert page.index("Approved by Nursing</th>") < page.index("SCM Comments</th>") < page.index(">Vendor Item Detail</th>")
+    # "Sub Approved by Nursing" (the user, 2026-11-02; "Approved by Nursing" from 10-28).
+    assert page.index(">Sub Approved by Nursing</th>") < page.index("SCM Comments</th>") < page.index(">Vendor Item Detail</th>")
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
     assert status == 403 and "Only SCM" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403
@@ -779,6 +780,43 @@ def test_scm_writes_the_instruction_the_sites_read_on_main(app, viewer, scm, fin
     # SCM doesn't record orders.
     status, data = post(scm, "/fillkill/api/orders", {"vendor_item_id": 1, "site": WP, "quantity": 1})
     assert status == 403 and "Only Materials Managers" in data["message"]
+
+
+def test_with_no_sub_approved_scm_or_the_materials_manager_adds_a_vendor_item_and_it_is_ordered(
+        app, viewer, scm, finder_manager):
+    # "Order the same original item from BD" (the user, 2026-11-02): no sub nursing approved needed.
+    finder = client(app, "finder2@example.org", plm=None, fillkill=("sub_finder",))
+    item = {"vendor_part": "BD-345678", "vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "BX", "qoe": 100}
+    for who in (viewer, finder):  # only Materials Managers and SCM
+        status, data = post(who, "/fillkill/api/vendor-items", {**item, "medline_item": "MDS2585H"})
+        assert status == 403, data
+    assert post(scm, "/fillkill/api/vendor-items", {**item, "medline_item": "NOT-KILLED"})[0] == 404
+    status, data = post(scm, "/fillkill/api/vendor-items", {**item, "medline_item": "MDS2585H"})
+    assert (status, data["vendor_item"]["sub_id"], data["vendor_item"]["medline_item"]) == (201, None, "MDS2585H")
+    vendor_item_id = data["vendor_item"]["vendor_item_id"]
+
+    # On Main, on the item's line without a sub: it needs an order, and the Materials Manager records one.
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-29", end="2026-09-29")
+    [glove] = main["rows"]
+    assert [v["vendor_item_id"] for v in glove["packagings"][0]["vendor_items"]] == [vendor_item_id]
+    assert glove["needs"] == ["needs_subs", "needs_order"]
+    status, data = post(finder_manager, "/fillkill/api/orders", {"vendor_item_id": vendor_item_id, "site": WP, "quantity": 2,
+                                                                 "ordered_dt": "2026-09-29T12:00"})
+    assert (status, data["order"]["sub_id"], data["order"]["reference_sku"], data["order"]["vendor_part"]) == (
+        201, None, None, "BD-345678")
+    _, main = get(viewer, "/fillkill/api/main", start="2026-09-29", end="2026-09-29")
+    assert main["rows"][0]["needs"] == ["needs_subs", "ordered"]
+
+    # In the item panel too; only Materials Managers and SCM correct or delete it.
+    _, panel = get(viewer, "/fillkill/api/item", item="MDS2585H", start="2026-09-29", end="2026-09-29")
+    [pack] = panel["packagings"]
+    assert [v["vendor_item_id"] for v in pack["vendor_items"]] == [vendor_item_id]
+    assert [(h["entity"], h["action"], h["label"]) for h in panel["sub_history"]] == [
+        ("vendoritem", "created", "No sub: BD-345678 (OWENS & MINOR, BX)")]
+    status, data = post(finder, f"/fillkill/api/vendor-items/{vendor_item_id}/edit", {"uom": "CS"})
+    assert status == 403 and "without a sub" in data["message"]
+    status, data = post(finder_manager, f"/fillkill/api/vendor-items/{vendor_item_id}/edit", {"qoe": 50})
+    assert (status, data["vendor_item"]["qoe"]) == (200, 50)
 
 
 def test_orders_are_for_a_site_and_the_site_filter_applies_to_them(app, viewer, finder_approver, finder_manager):

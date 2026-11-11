@@ -90,6 +90,10 @@ MODULES = {
             "review": frozenset({ROLE_SUB_APPROVER}),
             # A sub's vendor items: vendor part, vendor, vendor ID, UOM, QOE (2026-10-15, 10-20).
             "details": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SUB_FINDER, ROLE_SCM}),
+            # Vendor items without a sub, for the Medline item itself: what SCM directs the sites to
+            # order when no sub nursing approved is available, e.g. the same item from another
+            # vendor (2026-11-02, the user: Materials Managers and SCM). They can be ordered as they are.
+            "direct": frozenset({ROLE_MATERIALS_MANAGER, ROLE_SCM}),
             "order": frozenset({ROLE_MATERIALS_MANAGER}),
             # Write an item's instruction to the sites' Materials Managers (2026-10-27).
             "instruct": frozenset({ROLE_SCM}),
@@ -122,6 +126,7 @@ FILLKILL_FUNCTIONS = (
     ("Approve, hold or reject a sub", "review"),
     ("Comment on a sub", "review"),
     ("Add, correct or delete a sub's vendor items (vendor item details), with the contract and vendor searches", "details"),
+    ("Add, correct or delete vendor items without a sub, as SCM directs (e.g. the same item from another vendor)", "direct"),
     ("Record an order from a vendor item", "order"),
     ("Correct or void an order; comment on an order", "order"),
     ("Write an item's instruction to the sites' Materials Managers", "instruct"),
@@ -256,6 +261,7 @@ DENIED_MESSAGES = {
     (FILLKILL, "view"): "You don't have access to Fill/Kill Management. Ask an admin for a Fill/Kill role.",
     (FILLKILL, "add_sub"): "Only Sub Approvers and Sub Finders can add, correct or delete subs.",
     (FILLKILL, "details"): "Only Materials Managers, SCM and Sub Finders can add or change a sub's vendor items.",
+    (FILLKILL, "direct"): "Only Materials Managers and SCM can add or change vendor items without a sub.",
     (FILLKILL, "review"): "Only Sub Approvers can review or comment on subs.",
     (FILLKILL, "order"): "Only Materials Managers can record or change orders.",
     (FILLKILL, "instruct"): "Only SCM can write an item's instruction.",

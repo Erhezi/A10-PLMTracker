@@ -83,6 +83,10 @@ class VendorItem(db.Model):
     (or 0000000 when Infor has no such vendor). The Materials Manager or a Sub Finder adds them; a
     sub has as many as there are ways to order it, one per vendor ID, vendor part and UOM.
 
+    Or, with no sub, what SCM directs the sites to order for the Medline item when no sub nursing
+    approved is available (2026-11-02, the user): e.g. the same item from another vendor, or a sub
+    item nursing hasn't approved. It can be ordered as it is.
+
     A deleted one keeps its row (who, when, why) and its orders.
     """
 
@@ -90,20 +94,30 @@ class VendorItem(db.Model):
     __table_args__ = (
         db.PrimaryKeyConstraint("vendor_item_id", name="PK_SubVendorItem"),
         db.ForeignKeyConstraint(["sub_id"], [f"{SCHEMA}.Sub.sub_id"], name="FK_SubVendorItem_Sub"),
-        # One live vendor item per sub, vendor ID, vendor part and UOM.
+        # One live vendor item per sub, vendor ID, vendor part and UOM; without a sub, per Medline item.
         db.Index("UX_SubVendorItem_vendor_part_uom", "sub_id", "vendor_id", "vendor_part", "uom", unique=True,
-                 mssql_where=db.text("deleted_at IS NULL"), sqlite_where=db.text("deleted_at IS NULL")),
+                 mssql_where=db.text("deleted_at IS NULL AND sub_id IS NOT NULL"),
+                 sqlite_where=db.text("deleted_at IS NULL AND sub_id IS NOT NULL")),
+        db.Index("UX_SubVendorItem_item_vendor_part_uom", "medline_item", "vendor_id", "vendor_part", "uom", unique=True,
+                 mssql_where=db.text("deleted_at IS NULL AND sub_id IS NULL"),
+                 sqlite_where=db.text("deleted_at IS NULL AND sub_id IS NULL")),
         db.CheckConstraint("qoe IS NULL OR qoe > 0", name="CK_SubVendorItem_qoe"),
         db.CheckConstraint(
             "(deleted_at IS NULL AND deleted_by IS NULL AND delete_reason IS NULL) "
             "OR (deleted_at IS NOT NULL AND deleted_by IS NOT NULL AND delete_reason IS NOT NULL)",
             name="CK_SubVendorItem_delete",
         ),
+        # A sub's, or a Medline item's: never both, never neither.
+        db.CheckConstraint(
+            "(sub_id IS NOT NULL AND medline_item IS NULL) OR (sub_id IS NULL AND medline_item IS NOT NULL)",
+            name="CK_SubVendorItem_sub_or_item",
+        ),
         {"schema": SCHEMA},
     )
 
     vendor_item_id = db.Column(db.Integer, autoincrement=True)
-    sub_id = db.Column(db.Integer, nullable=False)
+    sub_id = db.Column(db.Integer)  # or none, and then its Medline item (2026-11-02)
+    medline_item = db.Column(db.String(50))  # only without a sub: the Medline item it's for
     vendor_part = db.Column(db.String(100), nullable=False)  # the vendor's part number: the one ordered
     vendor = db.Column(db.String(255), nullable=False)       # the vendor's name
     vendor_id = db.Column(db.String(20), nullable=False)     # Infor's vendor ID (e.g. 1000931), or 0000000
@@ -121,14 +135,19 @@ class VendorItem(db.Model):
 
     sub = db.relationship(Sub, lazy="joined")
 
+    @property
+    def item_for(self) -> str:
+        """The Medline item it's for: its sub's, or its own without a sub."""
+        return self.sub.medline_item if self.sub_id is not None else self.medline_item
+
     def label(self) -> str:
         return f"{self.vendor_part} ({self.vendor}, {self.uom})"
 
 
 class SubOrder(db.Model):
-    """An order a Materials Manager recorded for a vendor item of an approved sub, for a site. It keeps
-    what it was placed with (vendor part, vendor, vendor ID, UOM, QOE), whatever happens to the
-    vendor item."""
+    """An order a Materials Manager recorded for a vendor item of an approved sub, or for a vendor item
+    without a sub (2026-11-02), for a site. It keeps what it was placed with (vendor part, vendor,
+    vendor ID, UOM, QOE), whatever happens to the vendor item."""
 
     __tablename__ = "SubOrder"
     __table_args__ = (
@@ -136,6 +155,8 @@ class SubOrder(db.Model):
         db.ForeignKeyConstraint(["sub_id"], [f"{SCHEMA}.Sub.sub_id"], name="FK_SubOrder_Sub"),
         db.ForeignKeyConstraint(["vendor_item_id"], [f"{SCHEMA}.SubVendorItem.vendor_item_id"],
                                 name="FK_SubOrder_SubVendorItem"),
+        # Without a sub, it's for a vendor item (one without a sub).
+        db.CheckConstraint("sub_id IS NOT NULL OR vendor_item_id IS NOT NULL", name="CK_SubOrder_sub_or_vendor_item"),
         db.CheckConstraint("quantity > 0", name="CK_SubOrder_quantity"),
         db.CheckConstraint("qoe IS NULL OR qoe > 0", name="CK_SubOrder_qoe"),
         db.CheckConstraint(
@@ -150,7 +171,7 @@ class SubOrder(db.Model):
     )
 
     order_id = db.Column(db.Integer, autoincrement=True)
-    sub_id = db.Column(db.Integer, nullable=False)
+    sub_id = db.Column(db.Integer)  # none for a vendor item without a sub (2026-11-02)
     # The vendor item ordered (2026-10-20). An order recorded before vendor items has one when the
     # sub's vendor details were what it was placed with (12_workflow_tables.sql, step 2).
     vendor_item_id = db.Column(db.Integer)

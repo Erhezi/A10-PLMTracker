@@ -91,10 +91,11 @@
     <ul class="mb-3">
       <li class="mb-1"><strong>One row per Infor item.</strong> Its Medline items, one per UOM (such as each and box),
         are listed inside the row, each with its QOE (eaches per unit, from Infor), quantities, reason, substitutes,
-        <em>Approved by Nursing</em> (every approved substitute's <em>Reference SKU</em>, each on a line of its own, with a
+        <em>Sub Approved by Nursing</em> (every approved substitute's <em>Reference SKU</em>, each on a line of its own, with a
         <i class="bi bi-chat-left-text-fill"></i> that counts its comments: the latest reads under it, and a click shows them all;
         Sub Approvers double-click the cell to add a substitute) and <em>Vendor Item Detail</em>: beside each one, a tile for each way to order it, which a
-        Materials Manager clicks to record an order. A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
+        Materials Manager clicks to record an order. On the line without an approved substitute, the tiles are vendor items without a substitute,
+        as SCM directs (see <em>Ordered</em> below). A Medline item that isn't a Medline vendor item in Infor has a row of its own, marked
         <em>Not in Infor</em>.</li>
       <li class="mb-1"><strong>{{ instruction_label }}</strong>, between the approved substitutes and their vendor items: SCM's latest comment on how the sites
         should order the item, with who wrote it and when. It stays until they write a new one, whatever dates you look at;
@@ -104,8 +105,8 @@
         and last <em>Fill/Kill dates</em> (the days Medline's killed lines were ordered; it opens on today), choose sites, and type part of an item number or description.</li>
       <li class="mb-1"><strong>Needs filter:</strong> <em>Needs subs</em> (no live substitute), <em>Needs review</em>
         (one is pending review), <em>Needs details</em> (approved, but none has a vendor item yet, so nothing to order: the
-        Materials Manager's to add; for them, a pencil beside each opens the form), <em>Needs order</em> (approved, no
-        order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
+        Materials Manager's to add; for them, a pencil beside each opens the form), <em>Needs order</em> (approved, or with a
+        vendor item without a substitute, and no order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
       <li class="mb-1"><strong>Killed against ordered:</strong> <em>Total Killed (EA)</em> and <em>Total Sub Ordered (EA)</em>, after
         <em>Ordering</em>, put the Infor item's kills and its substitutes' orders in these dates side by side, in eaches (an order counts its
         quantity times its QOE). Kill lines keep arriving through the day: when the orders fall short, it says how many eaches, in red, so
@@ -143,7 +144,7 @@
       <li class="mb-2"><strong>Proposed substitutes.</strong> Medline's backorder substitutes appear automatically (and, later, an AI finder's). They're <em>pending review</em> until a Sub Approver approves, holds or rejects them.</li>
       <li class="mb-2"><strong>Instructed.</strong> SCM writes how the sites should order it: which substitute and vendor item, how much,
         for which sites. Their latest comment reads on Main for everyone, under <em>{{ instruction_label }}</em>.</li>
-      <li class="mb-2"><strong>Changed later.</strong> When nursing no longer wants a substitute ordered, the Sub Approver puts it on <em>Hold</em> or <em>rejects</em> it, with a reason if useful (kept as its comment): it leaves <em>Approved by Nursing</em> and can't be ordered until it's approved again. Its orders so far stay. Click a substitute's History to see every change, with who made it and when.</li>
+      <li class="mb-2"><strong>Changed later.</strong> When nursing no longer wants a substitute ordered, the Sub Approver puts it on <em>Hold</em> or <em>rejects</em> it, with a reason if useful (kept as its comment): it leaves <em>Sub Approved by Nursing</em> and can't be ordered until it's approved again. Its orders so far stay. Click a substitute's History to see every change, with who made it and when.</li>
       <li><strong>Ordered.</strong> A Materials Manager adds an approved substitute's <em>vendor items</em>, one for each way to order it: a vendor part, its vendor and vendor ID, and a UOM
         (and QOE, manufacturer part, Infor item, description). The search of Infor's active contracts starts from the Reference SKU and fills one in; for 930103,
         for example, Medline's B-D930103CSZ (a box of 40) and B-D930103CS (a case of 400) are two vendor items of the same substitute. Then they click a vendor
@@ -160,7 +161,12 @@
         it from. The vendor name always follows the vendor ID: change the ID and Infor's name for it fills in. When Infor doesn't have the vendor,
         <strong>0000000</strong> (<em>Vendor not available in system</em>) says so: the vendor name then empties for you to type it in.
         The contract search takes a part number, an Infor item number or words; several words, like <em>930103 chloraprep</em>, narrow
-        the lines to those having them all. Vendor items stay with the substitute, for the next time; one that's no longer sold can be deleted with a reason. An item can have more than one order. Orders can be corrected, or voided with a reason; both are kept in the order's history.</li>
+        the lines to those having them all. Vendor items stay with the substitute, for the next time; one that's no longer sold can be deleted with a reason. An item can have more than one order. Orders can be corrected, or voided with a reason; both are kept in the order's history.
+        <div class="mt-2"><strong>Without an approved substitute.</strong> When SCM directs the sites to order something no substitute
+        nursing approved covers, such as the same item from another vendor (<em>order the same item 345678 from BD</em>), a Materials Manager or
+        SCM adds it as a vendor item of the Medline item itself: <em>+ Vendor item</em> under <em>Vendor Item Detail</em> on the item's line
+        without an approved substitute, or <em>Vendor items without a sub</em> in its panel. Its contract search starts from the Infor item.
+        It can be ordered as it is, like a substitute's vendor item.</div></li>
     </ol>
   </section>
 

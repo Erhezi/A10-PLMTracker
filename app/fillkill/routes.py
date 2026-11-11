@@ -20,7 +20,7 @@ from ..config import Config
 from ..models import now_ny_naive
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
-from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_SOURCES, SUB_STATUSES
+from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_SOURCES, SUB_STATUSES, VendorItem
 from .rules import INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
@@ -171,6 +171,7 @@ def index():
             "addSub": url_for("fillkill.api_add_sub"),
             "subAction": url_for("fillkill.api_sub_action", sub_id=0, action="ACTION"),
             "addVendorItem": url_for("fillkill.api_add_vendor_item", sub_id=0),
+            "addItemVendorItem": url_for("fillkill.api_add_item_vendor_item"),
             "vendorItemAction": url_for("fillkill.api_vendor_item_action", vendor_item_id=0, action="ACTION"),
             "recordOrder": url_for("fillkill.api_record_order"),
             "orderAction": url_for("fillkill.api_order_action", order_id=0, action="ACTION"),
@@ -479,6 +480,19 @@ def api_add_vendor_item(sub_id):
     return ok({"vendor_item": queries.vendor_item_dict(item)}, 201)
 
 
+@bp.post("/api/vendor-items")
+@login_required
+@require_module(FILLKILL, "direct")
+def api_add_item_vendor_item():
+    """A vendor item without a sub, for the Medline item itself, as SCM directs (2026-11-02)."""
+    data = body()
+    item = (data.get("medline_item") or "").strip()
+    if item and not queries.item_exists(item):
+        raise RuleError(f"{item} isn't a Medline item in the fill/kill data.", 404)
+    added = services.add_vendor_item(None, data, current_user.email, medline_item=item)
+    return ok({"vendor_item": queries.vendor_item_dict(added)}, 201)
+
+
 VENDOR_ITEM_ACTIONS = ("edit", "delete")
 
 
@@ -488,6 +502,10 @@ VENDOR_ITEM_ACTIONS = ("edit", "delete")
 def api_vendor_item_action(vendor_item_id, action):
     if action not in VENDOR_ITEM_ACTIONS:
         raise RuleError("Unknown action.", 404)
+    # One without a sub is for Materials Managers and SCM only (2026-11-02).
+    found = db.session.get(VendorItem, vendor_item_id)
+    if found is not None and found.sub_id is None and not can(current_user, FILLKILL, "direct"):
+        return deny(DENIED_MESSAGES[(FILLKILL, "direct")])
     data = body()
     if action == "edit":
         item = services.edit_vendor_item(vendor_item_id, data, current_user.email)

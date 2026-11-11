@@ -1,14 +1,16 @@
 -- Fill/Kill workflow tables: subs, their vendor items, orders, the history of every change and
 -- comment, and SCM's instructions. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1),
--- and again before the coordination release (2026-10-27). Safe to re-run.
+-- and again before the coordination release (2026-10-27, and its 2026-11-02 change). Safe to re-run.
 --
 --   Sub            a sub of a Medline item: the Reference SKU nursing (or a Sub Finder) entered,
 --                  its status, and whether it's the Approver's Pick
 --   SubVendorItem  what can be ordered for a sub: a vendor's part in a UOM, with Infor's vendor ID
---                  (the Materials Manager's or a Sub Finder's); one per vendor ID, vendor part and UOM
---   SubOrder       an order a Materials Manager recorded for a vendor item of a picked sub, for a
---                  site, with Infor's PO number if they gave it; it keeps the vendor part, vendor,
---                  vendor ID, UOM and QOE it was placed with
+--                  (the Materials Manager's or a Sub Finder's); one per vendor ID, vendor part and UOM.
+--                  Or, with no sub, for a Medline item itself (2026-11-02): what SCM directs the
+--                  sites to order when no sub nursing approved is available
+--   SubOrder       an order a Materials Manager recorded for a vendor item of an approved sub (or of
+--                  no sub), for a site, with Infor's PO number if they gave it; it keeps the vendor
+--                  part, vendor, vendor ID, UOM and QOE it was placed with
 --   History        one row per change or comment on a sub, a vendor item or an order (comments
 --                  live only here)
 --   ItemInstruction  an SCM instruction to the sites on how to order an item (2026-10-27),
@@ -31,7 +33,9 @@
 --          (Sub_before_vendor_items); then Sub's vendor details are dropped
 --   3. 2026-10-27, the coordination release: SubOrder.site (the Sold-To it was ordered for) and
 --      SubOrder.po_number, empty on the orders recorded before.
---   4. Adds any default a table made by the app's startup lacks.
+--   4. 2026-11-02, vendor items without a sub: SubVendorItem.medline_item, and sub_id may be empty
+--      on SubVendorItem and SubOrder. Nothing in the rows changes.
+--   5. Adds any default a table made by the app's startup lacks.
 --
 -- Its earlier steps 2a-2e (2026-10-15 to 10-20) brought older tables to the shape step 2 starts
 -- from. O2 has had that shape since 2026-10-20, so they're gone; git history has them.
@@ -78,7 +82,8 @@ IF OBJECT_ID(N'[FillKill].[SubVendorItem]', N'U') IS NULL
 BEGIN
     CREATE TABLE [FillKill].[SubVendorItem] (
         [vendor_item_id]    INT IDENTITY(1, 1) NOT NULL,
-        [sub_id]            INT            NOT NULL,
+        [sub_id]            INT            NULL,      -- or none, and then its Medline item (2026-11-02)
+        [medline_item]      VARCHAR(50)    NULL,      -- only without a sub: the Medline item it's for
         [vendor_part]       VARCHAR(100)   NOT NULL,  -- the vendor's part number: the one ordered
         [vendor]            VARCHAR(255)   NOT NULL,  -- the vendor's name
         [vendor_id]         VARCHAR(20)    NOT NULL,  -- Infor's vendor ID (e.g. 1000931), or 0000000: not in Infor
@@ -99,11 +104,19 @@ BEGIN
         CONSTRAINT [CK_SubVendorItem_delete] CHECK (
                ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
             OR ([deleted_at] IS NOT NULL AND [deleted_by] IS NOT NULL AND [delete_reason] IS NOT NULL)
+        ),
+        -- A sub's, or a Medline item's: never both, never neither.
+        CONSTRAINT [CK_SubVendorItem_sub_or_item] CHECK (
+               ([sub_id] IS NOT NULL AND [medline_item] IS NULL) OR ([sub_id] IS NULL AND [medline_item] IS NOT NULL)
         )
     );
-    -- One live vendor item per sub, vendor ID, vendor part and UOM.
+    -- One live vendor item per sub, vendor ID, vendor part and UOM; without a sub, per Medline item.
     CREATE UNIQUE INDEX [UX_SubVendorItem_vendor_part_uom]
-        ON [FillKill].[SubVendorItem] ([sub_id], [vendor_id], [vendor_part], [uom]) WHERE [deleted_at] IS NULL;
+        ON [FillKill].[SubVendorItem] ([sub_id], [vendor_id], [vendor_part], [uom])
+        WHERE [deleted_at] IS NULL AND [sub_id] IS NOT NULL;
+    CREATE UNIQUE INDEX [UX_SubVendorItem_item_vendor_part_uom]
+        ON [FillKill].[SubVendorItem] ([medline_item], [vendor_id], [vendor_part], [uom])
+        WHERE [deleted_at] IS NULL AND [sub_id] IS NULL;
     PRINT 'Created FillKill.SubVendorItem';
 END;
 GO
@@ -112,7 +125,7 @@ IF OBJECT_ID(N'[FillKill].[SubOrder]', N'U') IS NULL
 BEGIN
     CREATE TABLE [FillKill].[SubOrder] (
         [order_id]       INT IDENTITY(1, 1) NOT NULL,
-        [sub_id]         INT            NOT NULL,
+        [sub_id]         INT            NULL,      -- none for a vendor item without a sub (2026-11-02)
         [vendor_item_id] INT            NULL,      -- the vendor item ordered; step 2 links the older orders it can
         [medline_item]   VARCHAR(50)    NOT NULL,
         [site]           VARCHAR(20)    NULL,      -- Medline's Sold-To it was ordered for; none before 2026-10-27
@@ -134,6 +147,8 @@ BEGIN
         CONSTRAINT [FK_SubOrder_Sub] FOREIGN KEY ([sub_id]) REFERENCES [FillKill].[Sub] ([sub_id]),
         CONSTRAINT [FK_SubOrder_SubVendorItem] FOREIGN KEY ([vendor_item_id])
             REFERENCES [FillKill].[SubVendorItem] ([vendor_item_id]),
+        -- Without a sub, it's for a vendor item (one without a sub).
+        CONSTRAINT [CK_SubOrder_sub_or_vendor_item] CHECK ([sub_id] IS NOT NULL OR [vendor_item_id] IS NOT NULL),
         CONSTRAINT [CK_SubOrder_quantity] CHECK ([quantity] > 0),
         CONSTRAINT [CK_SubOrder_qoe] CHECK ([qoe] IS NULL OR [qoe] > 0),
         CONSTRAINT [CK_SubOrder_void] CHECK (
@@ -405,7 +420,80 @@ BEGIN
 END;
 GO
 
--- 4. Defaults, in case the app's startup created a table before this script ran -------------
+-- 4. 2026-11-02: vendor items without a sub -------------------------------------------------
+-- When no sub nursing approved is available, SCM may direct the sites to order something else for
+-- the Medline item, e.g. the same item from another vendor. The Materials Manager or SCM adds it as
+-- a vendor item of the Medline item itself, with no sub, and it can be ordered as it is. So a vendor
+-- item has a sub or a Medline item (exactly one), and an order of one has no sub. The rows there
+-- are all a sub's, so they stay as they are.
+IF COL_LENGTH(N'FillKill.SubVendorItem', N'medline_item') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[SubVendorItem] ADD [medline_item] VARCHAR(50) NULL;
+    PRINT 'Added SubVendorItem.medline_item';
+END;
+GO
+
+-- An indexed column can't change, so the vendor item index goes first (or one without "sub_id IS NOT
+-- NULL" in its filter: it would let only one vendor item without a sub have a vendor part and UOM).
+IF EXISTS (SELECT 1 FROM sys.indexes
+           WHERE object_id = OBJECT_ID(N'[FillKill].[SubVendorItem]') AND name = N'UX_SubVendorItem_vendor_part_uom'
+             AND (COLUMNPROPERTY(object_id, N'sub_id', 'AllowsNull') = 0
+                  OR filter_definition IS NULL OR filter_definition NOT LIKE N'%sub_id%'))
+BEGIN
+    DROP INDEX [UX_SubVendorItem_vendor_part_uom] ON [FillKill].[SubVendorItem];
+    PRINT 'Dropped UX_SubVendorItem_vendor_part_uom, to make it again below';
+END;
+IF COLUMNPROPERTY(OBJECT_ID(N'[FillKill].[SubVendorItem]'), N'sub_id', 'AllowsNull') = 0
+BEGIN
+    ALTER TABLE [FillKill].[SubVendorItem] ALTER COLUMN [sub_id] INT NULL;
+    PRINT 'SubVendorItem.sub_id may be empty';
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes
+               WHERE object_id = OBJECT_ID(N'[FillKill].[SubVendorItem]') AND name = N'UX_SubVendorItem_vendor_part_uom')
+BEGIN
+    CREATE UNIQUE INDEX [UX_SubVendorItem_vendor_part_uom]
+        ON [FillKill].[SubVendorItem] ([sub_id], [vendor_id], [vendor_part], [uom])
+        WHERE [deleted_at] IS NULL AND [sub_id] IS NOT NULL;
+    PRINT 'Created UX_SubVendorItem_vendor_part_uom (vendor items of a sub)';
+END;
+-- In EXEC, so this batch compiles before medline_item exists (a first run checked with NOEXEC).
+IF NOT EXISTS (SELECT 1 FROM sys.indexes
+               WHERE object_id = OBJECT_ID(N'[FillKill].[SubVendorItem]') AND name = N'UX_SubVendorItem_item_vendor_part_uom')
+BEGIN
+    EXEC (N'CREATE UNIQUE INDEX [UX_SubVendorItem_item_vendor_part_uom]
+                ON [FillKill].[SubVendorItem] ([medline_item], [vendor_id], [vendor_part], [uom])
+                WHERE [deleted_at] IS NULL AND [sub_id] IS NULL;');
+    PRINT 'Created UX_SubVendorItem_item_vendor_part_uom (vendor items without a sub)';
+END;
+IF OBJECT_ID(N'[FillKill].[CK_SubVendorItem_sub_or_item]', N'C') IS NULL
+BEGIN
+    EXEC (N'ALTER TABLE [FillKill].[SubVendorItem] ADD CONSTRAINT [CK_SubVendorItem_sub_or_item] CHECK (
+                ([sub_id] IS NOT NULL AND [medline_item] IS NULL) OR ([sub_id] IS NULL AND [medline_item] IS NOT NULL));');
+    PRINT 'Added CK_SubVendorItem_sub_or_item';
+END;
+GO
+
+IF COLUMNPROPERTY(OBJECT_ID(N'[FillKill].[SubOrder]'), N'sub_id', 'AllowsNull') = 0
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[FillKill].[SubOrder]') AND name = N'IX_SubOrder_sub')
+        DROP INDEX [IX_SubOrder_sub] ON [FillKill].[SubOrder];
+    ALTER TABLE [FillKill].[SubOrder] ALTER COLUMN [sub_id] INT NULL;
+    PRINT 'SubOrder.sub_id may be empty';
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[FillKill].[SubOrder]') AND name = N'IX_SubOrder_sub')
+BEGIN
+    CREATE INDEX [IX_SubOrder_sub] ON [FillKill].[SubOrder] ([sub_id]);
+    PRINT 'Created IX_SubOrder_sub';
+END;
+IF OBJECT_ID(N'[FillKill].[CK_SubOrder_sub_or_vendor_item]', N'C') IS NULL
+BEGIN
+    ALTER TABLE [FillKill].[SubOrder] ADD CONSTRAINT [CK_SubOrder_sub_or_vendor_item]
+        CHECK ([sub_id] IS NOT NULL OR [vendor_item_id] IS NOT NULL);
+    PRINT 'Added CK_SubOrder_sub_or_vendor_item';
+END;
+GO
+
+-- 5. Defaults, in case the app's startup created a table before this script ran -------------
 DECLARE @defaults TABLE ([tbl] SYSNAME, [col] SYSNAME, [name] SYSNAME, [expr] NVARCHAR(100));
 INSERT INTO @defaults VALUES
     (N'Sub', N'status', N'DF_Sub_status', N'(''pending_review'')'),

@@ -41,7 +41,7 @@ changes something now ends with a red error when a transaction is still open (20
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
 | `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines plus the test lines, with `Reason`, `Reason Date`, `Is Test`, `Test Purpose`), `vw_FillKillLastLoad` ("data as of"), and the test lines in `FillKill.TestFillKillLine`. | Any time; re-running reloads the test lines. |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (so the test site shows), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
-| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
+| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each; or, with no sub, for a Medline item itself, since 2026-11-02), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`), `vw_Vendor` (Infor's vendors, with their legal and search names) and `vw_UomAlias` (Infor's UOM for one typed another way, from `MDM_EDI_SUB_UOM`: CS is CA, VL is VI). | Whenever it changes, before running that code. |
 | `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review, with a vendor item when Medline's contract lines give one UOM. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes, after `12`. Its version line is what `09` and the app check. |
 | `15_sites.sql` | `Site` (2026-10-30): the Medline Sold-To accounts Fill/Kill deals with (10 Montefiore accounts: LUM, BULK, EVS, LAB), each with its campus in `site_short_name` (Moses, Wakefield or Einstein). The app doesn't read it yet. | Whenever the list changes. It adds and updates sites but never removes one. |
@@ -197,12 +197,17 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
      again, though it ran on 10/27). Until then User Control refuses to save SCM, and whoever
      holds `mm_lead` has no SCM access in this release.
    - `12` adds `FillKill.ItemInstruction`, and `SubOrder.site` and `SubOrder.po_number` (empty on
-     the orders recorded before; those count only when Main shows every site).
-   - `09`: all `PASS`, including "SubOrder has site and po_number" and "SCM as scm" in the role CHECK.
+     the orders recorded before; those count only when Main shows every site). Its step 4
+     (11/02, run `12` again even though it ran on 10/27) lets a vendor item have no sub:
+     `SubVendorItem.medline_item`, `sub_id` may be empty on `SubVendorItem` and `SubOrder`, a
+     unique index for vendor items without a sub and two CHECKs. Existing rows don't change.
+   - `09`: all `PASS`, including "SubOrder has site and po_number", "vendor items without a sub"
+     and "SCM as scm" in the role CHECK.
 2. **Don't run this code against O2 before `12`** (a local `run.py` included): its startup creates
-   `ItemInstruction` itself, and every read of orders fails until `SubOrder.site` exists.
-3. Locally, `tools/fillkill_ui/smoke.mjs` passes (21 steps on 11/02, with SCM Comments and the
-   double-clicks).
+   `ItemInstruction` itself, every read of orders fails until `SubOrder.site` exists, and every
+   read of vendor items until `SubVendorItem.medline_item` does (11/02).
+3. Locally, `tools/fillkill_ui/smoke.mjs` passes (22 steps on 11/02, with SCM Comments, the
+   double-clicks and a vendor item without a sub).
 4. On the web server, `flask fillkill check-db` says the database has everything.
 
 **The deploy:** put the code in place and recycle the app pool, as before.
@@ -215,10 +220,13 @@ their site** (and Infor's PO number, optional). It needs `02` and `12` again, th
 6. Tell the sites' Materials Managers: every order now needs its **site** (the form starts on it
    when Main is filtered to just their site), the PO number is optional, and SCM's
    comment is in the **SCM Comments** column (no email: open or refresh Main). Tell SCM to
-   double-click that column's cell to write one, and nursing that a double-click on **Approved
-   by Nursing** ("Picked for Ordering" until 10/28) adds a sub. Tell everyone that picking is gone:
-   every sub nursing approved can be ordered, and nursing stops one by putting it on Hold or
-   rejecting it (with a reason if they like).
+   double-click that column's cell to write one, and nursing that a double-click on **Sub Approved
+   by Nursing** ("Approved by Nursing" until 11/02, "Picked for Ordering" until 10/28) adds a sub.
+   Tell everyone that picking is gone: every sub nursing approved can be ordered, and nursing stops
+   one by putting it on Hold or rejecting it (with a reason if they like). Tell SCM and the
+   Materials Managers that when no sub nursing approved is available, they can add a vendor item
+   on the item's line anyway (**+ Vendor item** under Vendor Item Detail, 11/02), e.g. the same item
+   from another vendor as SCM directs, and record orders from it.
 
 **O2 on 10/27** (read before and after the reset): `02` and `12` already run, `09` all `PASS`,
 wmcelwaine holds `mm_lead` (with Materials Manager and Sub Finder). `90` ran at the user's request

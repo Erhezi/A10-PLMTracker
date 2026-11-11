@@ -27,8 +27,8 @@ COLUMNS = {
     ("FillKill", "vw_MedlineFillKillQtyAgg"): (("Medline Item", "Total Killed Qty", "Total PO Line Count"),
                                                 "11_item_qty_views.sql"),
     ("FillKill", "Sub"): (("reference_sku", "deleted_at", "deleted_by", "delete_reason"), "12_workflow_tables.sql"),
-    ("FillKill", "SubVendorItem"): (("sub_id", "vendor_part", "vendor", "vendor_id", "uom", "qoe", "manufacturer_part",
-                                     "infor_item", "deleted_at"), "12_workflow_tables.sql"),
+    ("FillKill", "SubVendorItem"): (("sub_id", "medline_item", "vendor_part", "vendor", "vendor_id", "uom", "qoe",
+                                     "manufacturer_part", "infor_item", "deleted_at"), "12_workflow_tables.sql"),
     ("FillKill", "SubOrder"): (("sub_id", "vendor_item_id", "vendor_part", "ordered_dt", "voided_at", "vendor_id",
                                 "site", "po_number"), "12_workflow_tables.sql"),
     ("FillKill", "History"): (("entity", "entity_id", "action", "comment"), "12_workflow_tables.sql"),
@@ -42,20 +42,29 @@ COLUMNS = {
     ("PLM", "UserModuleRole"): (("user_id", "module", "role"), "02_user_module_role.sql"),
 }
 
-# Columns that must allow NULL: an order recorded before vendor items may have none (2026-10-20).
-NULLABLE = {("FillKill", "SubOrder", "vendor_item_id"): "12_workflow_tables.sql"}
+# Columns that must allow NULL: an order recorded before vendor items may have none (2026-10-20); a
+# vendor item without a sub, and its orders, have none (2026-11-02).
+NULLABLE = {
+    ("FillKill", "SubOrder", "vendor_item_id"): "12_workflow_tables.sql",
+    ("FillKill", "SubVendorItem", "sub_id"): "12_workflow_tables.sql",
+    ("FillKill", "SubOrder", "sub_id"): "12_workflow_tables.sql",
+}
 
 # Indexes and their key columns, in order.
 INDEXES = {
     ("FillKill", "Sub", "UX_Sub_item_reference_sku"): (("medline_item", "reference_sku"), "12_workflow_tables.sql"),
     ("FillKill", "SubVendorItem", "UX_SubVendorItem_vendor_part_uom"): (
         ("sub_id", "vendor_id", "vendor_part", "uom"), "12_workflow_tables.sql"),
+    ("FillKill", "SubVendorItem", "UX_SubVendorItem_item_vendor_part_uom"): (
+        ("medline_item", "vendor_id", "vendor_part", "uom"), "12_workflow_tables.sql"),
 }
 
 # Check constraints and a value their definition must allow.
 CHECKS = {
     ("FillKill", "CK_History_action"): ("'delete'", "12_workflow_tables.sql"),
     ("FillKill", "CK_History_entity"): ("'vendoritem'", "12_workflow_tables.sql"),
+    ("FillKill", "CK_SubVendorItem_sub_or_item"): ("[medline_item]", "12_workflow_tables.sql"),
+    ("FillKill", "CK_SubOrder_sub_or_vendor_item"): ("[vendor_item_id]", "12_workflow_tables.sql"),
     ("PLM", "CK_UserModuleRole_role"): ("'scm'", "02_user_module_role.sql"),
 }
 

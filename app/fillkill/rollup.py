@@ -20,6 +20,8 @@ Inputs, all plain dicts:
   instructions SCM's instructions for those Infor items, and for Medline items Infor had
                none for (2026-10-27), oldest first: infor_item, medline_item, instruction, written_by,
                written_at
+  item_vendor_items  {medline_item: [vendor item]}: vendor items without a sub (2026-11-02), what
+               SCM directs the sites to order when no sub nursing approved is available
 """
 
 from __future__ import annotations
@@ -121,19 +123,21 @@ def subs_status(subs) -> dict[str, int]:
     return counts
 
 
-def needs_flags(counts: dict[str, int], *, ordered: bool, details_missing: bool = False) -> list[str]:
+def needs_flags(counts: dict[str, int], *, ordered: bool, details_missing: bool = False,
+                without_sub: bool = False) -> list[str]:
     """Design §5 Needs filter. An item can need more than one thing (e.g. review and order). Every
     approved sub can be ordered (2026-10-28). ``details_missing``: no approved sub has a vendor item
-    yet, so there's nothing to order (2026-10-20); once ordered, it's done."""
+    yet, so there's nothing to order (2026-10-20); once ordered, it's done. ``without_sub``: it has a
+    vendor item without a sub (2026-11-02), which can be ordered too."""
     flags = []
     approved = counts.get("approved", 0) > 0
     if counts.get("pending_review", 0) + counts.get("approved", 0) + counts.get("hold", 0) == 0:
         flags.append("needs_subs")
     if counts.get("pending_review", 0) > 0:
         flags.append("needs_review")
-    if approved and details_missing and not ordered:  # an order took the details
+    if approved and details_missing and not without_sub and not ordered:  # an order took the details
         flags.append("needs_details")
-    if approved and not ordered:
+    if (approved or without_sub) and not ordered:
         flags.append("needs_order")
     if ordered:
         flags.append("ordered")
@@ -281,7 +285,7 @@ def row_instructions(infor, medline_items, instructions) -> list[dict]:
             or (i.get("infor_item") is None and i.get("medline_item") in medline_items)]
 
 
-def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> dict:
+def _packaging(item, qty, info, factors, item_subs, reason, orders, infor, vendor_items=()) -> dict:
     for q in qty["by_uom"]:
         q["each"] = factors.get((item, q["uom"]))
     return {
@@ -295,13 +299,16 @@ def _packaging(item, qty, info, factors, item_subs, reason, orders, infor) -> di
         "lines": qty["lines"],
         "latest_reason": reason,
         "subs_status": subs_status(item_subs),
-        # Approved by Nursing on Main (2026-10-28; the picks before), oldest first.
+        # Sub Approved by Nursing on Main (2026-10-28; the picks before), oldest first.
         "approved_subs": sorted((s for s in item_subs if s["status"] == "approved"), key=lambda s: s["sub_id"]),
+        # Vendor items without a sub, as SCM directs (2026-11-02): on Main, on a line of their own.
+        "vendor_items": list(vendor_items),
         "orders": orders,
     }
 
 
-def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), instructions=()) -> list[dict]:
+def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), instructions=(),
+                    item_vendor_items=None) -> list[dict]:
     """One row per Infor item killed in the range (a Medline item without one is its own row),
     sorted by ``sort_key``. Each row lists its packagings: its Medline items killed in the range."""
     quantities = sum_quantities(qty_rows)
@@ -325,7 +332,7 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), 
         infor = infor_of.get(item) or (None if "infor_item" in info["varies"] else info["infor_item"])
         groups[infor or f"M:{item}"].append(_packaging(
             item, qty, info, factors, subs_by_item.get(item, []), reasons.get(item),
-            orders_by_item.get(item, []), infor,
+            orders_by_item.get(item, []), infor, (item_vendor_items or {}).get(item, []),
         ))
 
     rows = []
@@ -378,7 +385,8 @@ def build_main_rows(qty_rows, item_rows, subs, orders, reasons, family_rows=(), 
             "instruction": instruction_summary(row_instructions(infor, here, instructions)),
             "ordering_status": "ordered" if ordered else "no order",
             "needs": needs_flags(counts, ordered=ordered,
-                                 details_missing=not any(s.get("vendor_items") for s in approved_subs)),
+                                 details_missing=not any(s.get("vendor_items") for s in approved_subs),
+                                 without_sub=any(p["vendor_items"] for p in packagings)),
         })
     rows.sort(key=sort_key)
     return rows

@@ -22,7 +22,8 @@ STATUS_LABELS = {
 
 # Who fills in what (2026-10-20): nursing (or a Sub Finder) enters a sub's Reference SKU, the part
 # they approved, often the manufacturer's; the Materials Manager or a Sub Finder adds its vendor
-# items, each a vendor's part in a UOM that can be ordered.
+# items, each a vendor's part in a UOM that can be ordered. With no sub nursing approved, SCM or a
+# Materials Manager can add one for the Medline item itself, as SCM directs (2026-11-02).
 VENDOR_ITEM_FIELDS = ("vendor_part", "vendor", "vendor_id", "manufacturer_part", "infor_item", "description", "uom", "qoe")
 VENDOR_ITEM_REQUIRED = ("vendor_part", "vendor", "vendor_id", "uom")
 ORDER_FIELDS = ("site", "po_number", "quantity", "vendor_part", "uom", "qoe", "vendor", "vendor_id", "ordered_dt")
@@ -283,10 +284,11 @@ def check_orderable(sub) -> None:
 
 def check_new_order(sub, item, data: dict, *, now: datetime | None = None, sites=()) -> dict:
     """An order for a vendor item of an approved sub (S3; 2026-10-20, a picked one until 2026-10-28),
-    for one of ``sites`` (2026-10-27),
+    or of no sub (``sub`` None: as SCM directs, 2026-11-02), for one of ``sites`` (2026-10-27),
     with Infor's PO number if given. It keeps the vendor item's vendor part, vendor, vendor ID, UOM
     and QOE."""
-    check_orderable(sub)
+    if sub is not None:
+        check_orderable(sub)
     return {
         "site": clean_site(data.get("site"), sites),
         "po_number": clean_po_number(data.get("po_number")),

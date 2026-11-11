@@ -121,6 +121,10 @@ export function vendorItemText(v) {
 // A sub needs a vendor item to be ordered (2026-10-20); nursing leaves them to the Materials Manager.
 export const needsDetails = (s) => !(s.vendor_items || []).length;
 
+// The add-sub boxes' hints, in the panel and the modal (the user, 2026-11-02).
+export const REFERENCE_SKU_HINT = 'The reference manufacturer part or vendor part number, e.g. B-D903245';
+export const SUB_NOTE_HINT = 'Optional: additional comments on the product, e.g. supplier, key clinical feature';
+
 // Medline's vendor IDs in Infor (2026-10-20; rules.MEDLINE_VENDOR_IDS). A vendor item from one of
 // them whose vendor part is the Medline item itself is the item that was killed, not a sub.
 export const MEDLINE_VENDOR_IDS = config.medlineVendorIds || ['1000931', '1017968', '1017969', '1037888'];

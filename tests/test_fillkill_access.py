@@ -26,13 +26,14 @@ FILLKILL_CAPABILITIES = MODULES[FILLKILL].capabilities
     (("sub_finder",), {"view", "add_sub", "details"}),
     # No "pick" from 2026-10-28: every approved sub can be ordered, and nursing holds or rejects one.
     (("sub_approver",), {"view", "add_sub", "review"}),  # nursing enters subs (2026-10-15)
-    (("materials_manager",), {"view", "details", "order"}),  # vendor items, orders
-    (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "order"}),
+    # Vendor items (without a sub too, 2026-11-02: "direct"), orders.
+    (("materials_manager",), {"view", "details", "direct", "order"}),
+    (("sub_finder", "materials_manager"), {"view", "add_sub", "details", "direct", "order"}),
     (("sub_finder", "sub_approver"), {"view", "add_sub", "details", "review"}),
-    # SCM (2026-10-27; coded mm_lead until 11-02): instructs the sites, adds vendor items; orders only
-    # with Materials Manager too.
-    (("scm",), {"view", "details", "instruct"}),
-    (("scm", "materials_manager"), {"view", "details", "instruct", "order"}),
+    # SCM (2026-10-27; coded mm_lead until 11-02): instructs the sites, adds vendor items (without a
+    # sub too); orders only with Materials Manager too.
+    (("scm",), {"view", "details", "direct", "instruct"}),
+    (("scm", "materials_manager"), {"view", "details", "direct", "instruct", "order"}),
     ((), set()),
 ])
 def test_fillkill_capabilities_follow_roles(roles, expected):

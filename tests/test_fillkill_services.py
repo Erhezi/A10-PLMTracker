@@ -169,6 +169,55 @@ def test_correcting_and_deleting_a_vendor_item(ctx):
         "vendoritem", "delete", "88885 (CARDINAL HEALTH, CS)")
 
 
+def item_vendor_item(medline_item="MDS2585H", **data):
+    """SCM's (2026-11-02): a vendor item of the Medline item itself, with no sub."""
+    base = {"vendor_part": "BD-345678", "vendor": "CARDINAL HEALTH", "vendor_id": CARDINAL, "uom": "BX", "qoe": "100"}
+    return services().add_vendor_item(None, {**base, **data}, LEAD, medline_item=medline_item)
+
+
+def test_a_vendor_item_without_a_sub_is_the_medline_items_and_is_ordered_as_it_is(ctx):
+    # No sub nursing approved is available; SCM directs the sites to order the same item from
+    # another vendor (2026-11-02, the user).
+    item = item_vendor_item()
+    assert (item.sub_id, item.medline_item, item.item_for, item.vendor_part, item.entered_by) == (
+        None, "MDS2585H", "MDS2585H", "BD-345678", LEAD)
+    from app.models.fillkill import History
+    assert [(h.entity, h.medline_item, h.action) for h in History.query.all()] == [("vendoritem", "MDS2585H", "created")]
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 3}, MANAGER, expected_status="approved")
+    assert (order.sub_id, order.vendor_item_id, order.medline_item, order.vendor_part, order.quantity) == (
+        None, item.vendor_item_id, "MDS2585H", "BD-345678", 3)
+    from app.fillkill import queries
+    assert queries.order_dict(order)["reference_sku"] is None
+    assert [v["vendor_item_id"] for v in queries.item_vendor_items(["MDS2585H"])["MDS2585H"]] == [item.vendor_item_id]
+    assert queries.subs_for_items(["MDS2585H"]) == []  # it isn't a sub
+    # One per Medline item, vendor ID, vendor part and UOM; a sub's may have the same.
+    refused(lambda: item_vendor_item(vendor_part="bd-345678"), status=409, says="MDS2585H (no sub) already has vendor item")
+    item_vendor_item(medline_item="DYND70294BH")
+    vendor_item(nurse_sub(), vendor_part="BD-345678")
+    # Never the killed item itself from Medline, and it needs its Medline item.
+    refused(lambda: item_vendor_item(vendor_part="MDS2585H", vendor="MEDLINE INDUSTRIES INC", vendor_id=MEDLINE),
+            says="MDS2585H itself")
+    refused(lambda: item_vendor_item(medline_item=" "), says="Medline item is required")
+
+
+def test_correcting_and_deleting_a_vendor_item_without_a_sub(ctx):
+    item = item_vendor_item()
+    item = services().edit_vendor_item(item.vendor_item_id, {"uom": "CS"}, LEAD)
+    assert item.uom == "CS"
+    other = item_vendor_item(uom="BX")
+    refused(lambda: services().edit_vendor_item(other.vendor_item_id, {"uom": "CS"}, LEAD), status=409, says="already has")
+    order = services().record_order(item.vendor_item_id, {"site": SITE, "quantity": 2}, MANAGER)
+    refused(lambda: services().delete_vendor_item(item.vendor_item_id, "BD has it again", LEAD), status=409, says="void it before")
+    services().void_order(order.order_id, "entered twice", MANAGER)
+    services().delete_vendor_item(item.vendor_item_id, "BD has it again", LEAD)
+    assert [row[:2] for row in history("vendoritem", item.vendor_item_id)] == [
+        ("created", None), ("edit", "uom"), ("delete", None)]
+    from app.models.fillkill import History
+    assert {h.medline_item for h in History.query.filter_by(entity="vendoritem")} == {"MDS2585H"}
+    from app.fillkill import queries
+    assert [v["vendor_item_id"] for v in queries.item_vendor_items(["MDS2585H"])["MDS2585H"]] == [other.vendor_item_id]
+
+
 # --- correcting and reviewing subs ----------------------------------------------------------
 
 def test_nursing_corrects_the_reference_sku_until_the_sub_has_an_order(ctx):

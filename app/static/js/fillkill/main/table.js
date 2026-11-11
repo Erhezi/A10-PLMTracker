@@ -114,10 +114,11 @@ function otherPackagingNote(approved) {
     ${approved.length} approved for another UOM: ${esc(items.join(', '))}</div>`;
 }
 
-// Approved by Nursing (2026-10-28, the user: every approved sub can be ordered; the picks among
-// them before, "Picked for Ordering" from 2026-10-21, "Approver's Pick" before that): each approved
-// sub, the Reference SKU nursing entered (2026-10-20). With no vendor item yet there's nothing to
-// order: for whoever adds them, a pencil says so and opens the form.
+// Sub Approved by Nursing (2026-11-02; "Approved by Nursing" from 2026-10-28, the user: every
+// approved sub can be ordered; the picks among them before, "Picked for Ordering" from 2026-10-21,
+// "Approver's Pick" before that): each approved sub, the Reference SKU nursing entered (2026-10-20).
+// With no vendor item yet there's nothing to order: for whoever adds them, a pencil says so and
+// opens the form.
 function approvedCell(sub) {
   if (!sub) return '<span class="text-muted small">—</span>';
   const title = `No vendor item yet: nothing to order for ${sub.reference_sku}`;
@@ -211,24 +212,32 @@ function toggleInstructions(button) {
 
 // Vendor Item Detail: a tile per vendor ID, vendor part and UOM of the approved sub beside it
 // (2026-10-20). A Materials Manager records an order from one; whoever adds vendor items can add
-// another here. ``several``: the UOM has more than one approved sub, so the add button names its sub.
-function vendorItemsCell(sub, several) {
-  if (!sub) return '<span class="text-muted small">—</span>';
-  const items = (sub.vendor_items || []).map((v) => {
+// another here. ``several``: the UOM has more than one line, so the add button says which.
+// On the line without a sub (``sub`` null, 2026-11-02, the user): the Medline item's vendor items
+// without a sub, what SCM directs the sites to order when no sub nursing approved is available
+// (e.g. the same item from another vendor). Materials Managers and SCM add them, and they're
+// ordered the same way.
+function vendorItemsCell(sub, several, p) {
+  const own = sub ? sub.vendor_items || [] : p.vendor_items;
+  const items = own.map((v) => {
     // The vendor ID first: a long vendor name is cut short, never the ID.
     const id = v.vendor_id === NO_VENDOR.id ? 'Not in Infor' : v.vendor_id;
     const body = `<div><span class="fw-semibold">${esc(v.vendor_part)}</span> ${esc(uomQoe(v))}${noQoeBadge(v)}</div>
       <div class="fk-vi-vendor text-truncate">${esc(id)} · ${esc(v.vendor)}</div>`;
-    const title = [vendorItemText(v), v.description, several ? `For ${sub.reference_sku}` : '']
-      .filter(Boolean).join('\n');
+    const forWhat = sub ? (several ? `For ${sub.reference_sku}` : '') : 'No sub: as SCM directs';
+    const title = [vendorItemText(v), v.description, forWhat].filter(Boolean).join('\n');
     return can.order
       ? `<button type="button" class="btn btn-sm btn-outline-primary fk-vi-tile" data-order-vi="${v.vendor_item_id}"
            title="${esc(`${title}\nRecord an order for it`)}">${body}</button>`
       : `<div class="fk-vi-tile" title="${esc(title)}">${body}</div>`;
   });
-  if (can.details) {
+  if (sub && can.details) {
     items.push(`<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none d-block" data-add-vi="${sub.sub_id}"><i
       class="bi bi-plus-lg"></i> Vendor item${several ? ` for ${esc(sub.reference_sku)}` : ''}</button>`);
+  } else if (!sub && can.direct) {
+    items.push(`<button type="button" class="btn btn-link btn-sm p-0 text-decoration-none d-block" data-add-item-vi="${esc(p.medline_item)}"
+      title="${esc(`No sub nursing approved is needed: a vendor item for ${p.medline_item} itself, as SCM directs, e.g. the same item from another vendor`)}"><i
+      class="bi bi-plus-lg"></i> Vendor item${several ? ' without a sub' : ''}</button>`);
   }
   return items.join('') || '<span class="text-muted small">—</span>';
 }
@@ -251,7 +260,7 @@ function instructionCell(row) {
 }
 
 // Double-click a cell to write in it (the user, 2026-10-27), for those who may: SCM Comments for
-// SCM, Approved by Nursing for whoever adds subs (a new sub for that line's Medline item).
+// SCM, Sub Approved by Nursing for whoever adds subs (a new sub for that line's Medline item).
 const dblClickTd = (attrs, title) => `<td ${attrs} data-dblclick title="${esc(title)}"`;
 
 function instructionTd(row, all) {
@@ -341,13 +350,17 @@ function subOrderedEachCell(row) {
 
 // --- rows ------------------------------------------------------------------------------------
 
+// A UOM's lines: one per approved sub, and one (null) for its vendor items without a sub
+// (2026-11-02), the only one when nothing is approved.
+const subLines = (p) => (p.vendor_items.length || !p.approved_subs.length ? [...p.approved_subs, null] : p.approved_subs);
+
 // A line per approved sub (2026-10-21, per pick until 2026-10-28), so its vendor items sit beside
 // it; a UOM's other cells span its subs' lines, and the Infor item's span them all. A cell that reaches the item's last line has
 // data-to-end: no dashed line under it (app.css).
 function itemRows(row) {
   const packs = row.packagings;
   const many = packs.length > 1;
-  const lines = packs.map((p) => Math.max(1, p.approved_subs.length));
+  const lines = packs.map((p) => subLines(p).length);
   const span = (n) => (n > 1 ? ` rowspan="${n}"` : '');
   const all = span(lines.reduce((sum, n) => sum + n, 0) + (many ? 1 : 0));
   const inactive = row.infor_active && row.infor_active !== 'Yes'
@@ -363,7 +376,7 @@ function itemRows(row) {
   const note = otherPackagingNote(row.approved_other_packagings);
   const trs = [];
   packs.forEach((p, i) => {
-    const subs = p.approved_subs.length ? p.approved_subs : [null];
+    const subs = subLines(p);
     const own = span(lines[i]) + (many ? '' : ' data-to-end');
     subs.forEach((sub, j) => {
       const first = i === 0 && j === 0;
@@ -382,7 +395,7 @@ function itemRows(row) {
         <td role="button" data-open="${esc(p.medline_item)}"${own}>${subsStatusCell(p.subs_status)}${many ? '' : note}</td>`}
         ${approvedTd(p, split)}${approvedCell(sub)}</td>
         ${first ? `${instructionTd(row, all)}${instructionCell(row)}</td>` : ''}
-        <td${split}>${vendorItemsCell(sub, subs.length > 1)}</td>
+        <td${split}>${vendorItemsCell(sub, subs.length > 1, p)}</td>
         ${first ? `<td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
             title="Orders recorded in these Fill/Kill dates. Click for all of its orders">${ordering}</td>
           <td class="text-end" data-to-end${all}>${killedEachCell(row)}</td>
@@ -441,6 +454,11 @@ export function setupTable() {
     if (addButton) {
       const subId = Number(addButton.dataset.addVi);
       openVendorItemForm(state.rows.flatMap((row) => row.approved_subs).find((s) => s.sub_id === subId));
+      return;
+    }
+    const addWithoutSub = event.target.closest('[data-add-item-vi]');
+    if (addWithoutSub) {
+      openVendorItemForm(null, null, addWithoutSub.dataset.addItemVi);
       return;
     }
     const opener = event.target.closest('[data-open]');

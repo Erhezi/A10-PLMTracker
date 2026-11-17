@@ -45,10 +45,6 @@
         <div class="dropdown-menu p-2 fk-sites-menu" id="ot-sites" aria-labelledby="ot-sites-button"></div>
       </div>
     </div>
-    <div>
-      <label for="ot-status" class="form-label small text-muted mb-1">With a line that's</label>
-      <select class="form-select form-select-sm" id="ot-status"><option value="">Any status</option></select>
-    </div>
     <div class="d-flex gap-2">
       <button type="button" class="btn btn-sm btn-outline-secondary" id="ot-expand"
               title="Show or hide every order's lines">Show all lines</button>
@@ -59,6 +55,11 @@
 </div>
 
 <div class="card shadow-sm border-0 mb-4">
+  {# The status tabs (2026-11-17, in place of a "With a line that's" list): every order, or those with
+     a line in one status, each with how many orders the days, sites and search find. #}
+  <div class="card-header pb-0">
+    <ul class="nav nav-tabs card-header-tabs small" id="ot-tabs" role="group" aria-label="Orders with a line that's"></ul>
+  </div>
   <div class="card-body p-0">
     <nav class="d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom ot-pager" id="ot-pager"
          aria-label="Pages of orders" hidden>
@@ -77,10 +78,13 @@
             <th scope="col">Confirmed by Medline<div class="fw-normal small text-muted">855</div></th>
             <th scope="col" class="text-end" title="Every line of the PO in Medline's data">Total lines</th>
             <th scope="col">Lines by status</th>
+            {# 2026-11-17: short shipped on its own, whatever the lines' status (an ASN-sent line can be short),
+               after the statuses (the user). #}
+            <th scope="col" class="text-center" title="The PO's lines Medline short shipped, whatever their status">Short shipped<div class="fw-normal small text-muted">lines</div></th>
           </tr>
         </thead>
         <tbody id="ot-rows">
-          <tr><td colspan="8" class="text-muted small p-3">Loading…</td></tr>
+          <tr><td colspan="9" class="text-muted small p-3">Loading…</td></tr>
         </tbody>
       </table>
     </div>

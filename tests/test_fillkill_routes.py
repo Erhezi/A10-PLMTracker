@@ -170,6 +170,31 @@ def test_main_filters_by_site_and_defaults_to_the_latest_date(viewer):
     assert [r["medline_items"] for r in data["rows"]] == [["DYND70294BH"]]
 
 
+def test_data_as_of_and_last_loaded(app, viewer):
+    """"Data as of" is when Medline made the file loaded (its name's Central time on a 12-hour clock),
+    "Last loaded" the load (2026-11-17)."""
+    add_view_rows(app, "vw_FillKillLastLoad", [{
+        "last_success": "2026-09-30 14:37:07", "last_line_update": "2026-09-30 14:37:11",
+        "last_file": r"\\share\Raw\MHS - FILL KILL REPORT-2026-09-30-01-04-00.xlsx"}])
+    _, data = get(viewer, "/fillkill/api/main")
+    assert (data["data"]["loaded_at"], data["data"]["data_as_of"]) == ("2026-09-30T14:37:07", "2026-09-30T14:04:00")
+    assert data["data"]["file"] == "MHS - FILL KILL REPORT-2026-09-30-01-04-00.xlsx"
+
+
+def test_last_loaded_alone_before_the_view_has_its_file(app, viewer):
+    """Until 10 (2026-11-17) runs on O2, after the deploy, the view has no last_file: the app reads
+    what it has."""
+    from app import db
+
+    with app.app_context(), db.engine.begin() as conn:
+        conn.exec_driver_sql('DROP TABLE "FillKill"."vw_FillKillLastLoad"')
+        conn.exec_driver_sql('CREATE TABLE "FillKill"."vw_FillKillLastLoad" ("last_success", "last_line_update")')
+    add_view_rows(app, "vw_FillKillLastLoad", [{"last_success": "2026-09-30 14:37:07", "last_line_update": None}])
+    status, data = get(viewer, "/fillkill/api/main")
+    assert status == 200
+    assert (data["data"]["loaded_at"], data["data"]["data_as_of"]) == ("2026-09-30T14:37:07", None)
+
+
 def test_bad_dates_are_refused(viewer):
     status, data = get(viewer, "/fillkill/api/main", start="09/28/2026")
     assert status == 400 and "2026-10-13" in data["message"]

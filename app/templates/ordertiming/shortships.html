@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Short Ships — Order Timing — Item Management{% endblock %}
+
+{% block content %}
+{# Order Timing's Short Ships page (2026-11-17): the items Medline short shipped in its order feed,
+   one row each, with how often Fill/Kill's feed killed the item today, in 7 days and in 30 days.
+   Read-only for every Fill/Kill role. Drawn by static/js/ordertiming/shortships.js from
+   /ordertiming/api/shortships, 20 items a page, the last 30 days at most; the view is in the URL.
+   The filters are Main's, with the same IDs (static/js/ordertiming/common.js). #}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
+  <h1 class="h4 fw-semibold mb-0">Short Ships</h1>
+  <span class="small text-muted" id="ot-count" aria-live="polite"></span>
+  <span class="ms-auto small d-flex flex-wrap gap-3" id="ot-as-of" aria-live="polite"
+        title="When Medline's order data, and Fill/Kill's kill lines, were last loaded. Times are Medline's, as Medline sends them."></span>
+</div>
+
+<div id="ot-problem"></div>
+
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-body d-flex flex-wrap gap-3 align-items-end">
+    <div class="flex-grow-1 ot-search">
+      <label for="ot-q" class="form-label small text-muted mb-1">Find a short-shipped line</label>
+      <input type="search" id="ot-q" class="form-control form-control-sm" autocomplete="off" maxlength="500"
+             placeholder="Item, description, PO, ship-to…"
+             title="An item number, the description, the manufacturer, a PO, Medline's order number, the ship-to or the buyer." />
+    </div>
+    <div>
+      <span class="form-label small text-muted d-block mb-1" id="ot-dates-label">Order days</span>
+      <div class="d-flex gap-2 align-items-center" role="group" aria-labelledby="ot-dates-label">
+        <input type="date" id="ot-start" class="form-control form-control-sm" aria-label="First order day" />
+        <span class="small text-muted">to</span>
+        <input type="date" id="ot-end" class="form-control form-control-sm" aria-label="Last order day" />
+      </div>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges">
+      <button type="button" class="btn btn-outline-secondary" data-days="1">Today</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
+    </div>
+    <div>
+      <span class="form-label small text-muted d-block mb-1">Sites</span>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="ot-sites-button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                title="The sites' short-shipped lines, and the kills Fill/Kill counts at them">All sites</button>
+        <div class="dropdown-menu p-2 fk-sites-menu" id="ot-sites" aria-labelledby="ot-sites-button"></div>
+      </div>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="ot-expand"
+              title="Show or hide every item's short lines">Show all lines</button>
+      <a class="btn btn-sm btn-outline-primary" id="ot-export" href="{{ config.api.export }}"
+         title="Every short-shipped line these filters pick, with its item's kill counts, as a spreadsheet"><i class="bi bi-download"></i> Export CSV</a>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body p-0">
+    <nav class="d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom ot-pager" id="ot-pager"
+         aria-label="Pages of items" hidden>
+      <span class="small text-muted" id="ot-range" aria-live="polite"></span>
+      <ul class="pagination pagination-sm mb-0 ms-auto" id="ot-pages"></ul>
+    </nav>
+    <div class="table-responsive fk-scroll ot-scroll">
+      <table class="table table-sm align-middle mb-0 fk-table ot-table">
+        <thead class="table-light">
+          <tr id="ot-head">
+            <th scope="col" class="ot-caret"><span class="visually-hidden">Lines</span></th>
+            <th scope="col" data-sort="medline_item">Medline item<div class="fw-normal small text-muted">Customer item</div></th>
+            <th scope="col">Description<div class="fw-normal small text-muted">Manufacturer · mfr part #</div></th>
+            <th scope="col" class="text-end" data-sort="short_lines"
+                title="Short-shipped lines in the days chosen, and how many POs they're on">Short lines<div class="fw-normal small text-muted">on POs</div></th>
+            <th scope="col" class="text-end" data-sort="short_qty" title="Ordered, less shipped and still open, on those lines">Qty short</th>
+            <th scope="col" data-sort="sites" title="The Sold-Tos those lines are for">Sites</th>
+            <th scope="col" data-sort="last_short" title="The newest of those POs, when Medline created its order for it">Last short<div class="fw-normal small text-muted">PO created</div></th>
+            <th scope="col" class="text-end ot-kills" data-sort="kills_today">Killed today<div class="fw-normal small text-muted">Fill/Kill</div></th>
+            <th scope="col" class="text-end ot-kills" data-sort="kills_7">Killed 7 days<div class="fw-normal small text-muted">Fill/Kill</div></th>
+            <th scope="col" class="text-end ot-kills" data-sort="kills_30">Killed 30 days<div class="fw-normal small text-muted">Fill/Kill</div></th>
+            <th scope="col"><span class="visually-hidden">Open in Fill/Kill</span></th>
+          </tr>
+        </thead>
+        <tbody id="ot-rows">
+          <tr><td colspan="11" class="text-muted small p-3">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script id="ot-config" type="application/json">{{ config|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/ordertiming/shortships.js') }}"></script>
+{% endblock %}

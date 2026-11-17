@@ -22,6 +22,8 @@ COLUMNS = {
     # Reason is Medline's ReasonTypeText, and Ship-To Code comes from Ship-To Name 2 (2026-11-16).
     # Is Test and Test Purpose are no longer read: the test lines are gone (2026-11-16).
     ("FillKill", "vw_MedlineFillKill"): (("Reason", "Reason Date", "Ship-To Code"), "10_kill_lines.sql"),
+    # Not last_file (2026-11-17): the app reads it when it's there ("Data as of"), and shows only
+    # "last loaded" until 10 runs after the deploy.
     ("FillKill", "vw_FillKillLastLoad"): (("last_success", "last_line_update"), "10_kill_lines.sql"),
     ("FillKill", "vw_MedlineFillKillItemCollection"): (
         ("Medline Item", "Infor Item", "Infor Item Consistency", "Item.UOMConversion", "Item.LongDescription",

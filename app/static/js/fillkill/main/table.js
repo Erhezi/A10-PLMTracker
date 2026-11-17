@@ -6,6 +6,7 @@ import {
   $, NO_VENDOR, STATUS_ORDER, alertBox, config, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
   noQoeBadge, shortName, statusBadge, uomQoe, vendorItemText,
 } from '../common.js';
+import { freshnessHtml } from '../../freshness.js';
 import { renderNeeds } from './controls.js';
 import { openAddSubForm, openInstructionForm, openOrderForm, openVendorItemForm } from './forms.js';
 import { openPanel } from './panel.js';
@@ -31,14 +32,9 @@ export async function loadMain() {
   }
 }
 
+// "Data as of" (Medline's file) and "last loaded" (static/js/freshness.js, as Order Timing shows them).
 function renderDataAsOf(data) {
-  const el = $('fk-data-as-of');
-  if (!data || !data.as_of) { el.innerHTML = ''; return; }
-  const when = fmtDateTime(data.as_of);
-  const what = data.source === 'feed' ? 'Data as of' : 'Latest line update';
-  el.innerHTML = data.stale
-    ? `<span class="badge text-bg-warning">${what} ${esc(when)}: more than 90 minutes old</span>`
-    : `<span class="text-muted">${what} ${esc(when)}</span>`;
+  $('fk-data-as-of').innerHTML = freshnessHtml(data);
 }
 
 // Every word must appear in the Infor item's fields or in one of its packagings' (the commodity

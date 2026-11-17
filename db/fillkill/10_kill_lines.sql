@@ -4,7 +4,11 @@
 --
 -- FillKill.vw_MedlineFillKill is the one place the module reads kill lines from: Medline's table
 -- in SCSFileIngestor (written only by the A13 ingestion). FillKill.vw_FillKillLastLoad says how
--- fresh they are, for the app's "data as of".
+-- fresh they are, for the app's "Data as of" (when Medline made the file) and "Last loaded".
+--
+-- 2026-11-17: vw_FillKillLastLoad has [last_file], the file loaded, for "Data as of". The app reads
+-- it when it's there, so [last_file] doesn't decide when this script runs; [Is Test] does (below:
+-- after the deploy).
 --
 -- 2026-11-16, real data: Medline's final file carries its own reason type ([ReasonTypeText]),
 -- which is now the Reason as Medline sends it, instead of a category we read from the comment;
@@ -49,9 +53,21 @@ GO
 CREATE OR ALTER VIEW [FillKill].[vw_FillKillLastLoad] AS
 -- One row: the last successful A13 run ("Medline Fill-Kill" in ETLHealth), and the newest line
 -- update, which stands in until the hourly runs are logged (the backfill doesn't log).
-SELECT (SELECT MAX([LastRunTime]) FROM [SCSFileIngestor].[MedlineReport].[ETLHealth]
-        WHERE [ProcessName] = 'Medline Fill-Kill' AND [TaskStatus] = 'SUCCESS') AS [last_success],
-       (SELECT MAX([update stamp]) FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill]) AS [last_line_update];
+--   last_file   the file that run loaded (else the newest line's), whose name says when Medline made
+--               it: "MHS - FILL KILL REPORT-2026-11-17-01-04-00.xlsx", Central time on a 12-hour
+--               clock. The app reads it as the page's "Data as of" (app/utility/freshness.py), and
+--               the load as "Last loaded" (2026-11-17). Optional: without it, the app shows only
+--               "Last loaded".
+SELECT r.[LastRunTime] AS [last_success], l.[update stamp] AS [last_line_update],
+       COALESCE(r.[SourceFilePath], l.[source file]) AS [last_file]
+FROM (VALUES (1)) AS one ([row])
+OUTER APPLY (SELECT TOP (1) h.[LastRunTime], h.[SourceFilePath]
+             FROM [SCSFileIngestor].[MedlineReport].[ETLHealth] AS h
+             WHERE h.[ProcessName] = 'Medline Fill-Kill' AND h.[TaskStatus] = 'SUCCESS'
+             ORDER BY h.[LastRunTime] DESC) AS r
+OUTER APPLY (SELECT TOP (1) m.[update stamp], m.[source file]
+             FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m
+             ORDER BY m.[update stamp] DESC) AS l;
 GO
 
 -- The test lines' table (2026-11-16): emptied, and read by nothing. Dropped only when empty, so

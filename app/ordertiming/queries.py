@@ -12,22 +12,30 @@ its lines, the picked ones marked.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from datetime import date
+from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
 
-from sqlalchemy import and_, column, func, or_, select, table
+from sqlalchemy import and_, case, column, func, literal_column, or_, select, table
 
 from .. import db
 
-# Each line's status, as the view works it out ([Line Status]), in the order they happen; the labels
-# are the app's. A status the view adds needs a label here.
+# Each line's status, as the view works it out ([Line Status]), in the order of Main's tabs (the
+# user, 2026-11-17) and each PO's chips; the labels are the app's. A status the view adds needs a
+# label here.
 STATUSES = (
-    ("not_confirmed", "Not confirmed"),
     ("rejected", "Rejected"),
-    ("confirmed", "Confirmed"),
     ("asn", "ASN sent"),
+    ("confirmed", "Confirmed"),
+    ("not_confirmed", "Not confirmed"),
 )
 STATUS_LABELS = dict(STATUSES)
+# Short shipped (2026-11-17) isn't a status but the view's [Short Qty]: a line with an ASN can be
+# short too (the user: ASN sent wins in the status, short shipped is tallied on its own). Main's
+# last tab picks such lines, as ?status=short, like a status's tab.
+SHORT = "short"
+SHORT_LABEL = "Short shipped"
+TABS = (*STATUSES, (SHORT, SHORT_LABEL))
+TAB_LABELS = dict(TABS)
 
 PAGE_SIZE = 20  # orders (POs) a page of Main shows, newest first; the export has them all
 EXPORT_LIMIT = 100_000  # lines in one export, a guard
@@ -66,6 +74,7 @@ LINE_COLUMNS = {
     "mins_to_confirm": "Mins to Confirm",
     "asn_at": "ASN Created At",
     "status": "Line Status",
+    "short_qty": "Short Qty",  # NULL unless short shipped (2026-11-17)
 }
 # The values that belong to the order (the same on each of its lines); the rest are the line's.
 ORDER_KEYS = ("order_no", "po", "po_raw", "po_type", "report_date", "site", "site_name", "ship_to", "ship_to_name",
@@ -73,6 +82,12 @@ ORDER_KEYS = ("order_no", "po", "po_raw", "po_type", "report_date", "site", "sit
 
 LINES = table("vw_MedlineOrderLine", *(column(name) for name in LINE_COLUMNS.values()), schema="OrderTiming")
 LAST_LOAD = table("vw_OrderTimingLastLoad", column("last_success"), column("last_line_load"), schema="OrderTiming")
+# Fill/Kill's kill lines (db/fillkill/10), which Short Ships reads: Medline's Fill/Kill feed has a
+# line for each order line it killed, keyed on the same Medline order and line as this feed (its
+# line numbers without the leading zeros, its Sold-To codes often without them too).
+KILLS = table("vw_MedlineFillKill", column("Sold-To"), column("Order Date"), column("Sales Order #"),
+              column("Order Line #"), column("Item"), column("Filled Qty"), column("Reason"), column("Reason Date"),
+              schema="FillKill")
 
 # What the search box looks in; the item numbers also without dashes, spaces, dots and slashes
 # ("dls5529" finds DLS-5529), as Fill/Kill's sub search does.
@@ -95,7 +110,7 @@ class Filters:
     end: date
     sites: tuple[str, ...] = field(default_factory=tuple)
     q: str = ""
-    status: str = ""
+    status: str = ""  # a status, or SHORT for short-shipped lines (TABS)
 
     @property
     def picks_lines(self) -> bool:
@@ -119,8 +134,10 @@ def sites(start: date, end: date) -> list[dict]:
 
 
 def last_load() -> dict:
-    rows = _rows(select(LAST_LOAD.c.last_success, LAST_LOAD.c.last_line_load))
-    return rows[0] if rows else {"last_success": None, "last_line_load": None}
+    """last_success, last_line_load and last_file (2026-11-17; the file loaded, for "Data as of"):
+    every column the view has, so a view without last_file still works."""
+    rows = _rows(select(literal_column("*")).select_from(LAST_LOAD))
+    return rows[0] if rows else {"last_success": None, "last_line_load": None, "last_file": None}
 
 
 # --- the search --------------------------------------------------------------------------
@@ -174,7 +191,9 @@ def _conditions(filters: Filters, *, scope_only: bool = False) -> list:
     searched = search_condition(filters.q)
     if searched is not None:
         found.append(searched)
-    if filters.status:
+    if filters.status == SHORT:
+        found.append(col("short_qty") > 0)
+    elif filters.status:
         found.append(col("status") == filters.status)
     return found
 
@@ -184,6 +203,21 @@ def _selected(keys=None):
 
 
 # --- Main ---------------------------------------------------------------------------------
+
+def status_counts(filters: Filters) -> dict:
+    """For Main's tabs (2026-11-17): how many orders the days, sites and search find (``all``), how
+    many of them have a line in each status, and how many a short-shipped line (``short``). The tab
+    chosen doesn't count, so each tab says what clicking it would show. An order with lines in two
+    statuses counts under both. One pass over the lines, in the same days as the search."""
+    order = col("order_no")
+    statement = select(
+        func.count(func.distinct(order)).label("all"),
+        *(func.count(func.distinct(case((col("status") == code, order)))).label(code) for code, _ in STATUSES),
+        func.count(func.distinct(case((col("short_qty") > 0, order)))).label(SHORT),
+    ).where(*_conditions(replace(filters, status="")))
+    rows = _rows(statement)
+    return {key: int(value or 0) for key, value in rows[0].items()} if rows else {}
+
 
 def find_orders(filters: Filters, page: int = 1, per_page: int = PAGE_SIZE) -> dict:
     """One page of the orders with a line the filters pick, newest first, each with all its lines.
@@ -239,7 +273,8 @@ def _latest_of_each_line(lines: list[dict]) -> list[dict]:
 
 def build_order(lines: list[dict]) -> dict:
     """An order from its lines: what they share, when Medline received and confirmed it, how many
-    lines it has (``line_count``, the PO's total) and in each status, and the lines."""
+    lines it has (``line_count``, the PO's total), in each status and short shipped (``short_lines``,
+    whatever their status), and the lines."""
     lines = sorted(_latest_of_each_line(lines), key=_line_sort)
     first = lines[0]
     counts = {code: 0 for code, _ in STATUSES}
@@ -259,6 +294,7 @@ def build_order(lines: list[dict]) -> dict:
         "mins_to_confirm": max(minutes) if is_confirmed and minutes else None,
         "status": "confirmed" if is_confirmed else "not_confirmed",
         "counts": counts,
+        "short_lines": sum(1 for line in lines if (line.get("short_qty") or 0) > 0),
         "line_count": len(lines),
         "matched": sum(1 for line in lines if line["matched"]),
         "lines": [{key: value for key, value in line.items() if key not in ORDER_KEYS} for line in lines],
@@ -272,3 +308,164 @@ def export_lines(filters: Filters, limit: int = EXPORT_LIMIT) -> list[dict]:
                            col("order_line"))
                  .limit(limit))
     return _rows(statement)
+
+
+# --- Short Ships (2026-11-17) ---------------------------------------------------------------
+# The user: the short-shipped lines, one row per Medline item, with how often Fill/Kill has killed
+# that item today, in the last 7 days and in the last 30, so items killed again and again stand out.
+# A short-shipped line is one with a Short Qty (the view's rule), whatever its status.
+
+ITEMS_PAGE_SIZE = 20  # items a page of Short Ships shows
+IN_CHUNK = 1000  # values in one IN list (SQL Server takes 2,100 parameters at most)
+KILL_KEYS = ("kills_today", "kills_7", "kills_30")
+NO_KILLS = {key: 0 for key in KILL_KEYS}
+# What Short Ships can sort on (a header click); it opens on the items most killed in 30 days.
+ITEM_SORTS = ("medline_item", "short_lines", "pos", "sites", "short_qty", "last_short", *KILL_KEYS)
+DEFAULT_ITEM_SORT = ("kills_30", "desc")
+
+
+def _chunks(values, size: int = IN_CHUNK):
+    values = sorted(values)
+    for i in range(0, len(values), size):
+        yield values[i:i + size]
+
+
+def _line_number(value) -> str:
+    """An order line as both feeds agree on it: this feed's '000210' is Fill/Kill's '210'."""
+    text = str(value if value is not None else "").strip()
+    return (text.lstrip("0") or "0") if text.isdigit() else text
+
+
+def _fillkill_sites(codes) -> list[str]:
+    """Sold-To codes as Fill/Kill's feed may have them: as this feed has them (0002159659), and
+    without the leading zeros (2159659), which is how Medline's Fill/Kill file has them on O2."""
+    return sorted({form for code in codes for form in (code, code.lstrip("0") or "0")})
+
+
+def kill_counts(today: date, sites=()) -> dict[str, dict]:
+    """How many lines Medline's Fill/Kill feed killed for each Medline item: today, in the last 7
+    days and in the last 30 (today included, by Fill/Kill's Order Date), at the Sold-Tos given (all
+    when none). Each kill line counts once; an item killed on three orders today was killed 3 times."""
+    k = KILLS.c
+    day = k["Order Date"]
+    statement = (select(k["Item"].label("item"),
+                        func.sum(case((day == today, 1), else_=0)).label("kills_today"),
+                        func.sum(case((day >= today - timedelta(days=6), 1), else_=0)).label("kills_7"),
+                        func.count().label("kills_30"))
+                 .where(day.between(today - timedelta(days=29), today))
+                 .group_by(k["Item"]))
+    if sites:
+        statement = statement.where(k["Sold-To"].in_(_fillkill_sites(sites)))
+    return {row["item"]: {key: int(row[key] or 0) for key in KILL_KEYS} for row in _rows(statement)}
+
+
+def _add_po_totals(lines: list[dict], filters: Filters) -> None:
+    """Each line's ``po_lines``: how many lines its PO has in Medline's feed on those days, as Main's
+    Total lines counts them (each order line once)."""
+    scope = _conditions(filters, scope_only=True)
+    totals: dict = {}
+    for chunk in _chunks({line["order_no"] for line in lines}):
+        statement = (select(col("order_no").label("o"), func.count(func.distinct(col("order_line"))).label("n"))
+                     .where(col("order_no").in_(chunk), *scope).group_by(col("order_no")))
+        totals.update({row["o"]: row["n"] for row in _rows(statement)})
+    for line in lines:
+        line["po_lines"] = totals.get(line["order_no"])
+
+
+def _add_kill_lines(lines: list[dict]) -> None:
+    """Each line's Fill/Kill line, found by Medline order and line: ``in_fillkill``, and Medline's
+    reason and Est Avail Date (Fill/Kill's Reason and Reason Date). A line just shorted may not be in
+    Fill/Kill yet: its feed loads on its own hours."""
+    k = KILLS.c
+    found: dict = {}
+    for chunk in _chunks({line["order_no"] for line in lines}):
+        statement = select(k["Sales Order #"].label("o"), k["Order Line #"].label("l"), k["Reason"].label("reason"),
+                           k["Reason Date"].label("reason_date")).where(k["Sales Order #"].in_(chunk))
+        found.update({(row["o"], _line_number(row["l"])): row for row in _rows(statement)})
+    for line in lines:
+        kill = found.get((line["order_no"], _line_number(line["order_line"])))
+        line["in_fillkill"] = kill is not None
+        line["kill_reason"] = kill["reason"] if kill else None
+        line["kill_reason_date"] = kill["reason_date"] if kill else None
+
+
+def _short_lines(filters: Filters, *extra, limit: int | None = None) -> list[dict]:
+    statement = (select(*_selected())
+                 .where(*_conditions(replace(filters, status=SHORT)), *extra)
+                 .order_by(col("report_date").desc(), col("created_at").desc(), col("order_no").desc(),
+                           col("order_line")))
+    if limit:
+        statement = statement.limit(limit)
+    lines = _rows(statement)
+    _add_po_totals(lines, filters)
+    _add_kill_lines(lines)
+    return lines
+
+
+def _sort_items(items: list[dict], sort: str, direction: str) -> None:
+    """In place: by the sort chosen (empty values last either way), then the most killed in 30 days,
+    the most short lines and the item number."""
+    items.sort(key=lambda item: item["medline_item"] or "")
+    items.sort(key=lambda item: item["short_lines"], reverse=True)
+    items.sort(key=lambda item: item["kills_30"], reverse=True)
+    present = [item for item in items if item[sort] is not None]
+    present.sort(key=lambda item: item[sort], reverse=direction == "desc")
+    items[:] = present + [item for item in items if item[sort] is None]
+
+
+def short_items(filters: Filters, today: date, sort: str = "", direction: str = "", page: int = 1,
+                per_page: int = ITEMS_PAGE_SIZE) -> dict:
+    """One page of Short Ships: each Medline item with a short-shipped line the days, sites and search
+    pick (``short_lines``, on ``pos`` POs at ``sites`` Sold-Tos, ``short_qty`` in its UM, the latest
+    PO created ``last_short``), how often Fill/Kill killed it (kill_counts, at the same sites), and its
+    short lines, newest first. ``total`` counts every item picked."""
+    if sort not in ITEM_SORTS:
+        sort, direction = DEFAULT_ITEM_SORT
+    direction = "asc" if direction == "asc" else "desc"
+    picked = _conditions(replace(filters, status=SHORT))
+    items = _rows(select(col("medline_item").label("medline_item"),
+                         func.count().label("short_lines"),
+                         func.count(func.distinct(col("order_no"))).label("pos"),
+                         func.count(func.distinct(col("site"))).label("sites"),
+                         func.sum(col("short_qty")).label("short_qty"),
+                         func.min(col("um")).label("um"), func.max(col("um")).label("um_last"),
+                         func.max(col("description")).label("description"),
+                         func.max(col("cust_item")).label("cust_item"),
+                         func.max(col("manufacturer")).label("manufacturer"),
+                         func.max(col("mfr_item")).label("mfr_item"),
+                         func.max(col("created_at")).label("last_short"))
+                  .where(*picked).group_by(col("medline_item")))
+    names: dict = {}
+    for row in _rows(select(col("medline_item").label("i"), col("site_name").label("n"), col("site").label("s"))
+                     .where(*picked).distinct()):
+        names.setdefault(row["i"], set()).add(row["n"] or row["s"])
+    kills = kill_counts(today, filters.sites)
+    for item in items:
+        if item.pop("um_last") != item["um"]:  # in more than one UM: no one total
+            item["um"], item["short_qty"] = None, None
+        item["site_names"] = sorted(names.get(item["medline_item"], ()))
+        item.update(kills.get(item["medline_item"], NO_KILLS))
+    _sort_items(items, sort, direction)
+
+    total = len(items)
+    pages = max(1, -(-total // per_page))
+    page = min(max(page, 1), pages)
+    shown = items[(page - 1) * per_page:page * per_page]
+    by_item: dict = {}
+    if shown:
+        for line in _short_lines(filters, col("medline_item").in_([item["medline_item"] for item in shown])):
+            by_item.setdefault(line["medline_item"], []).append(line)
+    for item in shown:
+        item["lines"] = by_item.get(item["medline_item"], [])
+    return {"items": shown, "total": total, "page": page, "pages": pages, "per_page": per_page,
+            "sort": sort, "dir": direction}
+
+
+def export_short_lines(filters: Filters, today: date, limit: int = EXPORT_LIMIT) -> list[dict]:
+    """Every short-shipped line the filters pick, newest first, each with its PO's total lines, its
+    Fill/Kill reason and its item's kill counts, for Short Ships' CSV."""
+    lines = _short_lines(filters, limit=limit)
+    kills = kill_counts(today, filters.sites)
+    for line in lines:
+        line.update(kills.get(line["medline_item"], NO_KILLS))
+    return lines

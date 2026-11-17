@@ -18,9 +18,11 @@
     </p>
     <ul class="mb-0">
       <li><strong>Main</strong> lists our orders, newest first: one row per PO, with its PO type, when Medline
-        received it, when Medline confirmed it, and its total lines and how many are in each status. Click a row to
-        see its lines: each with its line type, its manufacturer and manufacturer part number, and, when Medline flags
-        it as a bad line, Medline's reject code.</li>
+        received it, when Medline confirmed it, its total lines, how many are in each status and how many are short
+        shipped. Click a row to see its lines: each with its line type, its manufacturer and manufacturer part number,
+        what it's short, and, when Medline flags it as a bad line, Medline's reject code.</li>
+      <li><strong>Short Ships</strong> lists the items Medline short shipped, one row per item, with how many times
+        Fill/Kill shows the item killed today, in the last 7 days and in the last 30. See below.</li>
       <li>The <strong>Dashboard</strong> will show trends. It's empty for now.</li>
     </ul>
   </section>
@@ -34,21 +36,25 @@
       <li>To check several POs at once, paste them in, separated by spaces, commas or new lines: each one found is
         listed.</li>
       <li>Item numbers match without dashes, dots or spaces: "bd930103" finds B-D930103.</li>
-      <li><strong>Order days</strong> are the days Medline received the orders. The page opens on the last 7 days,
-        and looks back 30 days at most. When a search finds nothing, <strong>Search the last 30 days</strong> looks
-        as far back as it goes.</li>
+      <li><strong>Order days</strong> are the days Medline received the orders. Main opens on today (Short Ships on
+        the last 7 days), and looks back 30 days at most, and not before 11/16/2026, when Medline's LUM orders went
+        live. When a search finds nothing, <strong>Search from</strong> looks as far back as it goes.</li>
       <li>Orders are listed 20 to a page, newest first. The page buttons at the top of the table move between
         them.</li>
-      <li><strong>With a line that's</strong> lists the orders that have a line in that status, for example every
-        order with a rejected line.</li>
+      <li>The <strong>tabs</strong> above the table list every order, or only the orders with a line in one status
+        (<strong>Rejected</strong> lists every order with a rejected line), or the orders with a short-shipped line
+        (<strong>Short shipped</strong>). Each tab shows how many orders it has in the days, sites and search chosen.
+        An order with lines in two statuses is under both tabs, so the tabs don't add up to All orders. Click an order
+        to see its lines: the tab's lines come first, highlighted.</li>
       <li>When the search or a status finds some lines of an order, those lines are highlighted.</li>
       <li><strong>Export CSV</strong> downloads every line the filters find, on every page, as a spreadsheet.</li>
     </ul>
     <p class="mb-0">
       If a PO you sent isn't found, Medline hasn't reported receiving it as of the time shown at the top right
-      ("Data as of"). The data is loaded from Medline's feed through the day, so a PO sent in the last hour
-      may not be there yet. Between 8 AM and 11 PM, that time turns into a yellow warning when it's more than 90
-      minutes old, as on Fill/Kill's Main.
+      (<strong>Data as of</strong>: when Medline made the file we loaded, in New York time). Medline sends a file
+      through the day and we load each one within the hour (<strong>last loaded</strong>), so a PO sent in the last
+      hour or two may not be there yet. Between 8 AM and 11 PM, the load turns into a yellow warning when it's more
+      than 90 minutes ago, as on Fill/Kill's Main.
     </p>
   </section>
 
@@ -66,12 +72,39 @@
       <dt class="col-sm-3"><span class="badge text-bg-primary">Confirmed</span></dt>
       <dd class="col-sm-9">Confirmed, and not shipped yet.</dd>
       <dt class="col-sm-3"><span class="badge text-bg-success">ASN sent</span></dt>
-      <dd class="col-sm-9">Medline sent the advance ship notice (EDI 856): it has shipped.</dd>
+      <dd class="col-sm-9">Medline sent the advance ship notice (EDI 856): it has left Medline's warehouse.</dd>
     </dl>
-    <p class="mb-0">
-      Under <strong>Shipped</strong>, a red "short" note means fewer were shipped and still open than were ordered.
-      Times are Medline's, as Medline sends them.
+    <p class="mb-2">
+      <strong class="ot-short-note">Short shipped</strong> isn't a status: a confirmed line and a line with its ASN
+      sent can both be short. It means Medline is shipping fewer than were ordered (less any still open). Most of our
+      lines are FILL-KILL lines: Medline ships what it has and kills the rest, so these lines also show up in
+      Fill/Kill. A PO's <strong>Short shipped</strong> column counts its short lines, and each line's
+      <strong>Short</strong> says how many it's short.
     </p>
+    <p class="mb-0">Times are Medline's, as Medline sends them.</p>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">Short Ships</h2>
+    <p class="mb-2">
+      One row per Medline item with a short-shipped line in the days, sites and search chosen. It's for spotting the
+      items Medline keeps killing.
+    </p>
+    <ul class="mb-0">
+      <li><strong>Short lines</strong> counts the item's short-shipped lines and the POs they're on;
+        <strong>Qty short</strong> adds up what they're short, in the item's unit of measure.</li>
+      <li><strong>Killed today</strong>, <strong>7 days</strong> and <strong>30 days</strong> count the item's lines
+        in Medline's Fill/Kill feed (the one Fill/Kill Management shows), today included, at the sites chosen. They
+        don't follow the order days. The page opens with the items killed most in 30 days at the top; click a
+        header to sort by it.</li>
+      <li>Click an item to see its short lines: the PO, when it was created, its total lines, the PO line, line type,
+        site, what was ordered, shipped and short, and Medline's reason from its Fill/Kill feed with its estimated
+        available date. "Not in Fill/Kill yet" means Fill/Kill's feed hasn't loaded that line yet: it loads on its
+        own schedule.</li>
+      <li><strong>Fill/Kill</strong> opens the item on Fill/Kill's Main, with its last 30 days.</li>
+      <li><strong>Export CSV</strong> downloads every short-shipped line the filters find, each with its item's kill
+        counts.</li>
+    </ul>
   </section>
 
   <section class="card shadow-sm border-0 p-4">

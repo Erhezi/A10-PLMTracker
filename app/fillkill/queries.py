@@ -79,8 +79,10 @@ def sites() -> list[dict]:
 
 
 def last_load() -> dict:
-    rows = _rows(f"SELECT last_success, last_line_update FROM {LAST_LOAD}")
-    return rows[0] if rows else {"last_success": None, "last_line_update": None}
+    """last_success, last_line_update and, once 10 (2026-11-17) has run on O2, last_file: every
+    column the view has, so the app doesn't wait on that script."""
+    rows = _rows(f"SELECT * FROM {LAST_LOAD}")
+    return rows[0] if rows else {"last_success": None, "last_line_update": None, "last_file": None}
 
 
 def _as_date(value):

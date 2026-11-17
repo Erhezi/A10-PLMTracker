@@ -87,9 +87,11 @@ def scope_from_request(days: int = 1) -> queries.Scope:
 
 
 def data_as_of() -> dict:
-    """The "Data as of" note (utility/freshness.py), which Order Timing's Main shows the same way."""
+    """The "Data as of" and "Last loaded" note (utility/freshness.py), which Order Timing's pages show
+    the same way."""
     load = queries.last_load()
-    return freshness.data_as_of(load.get("last_success"), load.get("last_line_update"), now_ny_naive())
+    return freshness.data_as_of(load.get("last_success"), load.get("last_line_update"), now_ny_naive(),
+                                load.get("last_file"))
 
 
 def body() -> dict:

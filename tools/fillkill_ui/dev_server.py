@@ -55,7 +55,7 @@ def attach_schemas(dbapi_conn, _record):
         cur.close()
 
 
-def make_app():
+def make_app(first_day="2026-11-16"):
     from app import create_app
 
     event.listen(Engine, "connect", attach_schemas)
@@ -65,6 +65,9 @@ def make_app():
         # One shared connection: an in-memory database lives only as long as its connection.
         "SQLALCHEMY_ENGINE_OPTIONS": {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}},
         "ENABLE_BURN_RATE_REFRESH": False,
+        # Order Timing reaches back to Medline's LUM go-live on O2's data; the sample's days follow
+        # today, 40 days back, so it has none (2026-11-17).
+        "ORDERTIMING_FIRST_DAY": first_day,
     })
     create_fillkill_views(app)
     create_ordertiming_views(app)
@@ -117,7 +120,9 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
         lines.append({
             "Sold-To": code, "Sold-To Name": name, "Ship-To": code, "Ship-To Name": ship_to,
             "Ship-To Name 2": f"{ship_code} - UBOAT", "Order Date": day(ago),
-            "Order Time": at, "Sales Order #": f"S{n:04d}", "Order Line #": "10", "Item": item,
+            # Medline's order numbers: Order Timing's sample orders 31 to 35, so its short lines
+            # find their kill lines (Fill/Kill's line numbers have no leading zeros).
+            "Order Time": at, "Sales Order #": f"11483000{30 + n:02d}", "Order Line #": "10", "Item": item,
             "Customer Item #": customer[item], "Order Qty": ordered, "UM": um, "Filled Qty": filled,
             "PO": f"26000{n:05d}", "POLine": n, "Internal Order Comments from SAP (Z106)": comment,
             "ReasonTypeText": reason, "Reason": reason, "Reason Date": avail, "Ship-To Code": ship_code,
@@ -140,9 +145,12 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
         "vw_MedlineFillKillItemCollection": items,
         "vw_MedlineFillKill": lines,
         "vw_MedlineFillKillQtyAgg": list(qty.values()),
-        "vw_FillKillLastLoad": [{"last_success": now, "last_line_update": now}],
+        # Loaded at 9:30, from files Medline made around 8 Central (9 here), named as Medline names them.
+        "vw_FillKillLastLoad": [{"last_success": now, "last_line_update": now,
+                                 "last_file": f"MHS - FILL KILL REPORT-{today}-08-04-00.xlsx"}],
         "vw_MedlineOrderLine": order_lines,
-        "vw_OrderTimingLastLoad": [{"last_success": now, "last_line_load": now}],
+        "vw_OrderTimingLastLoad": [{"last_success": now, "last_line_load": now,
+                                    "last_file": f"MHS - ORDER DETAIL REPORT-{today}-08-02-15.xls"}],
         # The search groups lines per vendor item and UOM: 88885 BX on two contracts (one MHS's), and
         # a case of it from another vendor on a non-MHS contract only.
         "vw_ContractLineSearch": [
@@ -226,7 +234,7 @@ def order_timing_rows(today: date) -> list[dict]:
         (2, 0, SITE_B, "11:55", None, [("B-D930103CS", 2, 0, 2, "not_confirmed", None, None)]),
         (3, 0, SITE_A, "08:15", "08:19", [("MDS2585H", 12, 0, 12, "confirmed", None, None)]),
         (4, 1, SITE_B, "14:30", "14:33", [
-            ("DYND70294BH", 3, 2, None, "asn", None, "16:05"),  # one short
+            ("DYND70294BH", 3, 2, None, "asn", None, "16:05"),  # one short, shipped: ASN sent wins
             ("B-D930103CS", 1, 0, 1, "confirmed", None, None),
         ]),
         (5, 3, SITE_A, "10:05", "10:09", [("MDS2585H", 20, 20, None, "asn", None, "13:45")]),
@@ -240,10 +248,22 @@ def order_timing_rows(today: date) -> list[dict]:
             ("MDS2585H" if k % 2 else "DYND70294BH", 4, 4 if shipped else 0, None if shipped else 4,
              "asn" if shipped else "confirmed", None, "13:00" if shipped else None)]))
     orders.append((27, 40, SITE_A, "10:00", "10:04", [("DYND70294BH", 1, 1, None, "asn", None, "13:00")]))
+    # Short Ships (2026-11-17): FILL-KILL lines Medline shipped none or some of, confirmed, no ASN
+    # yet. Each first line is in the Fill/Kill sample above (orders 31-33, line 10); 33's second
+    # isn't there yet.
+    orders += [
+        (31, 0, SITE_A, "07:10", "07:14", [("DYND70294BH", 5, 0, None, "confirmed", None, None),
+                                           ("MDS2585H", 6, 6, None, "confirmed", None, None)]),
+        (32, 1, SITE_B, "10:20", "10:24", [("DYND70294BH", 3, 0, None, "confirmed", None, None)]),
+        (33, 0, SITE_A, "06:40", "06:44", [("MDS2585H", 4, 1, None, "confirmed", None, None),
+                                           ("B-D930103CS", 2, 0, None, "confirmed", None, None)]),
+    ]
     rows = []
     for number, ago, (code, name), received, confirmed, lines in orders:
         for n, (item, qty, shipped, still_open, status, rej, asn) in enumerate(lines, start=1):
             cust, mfr, maker, description, um = items[item]
+            # The view's Short Qty: short shipped, on a line Medline confirmed and didn't reject.
+            short = qty - shipped - (still_open or 0) if status in ("confirmed", "asn") else 0
             rows.append({
                 "Report Date": (today - timedelta(days=ago)).isoformat(), "Order #": f"11483000{number:02d}",
                 "Order Line": f"{n * 10:06d}", "PO#": f"30006000{number:02d}-STPO", "PO": f"30006000{number:02d}",
@@ -251,10 +271,12 @@ def order_timing_rows(today: date) -> list[dict]:
                 "Ship-To Name": "4 WEST", "Buyer Name": "Sample, Buyer", "Medline Item #": item, "Cust Item #": cust,
                 "Item # on PO": item if item != "INVALID PART" else "ACM-XYZ1", "Mfr Item #": mfr,
                 "Manufacturer": maker, "Item Description": description, "Order Qty": qty, "Open Qty": still_open,
-                "Shipped Qty": shipped, "UM": um, "Line Type": "STD", "Bad Line": "YES" if rej else None,
+                "Shipped Qty": shipped, "UM": um, "Line Type": "FILL-KILL" if number > 30 else "STD",
+                "Bad Line": "YES" if rej else None,
                 "Rej Code": rej, "Received At": at(ago, received), "Order Created At": at(ago, received),
                 "Confirmed At": at(ago, confirmed), "Mins  to Order Create": 2,
                 "Mins to Confirm": 4 if confirmed else None, "ASN Created At": at(ago, asn), "Line Status": status,
+                "Short Qty": short if short > 0 else None,
             })
     return rows
 
@@ -344,7 +366,7 @@ def main(argv=None) -> None:
     from app.models.auth import User
     from app.utility import session_policy
 
-    app = make_app()
+    app = make_app("2026-11-16" if args.data == "o2" else None)
     rows = o2_rows() if args.data == "o2" else sample_rows(now_ny_naive().date())
     with app.app_context(), db.engine.begin() as conn:  # these vendors instead of the tests' four
         conn.exec_driver_sql('DELETE FROM "FillKill"."vw_Vendor"')

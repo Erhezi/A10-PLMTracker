@@ -175,7 +175,9 @@ const steps = [
     await go('/dev-login?as=all', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
     expect(await text('#fk-date-mode') === 'Select a range', 'the dates are not on today');
     expect(await count('#fk-main tbody.fk-item') === 2, `${await count('#fk-main tbody.fk-item')} items today, not 2`);
-    expect((await text('#fk-data-as-of')).includes('Data as of') || (await text('#fk-data-as-of')).includes('Latest line update'), 'no data date');
+    // When Medline made the file (8:04 Central is 9:04 here), then when it was loaded (2026-11-17).
+    expect(/^Data as of \d\d\/\d\d\/\d{4} 09:04 · last loaded 09:30/.test(await text('#fk-data-as-of')),
+      `the data as of: ${await text('#fk-data-as-of')}`);
     // At most 450px tall, scrolling inside, its header staying on top; the orders too (2026-10-20).
     for (const table of ['#fk-main', '#fk-orders']) {
       const cap = await evaluate(`getComputedStyle(document.querySelector('${table}').parentElement).maxHeight`);
@@ -550,10 +552,13 @@ const steps = [
     const orderRows = `document.querySelectorAll('#ot-rows .ot-order-row').length`;
     await go('/dev-login?as=viewer&next=/fillkill/', MAIN_READY, 'Main');
     await click('.module-nav a[href$="/ordertiming/"]');
-    await waitFor(`${orderRows} === 5`, "Order Timing's last 7 days: five orders");
+    await waitFor(`${orderRows} === 5`, "Order Timing's today (2026-11-17): five orders");
     expect(await current('Order Timing|Main'), 'Order Timing and its Main are not the current module and page');
     expect((await text('#ot-count')) === '5 orders', `the count: ${await text('#ot-count')}`);
-    expect((await text('#ot-as-of')).startsWith('Data as of'), `the data as of: ${await text('#ot-as-of')}`);
+    expect(await evaluate(`document.getElementById('ot-start').value === document.getElementById('ot-end').value`),
+      'Main does not open on one day');
+    expect(/^Data as of \d\d\/\d\d\/\d{4} 09:02 · last loaded 09:30/.test(await text('#ot-as-of')),
+      `the data as of: ${await text('#ot-as-of')}`);
     // Closed until clicked; a click shows its lines.
     expect(await evaluate(`document.querySelector('#ot-rows .ot-lines-row').hidden`), 'the lines show before a click');
     await click('#ot-rows .ot-order-row');
@@ -577,7 +582,7 @@ const steps = [
     expect(!order.includes('Delivery'), 'SAP deliveries are still shown');
     expect(await count('#ot-rows tr.ot-match, #ot-rows tr.ot-other') === 0, 'a PO found whole has lines highlighted');
     // Several POs pasted.
-    await setValue('#ot-q', '3000600002, 3000600004', 'input');
+    await setValue('#ot-q', '3000600002, 3000600003', 'input');
     await waitFor(`${orderRows} === 2`, 'the two POs pasted');
     expect((await text('#ot-rows')).includes('Not confirmed'), 'PO 3000600002 is not shown as not confirmed');
     // A PO Medline hasn't reported: said so, with a way to look further back.
@@ -585,31 +590,82 @@ const steps = [
     await waitFor(`document.querySelector('#ot-rows [data-search-window]')`, 'the not-found message');
     expect((await text('#ot-rows')).includes("Medline hasn't reported receiving it"), 'the not-found message');
     expect(await evaluate(`(document.getElementById('ot-pager').offsetParent === null)`), 'the pager shows for one page');
-    // Every order with a rejected line, the line found standing out.
+    // 2026-11-17: the Rejected tab, every order with a rejected line, the line found standing out.
     await setValue('#ot-q', '', 'input');
-    await setValue('#ot-status', 'rejected');
+    await click('#ot-tabs [data-status="rejected"]');
     await waitFor(`${orderRows} === 1 && document.querySelectorAll('#ot-rows tr.ot-match').length === 1`, 'the rejected line found');
     expect(await count('#ot-rows tr.ot-other') === 2, 'the order\'s other lines are not shown as not found');
     expect((await text('#ot-rows .ot-total')).replace(/\s+/g, ' ').trim() === '3 1 found', `the total and found: ${await text('#ot-rows .ot-total')}`);
-    // The last 30 days: 26 orders, 20 a page, the pager above the table; no "All".
+    expect((await evaluate('location.search')).includes('status=rejected'), 'the tab is not in the link');
+    // A tab doesn't open its orders (the user, 2026-11-17): a click does. Its lines come first.
+    expect(await evaluate(`document.querySelector('#ot-rows .ot-lines-row').hidden`), "the tab opened its order's lines");
+    expect(await evaluate(`document.querySelector('#ot-rows .ot-lines tbody tr').classList.contains('ot-match')
+      && document.querySelector('#ot-rows .ot-lines tbody tr').innerText.includes('INVALID PART')`), 'the rejected line is not first');
+    // Each tab counts the last 7 days' orders, whichever tab is chosen; an order counts under each
+    // status its lines are in.
+    const tabs = `[...document.querySelectorAll('#ot-tabs [data-status]')].map((b) => b.dataset.status + '=' + (b.querySelector('.ot-tab-count') || {}).innerText + (b.classList.contains('active') ? '*' : '')).join('|')`;
+    await waitFor(`${tabs} === '=5|rejected=1*|asn=1|confirmed=4|not_confirmed=1|short=2'`, 'the tabs, in their order, and their counts');
+    // Short shipped (2026-11-17): not a status, a tally of its own; its tab, the orders with a short line.
+    await click('#ot-tabs [data-status="short"]');
+    await waitFor(`${orderRows} === 2`, 'the two orders with a short-shipped line today');
+    const tallies = `[...document.querySelectorAll('#ot-rows .ot-short-tally')].map((td) => td.innerText.trim()).join('|')`;
+    expect(await evaluate(`${tallies} === '1|2'`), `the short-shipped tallies: ${await evaluate(tallies)}`);
+    expect(await count('#ot-rows .ot-line-short .ot-short-note') === 3, `the lines short: ${await count('#ot-rows .ot-line-short .ot-short-note')}`);
+    expect(!(await text('#ot-rows')).includes('short shipped'), 'short shipped is still a status chip');
+    // The last 30 days: 29 orders, 20 a page, the pager above the table; no "All".
     expect(await count('[data-days="all"]') === 0, 'an "All" days button');
-    await setValue('#ot-status', '');
+    await click('#ot-tabs [data-status=""]');
     await click('[data-days="30"]');
     await waitFor(`${orderRows} === 20 && !(document.getElementById('ot-pager').offsetParent === null)`, 'the first page of 20');
-    expect((await text('#ot-count')) === '26 orders', `the count: ${await text('#ot-count')}`);
-    expect((await text('#ot-range')) === 'Orders 1–20 of 26', `the range: ${await text('#ot-range')}`);
+    expect((await text('#ot-count')) === '29 orders', `the count: ${await text('#ot-count')}`);
+    expect((await text('#ot-range')) === 'Orders 1–20 of 29', `the range: ${await text('#ot-range')}`);
     await click('#ot-pages [data-page="2"]');
-    await waitFor(`${orderRows} === 6 && document.querySelector('#ot-pages .active').innerText.trim() === '2'`, 'page 2: six orders');
+    await waitFor(`${orderRows} === 9 && document.querySelector('#ot-pages .active').innerText.trim() === '2'`, 'page 2: nine orders');
     expect((await evaluate('location.search')).includes('page=2'), 'the page is not in the link');
-    expect((await text('#ot-range')) === 'Orders 21–26 of 26', `page 2's range: ${await text('#ot-range')}`);
+    expect((await text('#ot-range')) === 'Orders 21–29 of 29', `page 2's range: ${await text('#ot-range')}`);
     // A filter changed: back to page 1. A PO forty days old is past what Main reaches.
     await setValue('#ot-q', '3000600027', 'input');
-    await waitFor(`document.getElementById('ot-rows').innerText.includes('Order Timing looks back 30 days')`,
-      'PO 3000600027 not found, and the 30 days said');
+    await waitFor(`document.getElementById('ot-rows').innerText.includes('Order Timing looks back to')`,
+      'PO 3000600027 not found, and how far back said');
     expect(await evaluate(`(document.getElementById('ot-pager').offsetParent === null)`), 'the pager shows with nothing found');
     expect(!(await evaluate('location.search')).includes('page='), 'a search kept page 2');
     await setValue('#ot-q', '', 'input');
     await waitFor(`${orderRows} === 20`, 'the last 30 days again');
+    // Short Ships (2026-11-17): an item a row, the most killed in Fill/Kill in 30 days first.
+    const itemRows = `document.querySelectorAll('#ot-rows .ot-order-row').length`;
+    const cells = (selector) => `[...document.querySelectorAll('#ot-rows .ot-order-row')].map((tr) => tr.querySelector('${selector}').innerText.trim().replace(/\\s+/g, ' ')).join('|')`;
+    const kills = `${cells('.ot-kills-today')} + '/' + ${cells('.ot-kills-7')} + '/' + ${cells('.ot-kills-30')}`;
+    await click('.page-nav a[href$="/ordertiming/shortships"]');
+    await waitFor(`${itemRows} === 3`, "Short Ships' three items in the last 7 days");
+    expect(await current('Order Timing|Short Ships'), 'Order Timing and its Short Ships are not the current module and page');
+    expect((await text('#ot-count')) === '3 items', `the count: ${await text('#ot-count')}`);
+    expect(await evaluate(`${cells('.ot-item')} === 'DYND70294BH|MDS2585H|B-D930103CS'`), `the items: ${await evaluate(cells('.ot-item'))}`);
+    expect(await evaluate(`${kills} === '1|1|0/2|1|0/2|1|0'`), `the kill counts: ${await evaluate(kills)}`);
+    expect(await evaluate(`${cells('.ot-short-lines')} === '3 3 POs|1 1 PO|1 1 PO'`), `the short lines: ${await evaluate(cells('.ot-short-lines'))}`);
+    expect(/Fill\/Kill data as of \d\d\/\d\d\/\d{4} 09:04 · last loaded 09:30/.test(await text('#ot-as-of')),
+      `the data as of: ${await text('#ot-as-of')}`);
+    // An item's short lines: the PO, when created, its total lines, line type, and Fill/Kill's reason.
+    expect(await evaluate(`document.querySelector('#ot-rows .ot-lines-row').hidden`), 'the lines show before a click');
+    await click('#ot-rows .ot-order-row');
+    await waitFor(`!document.querySelector('#ot-rows .ot-lines-row').hidden`, "the first item's lines");
+    const shortLines = `[...document.querySelector('#ot-rows .ot-lines-row').querySelectorAll('.ot-lines tbody tr')]`;
+    const lineText = `${shortLines}.map((tr) => ['.ot-line-po', '.ot-po-lines', '.ot-line-type', '.ot-reason'].map((s) => tr.querySelector(s).innerText.trim().split('\\n')[0]).join(' ')).join('|')`;
+    expect(await evaluate(`${lineText} === '3000600031 2 FILL-KILL Backorder|3000600004 2 STD Not in Fill/Kill yet|3000600032 1 FILL-KILL Backorder'`),
+      `the lines: ${await evaluate(lineText)}`);
+    expect(await evaluate(`${shortLines}.every((tr) => tr.querySelector('.ot-po-created').innerText.trim().length > 0)`), 'a line without its PO created');
+    // A header sorts, kept in the link; the sites narrow the lines and the kills.
+    await click('#ot-head [data-sort-key="medline_item"]');
+    await waitFor(`${cells('.ot-item')} === 'B-D930103CS|DYND70294BH|MDS2585H'`, 'sorted by item');
+    expect((await evaluate('location.search')).includes('sort=medline_item'), 'the sort is not in the link');
+    await clickText('#ot-sites label', 'SAMPLE SITE B');
+    await waitFor(`${cells('.ot-item')} === 'DYND70294BH'`, "site B's one item");
+    expect(await evaluate(`${kills} === '0/1/1'`), `site B's kill counts: ${await evaluate(kills)}`);
+    // The item on Fill/Kill's Main, its panel open.
+    await click('#ot-rows .ot-order-row a[href*="/fillkill/"]');
+    await waitFor(`document.getElementById('fk-panel-title') && document.getElementById('fk-panel-title').innerText.trim() === 'DYND70294BH'`,
+      "the item's panel on Fill/Kill's Main");
+    expect((await evaluate('location.search')).includes('item=DYND70294BH'), 'the item is not in the link');
+    await go('/ordertiming/', `document.querySelectorAll('#ot-rows .ot-order-row').length`, "Order Timing's Main");
     await click('.page-nav a[href$="/ordertiming/dashboard"]');
     await waitFor(`document.getElementById('ot-dash-empty')`, "Order Timing's Dashboard");
     expect(await current('Order Timing|Dashboard'), 'Order Timing and its Dashboard are not the current module and page');

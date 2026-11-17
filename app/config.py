@@ -132,6 +132,10 @@ class Config:
     # db/fillkill/90_reset_workflow.sql does (2026-11-02). Only the development server
     # offers it (DevelopmentConfig); never the live one.
     FILLKILL_RESET = False
+    # Order Timing reaches no further back than this day: Medline's LUM go-live (the user,
+    # 2026-11-17; the feed's earlier days were tests). Its last 30 days start here until 30 days
+    # have passed. Empty: just the last 30 days.
+    ORDERTIMING_FIRST_DAY = os.getenv("ORDERTIMING_FIRST_DAY", "2026-11-16")
 
     @classmethod
     def validate(cls):

@@ -48,6 +48,9 @@ def sqlite_app_factory():
                 "connect_args": {"check_same_thread": False},
             },
             "ENABLE_BURN_RATE_REFRESH": False,
+            # Order Timing's sample days follow today, some of them 40 days back: no go-live day
+            # (tests/test_ordertiming.py sets one where it checks it).
+            "ORDERTIMING_FIRST_DAY": None,
         })
         create_fillkill_views(app)
         create_ordertiming_views(app)
@@ -88,7 +91,7 @@ FILLKILL_VIEWS = {
         "Sales Order #", "Order Line #", "Item", "Customer Item #", "Order Qty", "UM", "Filled Qty", "PO", "POLine",
         "Internal Order Comments from SAP (Z106)", "ReasonTypeText", "Reason", "Reason Date", "Ship-To Code",
     ],
-    "vw_FillKillLastLoad": ["last_success", "last_line_update"],
+    "vw_FillKillLastLoad": ["last_success", "last_line_update", "last_file"],
     "vw_ContractLineSearch": [
         "vendor_id", "vendor_name", "vendor_item", "vendor_item_stripped", "manufacturer_number",
         "manufacturer_number_stripped", "description", "uom", "qoe", "infor_item", "item_type", "contract",
@@ -106,9 +109,9 @@ ORDERTIMING_VIEWS = {
         "Ship-To #", "Ship-To Name", "Buyer Name", "Medline Item #", "Cust Item #", "Item # on PO", "Mfr Item #",
         "Manufacturer", "Item Description", "Order Qty", "Open Qty", "Shipped Qty", "UM", "Line Type", "Bad Line",
         "Rej Code", "Received At", "Order Created At", "Confirmed At", "Mins  to Order Create", "Mins to Confirm",
-        "ASN Created At", "Line Status",
+        "ASN Created At", "Line Status", "Short Qty",
     ],
-    "vw_OrderTimingLastLoad": ["last_success", "last_line_load"],
+    "vw_OrderTimingLastLoad": ["last_success", "last_line_load", "last_file"],
 }
 
 # Infor vendors every Fill/Kill test can use as a sub's vendor ID.

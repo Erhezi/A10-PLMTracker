@@ -8,19 +8,33 @@
 -- The web app never writes there; it reads only these views:
 --
 --   OrderTiming.vw_MedlineOrderLine      Medline's lines, as loaded, plus each step's date and time
---                                        as one value and the line's status (Line Status)
---   OrderTiming.vw_OrderTimingLastLoad   one row: how fresh the lines are, for the app's "data as of"
+--                                        as one value, the line's status (Line Status) and what
+--                                        it's short shipped (Short Qty)
+--   OrderTiming.vw_OrderTimingLastLoad   one row: how fresh the lines are, for the app's "Data as
+--                                        of" (Medline's file) and "Last loaded"
 --
--- Line Status is the rule the app shows and filters on; change it here, not in the app. Checked in
--- this order:
+-- Short Ships (2026-11-17) also reads Fill/Kill's FillKill.vw_MedlineFillKill (db/fillkill/10):
+-- each short line's kill reason, and how often each item was killed.
+--
+-- Line Status and Short Qty are the rules the app shows and filters on; change them here, not in the
+-- app. Line Status is where the line is with Medline, checked in this order:
 --   rejected       Medline rejected the line: Bad Line = YES, or a Rej Code (E1, S1, X1; on the
 --                  2026-10-07 sample these always came with Shipped 0)
 --   not_confirmed  no 855 (Medline's order confirmation) yet
 --   asn            Medline sent the ASN (856): it shipped
 --   confirmed      confirmed, not shipped yet
--- Medline's SAP delivery document isn't a status (the user, 2026-11-16): it only means the line
--- reached Medline's SAP, which says nothing about the order's timing.
 -- The app labels them; a new status here needs its label in app/ordertiming/queries.py (STATUSES).
+--
+-- Short Qty (2026-11-17) is what the line is short shipped, apart from its status (the user: ASN
+-- sent wins over short shipped in the status, and short shipped is tallied on its own): Order Qty
+-- less Shipped Qty and Open Qty, when that's more than 0; NULL otherwise, and on a rejected line.
+-- On FILL-KILL lines Medline ships what it has and kills the rest, so these are the lines in
+-- Medline's Fill/Kill feed (on O2 on 11/17 every one found there matched on order, line and item).
+-- Only once there's a delivery document: until then Shipped Qty isn't Medline's answer yet, so a
+-- line just confirmed isn't short.
+-- Medline's SAP delivery document isn't a status (the user, 2026-11-16): it only means the line
+-- reached Medline's SAP, which says nothing about the order's timing. (Short Qty reads it only as
+-- the sign that Shipped Qty is set.)
 --
 -- Times are as Medline sends them. The file's "Dates & Times Time Zone:" line is blank, and A13's
 -- notes find its file stamps look like Central time: ask Medline before reading them as Eastern.
@@ -43,6 +57,7 @@ CREATE OR ALTER VIEW [OrderTiming].[vw_MedlineOrderLine] AS
 --   Confirmed At         when Medline sent its 855 confirmation; empty until it does
 --   ASN Created At       when Medline made the ASN (856)
 --   Line Status          see the top of this script
+--   Short Qty            the same
 SELECT l.[Report Date], l.[Order Create Date], l.[Sold-To #], l.[Sold-To Name], l.[Ship-To #], l.[Ship-To Name],
        l.[Order #], l.[Channel], l.[PO#], l.[Buyer Name], l.[Cust Item #], l.[PO Line #], l.[Item # on PO],
        l.[Medline Item #], l.[Medline Category], l.[Mfr Item #], l.[Manufacturer], l.[Item Description],
@@ -54,12 +69,18 @@ SELECT l.[Report Date], l.[Order Create Date], l.[Sold-To #], l.[Sold-To Name], 
        l.[source file], l.[load stamp],
        t.[Received At], t.[Order Created At], t.[Confirmed At], t.[ASN Created At],
        CAST(CASE
-           WHEN l.[Bad Line] = 'YES' OR NULLIF(LTRIM(RTRIM(l.[Rej Code])), '') IS NOT NULL THEN 'rejected'
-           WHEN l.[855 Date] IS NULL                                                          THEN 'not_confirmed'
-           WHEN l.[ASN Creation Date] IS NOT NULL                                             THEN 'asn'
+           WHEN r.[Rejected] = 1                  THEN 'rejected'
+           WHEN l.[855 Date] IS NULL              THEN 'not_confirmed'
+           WHEN l.[ASN Creation Date] IS NOT NULL THEN 'asn'
            ELSE 'confirmed'
-       END AS VARCHAR(20)) AS [Line Status]
+       END AS VARCHAR(20)) AS [Line Status],
+       CASE WHEN r.[Rejected] = 0 AND l.[SAP Delv Doc #] IS NOT NULL
+                 AND l.[Order Qty] > ISNULL(l.[Shipped Qty], 0) + ISNULL(l.[Open Qty], 0)
+            THEN l.[Order Qty] - ISNULL(l.[Shipped Qty], 0) - ISNULL(l.[Open Qty], 0)
+       END AS [Short Qty]
 FROM [SCSFileIngestor].[MedlineOrderTiming].[MedlineOrderTiming] AS l
+CROSS APPLY (SELECT CASE WHEN l.[Bad Line] = 'YES' OR NULLIF(LTRIM(RTRIM(l.[Rej Code])), '') IS NOT NULL
+                         THEN 1 ELSE 0 END AS [Rejected]) AS r
 -- A date and its time as one DATETIME (a missing time counts as midnight; no date, no value).
 CROSS APPLY (SELECT
     CASE WHEN l.[EDI Date Re] IS NOT NULL
@@ -82,22 +103,35 @@ CREATE OR ALTER VIEW [OrderTiming].[vw_OrderTimingLastLoad] AS
 -- day's lines were loaded, which stands in until the scheduled runs are logged (the backfill doesn't
 -- log). The app reads it on every search, so it reads the newest day only: Report Date leads the
 -- table's clustered key, so that's a seek, not a scan of every day.
-SELECT (SELECT MAX([LastRunTime]) FROM [SCSFileIngestor].[MedlineReport].[ETLHealth]
-        WHERE [ProcessName] = 'Medline Order Timing' AND [TaskStatus] = 'SUCCESS') AS [last_success],
-       (SELECT MAX(l.[load stamp]) FROM [SCSFileIngestor].[MedlineOrderTiming].[MedlineOrderTiming] AS l
-        WHERE l.[Report Date] = (SELECT MAX([Report Date])
-                                 FROM [SCSFileIngestor].[MedlineOrderTiming].[MedlineOrderTiming])) AS [last_line_load];
+--   last_file   the file that run loaded (else the newest day's), whose name says when Medline made
+--               it: "MHS - ORDER DETAIL REPORT-2026-11-17-01-02-15.xls", Central time on a 12-hour
+--               clock. The app reads it as the page's "Data as of" (app/utility/freshness.py), and
+--               the load as "Last loaded" (2026-11-17). Optional: without it, the app shows only
+--               "Last loaded".
+SELECT r.[LastRunTime] AS [last_success], l.[load stamp] AS [last_line_load],
+       COALESCE(r.[SourceFilePath], l.[source file]) AS [last_file]
+FROM (VALUES (1)) AS one ([row])
+OUTER APPLY (SELECT TOP (1) h.[LastRunTime], h.[SourceFilePath]
+             FROM [SCSFileIngestor].[MedlineReport].[ETLHealth] AS h
+             WHERE h.[ProcessName] = 'Medline Order Timing' AND h.[TaskStatus] = 'SUCCESS'
+             ORDER BY h.[LastRunTime] DESC) AS r
+OUTER APPLY (SELECT TOP (1) m.[load stamp], m.[source file]
+             FROM [SCSFileIngestor].[MedlineOrderTiming].[MedlineOrderTiming] AS m
+             WHERE m.[Report Date] = (SELECT MAX([Report Date])
+                                      FROM [SCSFileIngestor].[MedlineOrderTiming].[MedlineOrderTiming])
+             ORDER BY m.[load stamp] DESC) AS l;
 GO
 
--- What's there now: one row per Line Status, then the freshness row. Every Line Status should be
--- one of the four above.
+-- What's there now: one row per Line Status (and how many of its lines are short shipped), then the
+-- freshness row. Every Line Status should be one of the four above.
 SELECT [Line Status], COUNT(*) AS [lines], COUNT(DISTINCT [Order #]) AS [orders],
+       COUNT([Short Qty]) AS [short shipped lines],
        MIN([Report Date]) AS [first day], MAX([Report Date]) AS [last day]
 FROM [OrderTiming].[vw_MedlineOrderLine]
 GROUP BY [Line Status]
 ORDER BY [Line Status];
 
-SELECT [last_success], [last_line_load] FROM [OrderTiming].[vw_OrderTimingLastLoad];
+SELECT [last_success], [last_line_load], [last_file] FROM [OrderTiming].[vw_OrderTimingLastLoad];
 GO
 
 -- Still in a transaction here? (SSMS's "SET IMPLICIT_TRANSACTIONS" option, or a BEGIN TRAN run

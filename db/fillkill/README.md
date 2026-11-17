@@ -39,7 +39,7 @@ changes something now ends with a red error when a transaction is still open (20
 | `03_unify_roles.sql` | Adds `users.requested_modules` and gives everyone the PLM role matching their `users.user_role` (admin and user: PLM editor; view-only: PLM viewer). Copies only once, so re-running never undoes User Control changes. | Never needed. |
 | `04_after_deploy.sql` | Renames `view-only` to `user`. **Only once the new release is live:** the previous release would let `view-only` accounts edit. | Never needed. |
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
-| `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines, with `Reason`: Medline's `ReasonTypeText` since 2026-11-16; `Reason Date`: its `Est Avail Date`; `Ship-To Code`: Ship-To Name 2 without `- UBOAT`) and `vw_FillKillLastLoad` ("data as of"); drops the emptied test-line table. Until 2026-11-16 it also loaded the test lines. | Any time: it (re)creates the two views, and drops `TestFillKillLine` only when it's empty. Its 2026-11-16 version only after that day's deploy (below). |
+| `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines, with `Reason`: Medline's `ReasonTypeText` since 2026-11-16; `Reason Date`: its `Est Avail Date`; `Ship-To Code`: Ship-To Name 2 without `- UBOAT`) and `vw_FillKillLastLoad` ("Data as of" and "last loaded"; `last_file` since 2026-11-17); drops the emptied test-line table. Until 2026-11-16 it also loaded the test lines. | Any time: it (re)creates the two views, and drops `TestFillKillLine` only when it's empty. Its 2026-11-16 version only after that day's deploy (below). |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (until 2026-11-16, so the test site showed), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
 | `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each; or, with no sub, for a Medline item itself, since 2026-11-02), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`), `vw_Vendor` (Infor's vendors, with their legal and search names) and `vw_UomAlias` (Infor's UOM for one typed another way, from `MDM_EDI_SUB_UOM`: CS is CA, VL is VI). | Whenever it changes, before running that code. |
@@ -292,3 +292,10 @@ for s in 10_kill_lines 09_verify; do
   sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i "db/fillkill/$s.sql" || break
 done
 ```
+
+**Data as of (2026-11-17):** Main's "Data as of" was when A13 loaded the kill lines; it's now "last
+loaded", and "Data as of" is when Medline made the file loaded, read from its name
+(`MHS - FILL KILL REPORT-2026-11-17-01-04-00.xlsx` is 1:04 PM Central on a 12-hour clock, 2:04 PM
+here; `app/utility/freshness.py`). `10` adds the file to `vw_FillKillLastLoad` (`last_file`). The
+app reads it when it's there and shows only "last loaded" until then, so it rides along with `10`
+after the deploy above.

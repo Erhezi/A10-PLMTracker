@@ -52,10 +52,14 @@ killed item itself), and a few of Infor's UOM aliases (CS is CA, VL is VI).
 
 Order Timing's sample has six orders over the last ten days, every line status among them: PO
 3000600001 (confirmed, a bad line rejected with E1, shipped), 3000600002 (not confirmed), 3000600003 (confirmed),
-3000600004 (one line short), 3000600005, and 3000600006 from ten days ago; twenty more fill the
-rest of the last 30 days (26 orders then, two pages), and 3000600027, forty days old, is past what
-Main reaches. With
-`--data o2`, Order Timing reads O2's lines through this repo's `db/ordertiming/01_views.sql`.
+3000600004 (one line shipped short: ASN sent, with a Short Qty), 3000600005, and 3000600006 from ten
+days ago; twenty more fill the rest of the last 30 days, and 3000600027, forty days old, is past what
+Main reaches. For Short Ships (2026-11-17), 3000600031 to 3000600033 have confirmed FILL-KILL lines
+short shipped, each first line also in the Fill/Kill sample (its Medline orders are 1148300031 to 35,
+line 10), 3000600033's second not yet: five orders today (where Main opens), eight in the last 7
+days, 29 in the last 30 (two pages), and three items on Short Ships. The sample has no go-live day
+(`ORDERTIMING_FIRST_DAY`), since its days go 40 back. With `--data o2`, Order Timing reads O2's lines
+through this repo's `db/ordertiming/01_views.sql`, from 2026-11-16 (LUM go-live).
 
 With `--data o2`, the contract search reads Infor's contract lines through this repo's
 `db/fillkill/13_contract_search.sql`, limited to the vendor items Medline has killed plus nitrile
@@ -82,5 +86,8 @@ and before a deploy. When the pages change what a step looks for, change the ste
 
 - The server handles one request at a time: an in-memory SQLite database lives on one shared
   connection.
-- The sample data's dates follow today (New York time), so Main opens on today.
+- The sample data's dates follow today (New York time), so Main opens on today. Both feeds were
+  last loaded at 9:30 from files named as Medline names them (8:04 and 8:02 Central), so the pages
+  say "Data as of … 09:04 · last loaded 09:30" (Order Timing 09:02); after 11 AM the load shows as
+  stale.
 - `tests/conftest.py` imports pytest, so the server needs the test requirements installed.

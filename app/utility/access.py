@@ -359,7 +359,8 @@ def _fillkill_pages(user):
 
 
 def _ordertiming_pages(user):
-    return [_page("Main", "ordertiming.index"), _page("Dashboard", "ordertiming.dashboard_page")]
+    return [_page("Main", "ordertiming.index"), _page("Short Ships", "ordertiming.shortships_page"),
+            _page("Dashboard", "ordertiming.dashboard_page")]
 
 
 MODULE_HOMES = {PLM: "collector.groups", FILLKILL: "fillkill.index", ORDERTIMING: "ordertiming.index"}

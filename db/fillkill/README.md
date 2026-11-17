@@ -243,3 +243,16 @@ for s in 02_user_module_role 12_workflow_tables 09_verify; do
 done
 flask fillkill check-db        # on the web server, with its .env
 ```
+
+## Order Timing's Main (2026-11-16)
+
+Order Timing's Main finds our orders in Medline's Order Detail feed, to see whether Medline
+received and confirmed them. Read-only, no tables. Its script and notes are in
+`db/ordertiming/README.md`.
+
+**Before the deploy:** on O2, `db/ordertiming/01_views.sql`; then grant the app's account `SELECT`
+on `SCSFileIngestor.MedlineOrderTiming.MedlineOrderTiming`. Until then only Order Timing's Main is
+affected: it tells admins what's missing.
+
+**After the deploy:** open Order Timing's Main as an admin: no warning, and the orders A13 has
+loaded are listed.

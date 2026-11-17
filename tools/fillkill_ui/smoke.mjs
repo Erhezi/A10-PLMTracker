@@ -500,13 +500,72 @@ const steps = [
     await waitFor(`document.getElementById('fk-dash-range').innerText === '${m}/${d}/${y} to ${m}/${d}/${y}'`, 'the range on today');
     await waitFor(`document.querySelectorAll('#fk-dash-top tr').length === 2`, "today's two items");
   }],
-  ['Order Timing, a module of its own: a Viewer opens its Main and Dashboard, empty for now', async () => {
-    // 2026-10-30: any Fill/Kill role views it; Medline's order feed isn't ready yet.
+  ['Order Timing, a module of its own: a Viewer finds orders in Medline\'s feed, and opens its empty Dashboard', async () => {
+    // 2026-10-30: any Fill/Kill role views it. 2026-11-16: Main finds our orders in Medline's feed.
     const current = (label) => evaluate(`[...document.querySelectorAll('a[aria-current="page"]')].map((a) => a.innerText.trim()).join('|') === ${JSON.stringify(label)}`);
+    const orderRows = `document.querySelectorAll('#ot-rows .ot-order-row').length`;
     await go('/dev-login?as=viewer&next=/fillkill/', MAIN_READY, 'Main');
     await click('.module-nav a[href$="/ordertiming/"]');
-    await waitFor(`document.getElementById('ot-main-empty')`, "Order Timing's Main");
+    await waitFor(`${orderRows} === 5`, "Order Timing's last 7 days: five orders");
     expect(await current('Order Timing|Main'), 'Order Timing and its Main are not the current module and page');
+    expect((await text('#ot-count')) === '5 orders', `the count: ${await text('#ot-count')}`);
+    expect((await text('#ot-as-of')).startsWith('Data as of'), `the data as of: ${await text('#ot-as-of')}`);
+    // Closed until clicked; a click shows its lines.
+    expect(await evaluate(`document.querySelector('#ot-rows .ot-lines-row').hidden`), 'the lines show before a click');
+    await click('#ot-rows .ot-order-row');
+    await waitFor(`!document.querySelector('#ot-rows .ot-lines-row').hidden`, "the first order's lines");
+    // A PO: its order alone, its lines open, confirmed.
+    await setValue('#ot-q', '3000600001', 'input');
+    await waitFor(`${orderRows} === 1`, 'PO 3000600001 alone');
+    expect((await evaluate('location.search')).includes('q=3000600001'), 'the search is not in the link');
+    const order = (await text('#ot-rows')).replace(/\s+/g, ' ');
+    expect(order.includes('Confirmed') && order.includes('1 rejected') && order.includes('INVALID PART'),
+      `PO 3000600001: ${order}`);
+    // Its PO type and total lines on the PO's row; each line's type, and the bad line with its reject code.
+    expect((await text('#ot-rows .ot-order-row .ot-po-type')).trim() === 'EDI', `the PO type: ${await text('#ot-rows .ot-po-type')}`);
+    expect((await text('#ot-rows .ot-order-row .ot-total')).trim() === '3', `the total lines: ${await text('#ot-rows .ot-total')}`);
+    expect(await evaluate(`[...document.querySelectorAll('#ot-rows .ot-line-type')].every((td) => td.innerText.trim() === 'STD')`),
+      'a line without its line type');
+    expect(await evaluate(`[...document.querySelectorAll('#ot-rows .ot-lines tbody tr')].map((tr) => tr.querySelector('.ot-bad-line').innerText.trim() + tr.querySelector('.ot-rej-code').innerText.trim()).join('|') === '|YESE1|'`),
+      'the bad line and its reject code');
+    expect(await evaluate(`[...document.querySelectorAll('#ot-rows .ot-lines tbody tr')].map((tr) => tr.querySelector('.ot-manufacturer').innerText.trim() + ' ' + tr.querySelector('.ot-mfr-item').innerText.trim()).join('|') === 'MEDLINE D70294|ACME XYZ-1|MEDLINE MDS2585H'`),
+      "each line's manufacturer and part number");
+    expect(!order.includes('Delivery'), 'SAP deliveries are still shown');
+    expect(await count('#ot-rows tr.ot-match, #ot-rows tr.ot-other') === 0, 'a PO found whole has lines highlighted');
+    // Several POs pasted.
+    await setValue('#ot-q', '3000600002, 3000600004', 'input');
+    await waitFor(`${orderRows} === 2`, 'the two POs pasted');
+    expect((await text('#ot-rows')).includes('Not confirmed'), 'PO 3000600002 is not shown as not confirmed');
+    // A PO Medline hasn't reported: said so, with a way to look further back.
+    await setValue('#ot-q', '3000699999', 'input');
+    await waitFor(`document.querySelector('#ot-rows [data-search-window]')`, 'the not-found message');
+    expect((await text('#ot-rows')).includes("Medline hasn't reported receiving it"), 'the not-found message');
+    expect(await evaluate(`(document.getElementById('ot-pager').offsetParent === null)`), 'the pager shows for one page');
+    // Every order with a rejected line, the line found standing out.
+    await setValue('#ot-q', '', 'input');
+    await setValue('#ot-status', 'rejected');
+    await waitFor(`${orderRows} === 1 && document.querySelectorAll('#ot-rows tr.ot-match').length === 1`, 'the rejected line found');
+    expect(await count('#ot-rows tr.ot-other') === 2, 'the order\'s other lines are not shown as not found');
+    expect((await text('#ot-rows .ot-total')).replace(/\s+/g, ' ').trim() === '3 1 found', `the total and found: ${await text('#ot-rows .ot-total')}`);
+    // The last 30 days: 26 orders, 20 a page, the pager above the table; no "All".
+    expect(await count('[data-days="all"]') === 0, 'an "All" days button');
+    await setValue('#ot-status', '');
+    await click('[data-days="30"]');
+    await waitFor(`${orderRows} === 20 && !(document.getElementById('ot-pager').offsetParent === null)`, 'the first page of 20');
+    expect((await text('#ot-count')) === '26 orders', `the count: ${await text('#ot-count')}`);
+    expect((await text('#ot-range')) === 'Orders 1–20 of 26', `the range: ${await text('#ot-range')}`);
+    await click('#ot-pages [data-page="2"]');
+    await waitFor(`${orderRows} === 6 && document.querySelector('#ot-pages .active').innerText.trim() === '2'`, 'page 2: six orders');
+    expect((await evaluate('location.search')).includes('page=2'), 'the page is not in the link');
+    expect((await text('#ot-range')) === 'Orders 21–26 of 26', `page 2's range: ${await text('#ot-range')}`);
+    // A filter changed: back to page 1. A PO forty days old is past what Main reaches.
+    await setValue('#ot-q', '3000600027', 'input');
+    await waitFor(`document.getElementById('ot-rows').innerText.includes('Order Timing looks back 30 days')`,
+      'PO 3000600027 not found, and the 30 days said');
+    expect(await evaluate(`(document.getElementById('ot-pager').offsetParent === null)`), 'the pager shows with nothing found');
+    expect(!(await evaluate('location.search')).includes('page='), 'a search kept page 2');
+    await setValue('#ot-q', '', 'input');
+    await waitFor(`${orderRows} === 20`, 'the last 30 days again');
     await click('.page-nav a[href$="/ordertiming/dashboard"]');
     await waitFor(`document.getElementById('ot-dash-empty')`, "Order Timing's Dashboard");
     expect(await current('Order Timing|Dashboard'), 'Order Timing and its Dashboard are not the current module and page');

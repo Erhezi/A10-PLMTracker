@@ -2,19 +2,94 @@
 {% block title %}Order Timing — Item Management{% endblock %}
 
 {% block content %}
-{# Order Timing's Main page (2026-10-30): read-only for every Fill/Kill role. It will list Medline's
-   feed of the EDI orders it received from us and fills through the day; empty until that data is
-   ready. #}
+{# Order Timing's Main page (2026-11-16): find our orders in Medline's feed and see whether Medline
+   received and confirmed them. Read-only for every Fill/Kill role. Drawn by
+   static/js/ordertiming/main.js from /ordertiming/api/orders, 20 POs a page, the last 30 days at
+   most; the view is in the URL. #}
 <div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
   <h1 class="h4 fw-semibold mb-0">Order Timing</h1>
+  <span class="small text-muted" id="ot-count" aria-live="polite"></span>
+  {# As Fill/Kill's #fk-data-as-of (2026-11-16): grey, or a warning badge when stale. #}
+  <span class="ms-auto small" id="ot-as-of" aria-live="polite"
+        title="When Medline's order data was last loaded. Times on this page are Medline's, as Medline sends them."></span>
 </div>
 
-<div class="card shadow-sm border-0">
-  <div class="card-body text-center text-muted py-5" id="ot-main-empty">
-    <i class="bi bi-clock-history fs-2 d-block mb-2" aria-hidden="true"></i>
-    <p class="mb-1">This page will show when Medline received each of our EDI orders and how they're filled
-      through the day, from Medline's own data feed.</p>
-    <p class="small mb-0">That data isn't ready yet, so there's nothing to show here.</p>
+<div id="ot-problem"></div>
+
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-body d-flex flex-wrap gap-3 align-items-end">
+    <div class="flex-grow-1 ot-search">
+      <label for="ot-q" class="form-label small text-muted mb-1">Find an order</label>
+      <input type="search" id="ot-q" class="form-control form-control-sm" autocomplete="off" maxlength="500"
+             placeholder="PO, item, description, ship-to…"
+             title="A PO, Medline's order number, an item number, the description, the ship-to or the buyer. Paste several POs to see them all." />
+    </div>
+    <div>
+      <span class="form-label small text-muted d-block mb-1" id="ot-dates-label">Order days</span>
+      <div class="d-flex gap-2 align-items-center" role="group" aria-labelledby="ot-dates-label">
+        <input type="date" id="ot-start" class="form-control form-control-sm" aria-label="First order day" />
+        <span class="small text-muted">to</span>
+        <input type="date" id="ot-end" class="form-control form-control-sm" aria-label="Last order day" />
+      </div>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges">
+      <button type="button" class="btn btn-outline-secondary" data-days="1">Today</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
+    </div>
+    <div>
+      <span class="form-label small text-muted d-block mb-1">Sites</span>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="ot-sites-button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">All sites</button>
+        <div class="dropdown-menu p-2 fk-sites-menu" id="ot-sites" aria-labelledby="ot-sites-button"></div>
+      </div>
+    </div>
+    <div>
+      <label for="ot-status" class="form-label small text-muted mb-1">With a line that's</label>
+      <select class="form-select form-select-sm" id="ot-status"><option value="">Any status</option></select>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="ot-expand"
+              title="Show or hide every order's lines">Show all lines</button>
+      <a class="btn btn-sm btn-outline-primary" id="ot-export" href="{{ config.api.export }}"
+         title="Every line these filters pick, as a spreadsheet"><i class="bi bi-download"></i> Export CSV</a>
+    </div>
   </div>
 </div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body p-0">
+    <nav class="d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom ot-pager" id="ot-pager"
+         aria-label="Pages of orders" hidden>
+      <span class="small text-muted" id="ot-range" aria-live="polite"></span>
+      <ul class="pagination pagination-sm mb-0 ms-auto" id="ot-pages"></ul>
+    </nav>
+    <div class="table-responsive fk-scroll ot-scroll">
+      <table class="table table-sm align-middle mb-0 fk-table ot-table">
+        <thead class="table-light">
+          <tr>
+            <th scope="col" class="ot-caret"><span class="visually-hidden">Lines</span></th>
+            <th scope="col">PO<div class="fw-normal small text-muted">Medline order</div></th>
+            <th scope="col" title="Medline's PO Type for the order">PO type</th>
+            <th scope="col">Site<div class="fw-normal small text-muted">Ship-to · buyer</div></th>
+            <th scope="col">Received by Medline<div class="fw-normal small text-muted">850</div></th>
+            <th scope="col">Confirmed by Medline<div class="fw-normal small text-muted">855</div></th>
+            <th scope="col" class="text-end" title="Every line of the PO in Medline's data">Total lines</th>
+            <th scope="col">Lines by status</th>
+          </tr>
+        </thead>
+        <tbody id="ot-rows">
+          <tr><td colspan="8" class="text-muted small p-3">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script id="ot-config" type="application/json">{{ config|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/ordertiming/main.js') }}"></script>
 {% endblock %}

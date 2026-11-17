@@ -6,19 +6,71 @@
   <header class="doc-hero card shadow-sm border-0 p-4">
     <h1 class="h4 fw-semibold mb-1">Order Timing Docs</h1>
     <p class="mb-0 text-muted">
-      When Medline receives our orders and fills them through the day.
+      Did Medline get our orders, and did it confirm them?
     </p>
   </header>
 
   <section class="card shadow-sm border-0 p-4">
     <h2 class="h5 fw-semibold mb-2">What it does</h2>
     <p class="mb-2">
-      Medline sends a data feed of the EDI orders it received from us, which it fills through the day.
-      Order Timing will show that feed: <strong>Main</strong> for the orders themselves, and the
-      <strong>Dashboard</strong> for trends. It's for looking only: nothing is entered here.
+      Medline sends a data feed of the EDI orders it received from us, and what it has done with each line
+      since. Order Timing shows that feed. It's for looking only: nothing is entered here.
     </p>
+    <ul class="mb-0">
+      <li><strong>Main</strong> lists our orders, newest first: one row per PO, with its PO type, when Medline
+        received it, when Medline confirmed it, and its total lines and how many are in each status. Click a row to
+        see its lines: each with its line type, its manufacturer and manufacturer part number, and, when Medline flags
+        it as a bad line, Medline's reject code.</li>
+      <li>The <strong>Dashboard</strong> will show trends. It's empty for now.</li>
+    </ul>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">Finding an order</h2>
+    <ul class="mb-2">
+      <li><strong>Find an order</strong> looks in the PO, Medline's order number, the item numbers (Medline's, ours
+        and the manufacturer's), the description, the ship-to and the buyer. Every word must match, so
+        "nitrile glove" finds nitrile gloves.</li>
+      <li>To check several POs at once, paste them in, separated by spaces, commas or new lines: each one found is
+        listed.</li>
+      <li>Item numbers match without dashes, dots or spaces: "bd930103" finds B-D930103.</li>
+      <li><strong>Order days</strong> are the days Medline received the orders. The page opens on the last 7 days,
+        and looks back 30 days at most. When a search finds nothing, <strong>Search the last 30 days</strong> looks
+        as far back as it goes.</li>
+      <li>Orders are listed 20 to a page, newest first. The page buttons at the top of the table move between
+        them.</li>
+      <li><strong>With a line that's</strong> lists the orders that have a line in that status, for example every
+        order with a rejected line.</li>
+      <li>When the search or a status finds some lines of an order, those lines are highlighted.</li>
+      <li><strong>Export CSV</strong> downloads every line the filters find, on every page, as a spreadsheet.</li>
+    </ul>
     <p class="mb-0">
-      That data isn't ready yet, so both pages are empty for now.
+      If a PO you sent isn't found, Medline hasn't reported receiving it as of the time shown at the top right
+      ("Data as of"). The data is loaded from Medline's feed through the day, so a PO sent in the last hour
+      may not be there yet. Between 8 AM and 11 PM, that time turns into a yellow warning when it's more than 90
+      minutes old, as on Fill/Kill's Main.
+    </p>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">What the statuses mean</h2>
+    <p class="mb-2">An order is <strong>Confirmed</strong> when Medline has sent its order confirmation (EDI 855) for
+      it. Each line then moves on by itself:</p>
+    <dl class="row mb-2">
+      <dt class="col-sm-3"><span class="badge text-bg-warning">Not confirmed</span></dt>
+      <dd class="col-sm-9">Medline received the line but hasn't confirmed it yet.</dd>
+      <dt class="col-sm-3"><span class="badge text-bg-danger">Rejected</span></dt>
+      <dd class="col-sm-9">Medline rejected the line, and it won't be filled. Medline marks it as a bad line, and its
+        reject code is shown under <strong>Rej code</strong> (for example E1, often with the Medline item shown as
+        INVALID PART).</dd>
+      <dt class="col-sm-3"><span class="badge text-bg-primary">Confirmed</span></dt>
+      <dd class="col-sm-9">Confirmed, and not shipped yet.</dd>
+      <dt class="col-sm-3"><span class="badge text-bg-success">ASN sent</span></dt>
+      <dd class="col-sm-9">Medline sent the advance ship notice (EDI 856): it has shipped.</dd>
+    </dl>
+    <p class="mb-0">
+      Under <strong>Shipped</strong>, a red "short" note means fewer were shipped and still open than were ordered.
+      Times are Medline's, as Medline sends them.
     </p>
   </section>
 

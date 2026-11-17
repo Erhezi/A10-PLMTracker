@@ -1336,3 +1336,19 @@ div.fk-vi-tile { border: 1px solid var(--bs-border-color); border-radius: var(--
 .fk-site { display: inline-block; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
            vertical-align: bottom; }
 .fk-chart { position: relative; height: 16rem; }
+/* Order Timing's Main (2026-11-16, templates/ordertiming/index.html): a row per order, its lines in a
+   table below it. Uses Fill/Kill's .fk-scroll/.fk-table for the scrolling table and its sticky header. */
+.ot-search { min-width: 18rem; }
+.ot-scroll { max-height: 70vh; }
+.ot-caret { width: 2rem; }
+.ot-table > thead > tr > th { vertical-align: top; }  /* headers with and without a second line line up */
+.ot-pager[hidden] { display: none !important; }  /* over .d-flex: one page, no pager */
+.ot-order-row { cursor: pointer; }
+.ot-order-row:hover > td, .ot-order-row:focus-visible > td { --bs-table-bg-state: var(--bs-tertiary-bg); }
+.ot-order-row:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
+.ot-order + .ot-order > .ot-order-row > td { border-top: 1px solid var(--bs-border-color); }
+.ot-lines { --bs-table-bg: var(--bs-tertiary-bg); font-size: 0.8rem; border: 1px solid var(--bs-border-color-translucent); }
+.ot-lines > thead > tr > th { font-weight: 600; color: var(--bs-secondary-color); }
+/* The search or a status found some lines of an order and not others: those found stand out. */
+.ot-lines > tbody > tr.ot-match > td { --bs-table-bg-state: var(--bs-warning-bg-subtle); }
+.ot-lines > tbody > tr.ot-other > td { color: var(--bs-secondary-color); }

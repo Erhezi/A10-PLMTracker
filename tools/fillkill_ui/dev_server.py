@@ -8,8 +8,8 @@ Then open http://127.0.0.1:5099/dev-login, or /dev-login?as=<who> for one role (
 /dev-login route exists only in this script, never in the app, and the server only listens on this
 computer. Its database lives in memory: every start is fresh, and nothing is kept.
 
-The views (db/fillkill/10-13) exist only on SQL Server; tests/conftest.py makes SQLite tables with
-their names and columns, which this fills.
+The views (db/fillkill/10-13, db/ordertiming/01) exist only on SQL Server; tests/conftest.py makes
+SQLite tables with their names and columns, which this fills. Order Timing's Main is at /ordertiming/.
 """
 
 from __future__ import annotations
@@ -29,7 +29,10 @@ from sqlalchemy import event  # noqa: E402
 from sqlalchemy.engine import Engine  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from conftest import FILLKILL_VIEWS, TEST_VENDORS, add_view_rows, create_fillkill_views, make_user  # noqa: E402
+from conftest import (  # noqa: E402
+    FILLKILL_VIEWS, ORDERTIMING_VIEWS, TEST_VENDORS, add_view_rows, create_fillkill_views, create_ordertiming_views,
+    make_user,
+)
 
 O2 = r"DRIVER={ODBC Driver 17 for SQL Server};SERVER=YNBBSTVWP02\PROCDATASRVPROD;DATABASE=PLM;Trusted_Connection=yes;"
 
@@ -47,7 +50,7 @@ USERS = {
 def attach_schemas(dbapi_conn, _record):
     if type(dbapi_conn).__module__.startswith("sqlite3"):
         cur = dbapi_conn.cursor()
-        for schema in ("PLM", "FillKill"):
+        for schema in ("PLM", "FillKill", "OrderTiming"):
             cur.execute(f"ATTACH DATABASE ':memory:' AS \"{schema}\"")
         cur.close()
 
@@ -64,6 +67,7 @@ def make_app():
         "ENABLE_BURN_RATE_REFRESH": False,
     })
     create_fillkill_views(app)
+    create_ordertiming_views(app)
     return app
 
 
@@ -119,6 +123,7 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
         row["Total Killed Qty"] += ordered - filled
         row["Total PO Line Count"] += 1
     now = datetime.combine(today, time(9, 30)).isoformat(sep=" ")
+    order_lines = order_timing_rows(today)
     contract = {"vendor_id": "1000001", "vendor_name": "CARDINAL HEALTH", "vendor_item": "88885",
                 "vendor_item_stripped": "88885", "manufacturer_number": "N88885", "manufacturer_number_stripped": "N88885",
                 "description": "GLOVE EXAM NITRILE MEDIUM", "uom": "BX", "qoe": 100, "infor_item": "200001",
@@ -128,6 +133,8 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
         "vw_MedlineFillKill": lines,
         "vw_MedlineFillKillQtyAgg": list(qty.values()),
         "vw_FillKillLastLoad": [{"last_success": now, "last_line_update": now}],
+        "vw_MedlineOrderLine": order_lines,
+        "vw_OrderTimingLastLoad": [{"last_success": now, "last_line_load": now}],
         # The search groups lines per vendor item and UOM: 88885 BX on two contracts (one MHS's), and
         # a case of it from another vendor on a non-MHS contract only.
         "vw_ContractLineSearch": [
@@ -188,6 +195,62 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
     }
 
 
+def order_timing_rows(today: date) -> list[dict]:
+    """Order Timing's sample (2026-11-16): six orders over the last ten days, every line status
+    among them, five in the last 7 days, which Main opens on; twenty more within the last 30 days
+    (26 then: two pages), and one forty days old that Main can't reach."""
+    def at(ago, hhmm):
+        return f"{(today - timedelta(days=ago)).isoformat()} {hhmm}:00" if hhmm else None
+
+    items = {  # Medline item: (customer item, manufacturer item, manufacturer, description, UM)
+        "DYND70294BH": ("100339", "D70294", "MEDLINE", "CUP,DENTURE,8OZ", "CS"),
+        "MDS2585H": ("999999", "MDS2585H", "MEDLINE", "GLOVE,EXAM,NITRILE,M", "BX"),
+        "B-D930103CS": ("101494", "930103", "BD", "CHLORAPREP APPLICATOR 1ML", "CA"),
+        "INVALID PART": ("123456", "XYZ-1", "ACME", "SPONGE,GAUZE,4X4", "CS"),
+    }
+    # (order, days ago, site, received, confirmed, [(item, qty, shipped, open, status, rej code, ASN)])
+    orders = [
+        (1, 0, SITE_A, "09:02", "09:06", [
+            ("DYND70294BH", 10, 0, 10, "confirmed", None, None),
+            ("INVALID PART", 4, 0, None, "rejected", "E1", None),  # a bad line
+            ("MDS2585H", 6, 6, None, "asn", None, "12:17"),
+        ]),
+        (2, 0, SITE_B, "11:55", None, [("B-D930103CS", 2, 0, 2, "not_confirmed", None, None)]),
+        (3, 0, SITE_A, "08:15", "08:19", [("MDS2585H", 12, 0, 12, "confirmed", None, None)]),
+        (4, 1, SITE_B, "14:30", "14:33", [
+            ("DYND70294BH", 3, 2, None, "asn", None, "16:05"),  # one short
+            ("B-D930103CS", 1, 0, 1, "confirmed", None, None),
+        ]),
+        (5, 3, SITE_A, "10:05", "10:09", [("MDS2585H", 20, 20, None, "asn", None, "13:45")]),
+        (6, 10, SITE_A, "09:30", "09:34", [("DYND70294BH", 5, 5, None, "asn", None, "12:00")]),
+    ]
+    # Twenty more over the rest of the last 30 days, so "Last 30 days" has two pages of 20; and one
+    # forty days old, past the 30 days Main reaches.
+    for k in range(20):
+        shipped = k % 4 == 0
+        orders.append((7 + k, 8 + k, SITE_B if k % 3 == 0 else SITE_A, "10:00", "10:04", [
+            ("MDS2585H" if k % 2 else "DYND70294BH", 4, 4 if shipped else 0, None if shipped else 4,
+             "asn" if shipped else "confirmed", None, "13:00" if shipped else None)]))
+    orders.append((27, 40, SITE_A, "10:00", "10:04", [("DYND70294BH", 1, 1, None, "asn", None, "13:00")]))
+    rows = []
+    for number, ago, (code, name), received, confirmed, lines in orders:
+        for n, (item, qty, shipped, still_open, status, rej, asn) in enumerate(lines, start=1):
+            cust, mfr, maker, description, um = items[item]
+            rows.append({
+                "Report Date": (today - timedelta(days=ago)).isoformat(), "Order #": f"11483000{number:02d}",
+                "Order Line": f"{n * 10:06d}", "PO#": f"30006000{number:02d}-STPO", "PO": f"30006000{number:02d}",
+                "POLine": str(n), "PO Type": "EDI", "Sold-To #": code, "Sold-To Name": name, "Ship-To #": "0002464430",
+                "Ship-To Name": "4 WEST", "Buyer Name": "Sample, Buyer", "Medline Item #": item, "Cust Item #": cust,
+                "Item # on PO": item if item != "INVALID PART" else "ACM-XYZ1", "Mfr Item #": mfr,
+                "Manufacturer": maker, "Item Description": description, "Order Qty": qty, "Open Qty": still_open,
+                "Shipped Qty": shipped, "UM": um, "Line Type": "STD", "Bad Line": "YES" if rej else None,
+                "Rej Code": rej, "Received At": at(ago, received), "Order Created At": at(ago, received),
+                "Confirmed At": at(ago, confirmed), "Mins  to Order Create": 2,
+                "Mins to Confirm": 4 if confirmed else None, "ASN Created At": at(ago, asn), "Line Status": status,
+            })
+    return rows
+
+
 # --- O2, read-only -------------------------------------------------------------------------
 
 def _plain(value):
@@ -212,6 +275,14 @@ def o2_rows() -> dict[str, list[dict]]:
     head = "CREATE OR ALTER VIEW [FillKill].[vw_ContractLineSearch] AS"
     start = script.index(head) + len(head)
     contract_sql = script[start:script.index("\nGO", start)].strip().rstrip(";")
+    # Order Timing's views are read through the repo's 01_views.sql too (O2 may not have them yet).
+    timing = (REPO / "db" / "ordertiming" / "01_views.sql").read_text(encoding="utf-8")
+
+    def view_body(name):
+        head = f"CREATE OR ALTER VIEW [OrderTiming].[{name}] AS"
+        begin = timing.index(head) + len(head)
+        return timing[begin:timing.index("\nGO", begin)].strip().rstrip(";")
+
     copies = {
         "vw_MedlineFillKillQtyAgg": "SELECT {cols} FROM FillKill.vw_MedlineFillKillQtyAgg",
         "vw_MedlineFillKillItemCollection": "SELECT {cols} FROM FillKill.vw_MedlineFillKillItemCollection",
@@ -225,19 +296,23 @@ def o2_rows() -> dict[str, list[dict]]:
         "vw_UomAlias": ("SELECT {cols} FROM (SELECT DISTINCT UPPER(LTRIM(RTRIM(ExternalValue))) AS external_value, "
                         "UPPER(LTRIM(RTRIM(LawsonValue))) AS lawson_value "
                         "FROM PLMPreprocessorShared.infor.MDM_EDI_SUB_UOM) AS v"),
+        "vw_MedlineOrderLine": "SELECT {cols} FROM (\n" + view_body("vw_MedlineOrderLine") + "\n) AS v",
+        "vw_OrderTimingLastLoad": "SELECT {cols} FROM (\n" + view_body("vw_OrderTimingLastLoad") + "\n) AS v",
     }
+    columns = {**FILLKILL_VIEWS, **ORDERTIMING_VIEWS}
+    as_defined = ("vw_ContractLineSearch", "vw_Vendor", "vw_UomAlias", "vw_MedlineOrderLine", "vw_OrderTimingLastLoad")
     found = {}
     conn = pyodbc.connect(O2, readonly=True)
     try:
         cur = conn.cursor()
         for name, sql in copies.items():
-            if name in ("vw_ContractLineSearch", "vw_Vendor", "vw_UomAlias"):  # read as 13 defines them
-                present = set(FILLKILL_VIEWS[name])
+            if name in as_defined:  # read as 13 (or Order Timing's 01) defines them
+                present = set(columns[name])
             else:
                 cur.execute("SELECT name FROM sys.columns WHERE object_id = OBJECT_ID(?)", f"FillKill.{name}")
                 present = {row[0] for row in cur.fetchall()}
             # A column O2's view doesn't have yet (its script not run) comes back empty.
-            cols = ", ".join(f"[{c}]" if c in present else f"NULL AS [{c}]" for c in FILLKILL_VIEWS[name])
+            cols = ", ".join(f"[{c}]" if c in present else f"NULL AS [{c}]" for c in columns[name])
             cur.execute(sql.format(cols=cols))
             names = [d[0] for d in cur.description]
             found[name] = [{k: _plain(v) for k, v in zip(names, row)} for row in cur.fetchall()]

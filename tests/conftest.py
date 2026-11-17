@@ -32,7 +32,7 @@ def sqlite_app_factory():
     def attach_schemas(dbapi_conn, _record):
         if type(dbapi_conn).__module__.startswith("sqlite3"):
             cursor = dbapi_conn.cursor()
-            for schema in ("PLM", "FillKill"):
+            for schema in ("PLM", "FillKill", "OrderTiming"):
                 cursor.execute(f"ATTACH DATABASE ':memory:' AS \"{schema}\"")
             cursor.close()
 
@@ -50,6 +50,7 @@ def sqlite_app_factory():
             "ENABLE_BURN_RATE_REFRESH": False,
         })
         create_fillkill_views(app)
+        create_ordertiming_views(app)
         built.append(app)
         return app
 
@@ -98,6 +99,18 @@ FILLKILL_VIEWS = {
     "vw_UomAlias": ["external_value", "lawson_value"],
 }
 
+# Order Timing's views (db/ordertiming/01_views.sql), stood in the same way: the columns the app reads.
+ORDERTIMING_VIEWS = {
+    "vw_MedlineOrderLine": [
+        "Report Date", "Order #", "Order Line", "PO#", "PO", "POLine", "PO Type", "Sold-To #", "Sold-To Name",
+        "Ship-To #", "Ship-To Name", "Buyer Name", "Medline Item #", "Cust Item #", "Item # on PO", "Mfr Item #",
+        "Manufacturer", "Item Description", "Order Qty", "Open Qty", "Shipped Qty", "UM", "Line Type", "Bad Line",
+        "Rej Code", "Received At", "Order Created At", "Confirmed At", "Mins  to Order Create", "Mins to Confirm",
+        "ASN Created At", "Line Status",
+    ],
+    "vw_OrderTimingLastLoad": ["last_success", "last_line_load"],
+}
+
 # Infor vendors every Fill/Kill test can use as a sub's vendor ID.
 CARDINAL, OWENS, MEDLINE = "1000001", "1000002", "1000931"
 TEST_VENDORS = [
@@ -123,16 +136,28 @@ def create_fillkill_views(app):
     add_view_rows(app, "vw_Vendor", TEST_VENDORS)
 
 
-def add_view_rows(app, name, rows):
-    """Insert rows (dicts keyed by column name) into a stand-in view table."""
+def create_ordertiming_views(app):
     from app import db
 
+    with app.app_context():
+        with db.engine.begin() as conn:
+            for name, columns in ORDERTIMING_VIEWS.items():
+                cols = ", ".join(f'"{c}"' for c in columns)
+                conn.exec_driver_sql(f'CREATE TABLE IF NOT EXISTS "OrderTiming"."{name}" ({cols})')
+
+
+def add_view_rows(app, name, rows, schema=None):
+    """Insert rows (dicts keyed by column name) into a stand-in view table (in FillKill, or in
+    OrderTiming for its views)."""
+    from app import db
+
+    schema = schema or ("OrderTiming" if name in ORDERTIMING_VIEWS else "FillKill")
     with app.app_context():
         with db.engine.begin() as conn:
             for row in rows:
                 cols = ", ".join(f'"{c}"' for c in row)
                 marks = ", ".join("?" for _ in row)
-                conn.exec_driver_sql(f'INSERT INTO "FillKill"."{name}" ({cols}) VALUES ({marks})',
+                conn.exec_driver_sql(f'INSERT INTO "{schema}"."{name}" ({cols}) VALUES ({marks})',
                                      tuple(row.values()))
 
 

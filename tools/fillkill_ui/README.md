@@ -6,7 +6,7 @@ a change. Nothing in `app/` imports this folder, and it doesn't need to go to th
 | File | What it does |
 | --- | --- |
 | `dev_server.py` | Runs the real app on an in-memory SQLite database at http://127.0.0.1:5099, with sample data or O2's data copied read-only. |
-| `smoke.mjs` | Drives headless Edge through Main, the item panel, the forms, the Subs page and the Dashboard on the sample data (and Order Timing's two empty pages), ends by resetting the data with Main's Reset data button, and fails on anything that doesn't show up or any browser error. |
+| `smoke.mjs` | Drives headless Edge through Main, the item panel, the forms, the Subs page and the Dashboard on the sample data (and Order Timing: its Main's search and filters, its empty Dashboard), ends by resetting the data with Main's Reset data button, and fails on anything that doesn't show up or any browser error. |
 
 ## Is it safe?
 
@@ -49,6 +49,13 @@ ChloraPrep lines as O2 has them ("930103 chloraprep" finds one). The vendors are
 several Cardinal Health ones among them, so the vendor search has a list to scroll. Medline's own
 contract line for DYND70294BH is there too, which the vendor item form shows but won't take (the
 killed item itself), and a few of Infor's UOM aliases (CS is CA, VL is VI).
+
+Order Timing's sample has six orders over the last ten days, every line status among them: PO
+3000600001 (confirmed, a bad line rejected with E1, shipped), 3000600002 (not confirmed), 3000600003 (confirmed),
+3000600004 (one line short), 3000600005, and 3000600006 from ten days ago; twenty more fill the
+rest of the last 30 days (26 orders then, two pages), and 3000600027, forty days old, is past what
+Main reaches. With
+`--data o2`, Order Timing reads O2's lines through this repo's `db/ordertiming/01_views.sql`.
 
 With `--data o2`, the contract search reads Infor's contract lines through this repo's
 `db/fillkill/13_contract_search.sql`, limited to the vendor items Medline has killed plus nitrile

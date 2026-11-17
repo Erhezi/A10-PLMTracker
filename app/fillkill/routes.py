@@ -18,6 +18,7 @@ from flask_login import current_user, login_required
 from .. import db
 from ..config import Config
 from ..models import now_ny_naive
+from ..utility import freshness
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_SOURCES, SUB_STATUSES, VendorItem
@@ -25,9 +26,7 @@ from .rules import INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDO
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
-STALE_AFTER = timedelta(minutes=90)
 DASHBOARD_DAYS = 30  # the Dashboard opens on the last 30 days of data
-FEED_HOURS = (8, 23)  # the hourly feed runs 8am-11pm; outside that, old data is expected
 
 
 # --- helpers ---------------------------------------------------------------------------
@@ -88,17 +87,9 @@ def scope_from_request(days: int = 1) -> queries.Scope:
 
 
 def data_as_of() -> dict:
+    """The "Data as of" note (utility/freshness.py), which Order Timing's Main shows the same way."""
     load = queries.last_load()
-    as_of = load.get("last_success") or load.get("last_line_update")
-    if isinstance(as_of, str):
-        as_of = datetime.fromisoformat(as_of)
-    now = now_ny_naive()
-    stale = bool(as_of and now - as_of > STALE_AFTER and FEED_HOURS[0] <= now.hour < FEED_HOURS[1])
-    return {
-        "as_of": as_of,
-        "source": "feed" if load.get("last_success") else "lines",
-        "stale": stale,
-    }
+    return freshness.data_as_of(load.get("last_success"), load.get("last_line_update"), now_ny_naive())
 
 
 def body() -> dict:

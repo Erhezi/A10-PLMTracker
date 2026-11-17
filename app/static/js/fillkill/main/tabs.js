@@ -193,8 +193,7 @@ function linesTab(lines, many) {
     <tbody>${lines.map((l) => `<tr>
       <td class="text-nowrap">${fmtDate(l.order_date)} ${esc(String(l.order_time || '').slice(0, 5))}</td>
       ${many ? `<td class="text-nowrap">${esc(l.medline_item)}</td>` : ''}
-      <td>${esc(l.site)}${l.is_test ? ` <span class="badge text-bg-warning" title="${esc(l.test_purpose || 'Test line')}">test</span>` : ''}<div class="text-muted">${shipTo(l)}</div>
-          ${l.test_purpose ? `<div class="text-muted fst-italic">${esc(l.test_purpose)}</div>` : ''}</td>
+      <td>${esc(l.site)}<div class="text-muted">${shipTo(l)}</div></td>
       <td class="text-nowrap">${esc(l.po)}${l.po_line != null ? `-${esc(l.po_line)}` : ''}</td>
       <td class="text-end text-nowrap">${fmtNumber(l.killed)} / ${fmtNumber(l.ordered)} ${esc(l.um)}</td>
       <td>${l.reason ? `<span class="badge text-bg-light border">${esc(l.reason)}</span>` : ''}

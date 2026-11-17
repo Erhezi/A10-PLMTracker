@@ -121,7 +121,6 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
             "Customer Item #": customer[item], "Order Qty": ordered, "UM": um, "Filled Qty": filled,
             "PO": f"26000{n:05d}", "POLine": n, "Internal Order Comments from SAP (Z106)": comment,
             "ReasonTypeText": reason, "Reason": reason, "Reason Date": avail, "Ship-To Code": ship_code,
-            "Is Test": 0, "Test Purpose": None,
         })
         key = (day(ago), code, item, um)
         row = qty.setdefault(key, {"Order Date": day(ago), "Sold-To": code, "Sold-To Name": name, "Medline Item": item,

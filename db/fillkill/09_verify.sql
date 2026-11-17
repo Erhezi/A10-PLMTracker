@@ -1,6 +1,7 @@
 -- Checks for the app's access tables and the Fill/Kill database objects.
 -- Read-only; run after every script run. Every row should say PASS, except
--- 'users.user_role is admin or user', which says PENDING until 04 runs after the deploy. The
+-- 'users.user_role is admin or user', which says PENDING until 04 runs after the deploy, and
+-- 'test lines gone', PENDING until 10 runs after the 2026-11-16 deploy. The
 -- later result sets say FAIL until their scripts have run: kill lines (10, 11) and the
 -- workflow (12-14); each check names its script.
 --
@@ -110,13 +111,11 @@ ORDER BY u.[email];
 SELECT 'view FillKill.vw_MedlineFillKill exists (10)' AS [check],
        CASE WHEN OBJECT_ID(N'[FillKill].[vw_MedlineFillKill]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
 UNION ALL
-SELECT 'vw_MedlineFillKill has Reason (Medline''s reason type), Reason Date, Ship-To Code, Is Test, Test Purpose (10, 2026-11-16)',
+SELECT 'vw_MedlineFillKill has Reason (Medline''s reason type), Reason Date, Ship-To Code (10, 2026-11-16)',
        CASE WHEN COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason Date') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Ship-To Code') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'ReasonTypeText') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Is Test') IS NOT NULL
-             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Test Purpose') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'ReasonTypeText') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
 SELECT 'view FillKill.vw_FillKillLastLoad exists (10)',
        CASE WHEN OBJECT_ID(N'[FillKill].[vw_FillKillLastLoad]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
@@ -138,12 +137,13 @@ SELECT 'item and quantity views read FillKill.vw_MedlineFillKill',
              AND CHARINDEX('MedlineFillKill.MedlineFillKill', definition) = 0
        ) = 2 THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
--- Not a pass/fail: the test lines are gone and 10 no longer reads their table (2026-11-16).
-SELECT 'FillKill.TestFillKillLine no longer read (10, 2026-11-16): drop it',
-       CASE WHEN OBJECT_ID(N'[FillKill].[TestFillKillLine]', N'U') IS NULL THEN 'INFO: dropped'
-            ELSE CONCAT('INFO: still there, ', ISNULL((SELECT SUM(p.[rows]) FROM sys.partitions AS p
-                                WHERE p.[object_id] = OBJECT_ID(N'[FillKill].[TestFillKillLine]')
-                                  AND p.[index_id] IN (0, 1)), 0), ' line(s)') END;
+-- The test lines are gone (2026-11-16): 10, run after that day's deploy, drops their table and
+-- the view's Is Test and Test Purpose (the release before reads Is Test).
+SELECT 'test lines gone: no FillKill.TestFillKillLine, and no Is Test or Test Purpose in vw_MedlineFillKill (10, after the 2026-11-16 deploy)',
+       CASE WHEN OBJECT_ID(N'[FillKill].[TestFillKillLine]', N'U') IS NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Is Test') IS NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Test Purpose') IS NULL THEN 'PASS'
+            ELSE 'PENDING: run 10 after the deploy' END;
 
 -- Kill-line reasons: Medline's reason type on every line (2026-11-16). Lists the reason types,
 -- and the comments on lines Medline sent without one.

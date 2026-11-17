@@ -698,10 +698,10 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
 
 | Object | One row per | Notes |
 |---|---|---|
-| `vw_MedlineFillKill` (view) | kill line | Medline's lines plus the test lines, with an `Is Test` flag. The only reader of Medline's table. (`10_kill_lines.sql`) |
+| `vw_MedlineFillKill` (view) | kill line | Medline's lines, with Reason (Medline's ReasonTypeText), Reason Date (its Est Avail Date) and Ship-To Code (2026-11-16). The only reader of Medline's table. Until 2026-11-16 it added the test lines, with an `Is Test` flag. (`10_kill_lines.sql`) |
 | `vw_MedlineFillKillItemCollection` (view) | Medline item (and UM) | description, Infor UOM conversion for the item and for the contract vendor item, Medline PBO sub, Infor item matched through vendor items, and a consistency flag. Written by the module owner. (`11_item_qty_views.sql`) |
 | `vw_MedlineFillKillQtyAgg` (view) | order date × Sold-To × Medline item | ordered, filled and killed quantities, PO line count. Written by the module owner. (`11_item_qty_views.sql`) |
-| `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied at go-live (`10_kill_lines.sql`) |
+| `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied 2026-11-16 and dropped by `10_kill_lines.sql` (run after that day's deploy) |
 | `Site` | Medline Sold-To account (2026-10-30) | sold_to (Medline's code, leading zeros kept, the same value as SubOrder.site), sold_to_name, site_short_name (Moses / Wakefield / Einstein). 10 Montefiore accounts. Kept by `15_sites.sql`. The app doesn't read it yet |
 | `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
 | `SubVendorItem` | way to order a sub (2026-10-20), or a Medline item without a sub (2026-11-02) | sub_id, or none and then **medline_item** (exactly one of the two, `CK_SubVendorItem_sub_or_item`), vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom), and without a sub per (medline_item, vendor_id, vendor_part, uom) |

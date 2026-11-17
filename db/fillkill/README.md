@@ -39,7 +39,7 @@ changes something now ends with a red error when a transaction is still open (20
 | `03_unify_roles.sql` | Adds `users.requested_modules` and gives everyone the PLM role matching their `users.user_role` (admin and user: PLM editor; view-only: PLM viewer). Copies only once, so re-running never undoes User Control changes. | Never needed. |
 | `04_after_deploy.sql` | Renames `view-only` to `user`. **Only once the new release is live:** the previous release would let `view-only` accounts edit. | Never needed. |
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
-| `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines, with `Reason`: Medline's `ReasonTypeText` since 2026-11-16; `Reason Date`: its `Est Avail Date`; `Ship-To Code`: Ship-To Name 2 without `- UBOAT`; `Is Test` and `Test Purpose`, always 0 and empty now) and `vw_FillKillLastLoad` ("data as of"). Until 2026-11-16 it also loaded the test lines. | Any time: it only (re)creates the two views. |
+| `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines, with `Reason`: Medline's `ReasonTypeText` since 2026-11-16; `Reason Date`: its `Est Avail Date`; `Ship-To Code`: Ship-To Name 2 without `- UBOAT`) and `vw_FillKillLastLoad` ("data as of"); drops the emptied test-line table. Until 2026-11-16 it also loaded the test lines. | Any time: it (re)creates the two views, and drops `TestFillKillLine` only when it's empty. Its 2026-11-16 version only after that day's deploy (below). |
 | `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (until 2026-11-16, so the test site showed), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
 | `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each; or, with no sub, for a Medline item itself, since 2026-11-02), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`), `vw_Vendor` (Infor's vendors, with their legal and search names) and `vw_UomAlias` (Infor's UOM for one typed another way, from `MDM_EDI_SUB_UOM`: CS is CA, VL is VI). | Whenever it changes, before running that code. |
@@ -50,8 +50,9 @@ changes something now ends with a red error when a transaction is still open (20
 
 ### Test lines (`10`, until 2026-11-16)
 
-Gone: with real data in, the user emptied `FillKill.TestFillKillLine` on 2026-11-16, and `10` no
-longer loads or reads it (drop it: `DROP TABLE [FillKill].[TestFillKillLine];`). They were under
+Gone: with real data in, the user emptied `FillKill.TestFillKillLine` on 2026-11-16. `10` no
+longer loads or reads it, and drops it (when it's empty); the view no longer has `[Is Test]` and
+`[Test Purpose]`, and the app no longer reads them. They were under
 Sold-To `test site` (Sales Order # starting `TEST`), each saying why it was there in
 `[Test Purpose]`, which the item panel showed:
 
@@ -126,8 +127,8 @@ put the code in place and recycle the app pool.
 
 **When the team starts using it**
 
-10. Remove the test lines. Done: the user emptied `FillKill.TestFillKillLine` on 2026-11-16, and
-    `10` no longer reads it; drop it when you like (below).
+10. Remove the test lines. Done: the user emptied `FillKill.TestFillKillLine` on 2026-11-16;
+    `10`, run after that day's deploy, drops it (below).
 11. Decide on the subs and orders entered during UAT:
     - keep them (the default), and give any that lost its "created" History row one, so `09`'s
       History check passes (none lacks one on O2 today); or
@@ -158,12 +159,9 @@ sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i db/fillkill/04_after_deploy
 sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -i db/fillkill/09_verify.sql
 ```
 
-When the team starts using it (steps 10 and 11):
+When the team starts using it (step 11; step 10's table goes with `10`, after the 2026-11-16 deploy):
 
 ```sql
--- Emptied 2026-11-16; 10 no longer reads it.
-DROP TABLE IF EXISTS [FillKill].[TestFillKillLine];
-
 -- Keeping the UAT subs and orders: a "created" History row for each that has none, dated when it
 -- was made, by who made it. Adds nothing once every row has one.
 INSERT INTO [FillKill].[History] ([entity], [entity_id], [medline_item], [action], [actor], [acted_at])
@@ -278,12 +276,16 @@ Description`, allocation and DED quantities, possible substitutes...). `10` now 
   `PWLREICU`), the name Materials Managers know. The item panel's kill lines show it before
   Medline's ship-to name.
 - The test lines are gone (above), and `POLine`, now text in Medline's table, comes through as text.
+- Later the same day: the view drops `[Is Test]` and `[Test Purpose]`, and `10` drops
+  `TestFillKillLine` (only when it's empty). The app no longer reads either column.
 
-**Before the deploy:** on O2, `10`, then `09`: "vw_MedlineFillKill has Reason (Medline's reason
-type), ..., Ship-To Code" and "kill lines have Medline's reason type" `PASS`. The release on the
-server keeps working after `10` (same columns as before), and its Latest Reason shows Medline's
-reason type from then on, as typed. Don't run this code against O2 before `10`: the item panel's
-kill lines need `Ship-To Code`, and admins see "The database needs an update" on Main until then.
+**Before the deploy:** done on O2 at 21:55 on 11/16: `10` as it was then (with `Ship-To Code`, and
+`Is Test` and `Test Purpose` kept as 0 and NULL), which both the release on the server and this
+code work with.
+
+**After the deploy:** on O2, `10` as it is now, then `09`: "test lines gone" `PASS` (it says
+`PENDING` until then), with the rest. **Not before the deploy:** the release before reads
+`[Is Test]` to open an item's panel, so the panel would fail until the new release is in.
 
 ```bash
 for s in 10_kill_lines 09_verify; do

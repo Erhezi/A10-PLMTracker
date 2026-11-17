@@ -1,5 +1,6 @@
 -- Kill lines for the Fill/Kill module.
--- Run on O2, database PLM. No app deploy needed. Safe to re-run: it only (re)creates two views.
+-- Run on O2, database PLM. Safe to re-run: it (re)creates two views and drops the old test-line
+-- table, if it's still there and empty.
 --
 -- FillKill.vw_MedlineFillKill is the one place the module reads kill lines from: Medline's table
 -- in SCSFileIngestor (written only by the A13 ingestion). FillKill.vw_FillKillLastLoad says how
@@ -9,10 +10,12 @@
 -- which is now the Reason as Medline sends it, instead of a category we read from the comment;
 -- its [Est Avail Date] is the Reason Date, instead of the first date in the comment; and the
 -- view gives the ship-to's location code (Ship-To Name 2 without '- UBOAT'), the name Materials
--- Managers know. The test lines are gone (the user emptied FillKill.TestFillKillLine):
--- this script no longer loads them, and the view no longer reads that table, which can be dropped
--- (DROP TABLE [FillKill].[TestFillKillLine];). [Is Test] and [Test Purpose] stay, always 0 and
--- NULL, so a release that still reads them keeps working.
+-- Managers know. The test lines are gone (the user emptied FillKill.TestFillKillLine).
+--
+-- Later the same day: the view no longer has [Is Test] and [Test Purpose] (kept until then as 0
+-- and NULL), and this script drops FillKill.TestFillKillLine. RUN THIS VERSION AFTER THE DEPLOY
+-- of the release that stopped reading them: the release before it reads [Is Test] to open an
+-- item's panel. The version run on O2 before the deploy (2026-11-16 21:55) works with both.
 
 SET NOCOUNT ON;
 GO
@@ -24,7 +27,6 @@ CREATE OR ALTER VIEW [FillKill].[vw_MedlineFillKill] AS
 --   Reason Date   Medline's [Est Avail Date], as sent (2026-11-16; it was the first date in the
 --                 comment). Allocated Item lines have one too, the comment none.
 --   Ship-To Code  Ship-To Name 2 up to its first hyphen, trimmed: 'PMOSN1RO - UBOAT' gives PMOSN1RO
---   Is Test       always 0; Test Purpose always NULL (the test lines are gone, 2026-11-16)
 SELECT m.[Sold-To], m.[Sold-To Name], m.[Ship-To], m.[Ship-To Name], m.[Ship-To Name 2],
        m.[Order Date], m.[Order Time], m.[PO #], m.[PO Line], m.[Sales Order #], m.[Order Line #],
        m.[Item], m.[Item Description], m.[Item # on PO], m.[Customer Item #], m.[Mfr. Item #],
@@ -40,8 +42,7 @@ SELECT m.[Sold-To], m.[Sold-To Name], m.[Ship-To], m.[Ship-To Name], m.[Ship-To 
        NULLIF(LTRIM(RTRIM(m.[ReasonTypeText])), '') AS [Reason],
        m.[Est Avail Date] AS [Reason Date],
        NULLIF(LTRIM(RTRIM(LEFT(m.[Ship-To Name 2],
-           CHARINDEX('-', m.[Ship-To Name 2] + '-') - 1))), '') AS [Ship-To Code],
-       CAST(0 AS BIT) AS [Is Test], CAST(NULL AS VARCHAR(300)) AS [Test Purpose]
+           CHARINDEX('-', m.[Ship-To Name 2] + '-') - 1))), '') AS [Ship-To Code]
 FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m;
 GO
 
@@ -51,6 +52,17 @@ CREATE OR ALTER VIEW [FillKill].[vw_FillKillLastLoad] AS
 SELECT (SELECT MAX([LastRunTime]) FROM [SCSFileIngestor].[MedlineReport].[ETLHealth]
         WHERE [ProcessName] = 'Medline Fill-Kill' AND [TaskStatus] = 'SUCCESS') AS [last_success],
        (SELECT MAX([update stamp]) FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill]) AS [last_line_update];
+GO
+
+-- The test lines' table (2026-11-16): emptied, and read by nothing. Dropped only when empty, so
+-- lines someone put back aren't lost.
+IF OBJECT_ID(N'[FillKill].[TestFillKillLine]', N'U') IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM [FillKill].[TestFillKillLine])
+        RAISERROR('FillKill.TestFillKillLine has lines again, so it was not dropped. Empty it (TRUNCATE TABLE [FillKill].[TestFillKillLine];) and re-run this script.', 16, 1);
+    ELSE
+        DROP TABLE [FillKill].[TestFillKillLine];
+END;
 GO
 
 -- Still in a transaction here? (SSMS's "SET IMPLICIT_TRANSACTIONS" option, or a BEGIN TRAN run

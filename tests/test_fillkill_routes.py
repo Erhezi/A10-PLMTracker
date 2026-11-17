@@ -32,7 +32,7 @@ def line(day, time, site, item, ordered, comment, reason, reason_date=None, so="
             "Order Date": f"2026-09-{day}", "Order Time": time, "Sales Order #": so, "Order Line #": "10",
             "Item": item, "Order Qty": ordered, "UM": "EA", "Filled Qty": 0, "PO": "2600303592", "POLine": 8,
             "Internal Order Comments from SAP (Z106)": comment, "ReasonTypeText": reason, "Reason": reason,
-            "Reason Date": reason_date, "Is Test": int(site == TEST)}
+            "Reason Date": reason_date}
 
 
 @pytest.fixture
@@ -55,8 +55,8 @@ def app(sqlite_app):
     add_view_rows(sqlite_app, "vw_MedlineFillKill", [
         line(28, "09:00:00", WP, "DYND70294BH", 5, "MBO - ERD is 11/18/2026", "Backorder", "2026-11-18", so="1"),
         line(30, "11:35:29", WP, "DYND70294BH", 5, "MBO - ERD is 11/30/2026", "Backorder", "2026-11-30", so="2"),
-        {**line(30, "10:00:00", TEST, "DYND70294BH", 5, "CUSTOM ITEM - ETA is 10/02/2026", "Custom", "2026-10-02",
-                so="TEST3"), "Test Purpose": "Sites: a real line copied under a second site."},
+        line(30, "10:00:00", TEST, "DYND70294BH", 5, "CUSTOM ITEM - ETA is 10/02/2026", "Custom", "2026-10-02",
+             so="TEST3"),
         line(29, "08:00:00", WP, "MDS2585H", 4, "Allocation limit has been reached", "Allocated Item", so="4"),
     ])
     add_view_rows(sqlite_app, "vw_ContractLineSearch", [
@@ -253,7 +253,7 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     # Each line names its ship-to by the code Materials Managers know, and its Medline reason type (2026-11-16).
     assert {(l["ship_to_code"], l["department"], l["reason"]) for l in panel["lines"]} == {
         ("PWPH4I", "4I", "Backorder"), ("PWPH4I", "4I", "Custom")}
-    assert [l["test_purpose"] for l in panel["lines"] if l["is_test"]] == ["Sites: a real line copied under a second site."]
+    assert not any("is_test" in l or "test_purpose" in l for l in panel["lines"])  # the test lines are gone
     assert panel["details"]["description"] == "CUP,DENTURE"
 
     _, history = get(viewer, f"/fillkill/api/history/sub/{sub_id}")

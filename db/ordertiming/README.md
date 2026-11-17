@@ -5,7 +5,7 @@ re-run. It has no tables: the module only reads Medline's feed, which A13 loads.
 
 | Script | What it does |
 | --- | --- |
-| `01_views.sql` | Schema `OrderTiming`; `vw_MedlineOrderLine` (Medline's order lines, each step's date and time as one value, **Line Status** and **Short Qty**) and `vw_OrderTimingLastLoad` (the app's "Data as of" and "last loaded"; `last_file` since 2026-11-17). It ends by listing the lines per status. |
+| `01_views.sql` | Schema `OrderTiming`; `vw_MedlineOrderLine` (Medline's order lines, each step's date and time as one value, **Line Status** and **Short Qty**), Short Ships' `vw_ShortShipLine` and `vw_ItemKillDay` (2026-11-17), and `vw_OrderTimingLastLoad` (the app's "Data as of" and "last loaded"; `last_file` since 2026-11-17). It ends by listing the lines per status, the short lines in Fill/Kill, and the freshness row. |
 
 ## Where the data comes from
 
@@ -69,23 +69,38 @@ On the 2026-10-07 sample (257 lines, 70 orders), tested on LocalDB: 17 rejected,
 ## Short Ships (2026-11-17)
 
 Order Timing's second page lists the items with a short-shipped line (a Short Qty, whatever the
-status), one row per Medline item. It also
-reads Fill/Kill's `FillKill.vw_MedlineFillKill` (db/fillkill/10, already on O2 and granted for
-Fill/Kill), for:
+status), one row per Medline item. It reads two views, which join this feed to Fill/Kill's
+`FillKill.vw_MedlineFillKill` (db/fillkill/10, already on O2 and granted for Fill/Kill) in SQL; the
+app filters them by days, sites and search, groups the lines per item and pages them (the user,
+2026-11-17: the logic in the query, not the code).
 
-- **each short line's Fill/Kill line**, found by Medline order (`Sales Order #` = `Order #`) and
-  line (Fill/Kill's `Order Line #` 210 is this feed's `Order Line` 000210): Medline's reason and
-  Est Avail Date (the view's `Reason` and `Reason Date`), or "Not in Fill/Kill yet";
-- **how often each item was killed**: Fill/Kill's lines for the item today, in the last 7 days and
-  in the last 30, by its `Order Date`, at the sites chosen. Fill/Kill's Sold-Tos have no leading
-  zeros on O2 (2159659) and this feed's do (0002159659): the app matches both forms.
+- **`vw_ShortShipLine`**: each short line with all of `vw_MedlineOrderLine`'s columns, its PO's
+  total lines that day (`PO Total Lines`), and its Fill/Kill line, found by Medline order and line
+  (`Sales Order #` = `Order #`, `Order Line #` = `Order Line`, which both feeds write alike since
+  A13's fix of 11/17): `In Fill/Kill`, Medline's reason (`Fill/Kill Reason`) and `Est Avail Date`.
+  A line just shorted may not be in Fill/Kill yet ("Not in Fill/Kill yet"): the feeds come in
+  their own files.
+- **`vw_ItemKillDay`**: Fill/Kill's kill lines per Medline item, Sold-To and `Order Date`, for how
+  often each item was killed today, in the last 7 days and in the last 30 (the app adds up the
+  days) at the sites chosen. Fill/Kill's Sold-Tos have no leading zeros (2159659) and this feed's
+  do (0002159659): the view pads Fill/Kill's to ten digits, so one site code filters both.
 
-Fill/Kill's table has no index on `Order Date` or `Item`, so the kill counts read all of it; at
-about 200 kill lines a day that's small for a long while.
+The PO total is a count over each line's day, Sold-To and order, so the app's day and site filters
+still reach the source table's key: on O2 (11/17), with the days as parameters as the app sends
+them, a range with no lines was a seek that read none. Fill/Kill's table has no index on
+`Order Date` or `Item`, so the kill counts read all of it; at about 200 kill lines a day that's
+small for a long while.
+
+On O2's data of 11/17, these views gave Short Ships exactly what the app's own join had (24 items,
+111 short lines, 106 of them in Fill/Kill; every site the same). The other 5 came in an Order
+Detail file newer than Fill/Kill's last. Every Fill/Kill line on an order in this feed is short in
+it. Medline's Order Detail feed starts on 11/17: 11/16's orders (129 kill lines) aren't in it,
+which stops mattering once 11/16 is past the 30 days.
 
 ## Before the deploy
 
-1. On O2: `01_views.sql`. Its last result sets list the lines per status and the freshness row.
+1. On O2: `01_views.sql` (after Fill/Kill's `10`, which its Short Ships views read). Its last
+   result sets list the lines per status, the short lines in Fill/Kill, and the freshness row.
 2. Grant the app's account `SELECT` on `SCSFileIngestor.MedlineOrderTiming.MedlineOrderTiming`
    (Fill/Kill's go-live already granted `MedlineReport.ETLHealth`). A view in PLM doesn't carry
    permissions into another database.

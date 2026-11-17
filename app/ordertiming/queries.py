@@ -80,14 +80,24 @@ LINE_COLUMNS = {
 ORDER_KEYS = ("order_no", "po", "po_raw", "po_type", "report_date", "site", "site_name", "ship_to", "ship_to_name",
               "buyer")
 
+# Short Ships' lines (vw_ShortShipLine, 2026-11-17): the short-shipped lines with Main's columns, then
+# what the view adds: the PO's total lines, and the line in Medline's Fill/Kill feed, which the view
+# joins on Medline's order and line.
+SHORT_COLUMNS = {
+    **LINE_COLUMNS,
+    "po_lines": "PO Total Lines",
+    "in_fillkill": "In Fill/Kill",
+    "kill_reason": "Fill/Kill Reason",
+    "kill_reason_date": "Est Avail Date",
+}
+
 LINES = table("vw_MedlineOrderLine", *(column(name) for name in LINE_COLUMNS.values()), schema="OrderTiming")
+SHORT_LINES = table("vw_ShortShipLine", *(column(name) for name in SHORT_COLUMNS.values()), schema="OrderTiming")
+# Fill/Kill's kill lines per Medline item, Sold-To (as this feed writes it) and day, for Short Ships'
+# kill counts.
+KILL_DAYS = table("vw_ItemKillDay", column("Medline Item #"), column("Sold-To #"), column("Order Date"),
+                  column("Kill Lines"), schema="OrderTiming")
 LAST_LOAD = table("vw_OrderTimingLastLoad", column("last_success"), column("last_line_load"), schema="OrderTiming")
-# Fill/Kill's kill lines (db/fillkill/10), which Short Ships reads: Medline's Fill/Kill feed has a
-# line for each order line it killed, keyed on the same Medline order and line as this feed (its
-# line numbers without the leading zeros, its Sold-To codes often without them too).
-KILLS = table("vw_MedlineFillKill", column("Sold-To"), column("Order Date"), column("Sales Order #"),
-              column("Order Line #"), column("Item"), column("Filled Qty"), column("Reason"), column("Reason Date"),
-              schema="FillKill")
 
 # What the search box looks in; the item numbers also without dashes, spaces, dots and slashes
 # ("dls5529" finds DLS-5529), as Fill/Kill's sub search does.
@@ -97,8 +107,9 @@ COMPACTED = ("medline_item", "cust_item", "item_on_po", "mfr_item")
 PUNCTUATION = ("-", " ", ".", "/")
 
 
-def col(key: str):
-    return LINES.c[LINE_COLUMNS[key]]
+def col(key: str, source=LINES):
+    """A line's column by the app's name, in Main's view or (``source``) Short Ships'."""
+    return source.c[SHORT_COLUMNS[key]]
 
 
 @dataclass(frozen=True)
@@ -153,53 +164,54 @@ def _compact(text: str) -> str:
     return text
 
 
-def _compact_column(key: str):
-    expression = func.lower(col(key))
+def _compact_column(key: str, source=LINES):
+    expression = func.lower(col(key, source))
     for ch in PUNCTUATION:
         expression = func.replace(expression, ch, "")
     return expression
 
 
-def _word_condition(word: str):
+def _word_condition(word: str, source=LINES):
     """A line where the word is in any column searched."""
-    conditions = [func.lower(col(key)).contains(word, autoescape=True) for key in SEARCHED]
+    conditions = [func.lower(col(key, source)).contains(word, autoescape=True) for key in SEARCHED]
     bare = _compact(word)
     if bare:  # the item numbers, both without punctuation: "bd930103" finds B-D930103, and "b-d930103" BD930103
-        conditions += [_compact_column(key).contains(bare, autoescape=True) for key in COMPACTED]
+        conditions += [_compact_column(key, source).contains(bare, autoescape=True) for key in COMPACTED]
     return or_(*conditions)
 
 
-def search_condition(q: str | None):
+def search_condition(q: str | None, source=LINES):
     """Lines with every word of the search; but when every word is a number (POs, Medline order
     numbers, items pasted as a list), lines with any of them: one line can't be on two POs."""
     words = search_terms(q)
     if not words:
         return None
-    each = [_word_condition(word) for word in words]
+    each = [_word_condition(word, source) for word in words]
     if len(words) > 1 and all(word.isdigit() for word in words):
         return or_(*each)
     return and_(*each)
 
 
-def _conditions(filters: Filters, *, scope_only: bool = False) -> list:
-    """The SQL conditions for the days and sites, and (unless ``scope_only``) the search and status."""
-    found = [col("report_date").between(filters.start, filters.end)]
+def _conditions(filters: Filters, *, scope_only: bool = False, source=LINES) -> list:
+    """The SQL conditions for the days and sites, and (unless ``scope_only``) the search and status,
+    on Main's view or (``source``) Short Ships'."""
+    found = [col("report_date", source).between(filters.start, filters.end)]
     if filters.sites:
-        found.append(col("site").in_(list(filters.sites)))
+        found.append(col("site", source).in_(list(filters.sites)))
     if scope_only:
         return found
-    searched = search_condition(filters.q)
+    searched = search_condition(filters.q, source)
     if searched is not None:
         found.append(searched)
     if filters.status == SHORT:
-        found.append(col("short_qty") > 0)
+        found.append(col("short_qty", source) > 0)
     elif filters.status:
-        found.append(col("status") == filters.status)
+        found.append(col("status", source) == filters.status)
     return found
 
 
-def _selected(keys=None):
-    return [col(key).label(key) for key in (keys or LINE_COLUMNS)]
+def _selected(keys=None, source=LINES):
+    return [col(key, source).label(key) for key in (keys or LINE_COLUMNS)]
 
 
 # --- Main ---------------------------------------------------------------------------------
@@ -313,10 +325,11 @@ def export_lines(filters: Filters, limit: int = EXPORT_LIMIT) -> list[dict]:
 # --- Short Ships (2026-11-17) ---------------------------------------------------------------
 # The user: the short-shipped lines, one row per Medline item, with how often Fill/Kill has killed
 # that item today, in the last 7 days and in the last 30, so items killed again and again stand out.
-# A short-shipped line is one with a Short Qty (the view's rule), whatever its status.
+# A short-shipped line is one with a Short Qty (the view's rule), whatever its status. The joins to
+# Fill/Kill are the views' (vw_ShortShipLine, vw_ItemKillDay; the user, 2026-11-17: the logic in the
+# query, not the code); here they're filtered, grouped per item and paged.
 
 ITEMS_PAGE_SIZE = 20  # items a page of Short Ships shows
-IN_CHUNK = 1000  # values in one IN list (SQL Server takes 2,100 parameters at most)
 KILL_KEYS = ("kills_today", "kills_7", "kills_30")
 NO_KILLS = {key: 0 for key in KILL_KEYS}
 # What Short Ships can sort on (a header click); it opens on the items most killed in 30 days.
@@ -324,81 +337,47 @@ ITEM_SORTS = ("medline_item", "short_lines", "pos", "sites", "short_qty", "last_
 DEFAULT_ITEM_SORT = ("kills_30", "desc")
 
 
-def _chunks(values, size: int = IN_CHUNK):
-    values = sorted(values)
-    for i in range(0, len(values), size):
-        yield values[i:i + size]
+def scol(key: str):
+    """A column of Short Ships' view (vw_ShortShipLine)."""
+    return col(key, SHORT_LINES)
 
 
-def _line_number(value) -> str:
-    """An order line as both feeds agree on it: this feed's '000210' is Fill/Kill's '210'."""
-    text = str(value if value is not None else "").strip()
-    return (text.lstrip("0") or "0") if text.isdigit() else text
-
-
-def _fillkill_sites(codes) -> list[str]:
-    """Sold-To codes as Fill/Kill's feed may have them: as this feed has them (0002159659), and
-    without the leading zeros (2159659), which is how Medline's Fill/Kill file has them on O2."""
-    return sorted({form for code in codes for form in (code, code.lstrip("0") or "0")})
+def _short_conditions(filters: Filters) -> list:
+    """The days, sites and search, on Short Ships' view: every line in it is short shipped."""
+    return _conditions(replace(filters, status=""), source=SHORT_LINES)
 
 
 def kill_counts(today: date, sites=()) -> dict[str, dict]:
     """How many lines Medline's Fill/Kill feed killed for each Medline item: today, in the last 7
     days and in the last 30 (today included, by Fill/Kill's Order Date), at the Sold-Tos given (all
-    when none). Each kill line counts once; an item killed on three orders today was killed 3 times."""
-    k = KILLS.c
-    day = k["Order Date"]
-    statement = (select(k["Item"].label("item"),
-                        func.sum(case((day == today, 1), else_=0)).label("kills_today"),
-                        func.sum(case((day >= today - timedelta(days=6), 1), else_=0)).label("kills_7"),
-                        func.count().label("kills_30"))
+    when none). Each kill line counts once; an item killed on three orders today was killed 3 times.
+    vw_ItemKillDay counts them per day and writes Fill/Kill's Sold-Tos as this feed does."""
+    k = KILL_DAYS.c
+    day, kills = k["Order Date"], k["Kill Lines"]
+    statement = (select(k["Medline Item #"].label("item"),
+                        func.sum(case((day == today, kills), else_=0)).label("kills_today"),
+                        func.sum(case((day >= today - timedelta(days=6), kills), else_=0)).label("kills_7"),
+                        func.sum(kills).label("kills_30"))
                  .where(day.between(today - timedelta(days=29), today))
-                 .group_by(k["Item"]))
+                 .group_by(k["Medline Item #"]))
     if sites:
-        statement = statement.where(k["Sold-To"].in_(_fillkill_sites(sites)))
+        statement = statement.where(k["Sold-To #"].in_(list(sites)))
     return {row["item"]: {key: int(row[key] or 0) for key in KILL_KEYS} for row in _rows(statement)}
 
 
-def _add_po_totals(lines: list[dict], filters: Filters) -> None:
-    """Each line's ``po_lines``: how many lines its PO has in Medline's feed on those days, as Main's
-    Total lines counts them (each order line once)."""
-    scope = _conditions(filters, scope_only=True)
-    totals: dict = {}
-    for chunk in _chunks({line["order_no"] for line in lines}):
-        statement = (select(col("order_no").label("o"), func.count(func.distinct(col("order_line"))).label("n"))
-                     .where(col("order_no").in_(chunk), *scope).group_by(col("order_no")))
-        totals.update({row["o"]: row["n"] for row in _rows(statement)})
-    for line in lines:
-        line["po_lines"] = totals.get(line["order_no"])
-
-
-def _add_kill_lines(lines: list[dict]) -> None:
-    """Each line's Fill/Kill line, found by Medline order and line: ``in_fillkill``, and Medline's
-    reason and Est Avail Date (Fill/Kill's Reason and Reason Date). A line just shorted may not be in
-    Fill/Kill yet: its feed loads on its own hours."""
-    k = KILLS.c
-    found: dict = {}
-    for chunk in _chunks({line["order_no"] for line in lines}):
-        statement = select(k["Sales Order #"].label("o"), k["Order Line #"].label("l"), k["Reason"].label("reason"),
-                           k["Reason Date"].label("reason_date")).where(k["Sales Order #"].in_(chunk))
-        found.update({(row["o"], _line_number(row["l"])): row for row in _rows(statement)})
-    for line in lines:
-        kill = found.get((line["order_no"], _line_number(line["order_line"])))
-        line["in_fillkill"] = kill is not None
-        line["kill_reason"] = kill["reason"] if kill else None
-        line["kill_reason_date"] = kill["reason_date"] if kill else None
-
-
 def _short_lines(filters: Filters, *extra, limit: int | None = None) -> list[dict]:
-    statement = (select(*_selected())
-                 .where(*_conditions(replace(filters, status=SHORT)), *extra)
-                 .order_by(col("report_date").desc(), col("created_at").desc(), col("order_no").desc(),
-                           col("order_line")))
+    """The short-shipped lines the filters pick, newest first, each with its PO's total lines
+    (``po_lines``) and its Fill/Kill line (``in_fillkill``, ``kill_reason``, ``kill_reason_date``),
+    as vw_ShortShipLine gives them."""
+    statement = (select(*_selected(SHORT_COLUMNS, SHORT_LINES))
+                 .where(*_short_conditions(filters), *extra)
+                 .order_by(scol("report_date").desc(), scol("created_at").desc(), scol("order_no").desc(),
+                           scol("order_line")))
     if limit:
         statement = statement.limit(limit)
     lines = _rows(statement)
-    _add_po_totals(lines, filters)
-    _add_kill_lines(lines)
+    for line in lines:
+        line["in_fillkill"] = bool(line["in_fillkill"])  # SQL Server's BIT; 1 or 0 on SQLite
     return lines
 
 
@@ -422,21 +401,21 @@ def short_items(filters: Filters, today: date, sort: str = "", direction: str = 
     if sort not in ITEM_SORTS:
         sort, direction = DEFAULT_ITEM_SORT
     direction = "asc" if direction == "asc" else "desc"
-    picked = _conditions(replace(filters, status=SHORT))
-    items = _rows(select(col("medline_item").label("medline_item"),
+    picked = _short_conditions(filters)
+    items = _rows(select(scol("medline_item").label("medline_item"),
                          func.count().label("short_lines"),
-                         func.count(func.distinct(col("order_no"))).label("pos"),
-                         func.count(func.distinct(col("site"))).label("sites"),
-                         func.sum(col("short_qty")).label("short_qty"),
-                         func.min(col("um")).label("um"), func.max(col("um")).label("um_last"),
-                         func.max(col("description")).label("description"),
-                         func.max(col("cust_item")).label("cust_item"),
-                         func.max(col("manufacturer")).label("manufacturer"),
-                         func.max(col("mfr_item")).label("mfr_item"),
-                         func.max(col("created_at")).label("last_short"))
-                  .where(*picked).group_by(col("medline_item")))
+                         func.count(func.distinct(scol("order_no"))).label("pos"),
+                         func.count(func.distinct(scol("site"))).label("sites"),
+                         func.sum(scol("short_qty")).label("short_qty"),
+                         func.min(scol("um")).label("um"), func.max(scol("um")).label("um_last"),
+                         func.max(scol("description")).label("description"),
+                         func.max(scol("cust_item")).label("cust_item"),
+                         func.max(scol("manufacturer")).label("manufacturer"),
+                         func.max(scol("mfr_item")).label("mfr_item"),
+                         func.max(scol("created_at")).label("last_short"))
+                  .where(*picked).group_by(scol("medline_item")))
     names: dict = {}
-    for row in _rows(select(col("medline_item").label("i"), col("site_name").label("n"), col("site").label("s"))
+    for row in _rows(select(scol("medline_item").label("i"), scol("site_name").label("n"), scol("site").label("s"))
                      .where(*picked).distinct()):
         names.setdefault(row["i"], set()).add(row["n"] or row["s"])
     kills = kill_counts(today, filters.sites)
@@ -453,7 +432,7 @@ def short_items(filters: Filters, today: date, sort: str = "", direction: str = 
     shown = items[(page - 1) * per_page:page * per_page]
     by_item: dict = {}
     if shown:
-        for line in _short_lines(filters, col("medline_item").in_([item["medline_item"] for item in shown])):
+        for line in _short_lines(filters, scol("medline_item").in_([item["medline_item"] for item in shown])):
             by_item.setdefault(line["medline_item"], []).append(line)
     for item in shown:
         item["lines"] = by_item.get(item["medline_item"], [])

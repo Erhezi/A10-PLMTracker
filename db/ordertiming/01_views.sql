@@ -10,11 +10,15 @@
 --   OrderTiming.vw_MedlineOrderLine      Medline's lines, as loaded, plus each step's date and time
 --                                        as one value, the line's status (Line Status) and what
 --                                        it's short shipped (Short Qty)
+--   OrderTiming.vw_ShortShipLine         Short Ships' lines: the short-shipped ones, each with its
+--                                        PO's total lines and its line in Fill/Kill's feed
+--   OrderTiming.vw_ItemKillDay           Short Ships' kill counts: Fill/Kill's kill lines per item,
+--                                        Sold-To and day
 --   OrderTiming.vw_OrderTimingLastLoad   one row: how fresh the lines are, for the app's "Data as
 --                                        of" (Medline's file) and "Last loaded"
 --
--- Short Ships (2026-11-17) also reads Fill/Kill's FillKill.vw_MedlineFillKill (db/fillkill/10):
--- each short line's kill reason, and how often each item was killed.
+-- The two Short Ships views (2026-11-17) read Fill/Kill's FillKill.vw_MedlineFillKill, so run
+-- db/fillkill/10 before this script on a new database. They join the two feeds here, not in the app.
 --
 -- Line Status and Short Qty are the rules the app shows and filters on; change them here, not in the
 -- app. Line Status is where the line is with Medline, checked in this order:
@@ -98,6 +102,44 @@ CROSS APPLY (SELECT
 ) AS t;
 GO
 
+CREATE OR ALTER VIEW [OrderTiming].[vw_ShortShipLine] AS
+-- Short Ships' lines (2026-11-17): every short-shipped line (a Short Qty, whatever its status) with
+-- all of vw_MedlineOrderLine's columns (re-created right after it, so it has them all), then:
+--   PO Total Lines     the lines on its PO that day, short or not (Main's Total lines)
+--   In Fill/Kill       1 when Medline's Fill/Kill feed has the line, else 0: the same Medline order
+--                      and order line, which both feeds write alike since A13's fix of 11/17 (on O2
+--                      that day, all 106 Fill/Kill lines on our orders matched). A line just shorted
+--                      may not be in it yet: the two feeds come in their own files.
+--   Fill/Kill Reason   Medline's reason type for the kill (FillKill.vw_MedlineFillKill's Reason)
+--   Est Avail Date     its Est Avail Date (that view's Reason Date)
+-- The PO's lines are counted before the short ones are picked, over its day, Sold-To and order: the
+-- columns the app filters on, so its days and sites still reach the source table's key (on O2,
+-- 11/17, with the days as parameters: a range with no lines was a seek reading none).
+SELECT l.*,
+       CAST(CASE WHEN k.[Sales Order #] IS NULL THEN 0 ELSE 1 END AS BIT) AS [In Fill/Kill],
+       k.[Reason] AS [Fill/Kill Reason], k.[Reason Date] AS [Est Avail Date]
+FROM (SELECT o.*, COUNT(*) OVER (PARTITION BY o.[Report Date], o.[Sold-To #], o.[Order #]) AS [PO Total Lines]
+      FROM [OrderTiming].[vw_MedlineOrderLine] AS o) AS l
+LEFT JOIN [FillKill].[vw_MedlineFillKill] AS k
+       ON k.[Sales Order #] = l.[Order #] AND k.[Order Line #] = l.[Order Line]
+WHERE l.[Short Qty] > 0;
+GO
+
+CREATE OR ALTER VIEW [OrderTiming].[vw_ItemKillDay] AS
+-- How often Medline's Fill/Kill feed killed each item (2026-11-17), for Short Ships' kill counts:
+-- the kill lines per Medline item, Sold-To and Order Date. Sold-To # is as Medline's Order Detail
+-- feed writes it, ten digits with the leading zeros, which Fill/Kill's file drops (its 2159659 is
+-- 0002159659), so the app filters both with the same site codes. The app adds up the days it shows
+-- (today, the last 7 and the last 30).
+SELECT k.[Item] AS [Medline Item #], s.[Sold-To #], k.[Order Date], COUNT(*) AS [Kill Lines]
+FROM [FillKill].[vw_MedlineFillKill] AS k
+CROSS APPLY (SELECT LTRIM(RTRIM(k.[Sold-To])) AS [code]) AS c
+CROSS APPLY (SELECT CASE WHEN c.[code] NOT LIKE '%[^0-9]%' AND LEN(c.[code]) BETWEEN 1 AND 9
+                         THEN RIGHT('0000000000' + c.[code], 10)
+                         ELSE c.[code] END AS [Sold-To #]) AS s
+GROUP BY k.[Item], s.[Sold-To #], k.[Order Date];
+GO
+
 CREATE OR ALTER VIEW [OrderTiming].[vw_OrderTimingLastLoad] AS
 -- One row: the last successful A13 run ("Medline Order Timing" in ETLHealth), and when the newest
 -- day's lines were loaded, which stands in until the scheduled runs are logged (the backfill doesn't
@@ -130,6 +172,11 @@ SELECT [Line Status], COUNT(*) AS [lines], COUNT(DISTINCT [Order #]) AS [orders]
 FROM [OrderTiming].[vw_MedlineOrderLine]
 GROUP BY [Line Status]
 ORDER BY [Line Status];
+
+-- Short Ships: the short-shipped lines, and how many Fill/Kill has (the rest came in a newer file
+-- than Fill/Kill's last).
+SELECT COUNT(*) AS [short shipped lines], SUM(CAST([In Fill/Kill] AS INT)) AS [in Fill/Kill]
+FROM [OrderTiming].[vw_ShortShipLine];
 
 SELECT [last_success], [last_line_load], [last_file] FROM [OrderTiming].[vw_OrderTimingLastLoad];
 GO

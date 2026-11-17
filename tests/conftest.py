@@ -103,14 +103,19 @@ FILLKILL_VIEWS = {
 }
 
 # Order Timing's views (db/ordertiming/01_views.sql), stood in the same way: the columns the app reads.
+ORDER_LINE_COLUMNS = [
+    "Report Date", "Order #", "Order Line", "PO#", "PO", "POLine", "PO Type", "Sold-To #", "Sold-To Name",
+    "Ship-To #", "Ship-To Name", "Buyer Name", "Medline Item #", "Cust Item #", "Item # on PO", "Mfr Item #",
+    "Manufacturer", "Item Description", "Order Qty", "Open Qty", "Shipped Qty", "UM", "Line Type", "Bad Line",
+    "Rej Code", "Received At", "Order Created At", "Confirmed At", "Mins  to Order Create", "Mins to Confirm",
+    "ASN Created At", "Line Status", "Short Qty",
+]
 ORDERTIMING_VIEWS = {
-    "vw_MedlineOrderLine": [
-        "Report Date", "Order #", "Order Line", "PO#", "PO", "POLine", "PO Type", "Sold-To #", "Sold-To Name",
-        "Ship-To #", "Ship-To Name", "Buyer Name", "Medline Item #", "Cust Item #", "Item # on PO", "Mfr Item #",
-        "Manufacturer", "Item Description", "Order Qty", "Open Qty", "Shipped Qty", "UM", "Line Type", "Bad Line",
-        "Rej Code", "Received At", "Order Created At", "Confirmed At", "Mins  to Order Create", "Mins to Confirm",
-        "ASN Created At", "Line Status", "Short Qty",
-    ],
+    "vw_MedlineOrderLine": ORDER_LINE_COLUMNS,
+    # Short Ships' views (2026-11-17): the short lines, each with its PO's total lines and its
+    # Fill/Kill line; Fill/Kill's kill lines per item, Sold-To and day.
+    "vw_ShortShipLine": [*ORDER_LINE_COLUMNS, "PO Total Lines", "In Fill/Kill", "Fill/Kill Reason", "Est Avail Date"],
+    "vw_ItemKillDay": ["Medline Item #", "Sold-To #", "Order Date", "Kill Lines"],
     "vw_OrderTimingLastLoad": ["last_success", "last_line_load", "last_file"],
 }
 

@@ -430,29 +430,43 @@ def test_search_words():
 
 # --- Short Ships (2026-11-17) ---------------------------------------------------------------------
 # Order 3's second line is short one (three days ago, site A); order 6, today at site B, has two
-# FILL-KILL lines shipped none, one of them not in Fill/Kill yet, and a full one.
+# FILL-KILL lines shipped none, one of them not in Fill/Kill yet, and a full one. Short Ships reads
+# two views, which join the feeds in SQL (db/ordertiming/01_views.sql): stood in here as they'd come.
 
-def kill(order_no: str, order_line: str, item: str, sold_to: str, ago: int, reason=None, reason_date=None) -> dict:
-    """A line of Fill/Kill's view: its line number and Sold-To without leading zeros, as on O2."""
-    return {"Sales Order #": order_no, "Order Line #": order_line, "Item": item, "Sold-To": sold_to,
-            "Order Date": day(ago), "Reason": reason, "Reason Date": reason_date, "Filled Qty": 0}
+def short_line(row: dict, po_lines: int, reason=None, reason_date=None, in_fillkill=True) -> dict:
+    """A line of vw_ShortShipLine: a short line of Main's view, then its PO's total lines and its line
+    in Fill/Kill's feed (``in_fillkill`` False: not in it yet)."""
+    return {**row, "PO Total Lines": po_lines, "In Fill/Kill": 1 if in_fillkill else 0,
+            "Fill/Kill Reason": reason, "Est Avail Date": reason_date}
+
+
+def kills(item: str, site: tuple, ago: int, n: int = 1) -> dict:
+    """A row of vw_ItemKillDay: an item's kill lines at a Sold-To (as Main's view writes it) on a day."""
+    return {"Medline Item #": item, "Sold-To #": site[0], "Order Date": day(ago), "Kill Lines": n}
 
 
 @pytest.fixture
 def short_client(ot_app):
     fill_kill = {"Line Type": "FILL-KILL", "Shipped Qty": 0, "Open Qty": None}
-    add_view_rows(ot_app, "vw_MedlineOrderLine", [
+    order6 = [
         line(6, "000010", 0, site=SITE_B, **fill_kill, **{"Order Qty": 4, "Short Qty": 4}),
         line(6, "000020", 0, site=SITE_B, **fill_kill, **{"Order Qty": 5, "Short Qty": 5, "Medline Item #": "MDS2585H",
                                                           "Item Description": "GLOVE,EXAM,NITRILE,M"}),
         line(6, "000030", 0, site=SITE_B, **{"Line Type": "FILL-KILL", "Shipped Qty": 10, "Open Qty": None}),
+    ]
+    add_view_rows(ot_app, "vw_MedlineOrderLine", order6)
+    order3 = next(row for row in lines() if row["Short Qty"])
+    add_view_rows(ot_app, "vw_ShortShipLine", [
+        short_line(order3, 2, "Backorder", "2026-12-01"),
+        short_line(order6[0], 3, "Allocated Item"),
+        short_line(order6[1], 3, in_fillkill=False),
     ])
-    add_view_rows(ot_app, "vw_MedlineFillKill", [
-        kill("1000000003", "20", "DYND70294BH", "1041251", 3, "Backorder", "2026-12-01"),  # order 3's short line
-        kill("1000000006", "10", "DYND70294BH", "2522116", 0, "Allocated Item"),  # order 6's first line
-        kill("9000000001", "10", "DYND70294BH", "1041251", 10),  # past the last week
-        kill("9000000002", "10", "DYND70294BH", "1041251", 40),  # past the last 30 days
-        kill("9000000003", "10", "OTHER", "2522116", 0),
+    add_view_rows(ot_app, "vw_ItemKillDay", [
+        kills("DYND70294BH", SITE_A, 3),  # order 3's short line
+        kills("DYND70294BH", SITE_B, 0),  # order 6's first line
+        kills("DYND70294BH", SITE_A, 10),  # past the last week
+        kills("DYND70294BH", SITE_A, 40),  # past the last 30 days
+        kills("OTHER", SITE_B, 0),
     ])
     return logged_in(ot_app, "mm@example.org", plm=None, fillkill=("materials_manager",))
 
@@ -486,14 +500,14 @@ def test_short_ships_lines_with_their_po_and_fillkill_reason(short_client):
     newest, older = cup["lines"]  # newest first
     assert (newest["po"], newest["po_lines"], newest["line_type"], newest["short_qty"]) == ("3000000006", 3, "FILL-KILL", 4)
     assert newest["created_at"].startswith(day(0))
-    assert (newest["in_fillkill"], newest["kill_reason"]) == (True, "Allocated Item")  # order line 000010 is its 10
+    assert (newest["in_fillkill"], newest["kill_reason"]) == (True, "Allocated Item")
     assert (older["po"], older["po_lines"], older["short_qty"], older["kill_reason"], older["kill_reason_date"]) == (
         "3000000003", 2, 1, "Backorder", "2026-12-01")
     assert (gloves["lines"][0]["in_fillkill"], gloves["lines"][0]["kill_reason"]) == (False, None)  # not in Fill/Kill yet
 
 
 def test_short_ships_sites_narrow_the_lines_and_the_kills(short_client):
-    # Order Timing's Sold-Tos have leading zeros, Fill/Kill's don't: both are matched.
+    # The kill counts' Sold-Tos are written as Main's (the view pads Fill/Kill's with its zeros).
     data = get_short(short_client, sites=SITE_B[0])
     assert items_of(data) == ["DYND70294BH", "MDS2585H"]
     cup = data["items"][0]
@@ -530,8 +544,9 @@ def test_short_ships_sorts_and_pages(short_client, ot_app):
 
 
 def test_short_ships_mixed_units_have_no_one_total(short_client, ot_app):
-    add_view_rows(ot_app, "vw_MedlineOrderLine", [
-        line(7, "000010", 1, **{"Order Qty": 2, "Shipped Qty": 0, "Open Qty": None, "Short Qty": 2, "UM": "EA"})])
+    each = line(7, "000010", 1, **{"Order Qty": 2, "Shipped Qty": 0, "Open Qty": None, "Short Qty": 2, "UM": "EA"})
+    add_view_rows(ot_app, "vw_MedlineOrderLine", [each])
+    add_view_rows(ot_app, "vw_ShortShipLine", [short_line(each, 1, in_fillkill=False)])
     cup = get_short(short_client)["items"][0]
     assert cup["medline_item"] == "DYND70294BH" and (cup["short_qty"], cup["um"], cup["short_lines"]) == (None, None, 3)
     assert sorted(line_["um"] for line_ in cup["lines"]) == ["CS", "CS", "EA"]
@@ -554,16 +569,10 @@ def test_short_ships_export(short_client):
         "Backorder", "2", "3"]
 
 
-def test_short_ships_without_fillkill_data_says_so(short_client, ot_app):
+def test_short_ships_without_its_views_says_so(short_client, ot_app):
     from app import db
 
     with ot_app.app_context(), db.engine.begin() as conn:
-        conn.exec_driver_sql('DROP TABLE "FillKill"."vw_MedlineFillKill"')
+        conn.exec_driver_sql('DROP TABLE "OrderTiming"."vw_ShortShipLine"')
     response = short_client.get("/ordertiming/api/shortships")
-    assert response.status_code == 503  # Fill/Kill's kill lines can't be read: said, as for Main's views
-
-
-def test_kill_counts_match_fillkill_sites_with_and_without_zeros():
-    assert queries._fillkill_sites(["0002159659"]) == ["0002159659", "2159659"]
-    assert queries._line_number("000210") == queries._line_number("210") == "210"
-    assert queries._line_number("000000") == "0" and queries._line_number("A10") == "A10"
+    assert response.status_code == 503  # 01_views.sql not run yet: said, as for Main's views

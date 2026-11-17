@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import Counter
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -121,7 +122,7 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
             "Sold-To": code, "Sold-To Name": name, "Ship-To": code, "Ship-To Name": ship_to,
             "Ship-To Name 2": f"{ship_code} - UBOAT", "Order Date": day(ago),
             # Medline's order numbers: Order Timing's sample orders 31 to 35, so its short lines
-            # find their kill lines (Fill/Kill's line numbers have no leading zeros).
+            # find their kill lines (the same order and line in both feeds).
             "Order Time": at, "Sales Order #": f"11483000{30 + n:02d}", "Order Line #": "10", "Item": item,
             "Customer Item #": customer[item], "Order Qty": ordered, "UM": um, "Filled Qty": filled,
             "PO": f"26000{n:05d}", "POLine": n, "Internal Order Comments from SAP (Z106)": comment,
@@ -149,6 +150,8 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
         "vw_FillKillLastLoad": [{"last_success": now, "last_line_update": now,
                                  "last_file": f"MHS - FILL KILL REPORT-{today}-08-04-00.xlsx"}],
         "vw_MedlineOrderLine": order_lines,
+        "vw_ShortShipLine": short_ship_rows(order_lines, lines),
+        "vw_ItemKillDay": item_kill_day_rows(lines),
         "vw_OrderTimingLastLoad": [{"last_success": now, "last_line_load": now,
                                     "last_file": f"MHS - ORDER DETAIL REPORT-{today}-08-02-15.xls"}],
         # The search groups lines per vendor item and UOM: 88885 BX on two contracts (one MHS's), and
@@ -266,7 +269,7 @@ def order_timing_rows(today: date) -> list[dict]:
             short = qty - shipped - (still_open or 0) if status in ("confirmed", "asn") else 0
             rows.append({
                 "Report Date": (today - timedelta(days=ago)).isoformat(), "Order #": f"11483000{number:02d}",
-                "Order Line": f"{n * 10:06d}", "PO#": f"30006000{number:02d}-STPO", "PO": f"30006000{number:02d}",
+                "Order Line": str(n * 10), "PO#": f"30006000{number:02d}-STPO", "PO": f"30006000{number:02d}",
                 "POLine": str(n), "PO Type": "EDI", "Sold-To #": code, "Sold-To Name": name, "Ship-To #": "0002464430",
                 "Ship-To Name": "4 WEST", "Buyer Name": "Sample, Buyer", "Medline Item #": item, "Cust Item #": cust,
                 "Item # on PO": item if item != "INVALID PART" else "ACM-XYZ1", "Mfr Item #": mfr,
@@ -279,6 +282,35 @@ def order_timing_rows(today: date) -> list[dict]:
                 "Short Qty": short if short > 0 else None,
             })
     return rows
+
+
+def _padded_sold_to(code) -> str:
+    """A Sold-To as Medline's Order Detail feed writes it: ten digits, with the leading zeros."""
+    text = str(code or "").strip()
+    return text.zfill(10) if text.isdigit() and len(text) < 10 else text
+
+
+def short_ship_rows(order_lines: list[dict], kill_lines: list[dict]) -> list[dict]:
+    """vw_ShortShipLine, as db/ordertiming/01_views.sql makes it: each short-shipped line, its PO's
+    total lines that day, and its line in Fill/Kill's feed (the same Medline order and line)."""
+    po_lines = Counter((row["Report Date"], row["Sold-To #"], row["Order #"]) for row in order_lines)
+    kills = {(row["Sales Order #"], row["Order Line #"]): row for row in kill_lines}
+    rows = []
+    for row in order_lines:
+        if not (row["Short Qty"] or 0) > 0:
+            continue
+        kill = kills.get((row["Order #"], row["Order Line"]))
+        rows.append({**row, "PO Total Lines": po_lines[(row["Report Date"], row["Sold-To #"], row["Order #"])],
+                     "In Fill/Kill": 1 if kill else 0, "Fill/Kill Reason": kill["Reason"] if kill else None,
+                     "Est Avail Date": kill["Reason Date"] if kill else None})
+    return rows
+
+
+def item_kill_day_rows(kill_lines: list[dict]) -> list[dict]:
+    """vw_ItemKillDay, as 01_views.sql makes it: the kill lines per item, Sold-To (padded) and day."""
+    counts = Counter((row["Item"], _padded_sold_to(row["Sold-To"]), row["Order Date"]) for row in kill_lines)
+    return [{"Medline Item #": item, "Sold-To #": site, "Order Date": day, "Kill Lines": n}
+            for (item, site, day), n in counts.items()]
 
 
 # --- O2, read-only -------------------------------------------------------------------------
@@ -311,7 +343,10 @@ def o2_rows() -> dict[str, list[dict]]:
     def view_body(name):
         head = f"CREATE OR ALTER VIEW [OrderTiming].[{name}] AS"
         begin = timing.index(head) + len(head)
-        return timing[begin:timing.index("\nGO", begin)].strip().rstrip(";")
+        body = timing[begin:timing.index("\nGO", begin)].strip().rstrip(";")
+        if name != "vw_MedlineOrderLine":  # Short Ships' line view reads it: as the repo has it, not O2
+            body = body.replace("[OrderTiming].[vw_MedlineOrderLine]", "(\n" + view_body("vw_MedlineOrderLine") + "\n)")
+        return body
 
     copies = {
         "vw_MedlineFillKillQtyAgg": "SELECT {cols} FROM FillKill.vw_MedlineFillKillQtyAgg",
@@ -328,9 +363,12 @@ def o2_rows() -> dict[str, list[dict]]:
                         "FROM PLMPreprocessorShared.infor.MDM_EDI_SUB_UOM) AS v"),
         "vw_MedlineOrderLine": "SELECT {cols} FROM (\n" + view_body("vw_MedlineOrderLine") + "\n) AS v",
         "vw_OrderTimingLastLoad": "SELECT {cols} FROM (\n" + view_body("vw_OrderTimingLastLoad") + "\n) AS v",
+        "vw_ShortShipLine": "SELECT {cols} FROM (\n" + view_body("vw_ShortShipLine") + "\n) AS v",
+        "vw_ItemKillDay": "SELECT {cols} FROM (\n" + view_body("vw_ItemKillDay") + "\n) AS v",
     }
     columns = {**FILLKILL_VIEWS, **ORDERTIMING_VIEWS}
-    as_defined = ("vw_ContractLineSearch", "vw_Vendor", "vw_UomAlias", "vw_MedlineOrderLine", "vw_OrderTimingLastLoad")
+    as_defined = ("vw_ContractLineSearch", "vw_Vendor", "vw_UomAlias", "vw_MedlineOrderLine", "vw_OrderTimingLastLoad",
+                  "vw_ShortShipLine", "vw_ItemKillDay")
     found = {}
     conn = pyodbc.connect(O2, readonly=True)
     try:

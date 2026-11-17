@@ -20,6 +20,7 @@ export const state = {
   orders: [],  // the orders in those dates, before the search box narrows them
   dateMode: 'range',  // 'today' or 'range'
   rows: [],
+  sort: null,  // the main table's sort, by a header (2026-11-16): { key, dir: 'asc'|'desc' }; null, the server's order
   counts: {},
   panelItem: null,
   panelTab: 'subs',
@@ -30,7 +31,8 @@ export const state = {
 };
 
 // The page link keeps what's shown, so it can be shared or bookmarked (2026-10-19): ?dates=today
-// or ?start=&end=, ?sites=a,b, ?q= (the search), ?needs=, and the open panel's ?item=&scope=&tab=.
+// or ?start=&end=, ?sites=a,b, ?q= (the search), ?needs=, the table's ?sort=&dir= (2026-11-16), and
+// the open panel's ?item=&scope=&tab=. table.js checks the sort's key.
 export const linked = new URLSearchParams(window.location.search);
 if (linked.get('dates') === 'today' && config.today) {
   state.start = config.today;
@@ -42,6 +44,7 @@ if (linked.get('dates') === 'today' && config.today) {
 state.sites = (linked.get('sites') || '').split(',').filter(Boolean);
 state.search = (linked.get('q') || '').trim().toLowerCase();
 if (linked.get('needs') && (config.needs || []).some(([key]) => key === linked.get('needs'))) state.needs = linked.get('needs');
+if (linked.get('sort')) state.sort = { key: linked.get('sort'), dir: linked.get('dir') === 'asc' ? 'asc' : 'desc' };
 
 // Keep the page link in step with what's shown (no new history entry each time).
 export function syncLink() {
@@ -52,6 +55,7 @@ export function syncLink() {
   const search = $('fk-search').value.trim();
   if (search) params.set('q', search);
   if (state.needs !== 'all') params.set('needs', state.needs);
+  if (state.sort) { params.set('sort', state.sort.key); params.set('dir', state.sort.dir); }
   if (state.panelItem) {
     params.set('item', state.panelItem);
     if (state.panelScope === 'infor') params.set('scope', 'infor');

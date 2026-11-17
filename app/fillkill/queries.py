@@ -455,7 +455,8 @@ def item_panel(medline_item: str, scope: Scope) -> dict:
     binds.append(bindparam("members", expanding=True))
     lines = _rows(
         f"""SELECT [Item] AS medline_item, [Order Date] AS order_date, [Order Time] AS order_time,
-                   [Sold-To Name] AS site, [Ship-To Name] AS department, [PO] AS po, [POLine] AS po_line,
+                   [Sold-To Name] AS site, [Ship-To Name] AS department, [Ship-To Code] AS ship_to_code,
+                   [PO] AS po, [POLine] AS po_line,
                    [Order Qty] AS ordered, [Filled Qty] AS filled, [UM] AS um,
                    [Internal Order Comments from SAP (Z106)] AS comment, [Reason] AS reason,
                    [Reason Date] AS reason_date, [Is Test] AS is_test, [Test Purpose] AS test_purpose

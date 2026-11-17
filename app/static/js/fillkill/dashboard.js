@@ -2,7 +2,7 @@
  * Chart.js is loaded with `defer` in base.html's head, so it has run before this module does.
  */
 
-import { $, REASON_LABEL, config, esc, fmtDate, getJSON, itemLink } from './common.js';
+import { $, config, esc, fmtDate, getJSON, itemLink } from './common.js';
 
 const statusLabels = config.statusLabels;
 const STATUS_COLOR = { approved: '#198754', hold: '#ffc107', pending_review: '#0dcaf0', rejected: '#dc3545' };
@@ -175,7 +175,7 @@ async function load() {
     $('fk-dash-range').textContent = `${fmtDate(data.scope.start)} to ${fmtDate(data.scope.end)}`;
     headline(data.headline);
     draw('fk-chart-reason', 'bar', data.by_reason.days.map(fmtDate),
-      seriesDatasets(data.by_reason.series, (name) => REASON_LABEL[name] || name), stacked);
+      seriesDatasets(data.by_reason.series, (name) => name), stacked);  // Medline's reason types, as sent
     draw('fk-chart-site', 'bar', data.by_site.days.map(fmtDate),
       seriesDatasets(data.by_site.series, (name) => name), stacked);
     const statuses = Object.keys(data.subs_by_status);

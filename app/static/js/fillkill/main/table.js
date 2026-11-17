@@ -3,12 +3,13 @@
  */
 
 import {
-  $, NO_VENDOR, REASON_LABEL, STATUS_ORDER, alertBox, config, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
+  $, NO_VENDOR, STATUS_ORDER, alertBox, config, esc, fmtDate, fmtDateTime, fmtNumber, getJSON, needsDetails,
   noQoeBadge, shortName, statusBadge, uomQoe, vendorItemText,
 } from '../common.js';
 import { renderNeeds } from './controls.js';
 import { openAddSubForm, openInstructionForm, openOrderForm, openVendorItemForm } from './forms.js';
 import { openPanel } from './panel.js';
+import { sortRows } from './sort.js';
 import { api, can, historyUrl, scopeParams, siteName, state, syncLink } from './state.js';
 
 const mainTable = $('fk-main');
@@ -75,7 +76,7 @@ export function renderRows() {
     setRows(`<tbody><tr><td colspan="16" class="text-muted small p-3">${why}</td></tr></tbody>`);
     return;
   }
-  setRows(rows.map(itemRows).join(''));
+  setRows(sortRows(rows).map(itemRows).join(''));
 }
 
 function setRows(html) {
@@ -274,11 +275,12 @@ function approvedTd(p, split) {
   return `${dblClickTd(`${split.trim()} data-add-sub="${esc(p.medline_item)}"`, `Double-click to add a sub for ${p.medline_item}`)}>`;
 }
 
+// Medline's own reason type (ReasonTypeText, 2026-11-16), as sent; its comment on hover.
 function reasonCell(reason) {
   if (!reason) return '<span class="text-muted small">—</span>';
   const date = reason.reason_date ? ` <span class="text-muted">${fmtDate(reason.reason_date)}</span>` : '';
   return `<div class="small" title="${esc(reason.comment)}"><span class="badge text-bg-light border">`
-    + `${esc(REASON_LABEL[reason.reason] || reason.reason)}</span>${date}</div>`;
+    + `${esc(reason.reason)}</span>${date}</div>`;
 }
 
 // Medline's customer item isn't always the Infor item (it can be the Medline item itself, or

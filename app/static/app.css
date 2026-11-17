@@ -1277,6 +1277,13 @@ tbody td.col-repl { background: #f5fbff; }
 .fk-h-450 { max-height: 450px; }
 .fk-h-600 { max-height: 600px; }
 .fk-scroll > .fk-table > thead > tr > th { position: sticky; top: 0; z-index: 2; box-shadow: inset 0 -1px 0 var(--bs-border-color); }
+/* Main's headers sort the table (2026-11-16, main/sort.js): each label is a button, with an arrow
+   that's faint until the column is sorted. */
+.fk-sort { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+.fk-sort:hover { text-decoration: underline; }
+.fk-sort-icon { margin-left: 0.25rem; font-size: 0.75em; opacity: 0.35; }
+.fk-sort:hover .fk-sort-icon, th[aria-sort] .fk-sort-icon { opacity: 1; }
+th[aria-sort] .fk-sort { color: var(--bs-primary); }
 .fk-orders-search { width: 18rem; max-width: 100%; }
 .fk-main td { vertical-align: top; }
 .fk-main .fk-desc { font-size: 0.8rem; }

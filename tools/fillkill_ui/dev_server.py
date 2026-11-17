@@ -96,23 +96,32 @@ def sample_rows(today: date) -> dict[str, list[dict]]:
         {"Medline Item": "SAMPLE0001", "UM": "EA", "Customer Item #": "SAMPLE0001", "Item Description": "SAMPLE,NOT IN INFOR",
          "Infor Item": None, "Infor Item Consistency": 0},
     ]
-    # (days ago, time, site, Medline item, UM, ordered, filled, reason, comment)
+    # (days ago, time, site, ship-to, Medline item, UM, ordered, filled, Medline's reason type, comment,
+    # Est Avail Date: the Reason Date, 2026-11-16; an Allocated Item line's is its order date)
     kills = [
-        (0, "09:12:00", SITE_A, "DYND70294BH", "EA", 5, 0, "MBO", "MBO - ERD is 11/18/2026"),
-        (1, "14:05:00", SITE_B, "DYND70294BH", "EA", 3, 0, "OUT_OF_STOCK", "OUT OF STOCK - ETA is 10/30/2026"),
-        (0, "08:40:00", SITE_A, "MDS2585H", "BX", 4, 1, "ALLOCATION", "Allocation limit has been reached"),
-        (1, "10:30:00", SITE_A, "MDS2585HC", "CS", 2, 0, "MBO", "MBO - ERD is 12/01/2026"),
-        (2, "16:20:00", SITE_B, "SAMPLE0001", "EA", 6, 0, "DISCONTINUED", "Discontinued by the manufacturer"),
+        (0, "09:12:00", SITE_A, ("INTENS CARE UNIT", "PWLREICU"), "DYND70294BH", "EA", 5, 0, "Backorder",
+         "MBO - ERD is 11/18/2026", "2026-11-18"),
+        (1, "14:05:00", SITE_B, ("KLAU 6", "PMOSK6"), "DYND70294BH", "EA", 3, 0, "Backorder",
+         "NEW USAGE - ETA is 10/30/2026", "2026-10-30"),
+        (0, "08:40:00", SITE_A, ("OR", "PWLREO3"), "MDS2585H", "BX", 4, 1, "Allocated Item",
+         "Allocation limit has been reached", day(0)),
+        (1, "10:30:00", SITE_A, ("INTENS CARE UNIT", "PWLREICU"), "MDS2585HC", "CS", 2, 0, "Custom",
+         "CUSTOM ITEM - ETA is 12/01/2026", "2026-12-01"),
+        (2, "16:20:00", SITE_B, ("KLAU 6", "PMOSK6"), "SAMPLE0001", "EA", 6, 0, "Disco`d",
+         "Discontinued by the manufacturer", None),
     ]
     customer = {row["Medline Item"]: row["Customer Item #"] for row in items}
     lines, qty = [], {}
-    for n, (ago, at, (code, name), item, um, ordered, filled, reason, comment) in enumerate(kills, start=1):
+    for n, (ago, at, (code, name), (ship_to, ship_code), item, um, ordered, filled, reason, comment, avail) in enumerate(
+            kills, start=1):
         lines.append({
-            "Sold-To": code, "Sold-To Name": name, "Ship-To": code, "Ship-To Name": "4 WEST", "Order Date": day(ago),
+            "Sold-To": code, "Sold-To Name": name, "Ship-To": code, "Ship-To Name": ship_to,
+            "Ship-To Name 2": f"{ship_code} - UBOAT", "Order Date": day(ago),
             "Order Time": at, "Sales Order #": f"S{n:04d}", "Order Line #": "10", "Item": item,
             "Customer Item #": customer[item], "Order Qty": ordered, "UM": um, "Filled Qty": filled,
-            "PO": f"26000{n:05d}", "POLine": n, "Internal Order Comments from SAP (Z106)": comment, "Reason": reason,
-            "Reason Date": None, "Is Test": 0, "Test Purpose": None,
+            "PO": f"26000{n:05d}", "POLine": n, "Internal Order Comments from SAP (Z106)": comment,
+            "ReasonTypeText": reason, "Reason": reason, "Reason Date": avail, "Ship-To Code": ship_code,
+            "Is Test": 0, "Test Purpose": None,
         })
         key = (day(ago), code, item, um)
         row = qty.setdefault(key, {"Order Date": day(ago), "Sold-To": code, "Sold-To Name": name, "Medline Item": item,

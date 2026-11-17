@@ -117,9 +117,16 @@
         and every order, in a table like the kill lines. Click the <em>Infor item</em> to see all its UOMs together, or a <em>Medline item</em> to
         see only that UOM; the panel switches between the two. Drag the panel's left edge to
         make it wider or narrower; your browser remembers the width, and a double-click on the edge resets it.</li>
+      <li class="mb-1"><strong>Sort the table:</strong> click a column's header to sort by it: text A to Z, numbers and dates
+        largest or newest first. Click again for the other way, and a third time for the table's own order (Infor item, then
+        Medline item). An Infor item moves with all its UOMs and substitutes; blanks stay last. With several UOMs,
+        <em>Total Ordered</em>, <em>Killed</em> and <em>Filled</em> sort by eaches (when every UOM has a QOE) and <em>QOE</em> by the largest;
+        <em>Latest Reason</em> sorts by Medline's reason type, then its date; <em>Subs Status</em> by how many substitutes, then how many
+        approved; <em>Sub Approved by Nursing</em> and <em>Vendor Item Detail</em> by how many; {{ instruction_label }} and
+        <em>Ordering</em> by the latest one's date.</li>
       <li class="mb-1"><strong>Share what you see:</strong> the page's address keeps the dates, sites, search, Needs
-        filter and the open item, so copying it gives someone else the same view.</li>
-      <li class="mb-1"><strong>Below the table:</strong> the orders recorded, with their own dates (the last 30 days
+        filter, sort and the open item, so copying it gives someone else the same view.</li>
+      <li class="mb-1"><strong>Orders Recorded,</strong> below the table: the orders recorded, with their own dates (the last 30 days
         unless you change them), so past orders can be looked up without changing the table's dates; they follow the sites chosen above.
         Each shows its site, Infor item, the vendor part ordered, the QOE, what was ordered, the PO number, and the vendor's ID and name.
         The search box beside them finds an order by the Medline item, its Infor item, the vendor part, the substitute's Reference SKU,
@@ -172,22 +179,27 @@
 
   <section class="card shadow-sm border-0 p-4">
     <h2 class="h5 fw-semibold mb-3">Medline's kill reasons</h2>
+    <p class="mb-2">The reason shown is Medline's own reason type, as Medline sends it; Medline's comment on the
+      line says more (hover over <em>Latest Reason</em>, or see the item's kill lines). The date beside it is
+      Medline's estimated available date.</p>
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
         <thead class="table-light">
-          <tr><th scope="col">Comment on the report</th><th scope="col">What it means</th></tr>
+          <tr><th scope="col">Reason</th><th scope="col">Comments seen with it</th><th scope="col">What it means</th></tr>
         </thead>
         <tbody>
-          <tr><td>Allocation limit has been reached</td><td>Medline is rationing the item.</td></tr>
-          <tr><td>MBO – ERD is <em>date</em></td><td>Manufacturer backorder, with an expected release date.</td></tr>
-          <tr><td>OUT OF STOCK – ETA is <em>date</em></td><td>Medline's warehouse is out, with an expected arrival date.</td></tr>
-          <tr><td>SPIKE MBO – Forecast x, Usage y</td><td>Ordered above forecast, during a manufacturer backorder.</td></tr>
-          <tr><td>NONSTOCK UOM – item stocked by CS/BX</td><td>Ordered in a unit Medline doesn't stock for this account.</td></tr>
-          <tr><td>NONSTOCK – needs a stock request</td><td>Not stocked on fill/kill accounts.</td></tr>
-          <tr><td>DISCONTINUED ITEM</td><td>No longer made.</td></tr>
+          <tr><td>Allocated Item</td><td>Allocation limit has been reached (sometimes after SPIKE); Allocation not loaded for account</td>
+            <td>Medline is rationing the item.</td></tr>
+          <tr><td>Backorder</td><td>MBO – ERD is <em>date</em>; NEW USAGE – ETA is <em>date</em></td>
+            <td>Not available now, with an expected release or arrival date.</td></tr>
+          <tr><td>Custom</td><td>CUSTOM ITEM – ETA is <em>date</em></td><td>A custom item, with an expected arrival date.</td></tr>
+          <tr><td>Non-Stock</td><td>3PL ITEM – Please contact Medline Sales Team</td><td>Not stocked for this account.</td></tr>
+          <tr><td>Disco`d</td><td></td><td>Discontinued: no longer made.</td></tr>
         </tbody>
       </table>
     </div>
+    <p class="small text-muted mt-2 mb-0">In an item's kill lines, each line names its ship-to by its location code
+      (Medline's Ship-To Name 2, such as PWLREICU), then Medline's ship-to name.</p>
   </section>
 
   <section class="card shadow-sm border-0 p-4">

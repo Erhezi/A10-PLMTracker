@@ -3,7 +3,7 @@
  */
 
 import {
-  NO_VENDOR, REASON_LABEL, REFERENCE_SKU_HINT, SUB_NOTE_HINT, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails,
+  NO_VENDOR, REFERENCE_SKU_HINT, SUB_NOTE_HINT, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails,
   noQoeBadge, statusBadge, uomQoe, vendorText,
 } from '../common.js';
 import { can, siteName, state } from './state.js';
@@ -179,18 +179,25 @@ function addSubForm(packs) {
 
 // --- Kill lines, Sub History, Orders ---------------------------------------------------------
 
+// The ship-to: its location code first (Ship-To Name 2 without "- UBOAT", e.g. PWLREICU: the name
+// Materials Managers know, 2026-11-16), then Medline's Ship-To Name.
+function shipTo(l) {
+  const code = l.ship_to_code ? `<span class="fw-semibold">${esc(l.ship_to_code)}</span>` : '';
+  return [code, esc(l.department || '')].filter(Boolean).join(' · ');
+}
+
 function linesTab(lines, many) {
   if (!lines.length) return '<p class="text-muted small">No kill lines for these dates and sites.</p>';
   return `<div class="table-responsive"><table class="table table-sm align-middle fk-panel-table">
-    <thead class="table-light"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Site · Dept</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
+    <thead class="table-light"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Site · Ship-To</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
     <tbody>${lines.map((l) => `<tr>
       <td class="text-nowrap">${fmtDate(l.order_date)} ${esc(String(l.order_time || '').slice(0, 5))}</td>
       ${many ? `<td class="text-nowrap">${esc(l.medline_item)}</td>` : ''}
-      <td>${esc(l.site)}${l.is_test ? ` <span class="badge text-bg-warning" title="${esc(l.test_purpose || 'Test line')}">test</span>` : ''}<div class="text-muted">${esc(l.department)}</div>
+      <td>${esc(l.site)}${l.is_test ? ` <span class="badge text-bg-warning" title="${esc(l.test_purpose || 'Test line')}">test</span>` : ''}<div class="text-muted">${shipTo(l)}</div>
           ${l.test_purpose ? `<div class="text-muted fst-italic">${esc(l.test_purpose)}</div>` : ''}</td>
       <td class="text-nowrap">${esc(l.po)}${l.po_line != null ? `-${esc(l.po_line)}` : ''}</td>
       <td class="text-end text-nowrap">${fmtNumber(l.killed)} / ${fmtNumber(l.ordered)} ${esc(l.um)}</td>
-      <td>${l.reason ? `<span class="badge text-bg-light border">${esc(REASON_LABEL[l.reason] || l.reason)}</span>` : ''}
+      <td>${l.reason ? `<span class="badge text-bg-light border">${esc(l.reason)}</span>` : ''}
           <div class="text-muted">${esc(l.comment)}</div></td>
     </tr>`).join('')}</tbody></table></div>`;
 }

@@ -107,10 +107,12 @@ async function waitFor(expression, what, ms = 10000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
+// A page gets 30 s to load (2026-11-16): the dev server, serving from the OneDrive folder, can take
+// a second per file, and Main loads 13 modules.
 async function go(path, ready, what) {
   await send('Page.navigate', { url: `${BASE}${path}` });
   await sleep(300);
-  await waitFor(ready, what);
+  await waitFor(ready, what, 30000);
 }
 
 const text = (selector) => evaluate(`(document.querySelector(${JSON.stringify(selector)}) || {}).innerText || ''`);
@@ -180,6 +182,7 @@ const steps = [
       expect(cap === '450px', `${table} is capped at ${cap}, not 450px`);
     }
     expect(await evaluate(`getComputedStyle(document.querySelector('#fk-main thead th')).position`) === 'sticky', 'the header does not stay on top');
+    expect(await text('#fk-orders-title') === 'Orders Recorded', `the orders are titled ${await text('#fk-orders-title')}`);
   }],
   ['A range of dates, kept in the page link', async () => {
     await click('#fk-date-mode');
@@ -194,6 +197,43 @@ const steps = [
     await setValue('#fk-search', '', 'input');
     await waitFor(`document.querySelectorAll('#fk-main tbody.fk-item').length === 3`, 'all 3 items again');
   }],
+  ['Sorting by a header, kept in the page link', async () => {
+    // Each item's Infor item, in the table's order (2026-11-16).
+    const order = () => evaluate(`[...document.querySelectorAll('#fk-main tbody.fk-item')]
+      .map((b) => b.rows[0].cells[0].innerText.split('\\n')[0].trim()).join('|')`);
+    const header = (key) => `#fk-main th[data-sort="${key}"] .fk-sort`;
+    const sortedBy = (key, dir) => waitFor(dir ? `document.querySelector('#fk-main th[data-sort="${key}"]').getAttribute('aria-sort') === '${dir}'`
+      : `!document.querySelector('#fk-main th[aria-sort]')`, `${key} ${dir || 'unsorted'}`);
+    const own = '100339|999999|Not in Infor';
+    expect(await order() === own, `the table's own order: ${await order()}`);
+    // A number, largest first (2,300 EA, 8 EA, 6 EA), then smallest first, then the table's own order.
+    await click(header('killed_each'));
+    await sortedBy('killed_each', 'descending');
+    expect(await order() === '999999|100339|Not in Infor', `Total Killed (EA), largest first: ${await order()}`);
+    expect((await evaluate('location.search')).includes('sort=killed_each&dir=desc'), 'the link lacks the sort');
+    await click(header('killed_each'));
+    await sortedBy('killed_each', 'ascending');
+    expect(await order() === 'Not in Infor|100339|999999', `Total Killed (EA), smallest first: ${await order()}`);
+    await click(header('killed_each'));
+    await sortedBy('killed_each', null);
+    expect(await order() === own && !(await evaluate('location.search')).includes('sort='), `not back to the table's own order: ${await order()}`);
+    // Text, A to Z first; a blank stays last either way.
+    await click(header('infor_item'));
+    await click(header('infor_item'));
+    await sortedBy('infor_item', 'descending');
+    expect(await order() === '999999|100339|Not in Infor', `Infor Item, Z to A, the blank last: ${await order()}`);
+    await click(header('infor_item'));
+    // Medline's reason type, Z to A (Disco`d, Backorder, Allocated Item), from the page link.
+    await click(header('reason'));
+    await click(header('reason'));
+    await sortedBy('reason', 'descending');
+    await go(`/fillkill/${await evaluate('location.search')}`, `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length === 3`,
+      'the table from the page link');
+    await sortedBy('reason', 'descending');
+    expect(await order() === 'Not in Infor|100339|999999', `Latest Reason, Z to A, from the link: ${await order()}`);
+    await click(header('reason'));
+    await sortedBy('reason', null);
+  }],
   ['The panel: a whole Infor item, then one UOM', async () => {
     await clickText('#fk-main button[data-scope="infor"]', '999999');
     await waitFor(`document.getElementById('fk-panel-title').innerText === 'Infor item 999999'`, 'the Infor item in the panel');
@@ -201,6 +241,10 @@ const steps = [
     expect((await evaluate('location.search')).includes('scope=infor'), 'the link lacks the panel');
     await click('[data-panel-tab="lines"]');
     await waitFor(`document.querySelectorAll('#fk-panel-content tbody tr').length === 2`, 'two kill lines');
+    // Each line's ship-to by its code (Ship-To Name 2 without "- UBOAT"), and Medline's reason type (2026-11-16).
+    await panelSays('PWLREO3 · OR');
+    await panelSays('Allocated Item');
+    expect(!(await evaluate(`document.getElementById('fk-panel-body').innerText.includes('UBOAT')`)), 'UBOAT in the kill lines');
     await click('[data-panel-focus="MDS2585HC"]');
     await waitFor(`document.querySelectorAll('#fk-panel-content tbody tr').length === 1`, "one UOM's kill line");
     await click('[data-panel-tab="history"]');
@@ -733,6 +777,10 @@ const steps = [
       await evaluate(`document.getElementById('fk-modal-form').requestSubmit()`);
       await modalClosed();
       await panelSays('Vendor item added.');
+      // The form closes before the panel reloads, and the first add's message is still up: wait
+      // for this vendor item itself.
+      await waitFor(`(${card}?.querySelector('.fk-vendor-items')?.innerText || '').includes(${JSON.stringify(part + ' ')})`,
+        `${part} among the 930103 vendor items`);
     }
     const items = await evaluate(`${card}.querySelector('.fk-vendor-items').innerText`);
     expect(items.includes('B-D930103CSZ') && items.includes('BX/40') && items.includes('B-D930103CS ') && items.includes('CA/400'),

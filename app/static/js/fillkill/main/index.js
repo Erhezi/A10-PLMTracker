@@ -6,7 +6,7 @@
  *
  *   state.js     what's shown, and the page link that keeps it
  *   controls.js  dates, sites, search, Needs chips
- *   table.js     the main table
+ *   table.js     the main table; sort.js sorts it by a header
  *   panel.js     the item panel; tabs.js draws its tabs
  *   forms.js     the forms in the modal, the contract search, the vendor ID check
  *   orders.js    the orders under the table
@@ -21,6 +21,7 @@ import { setupDates, setupNeeds, setupSearch, setupSites } from './controls.js';
 import { setupForms } from './forms.js';
 import { loadOrders, setupOrders } from './orders.js';
 import { openPanel, setupPanel } from './panel.js';
+import { setupSort } from './sort.js';
 import { linked } from './state.js';
 import { loadMain, setupTable } from './table.js';
 
@@ -29,6 +30,7 @@ setupSites();
 setupSearch();
 setupNeeds();
 setupTable();
+setupSort();
 setupPanel();
 setupForms();
 setupOrders();

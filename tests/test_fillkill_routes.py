@@ -26,11 +26,13 @@ def qty(day, site, item, um, ordered, filled, lines):
 
 
 def line(day, time, site, item, ordered, comment, reason, reason_date=None, so="1"):
+    """A kill line; ``reason`` is Medline's reason type (ReasonTypeText, 2026-11-16)."""
     return {"Sold-To": site, "Sold-To Name": "WHITE PLAINS" if site == WP else TEST, "Ship-To Name": "4I",
+            "Ship-To Name 2": "PWPH4I - UBOAT", "Ship-To Code": "PWPH4I",
             "Order Date": f"2026-09-{day}", "Order Time": time, "Sales Order #": so, "Order Line #": "10",
             "Item": item, "Order Qty": ordered, "UM": "EA", "Filled Qty": 0, "PO": "2600303592", "POLine": 8,
-            "Internal Order Comments from SAP (Z106)": comment, "Reason": reason, "Reason Date": reason_date,
-            "Is Test": int(site == TEST)}
+            "Internal Order Comments from SAP (Z106)": comment, "ReasonTypeText": reason, "Reason": reason,
+            "Reason Date": reason_date, "Is Test": int(site == TEST)}
 
 
 @pytest.fixture
@@ -51,11 +53,11 @@ def app(sqlite_app):
          "CommodityCode": "4213-22-03", "CommodityCode.Description": "MEDICAL EXAM OR NON SURGICAL PROCEDURE GLOVES"},
     ])
     add_view_rows(sqlite_app, "vw_MedlineFillKill", [
-        line(28, "09:00:00", WP, "DYND70294BH", 5, "MBO - ERD is 11/18/2026", "MBO", "2026-11-18", so="1"),
-        line(30, "11:35:29", WP, "DYND70294BH", 5, "MBO - ERD is 11/30/2026", "MBO", "2026-11-30", so="2"),
-        {**line(30, "10:00:00", TEST, "DYND70294BH", 5, "OUT OF STOCK - ETA is 10/02/2026", "OUT_OF_STOCK", "2026-10-02",
+        line(28, "09:00:00", WP, "DYND70294BH", 5, "MBO - ERD is 11/18/2026", "Backorder", "2026-11-18", so="1"),
+        line(30, "11:35:29", WP, "DYND70294BH", 5, "MBO - ERD is 11/30/2026", "Backorder", "2026-11-30", so="2"),
+        {**line(30, "10:00:00", TEST, "DYND70294BH", 5, "CUSTOM ITEM - ETA is 10/02/2026", "Custom", "2026-10-02",
                 so="TEST3"), "Test Purpose": "Sites: a real line copied under a second site."},
-        line(29, "08:00:00", WP, "MDS2585H", 4, "Allocation limit has been reached", "ALLOCATION", so="4"),
+        line(29, "08:00:00", WP, "MDS2585H", 4, "Allocation limit has been reached", "Allocated Item", so="4"),
     ])
     add_view_rows(sqlite_app, "vw_ContractLineSearch", [
         {"vendor_id": "1", "vendor_name": "CARDINAL HEALTH", "vendor_item": "88885", "vendor_item_stripped": "88885",
@@ -116,6 +118,10 @@ def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer)
     assert config["can"] == {"view": True, "add_sub": False, "review": False, "details": False, "direct": False,
                              "order": False, "instruct": False}
     assert 'aria-current="page">Main</a>' in page
+    # Every main-table header sorts the table (the user, 2026-11-16; main/sort.js knows each key), and
+    # the orders under it are Orders Recorded.
+    assert len(re.findall(r'<th scope="col"[^>]* data-sort="\w+"><button type="button" class="fk-sort">', page)) == 16
+    assert '>Orders Recorded</h2>' in page
 
 
 def test_only_admins_see_what_the_database_lacks(app, viewer, monkeypatch):
@@ -144,7 +150,7 @@ def test_main_has_one_row_per_infor_item_summed_over_the_dates_and_sites(viewer)
     [cup_pack] = cup["packagings"]
     assert cup_pack["quantities"] == [{"uom": "EA", "ordered": 30, "filled": 0, "killed": 30, "each": None}]
     assert cup["lines"] == 6
-    assert cup["latest_reason"]["reason"] == "MBO"  # 11:35 at White Plains beats 10:00 at the test site
+    assert cup["latest_reason"]["reason"] == "Backorder"  # 11:35 at White Plains beats 10:00 at the test site
     [glove_pack] = glove["packagings"]
     assert [q["uom"] for q in glove_pack["quantities"]] == ["BX", "CS"]  # never added across UOMs
     assert glove["commodity_description"] == "MEDICAL EXAM OR NON SURGICAL PROCEDURE GLOVES"
@@ -157,7 +163,7 @@ def test_main_has_one_row_per_infor_item_summed_over_the_dates_and_sites(viewer)
 def test_main_filters_by_site_and_defaults_to_the_latest_date(viewer):
     _, data = get(viewer, "/fillkill/api/main", start="2026-09-28", end="2026-09-30", sites=TEST)
     assert [(r["medline_items"], r["lines"]) for r in data["rows"]] == [(["DYND70294BH"], 1)]
-    assert data["rows"][0]["latest_reason"]["reason"] == "OUT_OF_STOCK"
+    assert data["rows"][0]["latest_reason"]["reason"] == "Custom"
 
     _, data = get(viewer, "/fillkill/api/main")
     assert data["scope"]["start"] == data["scope"]["end"] == "2026-09-30"
@@ -244,6 +250,9 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
     assert [(h["entity"], h["action"], h["label"]) for h in panel["sub_history"]] == [
         ("vendoritem", "created", "88885: 88885 (CARDINAL HEALTH, BX)"), ("sub", "status", "88885"), ("sub", "created", "88885")]
     assert len(panel["orders"]) == 1 and len(panel["lines"]) == 3
+    # Each line names its ship-to by the code Materials Managers know, and its Medline reason type (2026-11-16).
+    assert {(l["ship_to_code"], l["department"], l["reason"]) for l in panel["lines"]} == {
+        ("PWPH4I", "4I", "Backorder"), ("PWPH4I", "4I", "Custom")}
     assert [l["test_purpose"] for l in panel["lines"] if l["is_test"]] == ["Sites: a real line copied under a second site."]
     assert panel["details"]["description"] == "CUP,DENTURE"
 
@@ -752,7 +761,8 @@ def test_scm_writes_the_instruction_the_sites_read_on_main(app, viewer, scm, fin
     assert page_config(scm)["instructionLabel"] == "SCM Comments"
     page = scm.get("/fillkill/").get_data(as_text=True)
     # "Sub Approved by Nursing" (the user, 2026-11-02; "Approved by Nursing" from 10-28).
-    assert page.index(">Sub Approved by Nursing</th>") < page.index("SCM Comments</th>") < page.index(">Vendor Item Detail</th>")
+    assert (page.index(">Sub Approved by Nursing</button>") < page.index(">SCM Comments</button>")
+            < page.index(">Vendor Item Detail</button>"))
     status, data = post(viewer, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})
     assert status == 403 and "Only SCM" in data["message"]
     assert post(finder_manager, "/fillkill/api/instructions", {"medline_item": "MDS2585H", "instruction": "x"})[0] == 403

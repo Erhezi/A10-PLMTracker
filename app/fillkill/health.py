@@ -19,7 +19,9 @@ from .. import db
 
 # Columns the app reads or writes, per table or view.
 COLUMNS = {
-    ("FillKill", "vw_MedlineFillKill"): (("Reason", "Reason Date", "Is Test", "Test Purpose"), "10_kill_lines.sql"),
+    # Reason is Medline's ReasonTypeText, and Ship-To Code comes from Ship-To Name 2 (2026-11-16).
+    ("FillKill", "vw_MedlineFillKill"): (("Reason", "Reason Date", "Ship-To Code", "Is Test", "Test Purpose"),
+                                         "10_kill_lines.sql"),
     ("FillKill", "vw_FillKillLastLoad"): (("last_success", "last_line_update"), "10_kill_lines.sql"),
     ("FillKill", "vw_MedlineFillKillItemCollection"): (
         ("Medline Item", "Infor Item", "Infor Item Consistency", "Item.UOMConversion", "Item.LongDescription",

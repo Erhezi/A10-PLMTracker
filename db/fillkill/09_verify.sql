@@ -110,9 +110,11 @@ ORDER BY u.[email];
 SELECT 'view FillKill.vw_MedlineFillKill exists (10)' AS [check],
        CASE WHEN OBJECT_ID(N'[FillKill].[vw_MedlineFillKill]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END AS [result]
 UNION ALL
-SELECT 'vw_MedlineFillKill has Reason, Reason Date, Is Test, Test Purpose (10)',
+SELECT 'vw_MedlineFillKill has Reason (Medline''s reason type), Reason Date, Ship-To Code, Is Test, Test Purpose (10, 2026-11-16)',
        CASE WHEN COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason Date') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Ship-To Code') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'ReasonTypeText') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Is Test') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Test Purpose') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
@@ -136,22 +138,25 @@ SELECT 'item and quantity views read FillKill.vw_MedlineFillKill',
              AND CHARINDEX('MedlineFillKill.MedlineFillKill', definition) = 0
        ) = 2 THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
--- Not a pass/fail: test copies under 'test site'. Empty the table at go-live.
-SELECT 'test lines in FillKill.TestFillKillLine (empty at go-live)',
-       CONCAT('INFO: ', ISNULL((SELECT SUM(p.[rows]) FROM sys.partitions AS p
+-- Not a pass/fail: the test lines are gone and 10 no longer reads their table (2026-11-16).
+SELECT 'FillKill.TestFillKillLine no longer read (10, 2026-11-16): drop it',
+       CASE WHEN OBJECT_ID(N'[FillKill].[TestFillKillLine]', N'U') IS NULL THEN 'INFO: dropped'
+            ELSE CONCAT('INFO: still there, ', ISNULL((SELECT SUM(p.[rows]) FROM sys.partitions AS p
                                 WHERE p.[object_id] = OBJECT_ID(N'[FillKill].[TestFillKillLine]')
-                                  AND p.[index_id] IN (0, 1)), 0), ' line(s)');
+                                  AND p.[index_id] IN (0, 1)), 0), ' line(s)') END;
 
--- Kill-line reasons: every comment should fall into a known category. Lists any that don't.
-IF COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Reason') IS NOT NULL
+-- Kill-line reasons: Medline's reason type on every line (2026-11-16). Lists the reason types,
+-- and the comments on lines Medline sent without one.
+IF COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Ship-To Code') IS NOT NULL
     EXEC (N'
-        SELECT ''kill-line comments have a known reason'' AS [check],
-               CASE WHEN NOT EXISTS (SELECT 1 FROM [FillKill].[vw_MedlineFillKill] WHERE [Reason] = ''OTHER'')
-                    THEN ''PASS'' ELSE ''CHECK: see the OTHER comments below'' END AS [result];
-        SELECT [Reason], COUNT(*) AS [lines], COUNT([Reason Date]) AS [with_date]
+        SELECT ''kill lines have Medline''''s reason type'' AS [check],
+               CASE WHEN NOT EXISTS (SELECT 1 FROM [FillKill].[vw_MedlineFillKill] WHERE [Reason] IS NULL)
+                    THEN ''PASS'' ELSE ''CHECK: see the comments without a reason type below'' END AS [result];
+        SELECT [Reason], COUNT(*) AS [lines], COUNT([Reason Date]) AS [with_date],
+               COUNT([Ship-To Code]) AS [with_ship_to_code]
         FROM [FillKill].[vw_MedlineFillKill] GROUP BY [Reason] ORDER BY [lines] DESC;
-        SELECT DISTINCT [Internal Order Comments from SAP (Z106)] AS [OTHER comment]
-        FROM [FillKill].[vw_MedlineFillKill] WHERE [Reason] = ''OTHER'';
+        SELECT DISTINCT [Internal Order Comments from SAP (Z106)] AS [comment without a reason type]
+        FROM [FillKill].[vw_MedlineFillKill] WHERE [Reason] IS NULL;
     ');
 
 -- Workflow (12-14) ----------------------------------------------------------------

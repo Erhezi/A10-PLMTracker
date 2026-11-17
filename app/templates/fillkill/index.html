@@ -68,28 +68,29 @@
 
 <div class="card shadow-sm border-0 mb-4">
   <div class="card-body p-0">
-    {# At most 450px tall (600px from 2026-10-19, 450px from 10-20), scrolling inside with its header in view. #}
+    {# At most 450px tall (600px from 2026-10-19, 450px from 10-20), scrolling inside with its header in view.
+       A click on a header sorts the table (2026-11-16, static/js/fillkill/main/sort.js). #}
     <div class="table-responsive fk-scroll fk-h-450">
       <table class="table table-sm align-middle mb-0 fk-main fk-table" id="fk-main">
         <thead class="table-light">
           <tr>
-            <th scope="col">Infor Item</th>
-            <th scope="col">Medline Item</th>
-            <th scope="col">Item Description<div class="fw-normal small text-muted">Infor's long description below</div></th>
-            <th scope="col" class="text-end">QOE</th>
-            <th scope="col" class="text-end">Total Ordered</th>
-            <th scope="col" class="text-end">Total Killed</th>
-            <th scope="col" class="text-end">Total Filled</th>
-            <th scope="col" class="text-end">PO Lines</th>
-            <th scope="col">Latest Reason</th>
-            <th scope="col">Subs Status</th>
-            <th scope="col" title="Every sub nursing approved, each of which can be ordered: its Reference SKU, with its latest comment">Sub Approved by Nursing</th>
+            <th scope="col" data-sort="infor_item"><button type="button" class="fk-sort">Infor Item</button></th>
+            <th scope="col" data-sort="medline_item"><button type="button" class="fk-sort">Medline Item</button></th>
+            <th scope="col" data-sort="description"><button type="button" class="fk-sort">Item Description</button><div class="fw-normal small text-muted">Infor's long description below</div></th>
+            <th scope="col" class="text-end" data-sort="qoe"><button type="button" class="fk-sort">QOE</button></th>
+            <th scope="col" class="text-end" data-sort="ordered"><button type="button" class="fk-sort">Total Ordered</button></th>
+            <th scope="col" class="text-end" data-sort="killed"><button type="button" class="fk-sort">Total Killed</button></th>
+            <th scope="col" class="text-end" data-sort="filled"><button type="button" class="fk-sort">Total Filled</button></th>
+            <th scope="col" class="text-end" data-sort="lines"><button type="button" class="fk-sort">PO Lines</button></th>
+            <th scope="col" data-sort="reason"><button type="button" class="fk-sort">Latest Reason</button></th>
+            <th scope="col" data-sort="subs"><button type="button" class="fk-sort">Subs Status</button></th>
+            <th scope="col" title="Every sub nursing approved, each of which can be ordered: its Reference SKU, with its latest comment" data-sort="approved"><button type="button" class="fk-sort">Sub Approved by Nursing</button></th>
             {# Before Vendor Item Detail (the user, 2026-10-27): read before ordering from the tiles. #}
-            <th scope="col" title="SCM's latest comment to the sites' Materials Managers on how to order the item">{{ instruction_label }}</th>
-            <th scope="col" title="What can be ordered: each approved sub's vendor items, and on a line without one, the vendor items SCM directs (e.g. the same item from another vendor)">Vendor Item Detail</th>
-            <th scope="col" title="Orders recorded in these Fill/Kill dates for the sites shown, each with its site">Ordering</th>
-            <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, all UOMs, in eaches">Total Killed (EA)</th>
-            <th scope="col" class="text-end" title="Ordered in these Fill/Kill dates for the sites shown, all its subs, in eaches: each order's quantity times its QOE. With kills at several sites, each site that's short says so">Total Sub Ordered (EA)</th>
+            <th scope="col" title="SCM's latest comment to the sites' Materials Managers on how to order the item" data-sort="instruction"><button type="button" class="fk-sort">{{ instruction_label }}</button></th>
+            <th scope="col" title="What can be ordered: each approved sub's vendor items, and on a line without one, the vendor items SCM directs (e.g. the same item from another vendor)" data-sort="vendor_items"><button type="button" class="fk-sort">Vendor Item Detail</button></th>
+            <th scope="col" title="Orders recorded in these Fill/Kill dates for the sites shown, each with its site" data-sort="ordering"><button type="button" class="fk-sort">Ordering</button></th>
+            <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, all UOMs, in eaches" data-sort="killed_each"><button type="button" class="fk-sort">Total Killed (EA)</button></th>
+            <th scope="col" class="text-end" title="Ordered in these Fill/Kill dates for the sites shown, all its subs, in eaches: each order's quantity times its QOE. With kills at several sites, each site that's short says so" data-sort="sub_ordered_each"><button type="button" class="fk-sort">Total Sub Ordered (EA)</button></th>
           </tr>
         </thead>
         <tbody id="fk-rows">
@@ -106,7 +107,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
       {# Its own dates: Materials Managers look up past orders here without changing the table's.
          The table's sites, though (2026-10-27): a site sees its own orders. #}
-      <h2 class="h6 fw-semibold mb-0" id="fk-orders-title">Orders</h2>
+      <h2 class="h6 fw-semibold mb-0" id="fk-orders-title">Orders Recorded</h2>
       <input type="search" id="fk-orders-q" class="form-control form-control-sm fk-orders-search me-auto" autocomplete="off"
              placeholder="Medline item, sub part, Infor item or PO" aria-label="Find an order by Medline item, sub part, Infor item or PO number"
              title="Every word must be part of the Medline item, its Infor item, the vendor part ordered, the sub's Reference SKU, the vendor item's manufacturer part or Infor item, or the PO number (dashes optional)" />

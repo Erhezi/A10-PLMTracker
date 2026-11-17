@@ -31,13 +31,14 @@ def date_range(start: date, end: date) -> list[date]:
     return [start + timedelta(days=n) for n in range((end - start).days + 1)]
 
 
-def series_by_day(rows, start: date, end: date) -> dict:
-    """{days: [...], series: {name: [lines per day]}}, with every day in the range on the axis."""
+def series_by_day(rows, start: date, end: date, empty: str = "None") -> dict:
+    """{days: [...], series: {name: [lines per day]}}, with every day in the range on the axis.
+    Lines without a series value count under ``empty``."""
     days = date_range(start, end)
     index = {day: i for i, day in enumerate(days)}
     series: dict[str, list[int]] = {}
     for row in rows:
-        name = row["series"] if row["series"] not in (None, "") else "No comment"
+        name = row["series"] if row["series"] not in (None, "") else empty
         counts = series.setdefault(name, [0] * len(days))
         day = _day(row["day"])
         if day in index:
@@ -188,8 +189,9 @@ def build(scope: queries.Scope) -> dict:
         "scope": {"start": scope.start, "end": scope.end, "sites": scope.sites},
         "headline": headline(rows, subs, hours, scope.start, scope.end),
         "flow": flow_hours(killed, subs, queries.orders_since_start(scope, killed)),
-        "by_reason": series_by_day(queries.lines_by_day(scope, "reason"), scope.start, scope.end),
-        "by_site": series_by_day(queries.lines_by_day(scope, "site"), scope.start, scope.end),
+        # Medline's reason type (2026-11-16); a line without one counts as "No reason".
+        "by_reason": series_by_day(queries.lines_by_day(scope, "reason"), scope.start, scope.end, "No reason"),
+        "by_site": series_by_day(queries.lines_by_day(scope, "site"), scope.start, scope.end, "No site"),
         "top_items": rollup.most_killed(rows, TOP_ITEMS),
         "subs_by_status": status_counts,
         # Subs added per week (weekly_new_subs) and rejected subs by vendor (rejected_groups) are off

@@ -18,10 +18,6 @@ export const STATUS_CLASS = {
   approved: 'text-bg-success', hold: 'text-bg-warning', pending_review: 'text-bg-info', rejected: 'text-bg-danger',
 };
 export const STATUS_ORDER = ['approved', 'hold', 'pending_review', 'rejected'];
-export const REASON_LABEL = {
-  ALLOCATION: 'Allocation', MBO: 'Manufacturer backorder', OUT_OF_STOCK: 'Out of stock',
-  NONSTOCK_UOM: 'Non-stock UOM', NONSTOCK: 'Non-stock', DISCONTINUED: 'Discontinued', SPIKE: 'Spike', OTHER: 'Other',
-};
 
 export function statusBadge(status, extra) {
   return `<span class="badge ${STATUS_CLASS[status] || 'text-bg-secondary'}${extra ? ' ' + extra : ''}">`

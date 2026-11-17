@@ -177,6 +177,14 @@ Facts from the 11 White Plains samples in this folder (2026-09-20 → 09-30), ch
 The comment column (`Internal Order Comments from SAP (Z106)`) is the kill reason. All users should
 be able to see it. **Decided.** The main table shows it as Latest Reason (section 5).
 
+**Since 2026-11-16 (real data, Medline's final file):** the reason category is Medline's own
+`ReasonTypeText` (Allocated Item, Backorder, Custom, Non-Stock, Disco`d), shown as sent, instead of
+one the view read from the comment (the user: use it directly rather than deduce it), and the date
+beside it is Medline's `Est Avail Date` instead of the first date in the comment (the user, same
+day). The comment still shows with it. The file also gives `Ship-To Name 2` (e.g. `PWLREICU - UBOAT`); its code
+before the hyphen is the ship-to name Materials Managers know, and the item panel's kill lines show
+it. The table below is the sample's comments, from before.
+
 | Comment | Sample lines | Meaning |
 |---|---|---|
 | Allocation limit has been reached (incl. 1 SPIKE) | 118 | Medline is rationing |
@@ -424,7 +432,7 @@ rest:
 | QOE | per UOM: eaches per unit, `MDM_ITEMUOM.UOMConversion` for the Infor item and that UOM ("—" if none) (2026-10-14) |
 | Total Ordered / Killed / Filled | per UOM. With several, a last line "All UOMs, in EA" adds them up by the QOE; "—" if a UOM has none |
 | PO Lines | per UOM, and their total |
-| Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5) |
+| Latest Reason | per UOM: the latest Medline comment in the range, with its reason category (9.5): Medline's `ReasonTypeText` since 2026-11-16 |
 | Subs Status | per UOM: *approved / hold / pending review / rejected* counts. Subs approved on another UOM not killed in the range are noted |
 | Sub Approved by Nursing | ("Approved by Nursing" from 2026-10-28 until the user renamed it on 2026-11-02; 2026-10-28: every approved sub, since every one can be ordered; before, the picks: "Approver's Pick" until 2026-10-21, "Picked for Ordering" until 2026-10-28) per UOM: each approved sub's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest first), the UOM's other cells spanning its subs' lines. A sub put on hold or rejected leaves it. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the approved ones |
 | SCM Comments | (2026-10-27; "MM Instruction" until the user renamed it and moved it before Vendor Item Detail the same day, "Will's Comments" until 2026-11-02) for the Infor item: SCM's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts them and opens them all, newest first, in a popover. SCM **double-clicks the cell** to write a new one (no button in the cell; the cell is outlined under the pointer, and says so on hover), or uses the panel's Add comment. It isn't tied to the Fill/Kill dates: the latest stays in force until a newer one replaces it, and its date shows how old it is |
@@ -712,7 +720,7 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
   has no active Medline vendor-item record in Infor. Telling them apart (e.g. NULL for no match)
   would make the flag clearer.
 - **Kill reasons aren't in either view.** The Latest Reason column and reason trends on
-  the Dashboard read the comment from `vw_MedlineFillKill`.
+  the Dashboard read them from `vw_MedlineFillKill` (Medline's `ReasonTypeText` since 2026-11-16).
 - **PBO subs:** `Medline.Sub` in the item view is where Medline's PBO substitutes enter `Sub`.
 
 In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin is `users.user_role`.
@@ -722,7 +730,15 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
 - **Main** (`/`): the one operating page for every role (section 5).
   - The main table with its controls. **View subs** opens a panel for that item: the sub list, add
     sub, status, pick, history, and recording orders against picks.
-  - **Orders:** the orders recorded, voided ones included, by their own date, with **date controls of
+  - **Sorting** (2026-11-16, the user): a click on a main-table header sorts by that column, the
+    Infor item moving as one (its UOMs and subs with it): text A to Z first, numbers and dates largest
+    or newest first; a second click reverses, a third returns to the table's own order (Infor item,
+    Medline item, description). Blanks stay last; ties keep the table's order. Multi-valued columns
+    sort by: Total Ordered/Killed/Filled, eaches when every UOM has a QOE (else the quantities as
+    they are); QOE, the largest; Latest Reason, Medline's reason type then its date; Subs Status,
+    how many subs then how many approved; Sub Approved by Nursing and Vendor Item Detail, how many;
+    SCM Comments and Ordering, the latest one's date. In the browser only (`main/sort.js`).
+  - **Orders Recorded** (named so 2026-11-16; "Orders" before): the orders recorded, voided ones included, by their own date, with **date controls of
     their own** (default: the last 30 days; Today / 7 / 30 days), independent of the table's, so a
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
@@ -740,7 +756,7 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     each with its header in view. The vendor item and order forms open wide, in sections: the sub
     (and vendor item) they're for, the contract search, the vendor item, the order.
   - **The page link keeps the view** (2026-10-19): `?dates=today` or `?start=&end=`, `?sites=a,b`,
-    `?q=`, `?needs=`, and the open panel's `?item=<Medline item>[&scope=infor][&tab=…]`, updated as
+    `?q=`, `?needs=`, the sort's `?sort=<column>&dir=asc|desc` (2026-11-16), and the open panel's `?item=<Medline item>[&scope=infor][&tab=…]`, updated as
     the user works (no new history entries), so a copied link reopens the same view. Subs and the
     Dashboard link to `?item=`.
 - **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data
@@ -800,7 +816,8 @@ the active module's pages (Fill/Kill: Main, Subs, Dashboard). PLM pages and URLs
 dashboard, health). The pages' scripts are ES modules in `app/static/js/fillkill/`: `common.js`,
 shared by the three pages (formatting, fetching, status badges, the link to an item on Main);
 `subs.js`; `dashboard.js`; and Main in `main/`, started by `main/index.js`, whose header maps its
-modules (state and page link, controls, table, panel and its tabs, modal forms, orders, refresh).
+modules (state and page link, controls, table and its sort, panel and its tabs, modal forms, orders,
+refresh).
 To try the pages locally and check them after a change: `tools/fillkill_ui/` (a dev server on
 sample or read-only O2 data, and a smoke walkthrough in headless Edge; see its README).
 

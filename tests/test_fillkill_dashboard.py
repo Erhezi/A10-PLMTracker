@@ -19,13 +19,13 @@ def hist(sub_id, action, at, to_value=None, comment=None, actor="nurse@example.o
 
 
 def test_every_day_is_on_the_axis_and_busiest_series_first():
-    rows = [{"day": "2026-09-28", "series": "MBO", "lines": 2},
-            {"day": "2026-09-30", "series": "ALLOCATION", "lines": 5},
+    rows = [{"day": "2026-09-28", "series": "Backorder", "lines": 2},
+            {"day": "2026-09-30", "series": "Allocated Item", "lines": 5},
             {"day": "2026-09-30", "series": None, "lines": 1}]
-    out = dashboard.series_by_day(rows, D, date(2026, 9, 30))
+    out = dashboard.series_by_day(rows, D, date(2026, 9, 30), "No reason")
     assert out["days"] == [date(2026, 9, 28), date(2026, 9, 29), date(2026, 9, 30)]
-    assert out["series"] == {"ALLOCATION": [0, 0, 5], "MBO": [2, 0, 0], "No comment": [0, 0, 1]}
-    assert list(out["series"]) == ["ALLOCATION", "MBO", "No comment"]
+    assert out["series"] == {"Allocated Item": [0, 0, 5], "Backorder": [2, 0, 0], "No reason": [0, 0, 1]}
+    assert list(out["series"]) == ["Allocated Item", "Backorder", "No reason"]
 
 
 def test_review_hours_count_subs_added_in_the_dates_until_their_first_review():

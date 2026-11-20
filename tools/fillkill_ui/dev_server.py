@@ -316,10 +316,16 @@ def short_ship_rows(order_lines: list[dict], kill_lines: list[dict]) -> list[dic
 
 
 def item_kill_day_rows(kill_lines: list[dict]) -> list[dict]:
-    """vw_ItemKillDay, as 01_views.sql makes it: the kill lines per item, Sold-To (padded) and day."""
-    counts = Counter((row["Item"], _padded_sold_to(row["Sold-To"]), row["Order Date"]) for row in kill_lines)
-    return [{"Medline Item #": item, "Sold-To #": site, "Order Date": day, "Kill Lines": n}
-            for (item, site, day), n in counts.items()]
+    """vw_ItemKillDay, as 01_views.sql makes it: the kill lines per item, Sold-To (padded), day, UM and
+    ship-to code, with what they killed (ordered less filled; 2026-11-20)."""
+    found: dict = {}
+    for row in kill_lines:
+        key = (row["Item"], _padded_sold_to(row["Sold-To"]), row["Order Date"], row["UM"], row["Ship-To Code"])
+        entry = found.setdefault(key, {"Kill Lines": 0, "Killed Qty": 0})
+        entry["Kill Lines"] += 1
+        entry["Killed Qty"] += (row["Order Qty"] or 0) - (row["Filled Qty"] or 0)
+    return [{"Medline Item #": item, "Sold-To #": site, "Order Date": day, "UM": um, "Ship-To Code": code, **entry}
+            for (item, site, day, um, code), entry in found.items()]
 
 
 # --- O2, read-only -------------------------------------------------------------------------

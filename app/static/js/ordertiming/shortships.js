@@ -46,9 +46,10 @@ function drawSort() {
     th.setAttribute('aria-sort', on ? (state.dir === 'asc' ? 'ascending' : 'descending') : 'none');
     th.querySelector('.bi').className = `bi ${on ? (state.dir === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill') : ''}`;
   });
-  // A count of lines, not a quantity: each line in Medline's Fill/Kill feed is one PO line Medline
-  // killed all or part of. By Fill/Kill's order date, so they don't follow the order days.
-  const what = 'PO lines Medline killed (all or part) for this item, in its Fill/Kill feed, at the sites chosen';
+  // Each line in Medline's Fill/Kill feed is one PO line Medline killed all or part of; with what
+  // those lines killed and the ship-to codes they were for (2026-11-20). By Fill/Kill's order date,
+  // so they don't follow the order days.
+  const what = 'PO lines Medline killed (all or part) for this item in its Fill/Kill feed, what they killed (ordered less filled, in each UM) and the ship-to locations they were for, at the sites chosen';
   const titles = {
     kills_today: `${what}: today (${fmtDate(windows.today)})`,
     kills_7: `${what}: in the last 7 days (${fmtDate(windows.week)} to ${fmtDate(windows.today)})`,
@@ -173,8 +174,30 @@ function notFound() {
 // Fill/Kill's Main on this item: its last 30 days, searched for it, its panel open.
 const fillkillUrl = (item) => url(config.api.fillkill, { start: windows.month, end: windows.today, q: item, item });
 
-const killCell = (n, key) => `<td class="text-end ot-kills ot-${key}">${n
-  ? `<span class="fw-semibold">${fmtNumber(n)}</span>` : '<span class="text-muted">0</span>'}</td>`;
+// The unit after a quantity, grey and small, as on Fill/Kill's Main (2026-11-20, the user).
+const unitHtml = (uom) => (uom ? ` <span class="text-muted small">${esc(uom)}</span>` : '');
+
+// What Fill/Kill's feed killed of the item in one of the kill counts' days (2026-11-20, the user):
+// "X · Y UOM · Z", the numbers only (the header says what each is, and each says so on hover): its
+// kill lines, what they killed in each UM, and how many ship-to codes (requesting locations) they
+// were for, listed on hover. Centred.
+function killCell(it, name) {
+  const lines = it[`kills_${name}`];
+  if (!lines) return `<td class="text-center ot-kills ot-kills-${name}"><span class="text-muted">0</span></td>`;
+  const killed = it[`killed_${name}`];
+  const places = it[`locations_${name}`];
+  const parts = [
+    { html: `<span class="fw-semibold">${fmtNumber(lines)}</span>`, title: plural(lines, 'kill line') },
+    { html: killed.map((k) => `${fmtNumber(k.qty)}${unitHtml(k.uom)}`).join(' + '),
+      title: `Killed: ${killed.map((k) => `${fmtNumber(k.qty)} ${k.uom}`.trim()).join(' + ')} (ordered less filled)` },
+    { html: fmtNumber(places.length), cls: ' ot-kill-where',
+      title: [plural(places.length, 'ship-to location'), ...places].join('\n') },
+  ];
+  // Each part's dot stays at its end, so a narrow column breaks after a dot, never before one.
+  const html = parts.map((p, i) => `<span class="ot-kill-part${p.cls || ''}" title="${esc(p.title)}">${p.html}${
+    i < parts.length - 1 ? ' ·' : ''}</span>`).join(' ');
+  return `<td class="text-center ot-kills ot-kills-${name}">${html}</td>`;
+}
 
 const isEach = (uom) => String(uom || '').trim().toUpperCase() === 'EA';
 
@@ -184,9 +207,9 @@ function qtyHtml(it, qty, each, strong) {
   const uoms = it.qoes.map((u) => u.uom).join(', ');
   if (qty != null) {
     const eaches = each != null && !isEach(it.um) ? `<div class="small text-muted">${fmtNumber(each)} EA</div>` : '';
-    return `<span class="${strong}">${fmtNumber(qty)}</span> ${esc(it.um || '')}${eaches}`;
+    return `<span class="${strong}">${fmtNumber(qty)}</span>${unitHtml(it.um)}${eaches}`;
   }
-  if (each != null) return `<span class="${strong}" title="${esc(`Its lines are in ${uoms}: in eaches, by the QOE`)}">${fmtNumber(each)}</span> EA`;
+  if (each != null) return `<span class="${strong}" title="${esc(`Its lines are in ${uoms}: in eaches, by the QOE`)}">${fmtNumber(each)}</span>${unitHtml('EA')}`;
   return `<span class="text-muted" title="${esc(`Its lines are in ${uoms}, and Infor has no QOE for one: see each line`)}">mixed UMs</span>`;
 }
 
@@ -214,7 +237,7 @@ function itemHtml(it) {
       <td class="text-end pe-3 ot-qoe">${qoeHtml(it)}</td>
       <td class="ot-sites">${sites}</td>
       <td class="text-nowrap">${esc(fmtDateTime(it.last_short))}</td>
-      ${killCell(it.kills_today, 'kills-today')}${killCell(it.kills_7, 'kills-7')}${killCell(it.kills_30, 'kills-30')}
+      ${killCell(it, 'today')}${killCell(it, '7')}${killCell(it, '30')}
       <td class="text-nowrap"><a class="btn btn-sm btn-outline-secondary py-0" href="${esc(fillkillUrl(it.medline_item))}"
         title="This item on Fill/Kill's Main: its kills in the last 30 days, its subs and orders">Fill/Kill <i class="bi bi-arrow-right-short" aria-hidden="true"></i></a></td>
     </tr>
@@ -246,7 +269,7 @@ function linesHtml(it) {
       <td class="text-end ot-po-lines">${fmtNumber(l.po_lines)}</td>
       <td><div title="Sold-To ${esc(l.site)}">${esc(l.site_name || l.site)}</div>
         <div class="small text-muted" title="Ship-To ${esc(l.ship_to)}">${esc(l.ship_to_name || '')}</div></td>
-      <td class="text-end text-nowrap">${fmtNumber(l.qty)} ${esc(l.um)}</td>
+      <td class="text-end text-nowrap">${fmtNumber(l.qty)}${unitHtml(l.um)}</td>
       <td class="text-end">${fmtNumber(l.shipped_qty)}</td>
       <td class="text-end ot-short-note fw-semibold">${fmtNumber(l.short_qty)}</td>
       <td class="ot-reason">${reasonHtml(l)}</td>

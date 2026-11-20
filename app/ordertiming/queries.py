@@ -98,9 +98,10 @@ SHORT_COLUMNS = {
 LINES = table("vw_MedlineOrderLine", *(column(name) for name in LINE_COLUMNS.values()), schema="OrderTiming")
 SHORT_LINES = table("vw_ShortShipLine", *(column(name) for name in SHORT_COLUMNS.values()), schema="OrderTiming")
 # Fill/Kill's kill lines per Medline item, Sold-To (as this feed writes it) and day, for Short Ships'
-# kill counts.
+# kill counts; and (2026-11-20) per UM and ship-to code, with what they killed.
 KILL_DAYS = table("vw_ItemKillDay", column("Medline Item #"), column("Sold-To #"), column("Order Date"),
-                  column("Kill Lines"), schema="OrderTiming")
+                  column("UM"), column("Ship-To Code"), column("Kill Lines"), column("Killed Qty"),
+                  schema="OrderTiming")
 LAST_LOAD = table("vw_OrderTimingLastLoad", column("last_success"), column("last_line_load"), schema="OrderTiming")
 
 # What the search box looks in; the item numbers also without dashes, spaces, dots and slashes
@@ -334,8 +335,10 @@ def export_lines(filters: Filters, limit: int = EXPORT_LIMIT) -> list[dict]:
 # query, not the code); here they're filtered, grouped per item and paged.
 
 ITEMS_PAGE_SIZE = 20  # items a page of Short Ships shows
-KILL_KEYS = ("kills_today", "kills_7", "kills_30")
-NO_KILLS = {key: 0 for key in KILL_KEYS}
+# The kill counts' days: today, the last 7 and the last 30, today included; each by its name in the
+# keys (kills_7) and the days before today it reaches back.
+KILL_WINDOWS = (("today", 0), ("7", 6), ("30", 29))
+KILL_KEYS = tuple(f"kills_{name}" for name, _ in KILL_WINDOWS)
 # What Short Ships can sort on (a header click); it opens on the items most killed in 30 days.
 ITEM_SORTS = ("medline_item", "short_lines", "pos", "sites", "short_qty", "qty", "qoe", "last_short", *KILL_KEYS)
 DEFAULT_ITEM_SORT = ("kills_30", "desc")
@@ -358,22 +361,61 @@ def _short_conditions(filters: Filters) -> list:
     return _conditions(replace(filters, status=""), source=SHORT_LINES)
 
 
+def _quantity(value):
+    """A quantity as a whole number when it is one (SQL Server's sums can come back as Decimal)."""
+    value = value or 0
+    return int(value) if float(value).is_integer() else float(value)
+
+
+def no_kills() -> dict:
+    """An item's kill counts when Fill/Kill's feed hasn't killed it in the last 30 days."""
+    return _kill_fields({})
+
+
+def _kill_fields(found: dict) -> dict:
+    fields = {}
+    for name, _ in KILL_WINDOWS:
+        window = found.get(name) or {"lines": 0, "killed": {}, "locations": set()}
+        fields[f"kills_{name}"] = window["lines"]
+        fields[f"killed_{name}"] = [{"uom": uom, "qty": qty} for uom, qty in sorted(window["killed"].items())]
+        fields[f"locations_{name}"] = sorted(window["locations"])
+    return fields
+
+
 def kill_counts(today: date, sites=()) -> dict[str, dict]:
-    """How many lines Medline's Fill/Kill feed killed for each Medline item: today, in the last 7
-    days and in the last 30 (today included, by Fill/Kill's Order Date), at the Sold-Tos given (all
-    when none). Each kill line counts once; an item killed on three orders today was killed 3 times.
-    vw_ItemKillDay counts them per day and writes Fill/Kill's Sold-Tos as this feed does."""
+    """What Medline's Fill/Kill feed killed of each Medline item today, in the last 7 days and in the
+    last 30 (today included, by Fill/Kill's Order Date), at the Sold-Tos given (all when none). For each
+    of them (KILL_WINDOWS): ``kills_*``, the kill lines, each once (an item killed on three orders today
+    was killed 3 times); ``killed_*``, what they killed in each UM ([{uom, qty}], Order Qty less Filled
+    Qty, as Fill/Kill counts it; 2026-11-20); and ``locations_*``, the ship-to codes they were for
+    (Fill/Kill's Ship-To Code, the requesting locations; 2026-11-20). vw_ItemKillDay groups the lines
+    per day, UM and ship-to code, and writes Fill/Kill's Sold-Tos as this feed does."""
     k = KILL_DAYS.c
-    day, kills = k["Order Date"], k["Kill Lines"]
-    statement = (select(k["Medline Item #"].label("item"),
-                        func.sum(case((day == today, kills), else_=0)).label("kills_today"),
-                        func.sum(case((day >= today - timedelta(days=6), kills), else_=0)).label("kills_7"),
-                        func.sum(kills).label("kills_30"))
-                 .where(day.between(today - timedelta(days=29), today))
-                 .group_by(k["Medline Item #"]))
+    day = k["Order Date"]
+
+    def in_window(back: int, value):
+        return func.sum(case((day >= today - timedelta(days=back), value), else_=0))
+
+    statement = (select(k["Medline Item #"].label("item"), k["UM"].label("uom"), k["Ship-To Code"].label("location"),
+                        *(in_window(back, k["Kill Lines"]).label(f"lines_{name}") for name, back in KILL_WINDOWS),
+                        *(in_window(back, k["Killed Qty"]).label(f"killed_{name}") for name, back in KILL_WINDOWS))
+                 .where(day.between(today - timedelta(days=KILL_WINDOWS[-1][1]), today))
+                 .group_by(k["Medline Item #"], k["UM"], k["Ship-To Code"]))
     if sites:
         statement = statement.where(k["Sold-To #"].in_(list(sites)))
-    return {row["item"]: {key: int(row[key] or 0) for key in KILL_KEYS} for row in _rows(statement)}
+    found: dict[str, dict] = {}
+    for row in _rows(statement):
+        for name, _ in KILL_WINDOWS:
+            lines = int(row[f"lines_{name}"] or 0)
+            if not lines:
+                continue
+            window = found.setdefault(row["item"], {}).setdefault(name, {"lines": 0, "killed": {}, "locations": set()})
+            window["lines"] += lines
+            uom = (row["uom"] or "").strip()
+            window["killed"][uom] = window["killed"].get(uom, 0) + _quantity(row[f"killed_{name}"])
+            if (row["location"] or "").strip():
+                window["locations"].add(row["location"].strip())
+    return {item: _kill_fields(windows) for item, windows in found.items()}
 
 
 def _short_lines(filters: Filters, *extra, limit: int | None = None) -> list[dict]:
@@ -449,7 +491,7 @@ def short_items(filters: Filters, today: date, sort: str = "", direction: str = 
             item["short_qty_each"], item["qty_each"] = None, None
         item["qoes"] = sorted(qoes.get(item["medline_item"], []), key=lambda u: u["uom"] or "")
         item["site_names"] = sorted(names.get(item["medline_item"], ()))
-        item.update(kills.get(item["medline_item"], NO_KILLS))
+        item.update(kills.get(item["medline_item"]) or no_kills())
     _sort_items(items, sort, direction)
 
     total = len(items)
@@ -472,7 +514,7 @@ def export_short_lines(filters: Filters, today: date, limit: int = EXPORT_LIMIT)
     lines = _short_lines(filters, limit=limit)
     kills = kill_counts(today, filters.sites)
     for line in lines:
-        line.update(kills.get(line["medline_item"], NO_KILLS))
+        line.update(kills.get(line["medline_item"]) or no_kills())
     return lines
 
 

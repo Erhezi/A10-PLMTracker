@@ -14,7 +14,8 @@
 --                                        PO's total lines, its line in Fill/Kill's feed and
 --                                        (2026-11-18) its QOE from Infor, with its quantities in eaches
 --   OrderTiming.vw_ItemKillDay           Short Ships' kill counts: Fill/Kill's kill lines per item,
---                                        Sold-To and day
+--                                        Sold-To and day (and, 2026-11-20, UM and ship-to code,
+--                                        with what they killed)
 --   OrderTiming.vw_OrderTimingLastLoad   one row: how fresh the lines are, for the app's "Data as
 --                                        of" (Medline's file) and "Last loaded"
 --
@@ -164,13 +165,20 @@ CREATE OR ALTER VIEW [OrderTiming].[vw_ItemKillDay] AS
 -- feed writes it, ten digits with the leading zeros, which Fill/Kill's file drops (its 2159659 is
 -- 0002159659), so the app filters both with the same site codes. The app adds up the days it shows
 -- (today, the last 7 and the last 30).
-SELECT k.[Item] AS [Medline Item #], s.[Sold-To #], k.[Order Date], COUNT(*) AS [Kill Lines]
+-- 2026-11-20 (the user: how much, and how many requesting locations, beside the lines): also per UM
+-- and Ship-To Code, with [Killed Qty], what the lines killed. As Fill/Kill counts them: Order Qty less
+-- Filled Qty, in Medline's UM; the Ship-To Code is Fill/Kill's (10: Ship-To Name 2 up to its hyphen,
+-- PMOSN1RO). The app adds up the lines and the quantity per UM, and counts each ship-to code once.
+-- The release before reads only [Kill Lines], which it adds up per item, so it reads this the same.
+SELECT k.[Item] AS [Medline Item #], s.[Sold-To #], k.[Order Date], k.[UM], k.[Ship-To Code],
+       COUNT(*) AS [Kill Lines],
+       SUM(COALESCE(k.[Order Qty], 0) - COALESCE(k.[Filled Qty], 0)) AS [Killed Qty]
 FROM [FillKill].[vw_MedlineFillKill] AS k
 CROSS APPLY (SELECT LTRIM(RTRIM(k.[Sold-To])) AS [code]) AS c
 CROSS APPLY (SELECT CASE WHEN c.[code] NOT LIKE '%[^0-9]%' AND LEN(c.[code]) BETWEEN 1 AND 9
                          THEN RIGHT('0000000000' + c.[code], 10)
                          ELSE c.[code] END AS [Sold-To #]) AS s
-GROUP BY k.[Item], s.[Sold-To #], k.[Order Date];
+GROUP BY k.[Item], s.[Sold-To #], k.[Order Date], k.[UM], k.[Ship-To Code];
 GO
 
 CREATE OR ALTER VIEW [OrderTiming].[vw_OrderTimingLastLoad] AS

@@ -5,7 +5,7 @@ re-run. It has no tables: the module only reads Medline's feed, which A13 loads.
 
 | Script | What it does |
 | --- | --- |
-| `01_views.sql` | Schema `OrderTiming`; `vw_MedlineOrderLine` (Medline's order lines, each step's date and time as one value, **Line Status** and **Short Qty**), Short Ships' `vw_ShortShipLine` (with each line's QOE from Infor since 2026-11-18) and `vw_ItemKillDay` (2026-11-17), and `vw_OrderTimingLastLoad` (the app's "Data as of" and "last loaded"; `last_file` since 2026-11-17). It ends by listing the lines per status, the short lines in Fill/Kill and with a QOE, and the freshness row. |
+| `01_views.sql` | Schema `OrderTiming`; `vw_MedlineOrderLine` (Medline's order lines, each step's date and time as one value, **Line Status** and **Short Qty**), Short Ships' `vw_ShortShipLine` (with each line's QOE from Infor since 2026-11-18) and `vw_ItemKillDay` (2026-11-17; per UM and ship-to code, with `Killed Qty`, since 2026-11-20: **run it before the release that shows them**, which reads those columns; the release before reads it the same either way), and `vw_OrderTimingLastLoad` (the app's "Data as of" and "last loaded"; `last_file` since 2026-11-17). It ends by listing the lines per status, the short lines in Fill/Kill and with a QOE, and the freshness row. |
 
 ## Where the data comes from
 
@@ -99,6 +99,14 @@ app filters them by days, sites and search, groups the lines per item and pages 
   Medline order line (its key is `Sales Order #`, `Order Line #`) that Medline killed all or part
   of (on O2, 11/18: 272 all, 21 part, none filled). Fill/Kill's Sold-Tos have no leading zeros (2159659) and this feed's
   do (0002159659): the view pads Fill/Kill's to ten digits, so one site code filters both.
+  Since 2026-11-20 (the user: "X lines · Y UOM · Z locations") it's also per `UM` and
+  `Ship-To Code`, with `Killed Qty`, what the lines killed: as Fill/Kill counts it, Order Qty less
+  Filled Qty in Medline's UM, and Fill/Kill's ship-to code (Ship-To Name 2 up to its hyphen, the
+  requesting location). The app adds up the lines and the quantity per UM over each of the three
+  windows and counts each ship-to code once (an item killed for PWLREICU on two days is one
+  location). On O2 (11/20): 389 rows for the 406 kill lines (154 before), every line with a
+  ship-to code, no item killed in two UMs in 30 days; the most killed, MSC095106HH, was 74 lines,
+  2,950 PK and 52 locations.
 
 The PO total is a count over each line's day, Sold-To and order, so the app's day and site filters
 still reach the source table's key: on O2 (11/17), with the days as parameters as the app sends

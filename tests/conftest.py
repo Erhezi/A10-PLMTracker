@@ -120,7 +120,7 @@ ORDERTIMING_VIEWS = {
     # Sold-To and day.
     "vw_ShortShipLine": [*ORDER_LINE_COLUMNS, "PO Total Lines", "In Fill/Kill", "Fill/Kill Reason", "Est Avail Date",
                          "QOE", "Order Qty EA", "Short Qty EA"],
-    "vw_ItemKillDay": ["Medline Item #", "Sold-To #", "Order Date", "Kill Lines"],
+    "vw_ItemKillDay": ["Medline Item #", "Sold-To #", "Order Date", "UM", "Ship-To Code", "Kill Lines", "Killed Qty"],
     "vw_OrderTimingLastLoad": ["last_success", "last_line_load", "last_file"],
 }
 

@@ -450,9 +450,12 @@ def short_line(row: dict, po_lines: int, reason=None, reason_date=None, in_fillk
             "Short Qty EA": row["Short Qty"] * qoe if qoe else None}
 
 
-def kills(item: str, site: tuple, ago: int, n: int = 1) -> dict:
-    """A row of vw_ItemKillDay: an item's kill lines at a Sold-To (as Main's view writes it) on a day."""
-    return {"Medline Item #": item, "Sold-To #": site[0], "Order Date": day(ago), "Kill Lines": n}
+def kills(item: str, site: tuple, ago: int, n: int = 1, um: str = "CS", location: str | None = "PWLREICU",
+          killed: int | None = None) -> dict:
+    """A row of vw_ItemKillDay: an item's kill lines at a Sold-To (as Main's view writes it) on a day,
+    in a UM, for a ship-to code, and what they killed (2026-11-20; one each unless ``killed`` says)."""
+    return {"Medline Item #": item, "Sold-To #": site[0], "Order Date": day(ago), "UM": um, "Ship-To Code": location,
+            "Kill Lines": n, "Killed Qty": n if killed is None else killed}
 
 
 @pytest.fixture
@@ -472,10 +475,10 @@ def short_client(ot_app):
         short_line(order6[1], 3, in_fillkill=False),
     ])
     add_view_rows(ot_app, "vw_ItemKillDay", [
-        kills("DYND70294BH", SITE_A, 3),  # order 3's short line
-        kills("DYND70294BH", SITE_B, 0),  # order 6's first line
-        kills("DYND70294BH", SITE_A, 10),  # past the last week
-        kills("DYND70294BH", SITE_A, 40),  # past the last 30 days
+        kills("DYND70294BH", SITE_A, 3, killed=4),  # order 3's short line
+        kills("DYND70294BH", SITE_B, 0, location="PMOSK6", killed=5),  # order 6's first line
+        kills("DYND70294BH", SITE_A, 10, killed=2),  # past the last week; the same location as day 3's
+        kills("DYND70294BH", SITE_A, 40, location="PWLREO3", killed=9),  # past the last 30 days
         kills("OTHER", SITE_B, 0),
     ])
     return logged_in(ot_app, "mm@example.org", plm=None, fillkill=("materials_manager",))
@@ -502,10 +505,42 @@ def test_short_ships_an_item_a_row_with_its_kills(short_client):
     assert (cup["short_lines"], cup["pos"], cup["sites"], cup["short_qty"], cup["um"]) == (2, 2, 2, 5, "CS")
     assert cup["site_names"] == sorted([SITE_A[1], SITE_B[1]])
     assert (cup["kills_today"], cup["kills_7"], cup["kills_30"]) == (1, 2, 3)  # not the kill 40 days ago
+    # 2026-11-20: what those lines killed, and the ship-to codes they were for, each once.
+    assert [cup[f"killed_{w}"] for w in ("today", "7", "30")] == [
+        [{"uom": "CS", "qty": 5}], [{"uom": "CS", "qty": 9}], [{"uom": "CS", "qty": 11}]]
+    assert [cup[f"locations_{w}"] for w in ("today", "7", "30")] == [
+        ["PMOSK6"], ["PMOSK6", "PWLREICU"], ["PMOSK6", "PWLREICU"]]
     assert cup["last_short"].endswith("09:03:00") and cup["last_short"].startswith(day(0))
     gloves = data["items"][1]
     assert (gloves["short_lines"], gloves["short_qty"], gloves["kills_30"]) == (1, 5, 0)
+    assert (gloves["killed_30"], gloves["locations_30"]) == ([], [])
     assert data["kill_windows"] == {"today": day(0), "week": day(6), "month": day(29)}
+
+
+def test_kill_counts_add_up_the_lines_what_they_killed_and_the_locations(ot_app):
+    # 2026-11-20, the user: "X lines · Y UOM · Z locations" for each of the kill counts' days.
+    add_view_rows(ot_app, "vw_ItemKillDay", [
+        kills("CUP", SITE_A, 0, n=2, killed=7),
+        kills("CUP", SITE_A, 0, um="EA", killed=30),  # the same location in another UM
+        kills("CUP", SITE_B, 2, location="PMOSK6", killed=1),
+        kills("CUP", SITE_B, 20, location=None, killed=4),  # no ship-to code: a line, no location
+        kills("CUP", SITE_A, 31, location="PWLREO3", killed=50),  # past the last 30 days
+    ])
+    with ot_app.app_context():
+        today = now_ny_naive().date()
+        cup = queries.kill_counts(today)["CUP"]
+        at_b = queries.kill_counts(today, (SITE_B[0],))["CUP"]
+        empty = queries.no_kills()
+    cs, ea = {"uom": "CS"}, {"uom": "EA"}
+    assert (cup["kills_today"], cup["killed_today"], cup["locations_today"]) == (
+        3, [{**cs, "qty": 7}, {**ea, "qty": 30}], ["PWLREICU"])
+    assert (cup["kills_7"], cup["killed_7"], cup["locations_7"]) == (
+        4, [{**cs, "qty": 8}, {**ea, "qty": 30}], ["PMOSK6", "PWLREICU"])
+    assert (cup["kills_30"], cup["killed_30"], cup["locations_30"]) == (
+        5, [{**cs, "qty": 12}, {**ea, "qty": 30}], ["PMOSK6", "PWLREICU"])
+    assert (at_b["kills_today"], at_b["killed_7"], at_b["locations_30"]) == (0, [{**cs, "qty": 1}], ["PMOSK6"])
+    assert empty == {"kills_today": 0, "killed_today": [], "locations_today": [], "kills_7": 0, "killed_7": [],
+                     "locations_7": [], "kills_30": 0, "killed_30": [], "locations_30": []}
 
 
 def test_short_ships_lines_with_their_po_and_fillkill_reason(short_client):
@@ -610,6 +645,11 @@ def test_short_ships_export(short_client):
     cup = by_po[("3000000003", "DYND70294BH")]
     assert [cup[header.index(label)] for label in ("Fill/Kill Reason", "PO Total Lines", "Item Killed 30 Days")] == [
         "Backorder", "2", "3"]
+    # 2026-11-20: beside each count of kill lines, what they killed and how many locations.
+    kill_cells = ("Item Killed Today", "Item Killed Qty Today", "Item Kill Locations Today", "Item Killed Qty 7 Days",
+                  "Item Kill Locations 7 Days", "Item Killed Qty 30 Days", "Item Kill Locations 30 Days")
+    assert [cup[header.index(label)] for label in kill_cells] == ["1", "5 CS", "1", "9 CS", "2", "11 CS", "2"]
+    assert [gloves[header.index(label)] for label in kill_cells] == ["0", "", "0", "", "0", "", "0"]
     assert [cup[header.index(label)] for label in ("Order Qty", "QOE", "Order Qty EA", "Short Qty EA")] == [
         "3", "12", "36", "12"]
     assert [gloves[header.index(label)] for label in ("QOE", "Order Qty EA", "Short Qty EA")] == ["", "", ""]

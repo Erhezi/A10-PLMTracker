@@ -838,7 +838,15 @@ const steps = [
     expect(await pressed() === '1', `Short Ships' quick range pressed: '${await pressed()}'`);
     expect((await text('#ot-count')) === '3 items', `the count: ${await text('#ot-count')}`);
     expect(await evaluate(`${cells('.ot-item')} === 'DYND70294BH|MDS2585H|B-D930103CS'`), `the items: ${await evaluate(cells('.ot-item'))}`);
-    expect(await evaluate(`${kills} === '1|1|0/2|1|0/2|1|0'`), `the kill counts: ${await evaluate(kills)}`);
+    // Each count with what its lines killed and how many ship-to locations (2026-11-20), the numbers
+    // only, "lines · qty UOM · locations", the locations listed on hover.
+    const cupToday = '1 · 5 EA · 1', glovesKills = '1 · 3 BX · 1', cupWeek = '2 · 8 EA · 2';
+    expect(await evaluate(`${kills} === '${cupToday}|${glovesKills}|0/${cupWeek}|${glovesKills}|0/${cupWeek}|${glovesKills}|0'`),
+      `the kill counts: ${await evaluate(kills)}`);
+    const where = `document.querySelector('#ot-rows .ot-kills-7 .ot-kill-where').title`;
+    expect(await evaluate(`${where} === '2 ship-to locations\\nPMOSK6\\nPWLREICU'`), `the cup's locations on hover: ${await evaluate(where)}`);
+    expect(await evaluate(`getComputedStyle(document.querySelector('#ot-rows .ot-kills-7')).textAlign === 'center'`),
+      'the kill counts are not centred');
     expect(await evaluate(`${cells('.ot-short-lines')} === '1 1 PO|1 1 PO|1 1 PO'`), `today's short lines: ${await evaluate(cells('.ot-short-lines'))}`);
     // Qty short, Qty ordered and the QOE, the quantities in eaches below by it (B-D930103CS has none).
     const qtys = `${cells('.ot-qty-short')} + ' / ' + ${cells('.ot-qty-ordered')} + ' / ' + ${cells('.ot-qoe')}`;
@@ -868,7 +876,8 @@ const steps = [
     expect((await evaluate('location.search')).includes('sort=medline_item'), 'the sort is not in the link');
     await clickText('#ot-sites label', 'SAMPLE SITE B');
     await waitFor(`${cells('.ot-item')} === 'DYND70294BH'`, "site B's one item");
-    expect(await evaluate(`${kills} === '0/1/1'`), `site B's kill counts: ${await evaluate(kills)}`);
+    const atB = '1 · 3 EA · 1';
+    expect(await evaluate(`${kills} === '0/${atB}/${atB}'`), `site B's kill counts: ${await evaluate(kills)}`);
     // The item on Fill/Kill's Main, its panel open.
     await click('#ot-rows .ot-order-row a[href*="/fillkill/"]');
     await waitFor(`document.getElementById('fk-panel-title') && document.getElementById('fk-panel-title').innerText.trim() === 'DYND70294BH'`,

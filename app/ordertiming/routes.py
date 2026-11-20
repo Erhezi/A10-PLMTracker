@@ -342,9 +342,26 @@ SHORT_EXPORT_COLUMNS = (
     ("Shipped Qty", "shipped_qty"), ("Open Qty", "open_qty"), ("Short Qty", "short_qty"), ("UM", "um"),
     ("QOE", "qoe"), ("Order Qty EA", "qty_each"), ("Short Qty EA", "short_qty_each"),
     ("ASN Created", "asn_at"), ("In Fill/Kill", "in_fillkill"), ("Fill/Kill Reason", "kill_reason"),
-    ("Est Avail Date", "kill_reason_date"), ("Item Killed Today", "kills_today"),
-    ("Item Killed 7 Days", "kills_7"), ("Item Killed 30 Days", "kills_30"), ("Buyer", "buyer"),
+    ("Est Avail Date", "kill_reason_date"),
+    # Each of the kill counts' days: its kill lines, then (2026-11-20) what they killed in each UM
+    # ("5 EA", "100 CS; 20 EA") and how many ship-to codes (requesting locations) they were for.
+    ("Item Killed Today", "kills_today"), ("Item Killed Qty Today", "killed_today"),
+    ("Item Kill Locations Today", "locations_today"),
+    ("Item Killed 7 Days", "kills_7"), ("Item Killed Qty 7 Days", "killed_7"),
+    ("Item Kill Locations 7 Days", "locations_7"),
+    ("Item Killed 30 Days", "kills_30"), ("Item Killed Qty 30 Days", "killed_30"),
+    ("Item Kill Locations 30 Days", "locations_30"),
+    ("Buyer", "buyer"),
 )
+
+
+def _kill_cells(row: dict) -> dict:
+    """A short line's kill quantities and locations as the export writes them."""
+    cells = {}
+    for name, _ in queries.KILL_WINDOWS:
+        cells[f"killed_{name}"] = "; ".join(f"{k['qty']} {k['uom']}".strip() for k in row.get(f"killed_{name}") or ())
+        cells[f"locations_{name}"] = len(row.get(f"locations_{name}") or ())
+    return cells
 
 
 @bp.get("/shortships/export")
@@ -356,7 +373,7 @@ def export_shortships():
     writer = csv.writer(out)
     writer.writerow([label for label, _ in SHORT_EXPORT_COLUMNS])
     for row in rows:
-        values = {**row, "in_fillkill": "Yes" if row.get("in_fillkill") else "No"}
+        values = {**row, "in_fillkill": "Yes" if row.get("in_fillkill") else "No", **_kill_cells(row)}
         writer.writerow([_csv_cell(key, values.get(key)) for _, key in SHORT_EXPORT_COLUMNS])
     name = f"short-ships-{now_ny_naive():%Y%m%d}.csv"
     return Response("﻿" + out.getvalue(), mimetype="text/csv",

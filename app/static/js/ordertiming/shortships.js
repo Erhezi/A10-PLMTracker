@@ -46,10 +46,13 @@ function drawSort() {
     th.setAttribute('aria-sort', on ? (state.dir === 'asc' ? 'ascending' : 'descending') : 'none');
     th.querySelector('.bi').className = `bi ${on ? (state.dir === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill') : ''}`;
   });
+  // A count of lines, not a quantity: each line in Medline's Fill/Kill feed is one PO line Medline
+  // killed all or part of. By Fill/Kill's order date, so they don't follow the order days.
+  const what = 'PO lines Medline killed (all or part) for this item, in its Fill/Kill feed, at the sites chosen';
   const titles = {
-    kills_today: `Lines Medline's Fill/Kill feed killed for this item today (${fmtDate(windows.today)}), at the sites chosen`,
-    kills_7: `Lines Fill/Kill killed for this item in the last 7 days (${fmtDate(windows.week)} to ${fmtDate(windows.today)}), at the sites chosen`,
-    kills_30: `Lines Fill/Kill killed for this item in the last 30 days (${fmtDate(windows.month)} to ${fmtDate(windows.today)}), at the sites chosen`,
+    kills_today: `${what}: today (${fmtDate(windows.today)})`,
+    kills_7: `${what}: in the last 7 days (${fmtDate(windows.week)} to ${fmtDate(windows.today)})`,
+    kills_30: `${what}: in the last 30 days (${fmtDate(windows.month)} to ${fmtDate(windows.today)})`,
   };
   Object.entries(titles).forEach(([key, title]) => { head.querySelector(`[data-sort="${key}"]`).title = title; });
 }
@@ -107,7 +110,7 @@ function reload() {
 }
 
 function message(html) {
-  rows.innerHTML = `<tr><td colspan="11" class="small p-3">${html}</td></tr>`;
+  rows.innerHTML = `<tr><td colspan="13" class="small p-3">${html}</td></tr>`;
 }
 
 const sortParams = () => ({ sort: state.sort, dir: state.dir });
@@ -173,11 +176,29 @@ const fillkillUrl = (item) => url(config.api.fillkill, { start: windows.month, e
 const killCell = (n, key) => `<td class="text-end ot-kills ot-${key}">${n
   ? `<span class="fw-semibold">${fmtNumber(n)}</span>` : '<span class="text-muted">0</span>'}</td>`;
 
+const isEach = (uom) => String(uom || '').trim().toUpperCase() === 'EA';
+
+// Qty short or ordered (2026-11-18): in the item's UM, and in eaches below when that isn't EA. Lines
+// in more than one UM have no one total in a UM: then it's in eaches, when every line has a QOE.
+function qtyHtml(it, qty, each, strong) {
+  const uoms = it.qoes.map((u) => u.uom).join(', ');
+  if (qty != null) {
+    const eaches = each != null && !isEach(it.um) ? `<div class="small text-muted">${fmtNumber(each)} EA</div>` : '';
+    return `<span class="${strong}">${fmtNumber(qty)}</span> ${esc(it.um || '')}${eaches}`;
+  }
+  if (each != null) return `<span class="${strong}" title="${esc(`Its lines are in ${uoms}: in eaches, by the QOE`)}">${fmtNumber(each)}</span> EA`;
+  return `<span class="text-muted" title="${esc(`Its lines are in ${uoms}, and Infor has no QOE for one: see each line`)}">mixed UMs</span>`;
+}
+
+// Eaches in one of the item's UM, from Infor; one per UM when it has several ("BX/100").
+function qoeHtml(it) {
+  const none = (u) => `<span class="text-muted" title="${esc(`Infor has no QOE for ${it.medline_item}'s ${u.uom}`)}">—</span>`;
+  if (it.qoes.length === 1) return it.qoes[0].qoe != null ? fmtNumber(it.qoes[0].qoe) : none(it.qoes[0]);
+  return it.qoes.map((u) => `<div class="text-nowrap">${esc(u.uom)}/${u.qoe != null ? fmtNumber(u.qoe) : none(u)}</div>`).join('');
+}
+
 function itemHtml(it) {
   const open = state.open.has(it.medline_item);
-  const qty = it.short_qty == null
-    ? '<span class="text-muted" title="Its lines are in more than one UM: see each line">mixed UMs</span>'
-    : `<span class="ot-short-note fw-semibold">${fmtNumber(it.short_qty)}</span> ${esc(it.um || '')}`;
   const sites = it.site_names.length === 1 ? esc(it.site_names[0])
     : `<span title="${esc(it.site_names.join('\n'))}">${esc(plural(it.sites, 'site'))}</span>`;
   const maker = [it.manufacturer, it.mfr_item].filter(Boolean).map(esc).join(' · ');
@@ -188,7 +209,9 @@ function itemHtml(it) {
       <td><div>${esc(it.description || '')}</div><div class="small text-muted">${maker}</div></td>
       <td class="text-end ot-short-lines"><span class="fw-semibold">${fmtNumber(it.short_lines)}</span>
         <div class="small text-muted text-nowrap">${esc(plural(it.pos, 'PO'))}</div></td>
-      <td class="text-end text-nowrap ot-qty-short">${qty}</td>
+      <td class="text-end text-nowrap ot-qty-short">${qtyHtml(it, it.short_qty, it.short_qty_each, 'ot-short-note fw-semibold')}</td>
+      <td class="text-end text-nowrap ot-qty-ordered">${qtyHtml(it, it.qty, it.qty_each, '')}</td>
+      <td class="text-end pe-3 ot-qoe">${qoeHtml(it)}</td>
       <td class="ot-sites">${sites}</td>
       <td class="text-nowrap">${esc(fmtDateTime(it.last_short))}</td>
       ${killCell(it.kills_today, 'kills-today')}${killCell(it.kills_7, 'kills-7')}${killCell(it.kills_30, 'kills-30')}
@@ -197,7 +220,7 @@ function itemHtml(it) {
     </tr>
     <tr class="ot-lines-row"${open ? '' : ' hidden'}>
       <td></td>
-      <td colspan="10" class="pt-0 pb-2">${linesHtml(it)}</td>
+      <td colspan="12" class="pt-0 pb-2">${linesHtml(it)}</td>
     </tr>
   </tbody>`;
 }
@@ -211,14 +234,16 @@ function reasonHtml(l) {
   return `${esc(l.kill_reason || '—')}${avail}`;
 }
 
+// An item's short lines (the user, 2026-11-18: the PO, its line and line type first, then when the
+// PO was created and its total lines).
 function linesHtml(it) {
   const body = it.lines.map((l) => `<tr>
       <td><div class="fw-semibold ot-line-po" title="${esc(l.po_raw || '')}">${esc(l.po || l.po_raw || '—')}</div>
         <div class="small text-muted">${esc(l.order_no)}</div></td>
+      <td class="text-nowrap ot-po-line" title="Medline order line ${esc(l.order_line)}">${esc(l.po_line || l.order_line)}</td>
+      <td class="ot-line-type">${esc(l.line_type || '')}</td>
       <td class="text-nowrap ot-po-created">${esc(fmtDateTime(l.created_at))}</td>
       <td class="text-end ot-po-lines">${fmtNumber(l.po_lines)}</td>
-      <td class="text-nowrap" title="Medline order line ${esc(l.order_line)}">${esc(l.po_line || l.order_line)}</td>
-      <td class="ot-line-type">${esc(l.line_type || '')}</td>
       <td><div title="Sold-To ${esc(l.site)}">${esc(l.site_name || l.site)}</div>
         <div class="small text-muted" title="Ship-To ${esc(l.ship_to)}">${esc(l.ship_to_name || '')}</div></td>
       <td class="text-end text-nowrap">${fmtNumber(l.qty)} ${esc(l.um)}</td>
@@ -230,10 +255,10 @@ function linesHtml(it) {
   return `<table class="table table-sm mb-0 ot-lines">
     <thead><tr>
       <th scope="col">PO<div class="fw-normal">Medline order</div></th>
+      <th scope="col" title="The line's number on our PO">PO line #</th>
+      <th scope="col" title="Medline's Line Type">Line type</th>
       <th scope="col" title="Medline's Order Create Date and Time: when Medline created its order for the PO">PO created</th>
       <th scope="col" class="text-end" title="Every line of the PO in Medline's data">Total lines</th>
-      <th scope="col">PO line</th>
-      <th scope="col" title="Medline's Line Type">Line type</th>
       <th scope="col">Site<div class="fw-normal">Ship-to</div></th>
       <th scope="col" class="text-end">Ordered</th>
       <th scope="col" class="text-end">Shipped</th>

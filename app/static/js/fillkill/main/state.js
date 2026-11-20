@@ -18,7 +18,6 @@ export const state = {
   ordersStart: '',  // the orders section's own dates
   ordersEnd: '',
   orders: [],  // the orders in those dates, before the search box narrows them
-  dateMode: 'range',  // 'today' or 'range'
   rows: [],
   sort: null,  // the main table's sort, by a header (2026-11-16): { key, dir: 'asc'|'desc' }; null, the server's order
   counts: {},
@@ -30,14 +29,12 @@ export const state = {
   vendorResults: [],  // the vendor search's latest results
 };
 
-// The page link keeps what's shown, so it can be shared or bookmarked (2026-10-19): ?dates=today
-// or ?start=&end=, ?sites=a,b, ?q= (the search), ?needs=, the table's ?sort=&dir= (2026-11-16), and
-// the open panel's ?item=&scope=&tab=. table.js checks the sort's key.
+// The page link keeps what's shown, so it can be shared or bookmarked (2026-10-19): ?start=&end=
+// (left out on today, the default, so a bookmark opens on today; an old ?dates=today link opens
+// there too), ?sites=a,b, ?q= (the search), ?needs=, the table's ?sort=&dir= (2026-11-16), and the
+// open panel's ?item=&scope=&tab=. table.js checks the sort's key.
 export const linked = new URLSearchParams(window.location.search);
-if (linked.get('dates') === 'today' && config.today) {
-  state.start = config.today;
-  state.end = config.today;
-} else if (linked.get('start') && linked.get('end')) {
+if (linked.get('start') && linked.get('end')) {
   state.start = linked.get('start');
   state.end = linked.get('end');
 }
@@ -49,8 +46,11 @@ if (linked.get('sort')) state.sort = { key: linked.get('sort'), dir: linked.get(
 // Keep the page link in step with what's shown (no new history entry each time).
 export function syncLink() {
   const params = new URLSearchParams();
-  if (state.dateMode === 'today') params.set('dates', 'today');
-  else if (state.start && state.end) { params.set('start', state.start); params.set('end', state.end); }
+  const opening = config.default || {};
+  if (state.start && state.end && !(state.start === opening.start && state.end === opening.end)) {
+    params.set('start', state.start);
+    params.set('end', state.end);
+  }
   if (state.sites.length) params.set('sites', state.sites.join(','));
   const search = $('fk-search').value.trim();
   if (search) params.set('q', search);

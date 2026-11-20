@@ -71,17 +71,19 @@
             <th scope="col">Description<div class="fw-normal small text-muted">Manufacturer · mfr part #</div></th>
             <th scope="col" class="text-end" data-sort="short_lines"
                 title="Short-shipped lines in the days chosen, and how many POs they're on">Short lines<div class="fw-normal small text-muted">on POs</div></th>
-            <th scope="col" class="text-end" data-sort="short_qty" title="Ordered, less shipped and still open, on those lines">Qty short</th>
+            <th scope="col" class="text-end" data-sort="short_qty" title="Ordered, less shipped and still open, on those lines; in eaches below, by the QOE">Qty short</th>
+            <th scope="col" class="text-end" data-sort="qty" title="Ordered on those lines; in eaches below, by the QOE">Qty ordered</th>
+            <th scope="col" class="text-end pe-3" data-sort="qoe" title="Eaches in one of the item's UM, from Infor (its Medline vendor item's Infor item)">QOE</th>
             <th scope="col" data-sort="sites" title="The Sold-Tos those lines are for">Sites</th>
             <th scope="col" data-sort="last_short" title="The newest of those POs, when Medline created its order for it">Last short<div class="fw-normal small text-muted">PO created</div></th>
-            <th scope="col" class="text-end ot-kills" data-sort="kills_today">Killed today<div class="fw-normal small text-muted">Fill/Kill</div></th>
-            <th scope="col" class="text-end ot-kills" data-sort="kills_7">Killed 7 days<div class="fw-normal small text-muted">Fill/Kill</div></th>
-            <th scope="col" class="text-end ot-kills" data-sort="kills_30">Killed 30 days<div class="fw-normal small text-muted">Fill/Kill</div></th>
+            <th scope="col" class="text-end ot-kills" data-sort="kills_today">Killed today<div class="fw-normal small text-muted">Fill/Kill lines</div></th>
+            <th scope="col" class="text-end ot-kills" data-sort="kills_7">Killed 7 days<div class="fw-normal small text-muted">Fill/Kill lines</div></th>
+            <th scope="col" class="text-end ot-kills" data-sort="kills_30">Killed 30 days<div class="fw-normal small text-muted">Fill/Kill lines</div></th>
             <th scope="col"><span class="visually-hidden">Open in Fill/Kill</span></th>
           </tr>
         </thead>
         <tbody id="ot-rows">
-          <tr><td colspan="11" class="text-muted small p-3">Loading…</td></tr>
+          <tr><td colspan="13" class="text-muted small p-3">Loading…</td></tr>
         </tbody>
       </table>
     </div>

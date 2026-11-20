@@ -39,11 +39,11 @@ changes something now ends with a red error when a transaction is still open (20
 | `03_unify_roles.sql` | Adds `users.requested_modules` and gives everyone the PLM role matching their `users.user_role` (admin and user: PLM editor; view-only: PLM viewer). Copies only once, so re-running never undoes User Control changes. | Never needed. |
 | `04_after_deploy.sql` | Renames `view-only` to `user`. **Only once the new release is live:** the previous release would let `view-only` accounts edit. | Never needed. |
 | `09_verify.sql` | The checks above. Read-only. | After every script run. |
-| `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines, with `Reason`: Medline's `ReasonTypeText` since 2026-11-16; `Reason Date`: its `Est Avail Date`; `Ship-To Code`: Ship-To Name 2 without `- UBOAT`) and `vw_FillKillLastLoad` ("Data as of" and "last loaded"; `last_file` since 2026-11-17); drops the emptied test-line table. Until 2026-11-16 it also loaded the test lines. | Any time: it (re)creates the two views, and drops `TestFillKillLine` only when it's empty. Its 2026-11-16 version only after that day's deploy (below). |
-| `11_item_qty_views.sql` | `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, O2's views with two changes: they read `vw_MedlineFillKill` (until 2026-11-16, so the test site showed), and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). | If O2's originals change: change them here too. |
-| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each; or, with no sub, for a Medline item itself, since 2026-11-02), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). | Whenever it changes, before running that code. |
+| `10_kill_lines.sql` | `vw_MedlineFillKill` (Medline's kill lines, with `Reason`: Medline's `ReasonTypeText` since 2026-11-16; `Reason Date`: its `Est Avail Date`; `Ship-To Code`: Ship-To Name 2 without `- UBOAT`; `InforUOM`: Medline's UM as Infor calls it, through `MDM_EDI_SUB_UOM`, since 2026-11-18) and `vw_FillKillLastLoad` ("Data as of" and "last loaded"; `last_file` since 2026-11-17); drops the emptied test-line table. Until 2026-11-16 it also loaded the test lines. | Any time: it (re)creates the two views, and drops `TestFillKillLine` only when it's empty. Its 2026-11-16 version only after that day's deploy (below). |
+| `11_item_qty_views.sql` | `vw_MedlineSubList`, `vw_MedlineFillKillItemCollection` and `vw_MedlineFillKillQtyAgg`, as written on O2 (copied 2026-11-18). They read `vw_MedlineFillKill`, and the QOE (`Item.UOMConversion`) is for the Infor item. The Infor item is matched on Medline vendor items only, never by manufacturer part alone (shared part numbers give false matches). Since 2026-11-18 the item view matches the QOE and subs on `InforUOM` (`10`), and its `Medline.Sub` comes from `vw_MedlineSubList`: Medline's AutoSub list, the Fill/Kill file's Customer Preferred and Possible Subst. items, and the PBO collection, each ranked. Since 2026-11-19 it also gives each sub's best rank and source (`Medline.SubRank`, `Medline.SubDataSource`), which `14` reads. | If O2's views change: change them here too. After `10`, before `14`. |
+| `12_workflow_tables.sql` | `Sub` (the Reference SKU nursing entered, its status and pick), `SubVendorItem` (what can be ordered for it: a vendor part, vendor, vendor ID and UOM each; or, with no sub, for a Medline item itself, since 2026-11-02), `SubOrder` (with its `site` and `po_number` since 2026-10-27), `History`, `ItemInstruction` (the MM Lead's instructions, 2026-10-27), and step 2, which turns subs that carry their own vendor details into vendor items (listed at its top). Step 5 (2026-11-19) lets `Sub.source` say which of Medline's lists a sub came from. | Whenever it changes, before running that code. |
 | `13_contract_search.sql` | `vw_ContractLineSearch` (Infor contract lines active today, with `is_mhs`), `vw_Vendor` (Infor's vendors, with their legal and search names) and `vw_UomAlias` (Infor's UOM for one typed another way, from `MDM_EDI_SUB_UOM`: CS is CA, VL is VI). | Whenever it changes, before running that code. |
-| `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds Medline PBO subs as pending review, with a vendor item when Medline's contract lines give one UOM. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. | Whenever it changes, after `12`. Its version line is what `09` and the app check. |
+| `14_pbo_sync.sql` | `usp_SyncPboSubs`, which adds the subs Medline lists for killed items, each labelled with its list (2026-11-19): AutoSub and Customer Preferred ones approved by `System`, Possible Sub and PBO ones pending review; with a vendor item when Medline's contract lines give one UOM. The app runs it each time Main loads; it skips a part the item already has, whoever entered it, and deleted ones. Medline's subs still pending review take a more trusted list's source when one has them (and are approved for AutoSub or Customer Preferred); reviewed and hand-entered subs never change. | Whenever it changes, after `11` and `12`. Its version line is what `09` and the app check. |
 | `15_sites.sql` | `Site` (2026-10-30): the Medline Sold-To accounts Fill/Kill deals with (10 Montefiore accounts: LUM, BULK, EVS, LAB), each with its campus in `site_short_name` (Moses, Wakefield or Einstein). The app doesn't read it yet. | Whenever the list changes. It adds and updates sites but never removes one. |
 | `90_reset_workflow.sql` | Empties `Sub`, `SubVendorItem`, `SubOrder`, `History` and `ItemInstruction` (with DELETE: `TRUNCATE` is refused on tables other tables' keys point at), numbers new ones from 1, and drops `12`'s copy `Sub_before_vendor_items`. Does nothing unless you edit it to confirm. On the development server (`python run.py`), an admin can do the same from Main's **Reset data** button (not the drop). | Only to throw away UAT subs and orders. |
 | `rollback_deploy1.sql` | Sets `users.user_role` back to `admin` / `user` / `view-only` from each person's PLM role, which is all the previous release reads. | Only just before putting the previous release back. Leave the new tables and columns in place. |
@@ -94,7 +94,9 @@ runs a script or query has its command under **Commands** below.
    `users.user_role ...` (`PENDING`). Check the role listing at the end of `09`: a role changed on
    the old release after `03` ran doesn't carry over.
 2. Grants for the app's account (a view in PLM doesn't carry permissions into another database):
-   - read `SCSFileIngestor`: `MedlineFillKill`, `ETLHealth`, `MedlineSubCollection`
+   - read `SCSFileIngestor`: `MedlineFillKill`, `ETLHealth`, `MedlineSubCollection`, and
+     `MedlineAutoSub.MedlineAutosubRelation` (2026-11-18: `11`'s sub list reads it, and the app
+     reads the item view)
    - read `PLMPreprocessorShared.infor`: `MDM_ITEM`, `MDM_ITEMUOM`, `CONTRACTLINE`,
      `MDM_VENDORITEM`, `MDM_VENDOR`, `MDM_EDI_SUB_UOM` (2026-10-20)
    - EXECUTE on `FillKill.usp_SyncPboSubs`
@@ -118,10 +120,8 @@ put the code in place and recycle the app pool.
    query hasn't run.
 7. Everyone logs in once more: logins from before this release have no recorded login time.
 8. An admin opens Fill/Kill's Main page: no "The database needs an update" warning, and the
-   Fill/Kill dates are **today's**. On the server Main opens on today (2026-10-20); locally it opens
-   on the latest day with kill lines (9/30 in O2's data now). That follows `FLASK_ENV=production`
-   in `web.config`: `ProductionConfig` sets `FILLKILL_OPEN_ON` to `today`. Nothing to change for it,
-   but if Main opens on an older day, the server's `.env` has `FILLKILL_OPEN_ON=latest`: remove it.
+   Fill/Kill dates are **today's**: Main opens on today on every server (2026-11-19; the
+   `FILLKILL_OPEN_ON` setting is gone, so a server `.env` that still has it can stay or go).
 9. In User Control, give the Fill/Kill roles: nursing Sub Approver, Materials Managers Materials
    Manager, viewers Viewer.
 
@@ -299,3 +299,63 @@ loaded", and "Data as of" is when Medline made the file loaded, read from its na
 here; `app/utility/freshness.py`). `10` adds the file to `vw_FillKillLastLoad` (`last_file`). The
 app reads it when it's there and shows only "last loaded" until then, so it rides along with `10`
 after the deploy above.
+
+## Where Medline's subs come from (2026-11-19)
+
+`vw_MedlineSubList` (`11`, 2026-11-18) pools Medline's subs from four lists, each ranked: 0 its
+AutoSub list, 1 the Fill/Kill file's Customer Preferred Substitute Item, 2 its Possible Subst.
+Item, 3 the PBO collection. The rank says how far to trust a sub without asking (the user):
+AutoSub and Customer Preferred subs are **approved by the system** as they're added, so they can be
+ordered at once, like a sub nursing enters; Possible Sub and PBO subs wait for nursing's review. A
+sub on several lists takes its best rank. Until now `14` added every one as `medline_pbo`, pending.
+
+- `11`: the item view gives each sub's best rank and source (`Medline.SubRank`,
+  `Medline.SubDataSource`).
+- `12` step 5: `Sub.source` takes `medline_autosub`, `medline_preferred` and `medline_possible`
+  beside `medline_pbo`.
+- `14` (version 2026-11-19.2): adds each sub with its source and status; History has `created` by
+  Medline and, for the approved, `status` by `System` and a comment saying why, "Auto-approved:
+  from Medline AutoSub" (or "... from Medline FillKill Customer Preferred"), which Main shows under
+  the sub where nursing's comments go. Medline's subs still pending review take a more trusted
+  list's source when one has them, approved (with the comment) for AutoSub or Customer Preferred
+  (History: `edit` of the source, `status` and the comment, by `System`). Reviewed and
+  hand-entered subs never change.
+- The app: Entered says the list (Medline AutoSub, Medline FillKill Customer Preferred, Medline
+  FillKill Possible Sub, Medline PBO) on the Subs page, its filter and export, and the item panel
+  ("Added by ..."); Approved By says `System`. The Dashboard's median time to review leaves out the
+  system's approvals.
+
+**The SQL can go first**, before the deploy: on O2, `11`, `12`, `14`, in that order (`14` can't be
+created before `11` gives the rank), then `09`. The release on the server works with it: the
+approvals take effect there at once (an approved sub can be ordered); until the deploy its Subs
+page shows the code (`medline_autosub`) in Entered and its panel says "Added by Medline". `14`'s
+version line still has the 2026-10-20 marker the release before looks for, so its admin warning
+stays quiet.
+
+**What the first Main load after `14` does on O2** (tested on LocalDB with O2's 33 subs of
+11/19, all `medline_pbo` and pending, none reviewed): 17 become `medline_autosub` and 3
+`medline_preferred`, all approved by `System`; 6 become `medline_possible`, still pending; 7 stay
+`medline_pbo`. Then `09`'s listing of live subs by source and status shows it.
+
+```bash
+for s in 11_item_qty_views 12_workflow_tables 14_pbo_sync 09_verify; do
+  sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i "db/fillkill/$s.sql" || break
+done
+```
+
+**After the deploy:** `flask fillkill check-db` says the database has everything (it wants the
+rank column, the wider `CK_Sub_source` and `14`'s 2026-11-19.2 version).
+
+**The approval comment (2026-11-19.2, the user).** `11`, `12` and the 2026-11-19 `14` ran on O2 on
+11/19, and Main loaded after them: 17 AutoSub and 3 Customer Preferred subs approved by `System`,
+with no comment. Re-run `14`, then `09`: the procedure writes the comment from then on, and the
+end of the script gives those 20 theirs, each dated with its sub's approval (so a later comment
+of nursing's stays the latest). It's safe to re-run, and it goes before the deploy too: the release
+on the server shows the comments already. `09`'s "every sub the system approved has its comment"
+says PASS once it has run.
+
+```bash
+for s in 14_pbo_sync 09_verify; do
+  sqlcmd -S "YNBBSTVWP02\PROCDATASRVPROD" -d PLM -b -i "db/fillkill/$s.sql" || break
+done
+```

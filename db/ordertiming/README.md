@@ -5,7 +5,7 @@ re-run. It has no tables: the module only reads Medline's feed, which A13 loads.
 
 | Script | What it does |
 | --- | --- |
-| `01_views.sql` | Schema `OrderTiming`; `vw_MedlineOrderLine` (Medline's order lines, each step's date and time as one value, **Line Status** and **Short Qty**), Short Ships' `vw_ShortShipLine` and `vw_ItemKillDay` (2026-11-17), and `vw_OrderTimingLastLoad` (the app's "Data as of" and "last loaded"; `last_file` since 2026-11-17). It ends by listing the lines per status, the short lines in Fill/Kill, and the freshness row. |
+| `01_views.sql` | Schema `OrderTiming`; `vw_MedlineOrderLine` (Medline's order lines, each step's date and time as one value, **Line Status** and **Short Qty**), Short Ships' `vw_ShortShipLine` (with each line's QOE from Infor since 2026-11-18) and `vw_ItemKillDay` (2026-11-17), and `vw_OrderTimingLastLoad` (the app's "Data as of" and "last loaded"; `last_file` since 2026-11-17). It ends by listing the lines per status, the short lines in Fill/Kill and with a QOE, and the freshness row. |
 
 ## Where the data comes from
 
@@ -20,7 +20,7 @@ Main shows 20 POs a page and reaches the last 30 days only, today included (the 
 expecting a large volume), and nothing before Medline's LUM go-live on 2026-11-16 (the user,
 2026-11-17; `ORDERTIMING_FIRST_DAY` in `app/config.py`, which an environment variable of that name
 can change, empty for none): the app holds every search and export to them (`MAX_DAYS` and
-`earliest_day` in `app/ordertiming/routes.py`). Main opens on today, Short Ships on the last 7 days.
+`earliest_day` in `app/ordertiming/routes.py`). Main and Short Ships open on today (Short Ships on the last 7 days until 2026-11-18).
 The table's clustered key leads with Report Date, so those days are a range seek. The sites list
 reads the same days, and `vw_OrderTimingLastLoad` reads only the newest day, so neither scans the
 whole table. Main's tabs (2026-11-17) count the orders per Line Status, and with a Short Qty, in one
@@ -79,10 +79,25 @@ app filters them by days, sites and search, groups the lines per item and pages 
   (`Sales Order #` = `Order #`, `Order Line #` = `Order Line`, which both feeds write alike since
   A13's fix of 11/17): `In Fill/Kill`, Medline's reason (`Fill/Kill Reason`) and `Est Avail Date`.
   A line just shorted may not be in Fill/Kill yet ("Not in Fill/Kill yet"): the feeds come in
-  their own files.
+  their own files. Since 2026-11-18 it also has the line's `QOE` (eaches in one of its UM) and its
+  `Order Qty EA` and `Short Qty EA`: Infor's UOM conversion for the Medline item's Infor item,
+  found by Medline vendor item (`MDM_VENDORITEM`, vendor like Medline, active) as Fill/Kill's
+  item view finds it, never by manufacturer part. For the UM as Infor calls it (`InforUOM`, made
+  as `FillKill.vw_MedlineFillKill` makes it since 2026-11-18: through `MDM_EDI_SUB_UOM`, CS is CA,
+  BT is BO, TR is TY, else as Medline writes it); an EA without one is 1; none when Infor has none
+  or two Infor items disagree. On O2 (11/18) every one of the last 30 days' 185 short lines had
+  one, the same as Fill/Kill's item view gives their items; the query took 0.1 s. It reads Infor's
+  tables, not that view: the view knows only items that have been in Fill/Kill's feed (a line
+  shorted before its kill line comes in, or on an STD order, would have none), and has a row per
+  sub.
+  Short Ships shows Qty short and Qty ordered in the UM with eaches below, and the QOE; an item
+  in two UMs, in eaches when every line has a QOE. The app's account already reads those Infor
+  tables (Fill/Kill's go-live).
 - **`vw_ItemKillDay`**: Fill/Kill's kill lines per Medline item, Sold-To and `Order Date`, for how
   often each item was killed today, in the last 7 days and in the last 30 (the app adds up the
-  days) at the sites chosen. Fill/Kill's Sold-Tos have no leading zeros (2159659) and this feed's
+  days) at the sites chosen. A count of lines, not a quantity: each row of Fill/Kill's feed is one
+  Medline order line (its key is `Sales Order #`, `Order Line #`) that Medline killed all or part
+  of (on O2, 11/18: 272 all, 21 part, none filled). Fill/Kill's Sold-Tos have no leading zeros (2159659) and this feed's
   do (0002159659): the view pads Fill/Kill's to ten digits, so one site code filters both.
 
 The PO total is a count over each line's day, Sold-To and order, so the app's day and site filters
@@ -114,6 +129,11 @@ Ships.** That release reads the view's new `Short Qty` column; without it, Order
 they can't read Medline's data. The release before it reads the new view fine (the same four
 statuses; it doesn't read the new column). Its last result set gives each status's short-shipped
 lines.
+
+**QOE (2026-11-18): re-run `01_views.sql` on O2 BEFORE deploying the release that shows it.** That
+release reads `vw_ShortShipLine`'s new `QOE`, `Order Qty EA` and `Short Qty EA`; the release before
+it doesn't read them, so the new view is safe under it. No new grant: the app's account reads
+`MDM_VENDORITEM`, `MDM_ITEMUOM` and `MDM_EDI_SUB_UOM` for Fill/Kill already.
 
 **Data as of (2026-11-17):** what the pages called "Data as of" was when A13 loaded the feed; it's
 now "last loaded", and "Data as of" is when Medline made the file loaded. `vw_OrderTimingLastLoad`

@@ -29,7 +29,7 @@ endInput.value = state.end || '';
   });
 });
 
-// Today (2026-10-21), like Main's "View today"; the last 7 and 30 days end on the latest day with
+// Today (2026-10-21), like Main's; the last 7 and 30 days end on the latest day with
 // kill lines, which on the live server is today too.
 document.querySelectorAll('[data-days]').forEach((button) => button.addEventListener('click', () => {
   const last = config.bounds.last;

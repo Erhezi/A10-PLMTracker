@@ -310,11 +310,13 @@ def test_status_tabs_count_orders_whatever_the_status_chosen(client):
 
 
 def test_main_opens_on_today(client):
-    # 2026-11-17, the user: Main opens on today (Short Ships on the last 7 days).
+    # 2026-11-17, the user: Main opens on today; Short Ships too (2026-11-18; the last 7 days before).
     data = client.get("/ordertiming/api/orders").get_json()
     assert (data["filters"]["start"], data["filters"]["end"]) == (day(0), day(0))
     assert numbers(data) == ["1", "2"]
-    assert client.get("/ordertiming/api/shortships").get_json()["filters"]["start"] == day(6)
+    short = client.get("/ordertiming/api/shortships").get_json()["filters"]
+    assert (short["start"], short["end"]) == (day(0), day(0))
+    assert f'"start": "{day(0)}"' in client.get("/ordertiming/shortships").get_data(as_text=True)
 
 
 def test_no_further_back_than_the_go_live_day(client, ot_app):
@@ -325,7 +327,8 @@ def test_no_further_back_than_the_go_live_day(client, ot_app):
     assert numbers(data) == ["1", "2", "3"] and data["filters"]["start"] == day(3)  # not order 4, ten days old
     page = client.get("/ordertiming/").get_data(as_text=True)
     assert f'"earliest": "{day(3)}"' in page and f'"start": "{day(0)}"' in page
-    assert client.get("/ordertiming/api/shortships").get_json()["filters"]["start"] == day(3)  # its 7 days, held
+    short = client.get("/ordertiming/api/shortships", query_string={"start": day(29), "end": day(0)})
+    assert short.get_json()["filters"]["start"] == day(3)  # Short Ships too
     ot_app.config["ORDERTIMING_FIRST_DAY"] = now_ny_naive().date() + timedelta(days=5)  # not yet: today only
     assert get_orders(client, start=day(29), end=day(0))["filters"]["start"] == day(0)
     ot_app.config["ORDERTIMING_FIRST_DAY"] = ""  # none: the last 30 days
@@ -432,12 +435,18 @@ def test_search_words():
 # Order 3's second line is short one (three days ago, site A); order 6, today at site B, has two
 # FILL-KILL lines shipped none, one of them not in Fill/Kill yet, and a full one. Short Ships reads
 # two views, which join the feeds in SQL (db/ordertiming/01_views.sql): stood in here as they'd come.
+# The cup's CS holds 12 eaches (its QOE); Infor has none for the gloves' CS.
+CUP_QOE = 12
 
-def short_line(row: dict, po_lines: int, reason=None, reason_date=None, in_fillkill=True) -> dict:
-    """A line of vw_ShortShipLine: a short line of Main's view, then its PO's total lines and its line
-    in Fill/Kill's feed (``in_fillkill`` False: not in it yet)."""
+
+def short_line(row: dict, po_lines: int, reason=None, reason_date=None, in_fillkill=True, qoe=None) -> dict:
+    """A line of vw_ShortShipLine: a short line of Main's view, then its PO's total lines, its line
+    in Fill/Kill's feed (``in_fillkill`` False: not in it yet), and its QOE with its ordered and short
+    quantities in eaches (2026-11-18; none without a QOE)."""
     return {**row, "PO Total Lines": po_lines, "In Fill/Kill": 1 if in_fillkill else 0,
-            "Fill/Kill Reason": reason, "Est Avail Date": reason_date}
+            "Fill/Kill Reason": reason, "Est Avail Date": reason_date, "QOE": qoe,
+            "Order Qty EA": row["Order Qty"] * qoe if qoe else None,
+            "Short Qty EA": row["Short Qty"] * qoe if qoe else None}
 
 
 def kills(item: str, site: tuple, ago: int, n: int = 1) -> dict:
@@ -457,8 +466,8 @@ def short_client(ot_app):
     add_view_rows(ot_app, "vw_MedlineOrderLine", order6)
     order3 = next(row for row in lines() if row["Short Qty"])
     add_view_rows(ot_app, "vw_ShortShipLine", [
-        short_line(order3, 2, "Backorder", "2026-12-01"),
-        short_line(order6[0], 3, "Allocated Item"),
+        short_line(order3, 2, "Backorder", "2026-12-01", qoe=CUP_QOE),
+        short_line(order6[0], 3, "Allocated Item", qoe=CUP_QOE),
         short_line(order6[1], 3, in_fillkill=False),
     ])
     add_view_rows(ot_app, "vw_ItemKillDay", [
@@ -472,6 +481,9 @@ def short_client(ot_app):
 
 
 def get_short(client, **params):
+    """Short Ships' items: in the last 7 days, which the fixture's lines span, unless the days are
+    given (it opens on today: test_main_opens_on_today)."""
+    params = {"start": day(6), "end": day(0), **params}
     response = client.get("/ordertiming/api/shortships", query_string=params)
     assert response.status_code == 200, response.get_data(as_text=True)
     return response.get_json()
@@ -543,23 +555,53 @@ def test_short_ships_sorts_and_pages(short_client, ot_app):
     assert past["page"] == 2
 
 
+def test_short_ships_qty_ordered_and_qoe(short_client):
+    # 2026-11-18, the user: Qty ordered beside Qty short, and the QOE when there is one, with both
+    # quantities in eaches. Without a QOE (the gloves) there are none in eaches.
+    cup, gloves = get_short(short_client)["items"]
+    assert (cup["short_qty"], cup["qty"], cup["um"]) == (5, 7, "CS")  # order 3's 1 of 3, order 6's 4 of 4
+    assert cup["qoes"] == [{"uom": "CS", "qoe": CUP_QOE}]
+    assert (cup["short_qty_each"], cup["qty_each"]) == (5 * CUP_QOE, 7 * CUP_QOE)
+    assert (gloves["short_qty"], gloves["qty"], gloves["qoes"]) == (5, 5, [{"uom": "CS", "qoe": None}])
+    assert (gloves["short_qty_each"], gloves["qty_each"]) == (None, None)
+    assert cup["lines"][0]["qoe"] == CUP_QOE and gloves["lines"][0]["qoe"] is None
+
+
+def test_short_ships_sorts_quantities_in_eaches(short_client, ot_app):
+    # Qty short and Qty ordered sort in eaches when they're known (a case outweighs an each), else as
+    # they are; QOE by the largest, an item without one last either way.
+    big = line(8, "000010", 0, **{"Medline Item #": "BIG", "Order Qty": 30, "Shipped Qty": 0, "Open Qty": None,
+                                  "Short Qty": 30, "UM": "EA"})
+    add_view_rows(ot_app, "vw_MedlineOrderLine", [big])
+    add_view_rows(ot_app, "vw_ShortShipLine", [short_line(big, 1, qoe=1)])
+    assert items_of(get_short(short_client, sort="short_qty", dir="desc")) == ["DYND70294BH", "BIG", "MDS2585H"]  # 60, 30, 5
+    assert items_of(get_short(short_client, sort="qty", dir="asc")) == ["MDS2585H", "BIG", "DYND70294BH"]  # 5, 30, 84
+    assert items_of(get_short(short_client, sort="qoe", dir="desc")) == ["DYND70294BH", "BIG", "MDS2585H"]
+    assert items_of(get_short(short_client, sort="qoe", dir="asc")) == ["BIG", "DYND70294BH", "MDS2585H"]
+
+
 def test_short_ships_mixed_units_have_no_one_total(short_client, ot_app):
     each = line(7, "000010", 1, **{"Order Qty": 2, "Shipped Qty": 0, "Open Qty": None, "Short Qty": 2, "UM": "EA"})
     add_view_rows(ot_app, "vw_MedlineOrderLine", [each])
-    add_view_rows(ot_app, "vw_ShortShipLine", [short_line(each, 1, in_fillkill=False)])
+    add_view_rows(ot_app, "vw_ShortShipLine", [short_line(each, 1, in_fillkill=False, qoe=1)])
     cup = get_short(short_client)["items"][0]
     assert cup["medline_item"] == "DYND70294BH" and (cup["short_qty"], cup["um"], cup["short_lines"]) == (None, None, 3)
+    assert cup["qty"] is None
     assert sorted(line_["um"] for line_ in cup["lines"]) == ["CS", "CS", "EA"]
+    # In eaches, though, since every line has a QOE: 60 + 2 short, 84 + 2 ordered.
+    assert (cup["short_qty_each"], cup["qty_each"]) == (5 * CUP_QOE + 2, 7 * CUP_QOE + 2)
+    assert cup["qoes"] == [{"uom": "CS", "qoe": CUP_QOE}, {"uom": "EA", "qoe": 1}]
 
 
 def test_short_ships_export(short_client):
-    response = short_client.get("/ordertiming/shortships/export")
+    response = short_client.get("/ordertiming/shortships/export", query_string={"start": day(6), "end": day(0)})
     assert response.status_code == 200 and "short-ships-" in response.headers["Content-Disposition"]
     rows = list(csv.reader(io.StringIO(response.get_data(as_text=True).lstrip("﻿"))))
     header, body = rows[0], rows[1:]
     assert len(body) == 3
     for label in ("PO", "PO Created", "PO Total Lines", "Line Type", "Short Qty", "In Fill/Kill", "Fill/Kill Reason",
-                  "Item Killed Today", "Item Killed 7 Days", "Item Killed 30 Days"):
+                  "Item Killed Today", "Item Killed 7 Days", "Item Killed 30 Days", "QOE", "Order Qty EA",
+                  "Short Qty EA"):
         assert label in header, label
     by_po = {(row[header.index("PO")], row[header.index("Medline Item #")]): row for row in body}
     gloves = by_po[("3000000006", "MDS2585H")]
@@ -567,6 +609,12 @@ def test_short_ships_export(short_client):
     cup = by_po[("3000000003", "DYND70294BH")]
     assert [cup[header.index(label)] for label in ("Fill/Kill Reason", "PO Total Lines", "Item Killed 30 Days")] == [
         "Backorder", "2", "3"]
+    assert [cup[header.index(label)] for label in ("Order Qty", "QOE", "Order Qty EA", "Short Qty EA")] == [
+        "3", "12", "36", "12"]
+    assert [gloves[header.index(label)] for label in ("QOE", "Order Qty EA", "Short Qty EA")] == ["", "", ""]
+    # It opens on today, as the page does: order 6's two lines.
+    today = short_client.get("/ordertiming/shortships/export").get_data(as_text=True).lstrip("\ufeff")
+    assert len(list(csv.reader(io.StringIO(today)))) == 3
 
 
 def test_short_ships_without_its_views_says_so(short_client, ot_app):

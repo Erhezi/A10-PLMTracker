@@ -3,7 +3,7 @@
  */
 
 import {
-  NO_VENDOR, REFERENCE_SKU_HINT, SUB_NOTE_HINT, config, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails,
+  NO_VENDOR, REFERENCE_SKU_HINT, SUB_NOTE_HINT, config, enteredBy, esc, fmtDate, fmtDateTime, fmtNumber, needsDetails,
   noQoeBadge, statusBadge, uomQoe, vendorText,
 } from '../common.js';
 import { can, siteName, state } from './state.js';
@@ -102,7 +102,7 @@ function vendorItemList(items, sub) {
 function subCard(sub) {
   const detailsNeeded = needsDetails(sub)
     ? ' <span class="badge text-bg-warning" title="Nothing to order yet: the Materials Manager adds what can be ordered for it">Vendor item needed</span>' : '';
-  const source = sub.source === 'medline_pbo' ? 'Medline PBO' : esc(sub.entered_by);
+  const source = esc(enteredBy(sub));
   const comment = sub.latest_comment
     ? `<div class="small border-start border-3 ps-2 my-2"><span class="text-muted">${esc(sub.latest_comment.actor)},
         ${fmtDateTime(sub.latest_comment.acted_at)}${sub.latest_comment.count > 1 ? ` (${sub.latest_comment.count} comments)` : ''}:</span>

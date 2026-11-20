@@ -290,9 +290,15 @@ def _padded_sold_to(code) -> str:
     return text.zfill(10) if text.isdigit() and len(text) < 10 else text
 
 
+# Infor's QOE for the sample's Medline items and UMs (2026-11-18): B-D930103CS's CA has none, to
+# show an item without one. An EA without one is 1, as the view has it.
+SAMPLE_QOES = {("DYND70294BH", "CS"): 12, ("MDS2585H", "BX"): 100}
+
+
 def short_ship_rows(order_lines: list[dict], kill_lines: list[dict]) -> list[dict]:
     """vw_ShortShipLine, as db/ordertiming/01_views.sql makes it: each short-shipped line, its PO's
-    total lines that day, and its line in Fill/Kill's feed (the same Medline order and line)."""
+    total lines that day, its line in Fill/Kill's feed (the same Medline order and line), and its QOE
+    with its ordered and short quantities in eaches."""
     po_lines = Counter((row["Report Date"], row["Sold-To #"], row["Order #"]) for row in order_lines)
     kills = {(row["Sales Order #"], row["Order Line #"]): row for row in kill_lines}
     rows = []
@@ -300,9 +306,12 @@ def short_ship_rows(order_lines: list[dict], kill_lines: list[dict]) -> list[dic
         if not (row["Short Qty"] or 0) > 0:
             continue
         kill = kills.get((row["Order #"], row["Order Line"]))
+        qoe = SAMPLE_QOES.get((row["Medline Item #"], row["UM"]), 1 if row["UM"] == "EA" else None)
         rows.append({**row, "PO Total Lines": po_lines[(row["Report Date"], row["Sold-To #"], row["Order #"])],
                      "In Fill/Kill": 1 if kill else 0, "Fill/Kill Reason": kill["Reason"] if kill else None,
-                     "Est Avail Date": kill["Reason Date"] if kill else None})
+                     "Est Avail Date": kill["Reason Date"] if kill else None, "QOE": qoe,
+                     "Order Qty EA": row["Order Qty"] * qoe if qoe else None,
+                     "Short Qty EA": row["Short Qty"] * qoe if qoe else None})
     return rows
 
 

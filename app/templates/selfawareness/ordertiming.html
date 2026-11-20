@@ -36,8 +36,8 @@
       <li>To check several POs at once, paste them in, separated by spaces, commas or new lines: each one found is
         listed.</li>
       <li>Item numbers match without dashes, dots or spaces: "bd930103" finds B-D930103.</li>
-      <li><strong>Order days</strong> are the days Medline received the orders. Main opens on today (Short Ships on
-        the last 7 days), and looks back 30 days at most, and not before 11/16/2026, when Medline's LUM orders went
+      <li><strong>Order days</strong> are the days Medline received the orders. Main and Short Ships open on today,
+        and look back 30 days at most, and not before 11/16/2026, when Medline's LUM orders went
         live. When a search finds nothing, <strong>Search from</strong> looks as far back as it goes.</li>
       <li>Orders are listed 20 to a page, newest first. The page buttons at the top of the table move between
         them.</li>
@@ -92,18 +92,21 @@
     </p>
     <ul class="mb-0">
       <li><strong>Short lines</strong> counts the item's short-shipped lines and the POs they're on;
-        <strong>Qty short</strong> adds up what they're short, in the item's unit of measure.</li>
-      <li><strong>Killed today</strong>, <strong>7 days</strong> and <strong>30 days</strong> count the item's lines
-        in Medline's Fill/Kill feed (the one Fill/Kill Management shows), today included, at the sites chosen. They
-        don't follow the order days. The page opens with the items killed most in 30 days at the top; click a
+        <strong>Qty short</strong> adds up what they're short and <strong>Qty ordered</strong> what was ordered on
+        them, in the item's unit of measure, with the same in eaches below. <strong>QOE</strong> is how many eaches
+        one of that unit holds, from Infor (one for each unit when the item's lines are in several; then the
+        quantities are in eaches). A dash means Infor has none, and then there are no eaches.</li>
+      <li><strong>Killed today</strong>, <strong>7 days</strong> and <strong>30 days</strong> count PO lines, not
+        quantities: the item's lines in Medline's Fill/Kill feed (the one Fill/Kill Management shows), each a PO line
+        Medline killed all or part of, today included, at the sites chosen. They don't follow the order days. The page opens with the items killed most in 30 days at the top; click a
         header to sort by it.</li>
-      <li>Click an item to see its short lines: the PO, when it was created, its total lines, the PO line, line type,
-        site, what was ordered, shipped and short, and Medline's reason from its Fill/Kill feed with its estimated
+      <li>Click an item to see its short lines: the PO, the PO line #, line type, when the PO was created, its total
+        lines, site, what was ordered, shipped and short, and Medline's reason from its Fill/Kill feed with its estimated
         available date. "Not in Fill/Kill yet" means Fill/Kill's feed hasn't loaded that line yet: it loads on its
         own schedule.</li>
       <li><strong>Fill/Kill</strong> opens the item on Fill/Kill's Main, with its last 30 days.</li>
-      <li><strong>Export CSV</strong> downloads every short-shipped line the filters find, each with its item's kill
-        counts.</li>
+      <li><strong>Export CSV</strong> downloads every short-shipped line the filters find, each with its QOE, its
+        quantities in eaches and its item's kill counts.</li>
     </ul>
   </section>
 

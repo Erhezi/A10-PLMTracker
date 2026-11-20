@@ -6,6 +6,10 @@
 -- in SCSFileIngestor (written only by the A13 ingestion). FillKill.vw_FillKillLastLoad says how
 -- fresh they are, for the app's "Data as of" (when Medline made the file) and "Last loaded".
 --
+-- 2026-11-18 (the user, on O2 at 12:02; copied here): vw_MedlineFillKill has [InforUOM], Medline's
+-- UM as Infor calls it, for joining to Infor's UOM conversions (MDM_ITEMUOM, the QOE). 11's item
+-- view and its sub list match on it. The app doesn't read it, so this can run any time, before 11.
+--
 -- 2026-11-17: vw_FillKillLastLoad has [last_file], the file loaded, for "Data as of". The app reads
 -- it when it's there, so [last_file] doesn't decide when this script runs; [Is Test] does (below:
 -- after the deploy).
@@ -31,6 +35,10 @@ CREATE OR ALTER VIEW [FillKill].[vw_MedlineFillKill] AS
 --   Reason Date   Medline's [Est Avail Date], as sent (2026-11-16; it was the first date in the
 --                 comment). Allocated Item lines have one too, the comment none.
 --   Ship-To Code  Ship-To Name 2 up to its first hyphen, trimmed: 'PMOSN1RO - UBOAT' gives PMOSN1RO
+--   InforUOM      (2026-11-18) the UM as Infor calls it: Medline's UM through Infor's EDI list
+--                 (MDM_EDI_SUB_UOM: CS is CA, BT is BO, TR is TY), else as Medline writes it. That
+--                 list has one row per external value (32 on 11/18, all list L1_I_UOM), so the join
+--                 doesn't repeat a line.
 SELECT m.[Sold-To], m.[Sold-To Name], m.[Ship-To], m.[Ship-To Name], m.[Ship-To Name 2],
        m.[Order Date], m.[Order Time], m.[PO #], m.[PO Line], m.[Sales Order #], m.[Order Line #],
        m.[Item], m.[Item Description], m.[Item # on PO], m.[Customer Item #], m.[Mfr. Item #],
@@ -46,8 +54,11 @@ SELECT m.[Sold-To], m.[Sold-To Name], m.[Ship-To], m.[Ship-To Name], m.[Ship-To 
        NULLIF(LTRIM(RTRIM(m.[ReasonTypeText])), '') AS [Reason],
        m.[Est Avail Date] AS [Reason Date],
        NULLIF(LTRIM(RTRIM(LEFT(m.[Ship-To Name 2],
-           CHARINDEX('-', m.[Ship-To Name 2] + '-') - 1))), '') AS [Ship-To Code]
-FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m;
+           CHARINDEX('-', m.[Ship-To Name 2] + '-') - 1))), '') AS [Ship-To Code],
+       COALESCE(uom.[LawsonValue], m.[UM]) AS [InforUOM]
+FROM [SCSFileIngestor].[MedlineFillKill].[MedlineFillKill] AS m
+LEFT JOIN [PLMPreprocessorShared].[infor].[MDM_EDI_SUB_UOM] AS uom
+       ON uom.[ExternalValue] = m.[UM];
 GO
 
 CREATE OR ALTER VIEW [FillKill].[vw_FillKillLastLoad] AS

@@ -9,6 +9,7 @@ export const $ = (id) => document.getElementById(id);
 
 export const config = JSON.parse($('fk-config').textContent);
 config.statusLabels = Object.fromEntries(config.statuses || []);
+config.sourceLabels = Object.fromEntries(config.sources || []);
 
 export const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
@@ -24,6 +25,12 @@ export function statusBadge(status, extra) {
     + `${esc(config.statusLabels[status] || status)}</span>`;
 }
 
+// Who entered a sub: the person, or where it came from when no person did (2026-11-19: which of
+// Medline's lists, e.g. Medline AutoSub, not just "Medline"). Not escaped.
+export function enteredBy(sub) {
+  return sub.source === 'manual' ? sub.entered_by : (config.sourceLabels[sub.source] || sub.source);
+}
+
 export function fmtDate(iso) {
   if (!iso) return '';
   const [y, m, d] = String(iso).slice(0, 10).split('-');
@@ -34,6 +41,24 @@ export function fmtDateTime(iso) {
   if (!iso) return '';
   const text = String(iso);
   return `${fmtDate(text)} ${text.slice(11, 16)}`.trim();
+}
+
+// The day ``days`` after (or before, when negative) a YYYY-MM-DD day.
+export function shiftDay(iso, days) {
+  const day = new Date(`${iso}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + days);
+  return day.toISOString().slice(0, 10);
+}
+
+// Main's quick dates (2026-11-19): presses the button of a group's [data-days] (Today, the last 7
+// or 30 days, each ending today) that start..end is, and none for any other range.
+export function markQuickDays(group, start, end) {
+  group.querySelectorAll('[data-days]').forEach((button) => {
+    const on = Boolean(config.today) && end === config.today
+      && start === shiftDay(config.today, 1 - Number(button.dataset.days));
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-pressed', String(on));
+  });
 }
 
 // Who, short: the part of the email before the @ (the whole email goes in a title).

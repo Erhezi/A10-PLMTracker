@@ -19,6 +19,16 @@ STATUS_LABELS = {
     "hold": "Hold",
     "rejected": "Rejected",
 }
+# Where a sub came from, as the Subs page's and the panel's Entered say it. Medline's are named as in
+# 11's vw_MedlineSubList (DataSource), and 14_pbo_sync.sql writes the same labels into History.
+SOURCE_LABELS = {
+    "manual": "Entered by hand",
+    "medline_autosub": "Medline AutoSub",
+    "medline_preferred": "Medline FillKill Customer Preferred",
+    "medline_possible": "Medline FillKill Possible Sub",
+    "medline_pbo": "Medline PBO",
+    "llm": "AI finder",
+}
 
 # Who fills in what (2026-10-20): nursing (or a Sub Finder) enters a sub's Reference SKU, the part
 # they approved, often the manufacturer's; the Materials Manager or a Sub Finder adds its vendor

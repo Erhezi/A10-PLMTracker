@@ -57,7 +57,9 @@ days ago; twenty more fill the rest of the last 30 days, and 3000600027, forty d
 Main reaches. For Short Ships (2026-11-17), 3000600031 to 3000600033 have confirmed FILL-KILL lines
 short shipped, each first line also in the Fill/Kill sample (its Medline orders are 1148300031 to 35,
 line 10), 3000600033's second not yet: five orders today (where Main opens), eight in the last 7
-days, 29 in the last 30 (two pages), and three items on Short Ships. Short Ships' two views
+days, 29 in the last 30 (two pages), and three items on Short Ships, today (where it opens) and in
+the last 7 days. Their QOEs (2026-11-18): the cup's CS holds 12, the gloves' BX 100, and the
+ChloraPrep's CA has none, to show an item without one. Short Ships' two views
 (`vw_ShortShipLine`, `vw_ItemKillDay`) are made from those lines as `01_views.sql` makes them; with
 `--data o2` they're read on O2 through that script, with its line view inlined. The sample has no go-live day
 (`ORDERTIMING_FIRST_DAY`), since its days go 40 back. With `--data o2`, Order Timing reads O2's lines

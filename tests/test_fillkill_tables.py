@@ -77,6 +77,10 @@ INSERT_VENDOR_ITEM = text(
 @pytest.mark.parametrize("status, picked, source, allowed", [
     ("pending_review", 0, "manual", True),
     ("approved", 1, "medline_pbo", True),
+    # Which of Medline's lists a sub came from (2026-11-19).
+    ("approved", 0, "medline_autosub", True),
+    ("approved", 0, "medline_preferred", True),
+    ("pending_review", 0, "medline_possible", True),
     ("hold", 1, "manual", False),        # only an approved sub can be picked
     ("wait", 0, "manual", False),        # renamed to hold
     ("approved", 0, "somewhere", False),

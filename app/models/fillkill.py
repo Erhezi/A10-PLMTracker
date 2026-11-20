@@ -17,7 +17,11 @@ from . import now_ny_naive
 SCHEMA = "FillKill"
 
 SUB_STATUSES = ("pending_review", "approved", "hold", "rejected")
-SUB_SOURCES = ("manual", "medline_pbo", "llm")
+# Where a sub came from: entered by hand, one of Medline's lists (2026-11-19: AutoSub, the Fill/Kill
+# file's Customer Preferred and Possible Subst. items, PBO; 14_pbo_sync.sql adds them), or an AI finder.
+SUB_SOURCES = ("manual", "medline_autosub", "medline_preferred", "medline_possible", "medline_pbo", "llm")
+# Who the sync of Medline's subs records as approving the AutoSub and Customer Preferred ones (14).
+SYSTEM_ACTOR = "System"
 HISTORY_ENTITIES = ("sub", "vendoritem", "order")
 # pick and unpick: none written since 2026-10-28, when picking went; the table still allows them.
 HISTORY_ACTIONS = ("created", "status", "pick", "unpick", "comment", "edit", "void", "delete")
@@ -37,8 +41,8 @@ class Sub(db.Model):
     a vendor's part in a UOM, are its vendor items (VendorItem): the Materials Manager's or the Sub
     Finder's. A Reference SKU is often the manufacturer's part, which several vendors sell.
 
-    A deleted sub keeps its row (who, when, why), so its history stays and Medline's PBO sync
-    doesn't add it back; it's hidden everywhere, and the same Reference SKU can be added again.
+    A deleted sub keeps its row (who, when, why), so its history stays and the sync of Medline's
+    subs doesn't add it back; it's hidden everywhere, and the same Reference SKU can be added again.
     """
 
     __tablename__ = "Sub"
@@ -60,7 +64,7 @@ class Sub(db.Model):
 
     sub_id = db.Column(db.Integer, autoincrement=True)
     medline_item = db.Column(db.String(50), nullable=False)
-    # As entered: nursing's approved reference, or Medline's PBO number. Often the manufacturer's part.
+    # As entered: nursing's approved reference, or Medline's sub item number. Often the manufacturer's part.
     reference_sku = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="pending_review")
     # Picked among the approved subs, 2026-10-20 to 10-28: always 0 since picking went (the table's

@@ -117,6 +117,9 @@ SELECT 'vw_MedlineFillKill has Reason (Medline''s reason type), Reason Date, Shi
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'Ship-To Code') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'ReasonTypeText') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
+SELECT 'vw_MedlineFillKill has InforUOM, Medline''s UM as Infor calls it (10, 2026-11-18; 11 reads it)',
+       CASE WHEN COL_LENGTH(N'FillKill.vw_MedlineFillKill', N'InforUOM') IS NOT NULL THEN 'PASS' ELSE 'FAIL: run 10' END
+UNION ALL
 SELECT 'view FillKill.vw_FillKillLastLoad exists (10)',
        CASE WHEN OBJECT_ID(N'[FillKill].[vw_FillKillLastLoad]', N'V') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
@@ -125,6 +128,17 @@ SELECT 'vw_MedlineFillKillItemCollection has Infor Item, its consistency and Ite
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Infor Item Consistency') IS NOT NULL
              AND COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Item.UOMConversion') IS NOT NULL
             THEN 'PASS' ELSE 'FAIL' END
+UNION ALL
+SELECT 'view FillKill.vw_MedlineSubList, Medline''s subs the item view reads (11, 2026-11-18)',
+       CASE WHEN OBJECT_ID(N'[FillKill].[vw_MedlineSubList]', N'V') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'InforUOM') IS NOT NULL
+            THEN 'PASS' ELSE 'FAIL: run 11' END
+UNION ALL
+-- 14's procedure reads the rank, so 11 runs before 14.
+SELECT 'vw_MedlineFillKillItemCollection has each sub''s best rank and source: Medline.SubRank, Medline.SubDataSource (11, 2026-11-19)',
+       CASE WHEN COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Medline.SubRank') IS NOT NULL
+             AND COL_LENGTH(N'FillKill.vw_MedlineFillKillItemCollection', N'Medline.SubDataSource') IS NOT NULL
+            THEN 'PASS' ELSE 'FAIL: run 11' END
 UNION ALL
 -- They must read kill lines through vw_MedlineFillKill, not Medline's table directly.
 SELECT 'item and quantity views read FillKill.vw_MedlineFillKill',
@@ -247,6 +261,13 @@ SELECT 'History can record vendor items and deletes: CK_History_entity and CK_Hi
                            AND definition LIKE N'%''vendoritem''%')
             THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
+SELECT 'a sub says which of Medline''s lists it came from: CK_Sub_source (12, 2026-11-19)',
+       CASE WHEN EXISTS (SELECT 1 FROM sys.check_constraints
+                         WHERE parent_object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'CK_Sub_source'
+                           AND definition LIKE N'%''medline[_]autosub''%' AND definition LIKE N'%''medline[_]preferred''%'
+                           AND definition LIKE N'%''medline[_]possible''%' AND definition LIKE N'%''medline[_]pbo''%')
+            THEN 'PASS' ELSE 'FAIL: re-run 12' END
+UNION ALL
 SELECT 'view FillKill.vw_ContractLineSearch has is_mhs (13)',
        CASE WHEN COL_LENGTH(N'FillKill.vw_ContractLineSearch', N'is_mhs') IS NOT NULL THEN 'PASS' ELSE 'FAIL' END
 UNION ALL
@@ -259,12 +280,12 @@ SELECT 'view FillKill.vw_UomAlias, typed UOMs to Infor''s (13, 2026-10-20)',
              AND COL_LENGTH(N'FillKill.vw_UomAlias', N'lawson_value') IS NOT NULL THEN 'PASS' ELSE 'FAIL: run 13' END
 UNION ALL
 -- The version line near the top of 14; change both together.
-SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-10-20 version (14)',
+SELECT 'procedure FillKill.usp_SyncPboSubs is the 2026-11-19.2 version: each sub''s source, AutoSub and Customer Preferred approved with a comment saying so (14)',
        CASE WHEN OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]', N'P') IS NULL THEN 'FAIL: run 14'
             WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) IS NULL
                 THEN 'CHECK: no VIEW DEFINITION permission to read it'
-            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-10-20%' THEN 'PASS'
-            ELSE 'FAIL: an older version; re-run 14' END
+            WHEN OBJECT_DEFINITION(OBJECT_ID(N'[FillKill].[usp_SyncPboSubs]')) LIKE N'%version 2026-11-19.2%' THEN 'PASS'
+            ELSE 'FAIL: an older version; re-run 14 (after 11 and 12)' END
 UNION ALL
 -- 12's step 2 saves a copy of Sub before it drops the vendor details.
 SELECT 'copy of Sub from before vendor items (12, 2026-10-20)',
@@ -335,3 +356,22 @@ IF COL_LENGTH(N'FillKill.SubVendorItem', N'medline_item') IS NOT NULL
                CONCAT(''INFO: '', (SELECT COUNT(*) FROM [FillKill].[SubVendorItem] WHERE [sub_id] IS NULL AND [deleted_at] IS NULL),
                       '' / '', (SELECT COUNT(*) FROM [FillKill].[SubOrder] WHERE [sub_id] IS NULL));
     ');
+
+-- Live subs by where they came from (14, 2026-11-19), for a look: once Main has loaded after 14,
+-- Medline's AutoSub and Customer Preferred subs are approved unless nursing changed them, and no
+-- Medline sub still pending review is on a more trusted list than its source says.
+IF COL_LENGTH(N'FillKill.Sub', N'reference_sku') IS NOT NULL
+BEGIN
+    -- 14's script gives the subs the 2026-11-19 version approved their comment (2026-11-19.2).
+    SELECT 'every sub the system approved has its comment saying why (14, 2026-11-19.2)' AS [check],
+           CASE WHEN NOT EXISTS (
+               SELECT 1 FROM [FillKill].[History] AS h
+               WHERE h.[entity] = 'sub' AND h.[action] = 'status' AND h.[to_value] = 'approved' AND h.[actor] = 'System'
+                 AND NOT EXISTS (SELECT 1 FROM [FillKill].[History] AS c
+                                 WHERE c.[entity] = 'sub' AND c.[entity_id] = h.[entity_id] AND c.[action] = 'comment'
+                                   AND c.[actor] = 'System' AND c.[comment] LIKE 'Auto-approved: %')
+           ) THEN 'PASS' ELSE 'FAIL: re-run 14' END AS [result];
+    SELECT [source], [status], COUNT(*) AS [live subs]
+    FROM [FillKill].[Sub] WHERE [deleted_at] IS NULL
+    GROUP BY [source], [status] ORDER BY [source], [status];
+END;

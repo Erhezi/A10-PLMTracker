@@ -22,7 +22,8 @@ from ..utility import freshness
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_SOURCES, SUB_STATUSES, VendorItem
-from .rules import INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, STATUS_LABELS, RuleError
+from .rules import (INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, SOURCE_LABELS, STATUS_LABELS,
+                    RuleError)
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
@@ -130,18 +131,20 @@ def index():
     module = MODULES[FILLKILL]
     held = roles_in(current_user, FILLKILL)
     today = now_ny_naive().date()
-    # The live server opens on today; locally, on the latest day with kill lines (FILLKILL_OPEN_ON).
-    opening = today if current_app.config.get("FILLKILL_OPEN_ON") == "today" else last
     config = {
         "bounds": {"first": first, "last": last},
-        "default": {"start": opening, "end": opening},
-        "today": today,  # for "View today"
+        # Main opens on today, on every server (the user, 2026-11-19; locally it opened on the
+        # latest day with kill lines, FILLKILL_OPEN_ON, before).
+        "default": {"start": today, "end": today},
+        "today": today,  # the quick dates (Today, the last 7 and 30 days) end on it
         "ordersDays": ORDERS_DAYS,
         "sites": queries.sites(),
         "can": capabilities(current_user),
         "me": current_user.email,
         # Lists, not objects: the JSON encoder sorts object keys, and these orders matter.
         "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
+        # Where a sub came from (2026-11-19): the panel says which of Medline's lists, not just "Medline".
+        "sources": [[code, SOURCE_LABELS.get(code, code)] for code in SUB_SOURCES],
         "needs": [[key, rollup.NEEDS_LABELS[key]] for key in rollup.NEEDS],
         # The vendor ID that says Infor has no such vendor (2026-10-19).
         "noVendor": {"id": NO_VENDOR_ID, "label": NO_VENDOR_LABEL},
@@ -188,9 +191,6 @@ def check_db():
     for problem in found:
         print(f"- {problem['what']}" + (f"  -> run db/fillkill/{problem['script']}" if problem["script"] else ""))
     print("The database has everything this version needs." if not found else f"{len(found)} to fix.")
-
-
-SOURCE_LABELS = {"manual": "Entered by hand", "medline_pbo": "Medline PBO", "llm": "AI finder"}
 
 
 @bp.route("/subs")
@@ -340,7 +340,7 @@ def export_subs():
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-ORDERS_DAYS = 30  # the orders section's default: the last 30 days, today included
+ORDERS_DAYS = 1  # Sub Orders Recorded's default: today (the user, 2026-11-19; the last 30 days before)
 
 
 @bp.get("/api/orders")

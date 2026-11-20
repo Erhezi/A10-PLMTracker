@@ -125,7 +125,9 @@ record, and nothing is matched against Infor in this deploy.
 - **Approved by nursing means clinically approved, and every approved sub can be ordered.** Picking
   among the approved subs is gone: no Pick or Unpick (called Prefer and Unprefer for a morning), no
   *Needs pick*, no automatic picks, nothing about picks on orders or deletes. A Sub Approver's entry
-  is approved on entry; a Sub Finder's, and Medline's PBO subs, wait for a Sub Approver's review.
+  is approved on entry; a Sub Finder's, and Medline's Possible Sub and PBO subs, wait for a Sub
+  Approver's review (Medline's AutoSub and Customer Preferred subs are approved by the system,
+  2026-11-19: section 5, Where subs come from).
 - **To stop a sub being ordered**, the Sub Approver puts it on **Hold** or **Rejects** it, with a
   reason if they like. The reason is kept as the sub's comment ("Hold: ..."), so it reads on its
   card. The sub leaves Main's column and can't be ordered until it's approved again; its orders so
@@ -328,8 +330,9 @@ gather options from suppliers by email and phone, and nursing filters them. So:
    2026-10-20 a sub had one set of vendor details, and setting the vendor part ordered replaced
    what was entered ("Entered as"); entering the same part twice was the only way to a second
    vendor part. `12`'s step 2 turned those into vendor items, merging such subs.
-3. Subs proposed by the system (Medline PBO, a future AI agent) stay **pending review**; the Sub
-   Approver approves, holds or rejects them.
+3. Subs proposed by the system (Medline's Possible Sub and PBO lists, a future AI agent) stay
+   **pending review**; the Sub Approver approves, holds or rejects them. Medline's AutoSub and
+   Customer Preferred subs are approved by the system (2026-11-19).
 4. A sub is one Reference SKU per Medline item; its vendor items can wait for the Materials Manager.
 
 Capabilities: `add_sub` = Sub Approver, Sub Finder (enter, correct the Reference SKU, delete);
@@ -381,11 +384,13 @@ Trends and analytics live on a separate Dashboard page (section 7).
 **Controls**
 
 - **Fill/Kill dates** (2026-10-15; the slider was dropped; called "Order dates" until 2026-10-20,
-  renamed so they aren't taken for our orders' dates): the kill lines' order dates. Two date boxes,
-  and a button beside them that switches between **View today** (today only, the boxes locked) and
-  **Select a range** (the boxes open). Default (2026-10-20): **today** on the live server
-  (`ProductionConfig.FILLKILL_OPEN_ON`); locally the newest day with lines, since O2's data can end
-  days ago.
+  renamed so they aren't taken for our orders' dates): the kill lines' order dates. Two date boxes
+  and quick buttons beside them, **Today · Last 7 days · Last 30 days**, each ending today, the one
+  the dates are pressed (2026-11-19, as Order Timing; before, a button switched between **View
+  today** and **Select a range**). Default: **today** on every server (the user, 2026-11-19; from
+  2026-10-20 only the live server did, through `FILLKILL_OPEN_ON`, and locally Main opened on the
+  newest day with lines). The page link leaves today's dates out. **Find an item** comes first,
+  before the dates, as on Order Timing (2026-11-19).
 - **Site filter:** one or more sites. Default: all. It applies to the kill lines and, since
   2026-10-27, to the orders: with sites chosen, only their orders count in Ordering Status, Total Sub
   Ordered (EA), the Needs filter and the orders under the table. Orders recorded before sites were
@@ -502,7 +507,7 @@ not on it yet. The API returns the whole Infor item either way; the page filters
 |---|---|
 | Reference SKU | what was entered: nursing's approved reference, often the manufacturer's part, or Medline's PBO number; searchable, and what future LLM sub-finding will use. It doesn't change with the vendor items; nursing can correct it until the sub has an order |
 | Status | *Pending Review* when added; the Sub Approver sets *Approved*, *Hold* or *Rejected* |
-| Entered By | email, `Medline` for PBO subs, or `system` (reserved for future LLM subs) |
+| Entered By | email, `Medline` for Medline's subs (shown as the list it came from, e.g. Medline AutoSub, 2026-11-19), or `system` (reserved for future LLM subs) |
 | Create DT, Update DT | a vendor item added, corrected or deleted updates its sub too |
 | Comments | entries of up to 400 characters each, with who and when; none is ever overwritten. The Sub Finder can add one when adding the sub; Sub Approvers add more later (9.7). |
 
@@ -590,10 +595,26 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
   its contracts is MHS's (`[Contract.MMAHSOrganizationEID] = '105188574'`). Non-MHS lines can still
   be chosen (2026-10-15). These aren't stored on the sub.
 - **Where subs come from:**
-  - **Medline PBO** substitutes (`SCSFileIngestor.MedlinePBO.MedlineSubCollection`) are added
-    automatically: Reference SKU = the substitute number, Entered By *Medline*, status *Pending
-    Review*; and a vendor item (Medline 1000931, the substitute number as the vendor part) when
-    Medline's contract lines for it agree on one UOM and QOE (2026-10-20).
+  - **Medline's subs** are added automatically: Reference SKU = the substitute number, Entered By
+    *Medline*; and a vendor item (Medline 1000931, the substitute number as the vendor part) when
+    Medline's contract lines for it agree on one UOM and QOE (2026-10-20). Since 2026-11-18 they come
+    from four lists, pooled and ranked in `vw_MedlineSubList`; the rank says how far to trust a sub
+    without asking (the user, 2026-11-19), and Entered says which list:
+
+    | Rank | List | Source | Added as |
+    |---|---|---|---|
+    | 0 | Medline's AutoSub list (`MedlineAutoSub.MedlineAutosubRelation`) | Medline AutoSub | *Approved*, by `System` |
+    | 1 | the Fill/Kill file's Customer Preferred Substitute Item | Medline FillKill Customer Preferred | *Approved*, by `System` |
+    | 2 | the Fill/Kill file's Possible Subst. Item | Medline FillKill Possible Sub | *Pending Review* |
+    | 3 | the PBO collection (`MedlinePBO.MedlineSubCollection`) | Medline PBO | *Pending Review* |
+
+    A sub on several lists takes its best rank. One of Medline's subs still pending review takes a
+    more trusted list's source when that list has it, and is approved for rank 0 or 1; subs nursing
+    reviewed, and subs entered by hand, never change. Approved by the system, a sub can be ordered at
+    once; nursing can still put it on Hold or reject it. The system also writes a comment on it
+    saying why, "Auto-approved: from Medline AutoSub" (or "... from Medline FillKill Customer
+    Preferred"), which shows under the sub on Main as nursing's comments do (the user, 2026-11-19).
+    Until 2026-11-19 every one was *Medline PBO*, pending review.
   - **Manual entry** by Sub Finders is the main source. PBO coverage is expected to stay low; only
     1 of the 31 killed White Plains items has one.
   - Subs persist, so the library builds up through daily work: when an item is killed again, its
@@ -692,6 +713,7 @@ item, how much, which sites, until when. Free text, so one instruction can speak
 | `MedlineFillKill.MedlineFillKill` | Medline order line |
 | `MedlineReport.ETLHealth` | pipeline run |
 | `MedlinePBO.MedlineSubCollection` | Medline item × PBO substitute |
+| `MedlineAutoSub.MedlineAutosubRelation` | Medline item × AutoSub substitute (read by `vw_MedlineSubList`, 2026-11-18) |
 
 **Owned by the app: the `PLM` database, schema `FillKill`.** **Decided.** Everything is created by
 DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app deploy.
@@ -703,7 +725,7 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
 | `vw_MedlineFillKillQtyAgg` (view) | order date × Sold-To × Medline item | ordered, filled and killed quantities, PO line count. Written by the module owner. (`11_item_qty_views.sql`) |
 | `TestFillKillLine` | test line | copies of real lines under Sold-To `test site`; emptied 2026-11-16 and dropped by `10_kill_lines.sql` (run after that day's deploy) |
 | `Site` | Medline Sold-To account (2026-10-30) | sold_to (Medline's code, leading zeros kept, the same value as SubOrder.site), sold_to_name, site_short_name (Moses / Wakefield / Einstein). 10 Montefiore accounts. Kept by `15_sites.sql`. The app doesn't read it yet |
-| `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_pbo; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
+| `Sub` | sub of a Medline item | medline_item, reference_sku, status (pending_review / approved / hold / rejected), is_picked, source (manual / medline_autosub / medline_preferred / medline_possible / medline_pbo, 2026-11-19; llm reserved), entered_by, create_dt, update_dt, deleted by/at/reason; one live per (medline_item, reference_sku) |
 | `SubVendorItem` | way to order a sub (2026-10-20), or a Medline item without a sub (2026-11-02) | sub_id, or none and then **medline_item** (exactly one of the two, `CK_SubVendorItem_sub_or_item`), vendor_part, vendor, vendor_id, uom, qoe, manufacturer_part, infor_item, description, entered_by, create_dt, update_dt, deleted by/at/reason; one live per (sub_id, vendor_id, vendor_part, uom), and without a sub per (medline_item, vendor_id, vendor_part, uom) |
 | `SubOrder` | order recorded by a Materials Manager | medline_item, sub_id (none for a vendor item without a sub, 2026-11-02; then it has its vendor_item_id), vendor_item_id, **site** (Medline's Sold-To code, 2026-10-27; none on older orders), **po_number** (Infor's, optional, 2026-10-27), quantity, and what it was placed with: vendor_part, uom, qoe, vendor, vendor_id; ordered_by, ordered_dt, voided by/at/reason. Orders recorded before vendor items have a vendor item only when the sub's details were what they were placed with |
 | `ItemInstruction` | instruction by SCM (2026-10-27) | infor_item (none for a Medline item not in Infor), medline_item (written from), instruction (≤1,000), written_by, written_at. Never changed or deleted; the newest per row is in force |
@@ -721,7 +743,9 @@ DDL scripts kept in this repo (`db/fillkill/`) and run on O2 before the app depl
   would make the flag clearer.
 - **Kill reasons aren't in either view.** The Latest Reason column and reason trends on
   the Dashboard read them from `vw_MedlineFillKill` (Medline's `ReasonTypeText` since 2026-11-16).
-- **PBO subs:** `Medline.Sub` in the item view is where Medline's PBO substitutes enter `Sub`.
+- **Medline's subs:** `Medline.Sub` in the item view is where Medline's substitutes enter `Sub`,
+  with `Medline.SubRank` (2026-11-19), the best rank in `vw_MedlineSubList`, which sets the
+  source and status `14_pbo_sync.sql` gives them (section 5, Where subs come from).
 
 In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin is `users.user_role`.
 
@@ -738,8 +762,8 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     they are); QOE, the largest; Latest Reason, Medline's reason type then its date; Subs Status,
     how many subs then how many approved; Sub Approved by Nursing and Vendor Item Detail, how many;
     SCM Comments and Ordering, the latest one's date. In the browser only (`main/sort.js`).
-  - **Orders Recorded** (named so 2026-11-16; "Orders" before): the orders recorded, voided ones included, by their own date, with **date controls of
-    their own** (default: the last 30 days; Today / 7 / 30 days), independent of the table's, so a
+  - **Sub Orders Recorded** (named so 2026-11-19; "Orders Recorded" from 2026-11-16, "Orders" before): the orders recorded, voided ones included, by their own date, with **date controls of
+    their own** (default: today since 2026-11-19, the last 30 days before; Today / 7 / 30 days, the one the dates are pressed), independent of the table's, so a
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
     rather than a page). Before, it followed the table's dates and was empty whenever orders were
     recorded after the kills shown. It follows the table's site filter (2026-10-27), so a site's

@@ -25,9 +25,10 @@ COLUMNS = {
     # Not last_file (2026-11-17): the app reads it when it's there ("Data as of"), and shows only
     # "last loaded" until 10 runs after the deploy.
     ("FillKill", "vw_FillKillLastLoad"): (("last_success", "last_line_update"), "10_kill_lines.sql"),
+    # Medline.SubRank: 14's procedure reads it (2026-11-19), and can't be created without it.
     ("FillKill", "vw_MedlineFillKillItemCollection"): (
         ("Medline Item", "Infor Item", "Infor Item Consistency", "Item.UOMConversion", "Item.LongDescription",
-         "CommodityCode", "CommodityCode.Description", "Medline.Sub"), "11_item_qty_views.sql"),
+         "CommodityCode", "CommodityCode.Description", "Medline.Sub", "Medline.SubRank"), "11_item_qty_views.sql"),
     ("FillKill", "vw_MedlineFillKillQtyAgg"): (("Medline Item", "Total Killed Qty", "Total PO Line Count"),
                                                 "11_item_qty_views.sql"),
     ("FillKill", "Sub"): (("reference_sku", "deleted_at", "deleted_by", "delete_reason"), "12_workflow_tables.sql"),
@@ -69,12 +70,16 @@ CHECKS = {
     ("FillKill", "CK_History_entity"): ("'vendoritem'", "12_workflow_tables.sql"),
     ("FillKill", "CK_SubVendorItem_sub_or_item"): ("[medline_item]", "12_workflow_tables.sql"),
     ("FillKill", "CK_SubOrder_sub_or_vendor_item"): ("[vendor_item_id]", "12_workflow_tables.sql"),
+    # Medline's subs say which list they came from (2026-11-19).
+    ("FillKill", "CK_Sub_source"): ("'medline_autosub'", "12_workflow_tables.sql"),
     ("PLM", "CK_UserModuleRole_role"): ("'scm'", "02_user_module_role.sql"),
 }
 
 # Procedures, the version marker in their body, and whether the app runs them.
 PROCEDURES = {
-    ("FillKill", "usp_SyncPboSubs"): ("version 2026-10-20", "14_pbo_sync.sql"),
+    # 2026-11-19: each sub's source from Medline's lists, AutoSub and Customer Preferred approved;
+    # 2026-11-19.2: with a comment saying so.
+    ("FillKill", "usp_SyncPboSubs"): ("version 2026-11-19.2", "14_pbo_sync.sql"),
 }
 
 # Views the app's account must be able to read: a view reading another database (SCSFileIngestor,

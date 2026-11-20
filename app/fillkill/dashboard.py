@@ -10,6 +10,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from statistics import median
 
+from ..models.fillkill import SYSTEM_ACTOR
 from . import queries, rollup
 
 TOP_ITEMS = 10
@@ -52,10 +53,12 @@ def _created_in(sub, start: date, end: date) -> bool:
 
 
 def review_hours(subs, history, start: date, end: date) -> list[float]:
-    """For subs added inside the dates: hours from being added to their first review."""
+    """For subs added inside the dates: hours from being added to their first review. The approval
+    the sync of Medline's subs records for AutoSub and Customer Preferred ones (2026-11-19) isn't a
+    review: nobody looked at them."""
     first_review: dict[int, datetime] = {}
     for row in history:
-        if row["action"] == "status" and row["entity_id"] not in first_review:
+        if row["action"] == "status" and row["actor"] != SYSTEM_ACTOR and row["entity_id"] not in first_review:
             first_review[row["entity_id"]] = _moment(row["acted_at"])
     hours = []
     for sub in subs:

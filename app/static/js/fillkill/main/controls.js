@@ -1,49 +1,37 @@
 /* Main: the controls above the table: dates, sites, search and the Needs chips. */
 
-import { $, config, debounce, esc, fmtDate } from '../common.js';
+import { $, config, debounce, esc, markQuickDays, shiftDay } from '../common.js';
 import { loadOrders } from './orders.js';
 import { linked, state } from './state.js';
 import { reloadAll } from './refresh.js';
 import { renderRows } from './table.js';
 
-// Two ways to choose the Fill/Kill dates (the kill lines' order dates; named so 2026-10-20, apart
-// from our orders' dates): today only, or a range in the two date boxes. The button beside them
-// switches. The live server opens on today; locally, on the newest day with kill lines
-// (FILLKILL_OPEN_ON), today when that's today.
+// The Fill/Kill dates (the kill lines' order dates; named so 2026-10-20, apart from our orders'
+// dates): Today, the Last 7 or 30 days, or any range in the two date boxes (2026-11-19, as Order
+// Timing; a View today / Select a range switch before). Main opens on today, on every server.
 export function setupDates() {
   const startInput = $('fk-start');
   const endInput = $('fk-end');
-  const modeButton = $('fk-date-mode');
+  const quick = $('fk-quick-dates');
   const first = config.bounds && config.bounds.first;
   const today = config.today;
   [startInput, endInput].forEach((input) => {
     if (first) input.min = first;
     if (today) input.max = today;
   });
-  state.dateMode = today && state.start === today && state.end === today ? 'today' : 'range';
 
-  const showMode = () => {
-    const onToday = state.dateMode === 'today';
+  const show = () => {
     startInput.value = state.start || '';
     endInput.value = state.end || '';
-    startInput.disabled = onToday;
-    endInput.disabled = onToday;
-    modeButton.textContent = onToday ? 'Select a range' : 'View today';
-    modeButton.title = onToday ? 'Choose the first and last Fill/Kill dates'
-      : `Show only today's kill lines (${fmtDate(today)})`;
+    markQuickDays(quick, state.start, state.end);
   };
 
-  modeButton.addEventListener('click', () => {
-    if (state.dateMode === 'today') {
-      state.dateMode = 'range';  // the same dates until the range changes
-      showMode();
-      startInput.focus();
-      return;
-    }
-    state.dateMode = 'today';
-    state.start = today;
+  quick.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-days]');
+    if (!button || !today) return;
+    state.start = shiftDay(today, 1 - Number(button.dataset.days));
     state.end = today;
-    showMode();
+    show();
     reloadAll();
   });
 
@@ -51,12 +39,12 @@ export function setupDates() {
     if (!startInput.value || !endInput.value) return;
     [state.start, state.end] = startInput.value <= endInput.value
       ? [startInput.value, endInput.value] : [endInput.value, startInput.value];
-    showMode();
+    show();
     reloadAll();
   };
   startInput.addEventListener('change', fromInputs);
   endInput.addEventListener('change', fromInputs);
-  showMode();
+  show();
 }
 
 export function setupSites() {

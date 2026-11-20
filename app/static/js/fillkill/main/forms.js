@@ -7,8 +7,8 @@
  */
 
 import {
-  $, NO_VENDOR, REFERENCE_SKU_HINT, STATUS_ORDER, SUB_NOTE_HINT, alertBox, config, debounce, esc, fmtDateTime, fmtNumber,
-  formValues, getJSON, inforUom, isTheKilledItem, postJSON, trimInput, uomQoe, vendorItemText,
+  $, NO_VENDOR, REFERENCE_SKU_HINT, STATUS_ORDER, SUB_NOTE_HINT, alertBox, config, debounce, enteredBy, esc, fmtDateTime,
+  fmtNumber, formValues, getJSON, inforUom, isTheKilledItem, postJSON, trimInput, uomQoe, vendorItemText,
 } from '../common.js';
 import { panelSubs } from './panel.js';
 import { afterChange } from './refresh.js';
@@ -125,7 +125,7 @@ function summary(sub, item, more, medline) {
   return `
     <div class="fk-form-summary small">
       <div>${sub ? `<span class="text-muted">Reference SKU</span> <span class="fw-semibold">${esc(sub.reference_sku)}</span>
-        <span class="text-muted">for ${killed}${sub.source === 'medline_pbo' ? ' · Medline PBO' : ''}</span>`
+        <span class="text-muted">for ${killed}${sub.source !== 'manual' ? ` · ${esc(enteredBy(sub))}` : ''}</span>`
         : `<span class="text-muted">No sub, as SCM directs, for</span> <span class="fw-semibold">${killed}</span>`}</div>
       ${item ? `<div><span class="text-muted">Vendor item</span> <span class="fw-semibold">${esc(vendorItemText(item))}</span>${item.description
         ? ` <span class="text-muted">· ${esc(item.description)}</span>` : ''}</div>` : ''}${more || ''}

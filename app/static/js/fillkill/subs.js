@@ -4,10 +4,9 @@
  */
 
 import {
-  $, config, debounce, esc, fmtDate, fmtDateTime, getJSON, itemLink, needsDetails, statusBadge, uomQoe, url, vendorText,
+  $, config, debounce, enteredBy, esc, fmtDate, fmtDateTime, getJSON, itemLink, needsDetails, statusBadge, uomQoe, url,
+  vendorText,
 } from './common.js';
-
-const sourceLabels = Object.fromEntries(config.sources);
 
 $('fk-subs-status').innerHTML += config.statuses.map(([code, label]) => `<option value="${code}">${esc(label)}</option>`).join('');
 $('fk-subs-source').innerHTML += config.sources.map(([code, label]) => `<option value="${code}">${esc(label)}</option>`).join('');
@@ -56,7 +55,7 @@ function render(subs, limit, deleted) {
       }).join('');
     const removed = deleted
       ? `<div class="small text-danger">Deleted by ${esc(s.deleted_by)} ${fmtDateTime(s.deleted_at)}: ${esc(s.delete_reason)}</div>` : '';
-    const entered = s.source === 'manual' ? esc(s.entered_by) : esc(sourceLabels[s.source] || s.source);
+    const entered = esc(enteredBy(s));
     return `<tr>
       <td><a href="${esc(itemLink(s.medline_item))}" title="Open the item on Main">${esc(s.medline_item)}</a>
         ${s.medline_infor_item ? `<div class="small text-muted">${esc(s.medline_infor_item)}</div>` : ''}</td>

@@ -11,7 +11,8 @@
 --                                        as one value, the line's status (Line Status) and what
 --                                        it's short shipped (Short Qty)
 --   OrderTiming.vw_ShortShipLine         Short Ships' lines: the short-shipped ones, each with its
---                                        PO's total lines and its line in Fill/Kill's feed
+--                                        PO's total lines, its line in Fill/Kill's feed and
+--                                        (2026-11-18) its QOE from Infor, with its quantities in eaches
 --   OrderTiming.vw_ItemKillDay           Short Ships' kill counts: Fill/Kill's kill lines per item,
 --                                        Sold-To and day
 --   OrderTiming.vw_OrderTimingLastLoad   one row: how fresh the lines are, for the app's "Data as
@@ -19,6 +20,8 @@
 --
 -- The two Short Ships views (2026-11-17) read Fill/Kill's FillKill.vw_MedlineFillKill, so run
 -- db/fillkill/10 before this script on a new database. They join the two feeds here, not in the app.
+-- vw_ShortShipLine's QOE (2026-11-18) reads Infor's tables in PLMPreprocessorShared, as Fill/Kill's
+-- 11 does.
 --
 -- Line Status and Short Qty are the rules the app shows and filters on; change them here, not in the
 -- app. Line Status is where the line is with Medline, checked in this order:
@@ -112,16 +115,46 @@ CREATE OR ALTER VIEW [OrderTiming].[vw_ShortShipLine] AS
 --                      may not be in it yet: the two feeds come in their own files.
 --   Fill/Kill Reason   Medline's reason type for the kill (FillKill.vw_MedlineFillKill's Reason)
 --   Est Avail Date     its Est Avail Date (that view's Reason Date)
+--   InforUOM           (2026-11-18) the line's UM as Infor calls it, as vw_MedlineFillKill has it:
+--                      through Infor's EDI list (MDM_EDI_SUB_UOM: CS is CA, BT is BO, TR is TY),
+--                      else as Medline writes it
+--   QOE                (2026-11-18) eaches in one of the line's UM: Infor's UOM conversion for that
+--                      InforUOM of the Medline item's Infor item, found by Medline vendor item, as
+--                      Fill/Kill's item view finds it (never by manufacturer part: different makers
+--                      share simple part numbers). An EA without one is 1. NULL when Infor has none,
+--                      or two Infor items disagree. On O2 (11/18) all 185 short lines of the last 30
+--                      days had one, the same as Fill/Kill's item view gives their items.
+--                      Read from Infor's tables here rather than from that view: it knows only items
+--                      that have been in Fill/Kill's feed (a line shorted before its kill line comes
+--                      in, or on an STD order, wouldn't have one), and it has a row per sub.
+--   Order Qty EA       Order Qty in eaches (Order Qty x QOE); NULL without a QOE
+--   Short Qty EA       Short Qty in eaches, the same way
 -- The PO's lines are counted before the short ones are picked, over its day, Sold-To and order: the
 -- columns the app filters on, so its days and sites still reach the source table's key (on O2,
 -- 11/17, with the days as parameters: a range with no lines was a seek reading none).
+-- The app's account reads Infor's tables already (Fill/Kill's go-live granted MDM_VENDORITEM,
+-- MDM_ITEMUOM and MDM_EDI_SUB_UOM in PLMPreprocessorShared).
 SELECT l.*,
        CAST(CASE WHEN k.[Sales Order #] IS NULL THEN 0 ELSE 1 END AS BIT) AS [In Fill/Kill],
-       k.[Reason] AS [Fill/Kill Reason], k.[Reason Date] AS [Est Avail Date]
+       k.[Reason] AS [Fill/Kill Reason], k.[Reason Date] AS [Est Avail Date],
+       u.[InforUOM], q.[QOE], l.[Order Qty] * q.[QOE] AS [Order Qty EA], l.[Short Qty] * q.[QOE] AS [Short Qty EA]
 FROM (SELECT o.*, COUNT(*) OVER (PARTITION BY o.[Report Date], o.[Sold-To #], o.[Order #]) AS [PO Total Lines]
       FROM [OrderTiming].[vw_MedlineOrderLine] AS o) AS l
 LEFT JOIN [FillKill].[vw_MedlineFillKill] AS k
        ON k.[Sales Order #] = l.[Order #] AND k.[Order Line #] = l.[Order Line]
+-- InforUOM as vw_MedlineFillKill makes it (one row per external value, so no line is repeated).
+LEFT JOIN [PLMPreprocessorShared].[infor].[MDM_EDI_SUB_UOM] AS uom
+       ON uom.[ExternalValue] = l.[UM]
+CROSS APPLY (SELECT COALESCE(uom.[LawsonValue], l.[UM]) AS [InforUOM]) AS u
+-- The Infor item's conversion for it (Fill/Kill's item view's CTEs f and b), taken only when every
+-- Infor item found has the same one.
+OUTER APPLY (SELECT CASE WHEN COUNT(DISTINCT iu.[UOMConversion]) = 1 THEN MIN(iu.[UOMConversion]) END AS [conversion]
+             FROM [PLMPreprocessorShared].[infor].[MDM_VENDORITEM] AS vi
+             JOIN [PLMPreprocessorShared].[infor].[MDM_ITEMUOM] AS iu
+                  ON iu.[Item] = vi.[Item] AND iu.[UOM] = u.[InforUOM]
+             WHERE vi.[VendorItem] = l.[Medline Item #] AND vi.[VendorName] LIKE '%Medline%'
+               AND vi.[Active] = 'Yes') AS c
+CROSS APPLY (SELECT COALESCE(c.[conversion], CASE WHEN u.[InforUOM] = 'EA' THEN 1 END) AS [QOE]) AS q
 WHERE l.[Short Qty] > 0;
 GO
 
@@ -173,9 +206,10 @@ FROM [OrderTiming].[vw_MedlineOrderLine]
 GROUP BY [Line Status]
 ORDER BY [Line Status];
 
--- Short Ships: the short-shipped lines, and how many Fill/Kill has (the rest came in a newer file
--- than Fill/Kill's last).
-SELECT COUNT(*) AS [short shipped lines], SUM(CAST([In Fill/Kill] AS INT)) AS [in Fill/Kill]
+-- Short Ships: the short-shipped lines, how many Fill/Kill has (the rest came in a newer file than
+-- Fill/Kill's last), and how many have a QOE (the rest show no eaches; on O2, 11/18, all of them).
+SELECT COUNT(*) AS [short shipped lines], SUM(CAST([In Fill/Kill] AS INT)) AS [in Fill/Kill],
+       COUNT([QOE]) AS [with a QOE]
 FROM [OrderTiming].[vw_ShortShipLine];
 
 SELECT [last_success], [last_line_load], [last_file] FROM [OrderTiming].[vw_OrderTimingLastLoad];

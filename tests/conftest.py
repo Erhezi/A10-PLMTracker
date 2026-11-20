@@ -80,11 +80,14 @@ FILLKILL_VIEWS = {
         "Order Date", "Sold-To", "Sold-To Name", "Medline Item", "UM", "Customer Item #", "Mfr. Item #",
         "Manufacturer Name", "Total Ordered Qty", "Total Filled Qty", "Total Killed Qty", "Total PO Line Count",
     ],
+    # As on O2 since 2026-11-18 (db/fillkill/11): InforUOM and the Infor checks in, Medline.ParentItem out.
     "vw_MedlineFillKillItemCollection": [
-        "Medline Item", "UM", "Customer Item #", "Mfr. Item #", "Manufacturer Name", "Item.UOMConversion",
-        "VendorItem.UOMConversion", "UOM_QOE_VARS", "Medline.Sub", "Medline.ParentItem", "SUB_VARS",
-        "Item Description", "Infor Item", "INFOR_ITEM_VARS", "Infor Item Consistency", "Item.Active",
-        "Item.Description", "Item.LongDescription", "CommodityCode", "CommodityCode.Description",
+        "Medline Item", "UM", "Customer Item #", "Mfr. Item #", "Manufacturer Name", "InforUOM",
+        "InforManufacturerNumberByCustomerItem", "InforItemActiveByCustomerItem",
+        "InforVendorItemActiveByMedlineItem", "Medline.Sub", "SUB_VARS", "Item Description", "Infor Item",
+        "INFOR_ITEM_VARS", "Infor Item Consistency", "Item.UOMConversion", "VendorItem.UOMConversion",
+        "UOM_QOE_VARS", "Item.Active", "Item.Description", "Item.LongDescription", "CommodityCode",
+        "CommodityCode.Description",
     ],
     "vw_MedlineFillKill": [
         "Sold-To", "Sold-To Name", "Ship-To", "Ship-To Name", "Ship-To Name 2", "Order Date", "Order Time",
@@ -112,9 +115,11 @@ ORDER_LINE_COLUMNS = [
 ]
 ORDERTIMING_VIEWS = {
     "vw_MedlineOrderLine": ORDER_LINE_COLUMNS,
-    # Short Ships' views (2026-11-17): the short lines, each with its PO's total lines and its
-    # Fill/Kill line; Fill/Kill's kill lines per item, Sold-To and day.
-    "vw_ShortShipLine": [*ORDER_LINE_COLUMNS, "PO Total Lines", "In Fill/Kill", "Fill/Kill Reason", "Est Avail Date"],
+    # Short Ships' views (2026-11-17): the short lines, each with its PO's total lines, its Fill/Kill
+    # line and (2026-11-18) its QOE and quantities in eaches; Fill/Kill's kill lines per item,
+    # Sold-To and day.
+    "vw_ShortShipLine": [*ORDER_LINE_COLUMNS, "PO Total Lines", "In Fill/Kill", "Fill/Kill Reason", "Est Avail Date",
+                         "QOE", "Order Qty EA", "Short Qty EA"],
     "vw_ItemKillDay": ["Medline Item #", "Sold-To #", "Order Date", "Kill Lines"],
     "vw_OrderTimingLastLoad": ["last_success", "last_line_load", "last_file"],
 }

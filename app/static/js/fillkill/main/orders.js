@@ -1,18 +1,13 @@
-/* Main: the orders under the table, by their own date, with dates of their own (the table's dates
- * don't change them), so a Materials Manager can look up past orders right here. Default: the
- * last 30 days. The table's sites do apply (2026-10-27): a site sees its own orders. A search box
- * narrows them by number (2026-10-20). Every sub is on the Subs page.
+/* Main: Sub Orders Recorded (2026-11-19; "Orders Recorded" before), under the table: the orders by
+ * their own date, with dates of their own (the table's dates don't change them), so a Materials
+ * Manager can look up past orders right here. Default: today (2026-11-19; the last 30 days before).
+ * The table's sites do apply (2026-10-27): a site sees its own orders. A search box narrows them by
+ * number (2026-10-20). Every sub is on the Subs page.
  */
 
-import { $, NO_VENDOR, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, getJSON } from '../common.js';
+import { $, NO_VENDOR, alertBox, config, debounce, esc, fmtDateTime, fmtNumber, getJSON, markQuickDays, shiftDay } from '../common.js';
 import { openPanel } from './panel.js';
 import { api, siteName, state } from './state.js';
-
-const shiftDay = (iso, days) => {
-  const day = new Date(`${iso}T00:00:00Z`);
-  day.setUTCDate(day.getUTCDate() + days);
-  return day.toISOString().slice(0, 10);
-};
 
 function setOrdersDays(days) {
   state.ordersEnd = config.today;
@@ -22,11 +17,13 @@ function setOrdersDays(days) {
 export function setupOrders() {
   const startInput = $('fk-orders-start');
   const endInput = $('fk-orders-end');
+  const quick = $('fk-orders-quick');
   if (!state.ordersStart || !state.ordersEnd) setOrdersDays(config.ordersDays);
   [startInput, endInput].forEach((input) => { input.max = config.today; });
   const show = () => {
     startInput.value = state.ordersStart;
     endInput.value = state.ordersEnd;
+    markQuickDays(quick, state.ordersStart, state.ordersEnd);
   };
   const fromInputs = () => {
     if (!startInput.value || !endInput.value) return;
@@ -37,8 +34,8 @@ export function setupOrders() {
   };
   startInput.addEventListener('change', fromInputs);
   endInput.addEventListener('change', fromInputs);
-  document.querySelectorAll('[data-orders-days]').forEach((button) => button.addEventListener('click', () => {
-    setOrdersDays(Number(button.dataset.ordersDays));
+  quick.querySelectorAll('[data-days]').forEach((button) => button.addEventListener('click', () => {
+    setOrdersDays(Number(button.dataset.days));
     show();
     loadOrders();
   }));

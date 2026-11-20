@@ -173,7 +173,14 @@ const lineOf = (sku) => `[...document.querySelectorAll('#fk-main tbody.fk-item >
 const steps = [
   ['Main opens on today', async () => {
     await go('/dev-login?as=all', `${MAIN_READY} && document.querySelectorAll('#fk-main tbody.fk-item').length`, 'the main table');
-    expect(await text('#fk-date-mode') === 'Select a range', 'the dates are not on today');
+    // The search first, as Order Timing's; the dates on Today, its quick button pressed (2026-11-19).
+    expect(await evaluate(`!!(document.getElementById('fk-search').compareDocumentPosition(document.getElementById('fk-start'))
+      & Node.DOCUMENT_POSITION_FOLLOWING)`), 'the search is not before the dates');
+    expect(await evaluate(`document.querySelector('#fk-quick-dates [aria-pressed="true"]')?.innerText`) === 'Today',
+      'the dates are not on today');
+    expect(!(await evaluate('location.search')).includes('start='), 'the link has the default dates');
+    expect(await evaluate(`document.querySelector('#fk-orders-quick [aria-pressed="true"]')?.innerText`) === 'Today',
+      'the orders are not on today');
     expect(await count('#fk-main tbody.fk-item') === 2, `${await count('#fk-main tbody.fk-item')} items today, not 2`);
     // When Medline made the file (8:04 Central is 9:04 here), then when it was loaded (2026-11-17).
     expect(/^Data as of \d\d\/\d\d\/\d{4} 09:04 · last loaded 09:30/.test(await text('#fk-data-as-of')),
@@ -184,13 +191,19 @@ const steps = [
       expect(cap === '450px', `${table} is capped at ${cap}, not 450px`);
     }
     expect(await evaluate(`getComputedStyle(document.querySelector('#fk-main thead th')).position`) === 'sticky', 'the header does not stay on top');
-    expect(await text('#fk-orders-title') === 'Orders Recorded', `the orders are titled ${await text('#fk-orders-title')}`);
+    expect(await text('#fk-orders-title') === 'Sub Orders Recorded', `the orders are titled ${await text('#fk-orders-title')}`);
   }],
   ['A range of dates, kept in the page link', async () => {
-    await click('#fk-date-mode');
+    // The last 7 days (the sample's three days of lines), then a range typed in.
+    await click('#fk-quick-dates [data-days="7"]');
+    await waitFor(`document.querySelectorAll('#fk-main tbody.fk-item').length === 3`, '3 items in the last 7 days');
+    expect(await evaluate(`document.querySelector('#fk-quick-dates [aria-pressed="true"]')?.innerText`) === 'Last 7 days',
+      'Last 7 days is not pressed');
+    expect(await evaluate(`document.getElementById('fk-start').value`) === daysAgo(6), 'the last 7 days start elsewhere');
     await setValue('#fk-start', daysAgo(2));
-    await waitFor(`document.querySelectorAll('#fk-main tbody.fk-item').length === 3`, '3 items over three days');
-    expect((await evaluate('location.search')).includes(`start=${daysAgo(2)}`), 'the link lacks the dates');
+    await waitFor(`location.search.includes('start=${daysAgo(2)}')`, 'the dates in the link');
+    expect(await evaluate(`!document.querySelector('#fk-quick-dates [aria-pressed="true"]')`), 'a quick date still pressed');
+    expect(await count('#fk-main tbody.fk-item') === 3, '3 items over three days');
     expect(await count('#fk-main .fk-flag') >= 1, "no flag on the Medline item whose customer item isn't the Infor item");
   }],
   ['Search', async () => {
@@ -636,12 +649,22 @@ const steps = [
     const cells = (selector) => `[...document.querySelectorAll('#ot-rows .ot-order-row')].map((tr) => tr.querySelector('${selector}').innerText.trim().replace(/\\s+/g, ' ')).join('|')`;
     const kills = `${cells('.ot-kills-today')} + '/' + ${cells('.ot-kills-7')} + '/' + ${cells('.ot-kills-30')}`;
     await click('.page-nav a[href$="/ordertiming/shortships"]');
-    await waitFor(`${itemRows} === 3`, "Short Ships' three items in the last 7 days");
+    // It opens on today (2026-11-18): orders 31 and 33's short lines, one an item.
+    await waitFor(`${itemRows} === 3`, "Short Ships' three items today");
     expect(await current('Order Timing|Short Ships'), 'Order Timing and its Short Ships are not the current module and page');
+    expect(await evaluate(`document.getElementById('ot-start').value === document.getElementById('ot-end').value`),
+      'Short Ships did not open on one day');
     expect((await text('#ot-count')) === '3 items', `the count: ${await text('#ot-count')}`);
     expect(await evaluate(`${cells('.ot-item')} === 'DYND70294BH|MDS2585H|B-D930103CS'`), `the items: ${await evaluate(cells('.ot-item'))}`);
     expect(await evaluate(`${kills} === '1|1|0/2|1|0/2|1|0'`), `the kill counts: ${await evaluate(kills)}`);
-    expect(await evaluate(`${cells('.ot-short-lines')} === '3 3 POs|1 1 PO|1 1 PO'`), `the short lines: ${await evaluate(cells('.ot-short-lines'))}`);
+    expect(await evaluate(`${cells('.ot-short-lines')} === '1 1 PO|1 1 PO|1 1 PO'`), `today's short lines: ${await evaluate(cells('.ot-short-lines'))}`);
+    // Qty short, Qty ordered and the QOE, the quantities in eaches below by it (B-D930103CS has none).
+    const qtys = `${cells('.ot-qty-short')} + ' / ' + ${cells('.ot-qty-ordered')} + ' / ' + ${cells('.ot-qoe')}`;
+    expect(await evaluate(`${qtys} === '5 CS 60 EA|3 BX 300 EA|2 CA / 5 CS 60 EA|4 BX 400 EA|2 CA / 12|100|—'`),
+      `the quantities and QOEs: ${await evaluate(qtys)}`);
+    await click('[data-days="7"]');
+    await waitFor(`${cells('.ot-short-lines')} === '3 3 POs|1 1 PO|1 1 PO'`, 'the short lines of the last 7 days');
+    expect(await evaluate(`${cells('.ot-qty-short')}.startsWith('9 CS 108 EA|')`), `the cup's 7 days short: ${await evaluate(cells('.ot-qty-short'))}`);
     expect(/Fill\/Kill data as of \d\d\/\d\d\/\d{4} 09:04 · last loaded 09:30/.test(await text('#ot-as-of')),
       `the data as of: ${await text('#ot-as-of')}`);
     // An item's short lines: the PO, when created, its total lines, line type, and Fill/Kill's reason.
@@ -649,6 +672,9 @@ const steps = [
     await click('#ot-rows .ot-order-row');
     await waitFor(`!document.querySelector('#ot-rows .ot-lines-row').hidden`, "the first item's lines");
     const shortLines = `[...document.querySelector('#ot-rows .ot-lines-row').querySelectorAll('.ot-lines tbody tr')]`;
+    // Its columns, in the user's order (2026-11-18): the PO, its line and line type, then PO created.
+    const lineHead = `[...document.querySelector('#ot-rows .ot-lines-row').querySelectorAll('.ot-lines thead th')].slice(0, 6).map((th) => th.innerText.trim().split('\\n')[0]).join('|')`;
+    expect(await evaluate(`${lineHead} === 'PO|PO line #|Line type|PO created|Total lines|Site'`), `the lines' columns: ${await evaluate(lineHead)}`);
     const lineText = `${shortLines}.map((tr) => ['.ot-line-po', '.ot-po-lines', '.ot-line-type', '.ot-reason'].map((s) => tr.querySelector(s).innerText.trim().split('\\n')[0]).join(' ')).join('|')`;
     expect(await evaluate(`${lineText} === '3000600031 2 FILL-KILL Backorder|3000600004 2 STD Not in Fill/Kill yet|3000600032 1 FILL-KILL Backorder'`),
       `the lines: ${await evaluate(lineText)}`);

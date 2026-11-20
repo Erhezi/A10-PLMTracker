@@ -35,31 +35,36 @@
 
 <div class="card shadow-sm border-0 mb-3">
   <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <div class="col-12 col-lg-5">
+    {# As Order Timing's (2026-11-19): the search first, then the dates, their quick ranges and the sites. #}
+    <div class="d-flex flex-wrap gap-3 align-items-end">
+      <div class="flex-grow-1 fk-search">
+        <label for="fk-search" class="form-label small text-muted mb-1">Find an item</label>
+        <input type="search" id="fk-search" class="form-control form-control-sm"
+               placeholder="Item number, description or commodity" autocomplete="off"
+               title="Every word must match: an item number (dashes optional), Medline's or Infor's long description, the commodity code or its description" />
+      </div>
+      <div>
         <span class="form-label small text-muted d-block mb-1" id="fk-dates-label">Fill/Kill dates</span>
         <div class="d-flex gap-2 align-items-center" role="group" aria-labelledby="fk-dates-label">
           <input type="date" id="fk-start" class="form-control form-control-sm" aria-label="First Fill/Kill date" />
           <span class="small text-muted">to</span>
           <input type="date" id="fk-end" class="form-control form-control-sm" aria-label="Last Fill/Kill date" />
-          <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="fk-date-mode">View today</button>
         </div>
       </div>
-      <div class="col-6 col-lg-3">
+      <div class="btn-group btn-group-sm" role="group" aria-label="Quick Fill/Kill dates" id="fk-quick-dates">
+        <button type="button" class="btn btn-outline-secondary" data-days="1">Today</button>
+        <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
+        <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
+      </div>
+      <div>
         <span class="form-label small text-muted d-block mb-1">Sites</span>
         <div class="dropdown">
-          <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100 text-start" type="button"
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle text-start" type="button"
                   id="fk-sites-button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
             All sites
           </button>
           <div class="dropdown-menu p-2 fk-sites-menu" id="fk-sites" aria-labelledby="fk-sites-button"></div>
         </div>
-      </div>
-      <div class="col-6 col-lg-4">
-        <label for="fk-search" class="form-label small text-muted mb-1">Find an item</label>
-        <input type="search" id="fk-search" class="form-control form-control-sm"
-               placeholder="Item number, description or commodity" autocomplete="off"
-               title="Every word must match: an item number (dashes optional), Medline's or Infor's long description, the commodity code or its description" />
       </div>
     </div>
     <div class="d-flex flex-wrap gap-2 mt-3" id="fk-needs" role="group" aria-label="Needs filter"></div>
@@ -107,7 +112,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
       {# Its own dates: Materials Managers look up past orders here without changing the table's.
          The table's sites, though (2026-10-27): a site sees its own orders. #}
-      <h2 class="h6 fw-semibold mb-0" id="fk-orders-title">Orders Recorded</h2>
+      <h2 class="h6 fw-semibold mb-0" id="fk-orders-title">Sub Orders Recorded</h2>
       <input type="search" id="fk-orders-q" class="form-control form-control-sm fk-orders-search me-auto" autocomplete="off"
              placeholder="Medline item, sub part, Infor item or PO" aria-label="Find an order by Medline item, sub part, Infor item or PO number"
              title="Every word must be part of the Medline item, its Infor item, the vendor part ordered, the sub's Reference SKU, the vendor item's manufacturer part or Infor item, or the PO number (dashes optional)" />
@@ -117,10 +122,10 @@
         <span class="small text-muted">to</span>
         <input type="date" id="fk-orders-end" class="form-control form-control-sm" aria-label="Last order date" />
       </div>
-      <div class="btn-group btn-group-sm" role="group" aria-label="Quick dates for orders">
-        <button type="button" class="btn btn-outline-secondary" data-orders-days="1">Today</button>
-        <button type="button" class="btn btn-outline-secondary" data-orders-days="7">7 days</button>
-        <button type="button" class="btn btn-outline-secondary" data-orders-days="30">30 days</button>
+      <div class="btn-group btn-group-sm" role="group" aria-label="Quick dates for orders" id="fk-orders-quick">
+        <button type="button" class="btn btn-outline-secondary" data-days="1">Today</button>
+        <button type="button" class="btn btn-outline-secondary" data-days="7">7 days</button>
+        <button type="button" class="btn btn-outline-secondary" data-days="30">30 days</button>
       </div>
     </div>
     {# At most 450px tall, scrolling inside with its header in view (2026-10-20). #}

@@ -1,6 +1,7 @@
 -- Fill/Kill workflow tables: subs, their vendor items, orders, the history of every change and
 -- comment, and SCM's instructions. Run on O2, database PLM, BEFORE deploy #2 (plan v2 §4.1),
--- and again before the coordination release (2026-10-27, and its 2026-11-02 change). Safe to re-run.
+-- and again before the coordination release (2026-10-27, and its 2026-11-02 change), and before 14's
+-- 2026-11-19 version. Safe to re-run.
 --
 --   Sub            a sub of a Medline item: the Reference SKU nursing (or a Sub Finder) entered,
 --                  its status, and whether it's the Approver's Pick
@@ -35,7 +36,9 @@
 --      SubOrder.po_number, empty on the orders recorded before.
 --   4. 2026-11-02, vendor items without a sub: SubVendorItem.medline_item, and sub_id may be empty
 --      on SubVendorItem and SubOrder. Nothing in the rows changes.
---   5. Adds any default a table made by the app's startup lacks.
+--   5. 2026-11-19, where Medline's subs come from: CK_Sub_source takes medline_autosub,
+--      medline_preferred and medline_possible beside medline_pbo. Nothing in the rows changes.
+--   6. Adds any default a table made by the app's startup lacks.
 --
 -- Its earlier steps 2a-2e (2026-10-15 to 10-20) brought older tables to the shape step 2 starts
 -- from. O2 has had that shape since 2026-10-20, so they're gone; git history has them.
@@ -64,7 +67,9 @@ BEGIN
         [delete_reason] VARCHAR(400)   NULL,
         CONSTRAINT [PK_Sub] PRIMARY KEY CLUSTERED ([sub_id]),
         CONSTRAINT [CK_Sub_status] CHECK ([status] IN ('pending_review', 'approved', 'hold', 'rejected')),
-        CONSTRAINT [CK_Sub_source] CHECK ([source] IN ('manual', 'medline_pbo', 'llm')),
+        CONSTRAINT [CK_Sub_source] CHECK (
+            [source] IN ('manual', 'medline_autosub', 'medline_preferred', 'medline_possible', 'medline_pbo', 'llm')
+        ),
         CONSTRAINT [CK_Sub_pick_needs_approved] CHECK ([is_picked] = 0 OR [status] = 'approved'),
         CONSTRAINT [CK_Sub_delete] CHECK (
        ([deleted_at] IS NULL AND [deleted_by] IS NULL AND [delete_reason] IS NULL)
@@ -493,7 +498,29 @@ BEGIN
 END;
 GO
 
--- 5. Defaults, in case the app's startup created a table before this script ran -------------
+-- 5. 2026-11-19: where Medline's subs come from ---------------------------------------------
+-- Medline's subs come from four lists (11's vw_MedlineSubList), not only PBO, and each sub says
+-- which: medline_autosub (Medline's AutoSub list), medline_preferred (the Fill/Kill file's Customer
+-- Preferred Substitute Item), medline_possible (its Possible Subst. Item) or medline_pbo. 14 adds
+-- the first two as approved. The rows stay as they are here; 14 relabels Medline's subs still
+-- pending review.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints
+               WHERE parent_object_id = OBJECT_ID(N'[FillKill].[Sub]') AND name = N'CK_Sub_source'
+                 AND definition LIKE N'%''medline[_]autosub''%' AND definition LIKE N'%''medline[_]preferred''%'
+                 AND definition LIKE N'%''medline[_]possible''%')
+BEGIN
+    SET XACT_ABORT ON;
+    BEGIN TRANSACTION;
+    IF OBJECT_ID(N'[FillKill].[CK_Sub_source]', N'C') IS NOT NULL
+        ALTER TABLE [FillKill].[Sub] DROP CONSTRAINT [CK_Sub_source];
+    ALTER TABLE [FillKill].[Sub] ADD CONSTRAINT [CK_Sub_source] CHECK (
+        [source] IN ('manual', 'medline_autosub', 'medline_preferred', 'medline_possible', 'medline_pbo', 'llm'));
+    COMMIT TRANSACTION;
+    PRINT 'CK_Sub_source takes the sources of Medline''s subs';
+END;
+GO
+
+-- 6. Defaults, in case the app's startup created a table before this script ran -------------
 DECLARE @defaults TABLE ([tbl] SYSNAME, [col] SYSNAME, [name] SYSNAME, [expr] NVARCHAR(100));
 INSERT INTO @defaults VALUES
     (N'Sub', N'status', N'DF_Sub_status', N'(''pending_review'')'),

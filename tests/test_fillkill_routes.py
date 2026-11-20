@@ -7,7 +7,6 @@ the test site, over 9/28-9/30.
 import csv
 import io
 import json
-import os
 import re
 from datetime import date, datetime, timedelta
 
@@ -109,19 +108,22 @@ def finder_manager(app):
 
 # --- the page --------------------------------------------------------------------------
 
-def test_the_page_opens_on_the_latest_date_with_the_users_abilities(app, viewer):
+def test_the_page_opens_with_the_users_abilities(app, viewer):
     page = viewer.get("/fillkill/").get_data(as_text=True)
     config = json.loads(re.search(r'<script id="fk-config" type="application/json">(.*?)</script>', page, re.S).group(1))
-    assert config["default"] == {"start": "2026-09-30", "end": "2026-09-30"}  # P4
     assert config["bounds"] == {"first": "2026-09-28", "last": "2026-09-30"}
     assert [s["name"] for s in config["sites"]] == ["WHITE PLAINS", "test site"]
     assert config["can"] == {"view": True, "add_sub": False, "review": False, "details": False, "direct": False,
                              "order": False, "instruct": False}
     assert 'aria-current="page">Main</a>' in page
     # Every main-table header sorts the table (the user, 2026-11-16; main/sort.js knows each key), and
-    # the orders under it are Orders Recorded.
+    # the orders under it are Sub Orders Recorded (2026-11-19). The search comes before the dates,
+    # which have Today and the last 7 and 30 days.
     assert len(re.findall(r'<th scope="col"[^>]* data-sort="\w+"><button type="button" class="fk-sort">', page)) == 16
-    assert '>Orders Recorded</h2>' in page
+    assert '>Sub Orders Recorded</h2>' in page
+    assert page.index('id="fk-search"') < page.index('id="fk-start"')
+    quick = page[page.index('id="fk-quick-dates"'):page.index('id="fk-sites-button"')]
+    assert re.findall(r'data-days="(\d+)"', quick) == ["1", "7", "30"] and 'id="fk-date-mode"' not in page
 
 
 def test_only_admins_see_what_the_database_lacks(app, viewer, monkeypatch):
@@ -300,8 +302,8 @@ def test_nursing_enters_a_reference_sku_and_the_materials_manager_adds_a_vendor_
                                                        item["vendor_item_id"])
     _, orders = get(viewer, "/fillkill/api/orders", start="2026-09-30", end="2026-10-01")
     assert orders["orders"] == []
-    _, orders = get(viewer, "/fillkill/api/orders")  # default: the last 30 days, today included
-    assert date.fromisoformat(orders["end"]) - date.fromisoformat(orders["start"]) == timedelta(days=29)
+    _, orders = get(viewer, "/fillkill/api/orders")  # default: today (2026-11-19; the last 30 days before)
+    assert orders["start"] == orders["end"]
 
 
 ITEM_PAYLOAD = {"vendor_part": "OM1", "vendor": "OWENS & MINOR", "vendor_id": OWENS, "uom": "CS"}
@@ -473,17 +475,16 @@ def page_config(c) -> dict:
     return json.loads(re.search(r'<script id="fk-config" type="application/json">(.*?)</script>', page, re.S).group(1))
 
 
-def test_the_live_server_opens_on_today(app, viewer, monkeypatch):
-    # FILLKILL_OPEN_ON: "today" on the server (ProductionConfig), the latest day with lines locally.
-    from app.config import DevelopmentConfig, ProductionConfig
+def test_main_and_its_orders_open_on_today(app, viewer, monkeypatch):
+    # On every server (the user, 2026-11-19; locally Main opened on the latest day with kill lines,
+    # 9/30 here, and the orders on the last 30 days, before).
     from app.fillkill import routes
-    if "FILLKILL_OPEN_ON" not in os.environ:
-        assert (DevelopmentConfig.FILLKILL_OPEN_ON, ProductionConfig.FILLKILL_OPEN_ON) == ("latest", "today")
     monkeypatch.setattr(routes, "now_ny_naive", lambda: datetime(2026, 10, 20, 9, 0))
-    assert page_config(viewer)["default"] == {"start": "2026-09-30", "end": "2026-09-30"}
-    app.config["FILLKILL_OPEN_ON"] = "today"
     config = page_config(viewer)
     assert config["default"] == {"start": "2026-10-20", "end": "2026-10-20"} and config["today"] == "2026-10-20"
+    assert config["ordersDays"] == 1
+    status, data = get(viewer, "/fillkill/api/orders")
+    assert status == 200 and (data["start"], data["end"]) == ("2026-10-20", "2026-10-20")
 
 
 def test_the_medline_item_itself_from_medline_is_refused_as_a_vendor_item(app, finder_approver):
@@ -770,6 +771,53 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     header, *lines = list(csv.reader(io.StringIO(response.get_data(as_text=True).lstrip("﻿"))))
     [line] = [dict(zip(header, line)) for line in lines]
     assert (line["Reference SKU"], line["Vendor Item ID"], line["Sub Vendor Part"]) == ("OM1", "", "")
+
+
+def test_medlines_subs_say_which_list_they_came_from(app, viewer):
+    # As 14_pbo_sync.sql adds them (2026-11-19): an AutoSub sub approved by the System, a Possible Sub
+    # pending review. Entered says the list, not just "Medline", on the Subs page, the panel and the export.
+    from app import db
+    from app.models.fillkill import History, Sub
+
+    with app.app_context():
+        now = datetime(2026, 9, 30, 9, 0)
+        auto = Sub(medline_item="DYND70294BH", reference_sku="DYND70294", status="approved", source="medline_autosub",
+                   entered_by="Medline", create_dt=now, update_dt=now)
+        possible = Sub(medline_item="MDS2585H", reference_sku="MDSXB7585H", status="pending_review",
+                       source="medline_possible", entered_by="Medline", create_dt=now, update_dt=now)
+        db.session.add_all([auto, possible])
+        db.session.flush()
+        db.session.add_all([
+            History(entity="sub", entity_id=auto.sub_id, medline_item=auto.medline_item, action="created", actor="Medline", acted_at=now),
+            History(entity="sub", entity_id=auto.sub_id, medline_item=auto.medline_item, action="status", field="status",
+                    from_value="pending_review", to_value="approved", actor="System", acted_at=now),
+            History(entity="sub", entity_id=possible.sub_id, medline_item=possible.medline_item, action="created",
+                    actor="Medline", acted_at=now),
+        ])
+        db.session.commit()
+
+    sources = [["manual", "Entered by hand"], ["medline_autosub", "Medline AutoSub"],
+               ["medline_preferred", "Medline FillKill Customer Preferred"],
+               ["medline_possible", "Medline FillKill Possible Sub"], ["medline_pbo", "Medline PBO"], ["llm", "AI finder"]]
+    assert page_config(viewer)["sources"] == sources  # the panel's "Added by"
+    subs_page = viewer.get("/fillkill/subs").get_data(as_text=True)
+    assert json.loads(re.search(r'<script id="fk-config" type="application/json">(.*?)</script>', subs_page, re.S).group(1))[
+        "sources"] == sources
+
+    _, library = get(viewer, "/fillkill/api/subs")
+    rows = {s["reference_sku"]: s for s in library["subs"]}
+    assert (rows["DYND70294"]["source"], rows["DYND70294"]["status"], rows["DYND70294"]["approved_by"]) == (
+        "medline_autosub", "approved", "System")
+    assert (rows["MDSXB7585H"]["source"], rows["MDSXB7585H"]["approved_by"]) == ("medline_possible", None)
+    _, library = get(viewer, "/fillkill/api/subs", source="medline_possible")
+    assert [s["reference_sku"] for s in library["subs"]] == ["MDSXB7585H"]
+    _, panel = get(viewer, "/fillkill/api/item", item="DYND70294BH", start="2026-09-28", end="2026-09-30")
+    assert [(s["reference_sku"], s["source"]) for p in panel["packagings"] for s in p["subs"]] == [("DYND70294", "medline_autosub")]
+
+    header, *lines = list(csv.reader(io.StringIO(viewer.get("/fillkill/subs/export").get_data(as_text=True).lstrip("﻿"))))
+    exported = {row["Reference SKU"]: row for row in (dict(zip(header, line)) for line in lines)}
+    assert (exported["DYND70294"]["Source"], exported["DYND70294"]["Approved By"]) == ("Medline AutoSub", "System")
+    assert exported["MDSXB7585H"]["Source"] == "Medline FillKill Possible Sub"
 
 
 # --- the coordination hub (2026-10-27) -----------------------------------------------------------

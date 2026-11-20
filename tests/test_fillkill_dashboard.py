@@ -36,6 +36,15 @@ def test_review_hours_count_subs_added_in_the_dates_until_their_first_review():
     assert sorted(dashboard.review_hours(subs, history, D, date(2026, 9, 30))) == [2.0, 6.0]
 
 
+def test_the_systems_approval_of_medlines_trusted_subs_is_not_a_review():
+    subs = [sub(1, "approved", datetime(2026, 9, 28, 8), source="medline_autosub"),
+            sub(2, "hold", datetime(2026, 9, 28, 8), source="medline_preferred")]
+    history = [hist(1, "status", datetime(2026, 9, 28, 8), "approved", actor="System"),
+               hist(2, "status", datetime(2026, 9, 28, 8), "approved", actor="System"),
+               hist(2, "status", datetime(2026, 9, 28, 11), "hold")]
+    assert dashboard.review_hours(subs, history, D, date(2026, 9, 30)) == [3.0]
+
+
 def test_new_subs_per_week_by_source():
     subs = [sub(1, "approved", datetime(2026, 9, 28, 8)), sub(2, "approved", datetime(2026, 10, 6, 8), source="medline_pbo"),
             sub(3, "approved", datetime(2026, 8, 1, 8))]

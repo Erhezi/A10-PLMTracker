@@ -28,7 +28,7 @@ from . import queries
 bp = Blueprint("ordertiming", __name__, url_prefix="/ordertiming")
 
 MAIN_DAYS = 1  # Main opens on today (the user, 2026-11-17; the last 7 days before)
-SHORT_SHIPS_DAYS = 7  # Short Ships opens on the last 7 days, today included
+SHORT_SHIPS_DAYS = 1  # Short Ships too (the user, 2026-11-18; the last 7 days before)
 MAX_DAYS = 30  # and both look back no further than the last 30 (the user, 2026-11-16: volume, speed),
 # nor before ORDERTIMING_FIRST_DAY (config.py: Medline's LUM go-live, 2026-11-16)
 Q_MAX = 500  # characters of search text taken (a pasted list of POs fits)
@@ -264,6 +264,8 @@ def _csv_cell(key: str, value) -> str:
         value = queries.STATUS_LABELS.get(value, value)
     if isinstance(value, datetime):
         value = f"{value:%Y-%m-%d %H:%M:%S}"
+    if isinstance(value, Decimal):  # SQL Server's 12.0000 (an Infor QOE, eaches from it) as 12
+        value = format(value.normalize(), "f")
     value = plain(value)
     text = "" if value is None else str(value)
     # A cell starting with = + - @ would run as a formula in Excel.
@@ -313,6 +315,7 @@ SHORT_EXPORT_COLUMNS = (
     ("Medline Item #", "medline_item"), ("Cust Item #", "cust_item"), ("Mfr Item #", "mfr_item"),
     ("Manufacturer", "manufacturer"), ("Item Description", "description"), ("Order Qty", "qty"),
     ("Shipped Qty", "shipped_qty"), ("Open Qty", "open_qty"), ("Short Qty", "short_qty"), ("UM", "um"),
+    ("QOE", "qoe"), ("Order Qty EA", "qty_each"), ("Short Qty EA", "short_qty_each"),
     ("ASN Created", "asn_at"), ("In Fill/Kill", "in_fillkill"), ("Fill/Kill Reason", "kill_reason"),
     ("Est Avail Date", "kill_reason_date"), ("Item Killed Today", "kills_today"),
     ("Item Killed 7 Days", "kills_7"), ("Item Killed 30 Days", "kills_30"), ("Buyer", "buyer"),

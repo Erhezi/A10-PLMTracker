@@ -82,13 +82,17 @@ ORDER_KEYS = ("order_no", "po", "po_raw", "po_type", "report_date", "site", "sit
 
 # Short Ships' lines (vw_ShortShipLine, 2026-11-17): the short-shipped lines with Main's columns, then
 # what the view adds: the PO's total lines, and the line in Medline's Fill/Kill feed, which the view
-# joins on Medline's order and line.
+# joins on Medline's order and line; and (2026-11-18) the QOE, eaches in one of the line's UM from
+# Infor, and the ordered and short quantities in eaches (NULL without a QOE).
 SHORT_COLUMNS = {
     **LINE_COLUMNS,
     "po_lines": "PO Total Lines",
     "in_fillkill": "In Fill/Kill",
     "kill_reason": "Fill/Kill Reason",
     "kill_reason_date": "Est Avail Date",
+    "qoe": "QOE",
+    "qty_each": "Order Qty EA",
+    "short_qty_each": "Short Qty EA",
 }
 
 LINES = table("vw_MedlineOrderLine", *(column(name) for name in LINE_COLUMNS.values()), schema="OrderTiming")
@@ -333,8 +337,15 @@ ITEMS_PAGE_SIZE = 20  # items a page of Short Ships shows
 KILL_KEYS = ("kills_today", "kills_7", "kills_30")
 NO_KILLS = {key: 0 for key in KILL_KEYS}
 # What Short Ships can sort on (a header click); it opens on the items most killed in 30 days.
-ITEM_SORTS = ("medline_item", "short_lines", "pos", "sites", "short_qty", "last_short", *KILL_KEYS)
+ITEM_SORTS = ("medline_item", "short_lines", "pos", "sites", "short_qty", "qty", "qoe", "last_short", *KILL_KEYS)
 DEFAULT_ITEM_SORT = ("kills_30", "desc")
+# Qty short and Qty ordered sort in eaches when they're known, so a box of 100 outweighs 2 eaches
+# (as Fill/Kill's Main sorts its quantities); otherwise as they are. QOE sorts by the largest.
+SORT_VALUES = {
+    "short_qty": lambda item: item["short_qty_each"] if item["short_qty_each"] is not None else item["short_qty"],
+    "qty": lambda item: item["qty_each"] if item["qty_each"] is not None else item["qty"],
+    "qoe": lambda item: max((u["qoe"] for u in item["qoes"] if u["qoe"] is not None), default=None),
+}
 
 
 def scol(key: str):
@@ -384,20 +395,23 @@ def _short_lines(filters: Filters, *extra, limit: int | None = None) -> list[dic
 def _sort_items(items: list[dict], sort: str, direction: str) -> None:
     """In place: by the sort chosen (empty values last either way), then the most killed in 30 days,
     the most short lines and the item number."""
+    value = SORT_VALUES.get(sort, lambda item: item[sort])
     items.sort(key=lambda item: item["medline_item"] or "")
     items.sort(key=lambda item: item["short_lines"], reverse=True)
     items.sort(key=lambda item: item["kills_30"], reverse=True)
-    present = [item for item in items if item[sort] is not None]
-    present.sort(key=lambda item: item[sort], reverse=direction == "desc")
-    items[:] = present + [item for item in items if item[sort] is None]
+    present = [item for item in items if value(item) is not None]
+    present.sort(key=value, reverse=direction == "desc")
+    items[:] = present + [item for item in items if value(item) is None]
 
 
 def short_items(filters: Filters, today: date, sort: str = "", direction: str = "", page: int = 1,
                 per_page: int = ITEMS_PAGE_SIZE) -> dict:
     """One page of Short Ships: each Medline item with a short-shipped line the days, sites and search
-    pick (``short_lines``, on ``pos`` POs at ``sites`` Sold-Tos, ``short_qty`` in its UM, the latest
-    PO created ``last_short``), how often Fill/Kill killed it (kill_counts, at the same sites), and its
-    short lines, newest first. ``total`` counts every item picked."""
+    pick (``short_lines``, on ``pos`` POs at ``sites`` Sold-Tos, ``short_qty`` short and ``qty``
+    ordered on them in its UM, the latest PO created ``last_short``), its QOE for each of its UMs
+    (``qoes``) and those quantities in eaches when every line has one (``short_qty_each``,
+    ``qty_each``), how often Fill/Kill killed it (kill_counts, at the same sites), and its short
+    lines, newest first. ``total`` counts every item picked."""
     if sort not in ITEM_SORTS:
         sort, direction = DEFAULT_ITEM_SORT
     direction = "asc" if direction == "asc" else "desc"
@@ -407,6 +421,10 @@ def short_items(filters: Filters, today: date, sort: str = "", direction: str = 
                          func.count(func.distinct(scol("order_no"))).label("pos"),
                          func.count(func.distinct(scol("site"))).label("sites"),
                          func.sum(scol("short_qty")).label("short_qty"),
+                         func.sum(scol("qty")).label("qty"),
+                         func.sum(scol("short_qty_each")).label("short_qty_each"),
+                         func.sum(scol("qty_each")).label("qty_each"),
+                         func.count(scol("qoe")).label("with_qoe"),
                          func.min(scol("um")).label("um"), func.max(scol("um")).label("um_last"),
                          func.max(scol("description")).label("description"),
                          func.max(scol("cust_item")).label("cust_item"),
@@ -418,10 +436,18 @@ def short_items(filters: Filters, today: date, sort: str = "", direction: str = 
     for row in _rows(select(scol("medline_item").label("i"), scol("site_name").label("n"), scol("site").label("s"))
                      .where(*picked).distinct()):
         names.setdefault(row["i"], set()).add(row["n"] or row["s"])
+    # Each item's QOE in each of its UMs (the view's, the same on every line of an item and UM).
+    qoes: dict = {}
+    for row in _rows(select(scol("medline_item").label("i"), scol("um").label("uom"), scol("qoe").label("qoe"))
+                     .where(*picked).distinct()):
+        qoes.setdefault(row["i"], []).append({"uom": row["uom"], "qoe": row["qoe"]})
     kills = kill_counts(today, filters.sites)
     for item in items:
-        if item.pop("um_last") != item["um"]:  # in more than one UM: no one total
-            item["um"], item["short_qty"] = None, None
+        if item.pop("um_last") != item["um"]:  # in more than one UM: no one total in it
+            item["um"], item["short_qty"], item["qty"] = None, None, None
+        if item.pop("with_qoe") < item["short_lines"]:  # a line without a QOE: no total in eaches
+            item["short_qty_each"], item["qty_each"] = None, None
+        item["qoes"] = sorted(qoes.get(item["medline_item"], []), key=lambda u: u["uom"] or "")
         item["site_names"] = sorted(names.get(item["medline_item"], ()))
         item.update(kills.get(item["medline_item"], NO_KILLS))
     _sort_items(items, sort, direction)

@@ -1285,6 +1285,7 @@ tbody td.col-repl { background: #f5fbff; }
 .fk-sort:hover .fk-sort-icon, th[aria-sort] .fk-sort-icon { opacity: 1; }
 th[aria-sort] .fk-sort { color: var(--bs-primary); }
 .fk-orders-search { width: 18rem; max-width: 100%; }
+.fk-search { min-width: 18rem; }  /* Main's Find an item, first as Order Timing's (2026-11-19) */
 .fk-main td { vertical-align: top; }
 .fk-main .fk-desc { font-size: 0.8rem; }
 /* Contract lines and Infor vendors to choose from: about 3-4 show, the rest scroll. */

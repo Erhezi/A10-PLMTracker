@@ -94,7 +94,8 @@ def _as_date(value):
 # --- the main table ------------------------------------------------------------------
 
 def sync_pbo() -> int:
-    """Add Medline PBO subs (14_pbo_sync.sql). Never stops the page from loading."""
+    """Add the subs Medline lists, each with its source, AutoSub and Customer Preferred ones approved
+    (14_pbo_sync.sql). Never stops the page from loading."""
     if not _is_mssql():
         return 0
     try:

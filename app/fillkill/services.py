@@ -228,8 +228,8 @@ def _open_orders(sub: Sub) -> int:
 
 def add_sub(data: dict, actor: str, *, source: str = "manual", approve: bool = False) -> Sub:
     """A new sub: its Reference SKU. With ``approve`` (a Sub Approver entering it) it's approved on
-    entry, so it can be ordered; otherwise it waits for review (a Sub Finder, Medline's PBO subs, a
-    future AI finder)."""
+    entry, so it can be ordered; otherwise it waits for review (a Sub Finder, a future AI finder).
+    Medline's subs are added by 14_pbo_sync.sql, not here."""
     clean = rules.check_new_sub(data)
 
     def action():

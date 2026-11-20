@@ -17,6 +17,7 @@ export const esc = (value) => String(value == null ? '' : value).replace(/[&<>"'
 
 export const STATUS_CLASS = {
   approved: 'text-bg-success', hold: 'text-bg-warning', pending_review: 'text-bg-info', rejected: 'text-bg-danger',
+  no_sub: 'text-bg-secondary',  // a Medline item's, on the Subs page (2026-11-19)
 };
 export const STATUS_ORDER = ['approved', 'hold', 'pending_review', 'rejected'];
 

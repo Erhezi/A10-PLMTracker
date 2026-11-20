@@ -3,7 +3,7 @@ Every Fill/Kill role can view it; it has no roles of its own.
 
 Main (2026-11-16) finds our orders in Medline's feed (OrderTiming.vw_MedlineOrderLine, stood in on
 SQLite by tests/conftest.py) by PO, item, site, day and line status, to see whether Medline received
-and confirmed them. The Dashboard is still empty."""
+and confirmed them. The Dashboard (2026-11-20) gives the whole picture of the feed."""
 
 import csv
 import io
@@ -53,13 +53,14 @@ def test_its_pages_for_every_fillkill_role(sqlite_app, role):
     short = client.get("/ordertiming/shortships").get_data(as_text=True)
     assert 'aria-current="page">Short Ships</a>' in short and "js/ordertiming/shortships.js" in short
     dash = client.get("/ordertiming/dashboard").get_data(as_text=True)
-    assert 'aria-current="page">Dashboard</a>' in dash and 'id="ot-dash-empty"' in dash
+    assert 'aria-current="page">Dashboard</a>' in dash and 'id="ot-dash-headline"' in dash
+    assert "js/ordertiming/dashboard.js" in dash
     assert 'href="/doc/ordertiming">Docs</a>' in dash
 
 
 @pytest.mark.parametrize("path", ["/ordertiming/", "/ordertiming/dashboard", "/ordertiming/api/orders",
                                   "/ordertiming/export", "/ordertiming/shortships", "/ordertiming/api/shortships",
-                                  "/ordertiming/shortships/export"])
+                                  "/ordertiming/shortships/export", "/ordertiming/api/dashboard"])
 def test_users_without_a_fillkill_role_are_turned_away(sqlite_app, path):
     client = logged_in(sqlite_app, "plm@example.org")  # PLM editor, no Fill/Kill
     response = client.get(path)
@@ -624,3 +625,131 @@ def test_short_ships_without_its_views_says_so(short_client, ot_app):
         conn.exec_driver_sql('DROP TABLE "OrderTiming"."vw_ShortShipLine"')
     response = short_client.get("/ordertiming/api/shortships")
     assert response.status_code == 503  # 01_views.sql not run yet: said, as for Main's views
+
+
+# --- Dashboard (2026-11-20) ------------------------------------------------------------------------
+# The fixture's orders in the last week (1 and 3 at site A, 2 at site B, not confirmed), and order 7:
+# received at 21:58 two days ago, its order created and confirmed at 05:45 the next morning (467
+# minutes), as Medline's evening POs were on O2.
+
+from app.ordertiming import dashboard  # noqa: E402
+
+
+def evening_order() -> list[dict]:
+    times = {"Received At": f"{day(2)} 21:58:28", "Order Created At": f"{day(1)} 05:45:15",
+             "Confirmed At": f"{day(1)} 05:45:22", "Mins  to Order Create": 467, "Mins to Confirm": 467}
+    return [line(7, "000010", 1, site=SITE_B, **times), line(7, "000020", 1, site=SITE_B, **times)]
+
+
+@pytest.fixture
+def dash_client(ot_app):
+    add_view_rows(ot_app, "vw_MedlineOrderLine", evening_order())
+    return logged_in(ot_app, "viewer@example.org", plm=None, fillkill=("viewer",))
+
+
+def get_dashboard(client, **params):
+    response = client.get("/ordertiming/api/dashboard", query_string=params)
+    assert response.status_code == 200, response.get_data(as_text=True)
+    return response.get_json()
+
+
+def test_dashboard_page_settings(dash_client):
+    page = dash_client.get("/ordertiming/dashboard").get_data(as_text=True)
+    assert f'"start": "{day(6)}"' in page and f'"end": "{day(0)}"' in page  # the last 7 days
+    assert '"confirm_bands": [["within_15", "Within 15 min"], ["within_60", "15 min to 1 hour"]' in page
+    assert '["not_confirmed", "Not confirmed yet"]]' in page and '"slow_minutes": 60' in page
+    assert '"dashboard": "/ordertiming/api/dashboard"' in page and '"problem": null' in page
+    assert 'id="ot-q"' not in page  # no search
+
+
+def test_dashboard_headline(dash_client):
+    data = get_dashboard(dash_client)
+    assert data["scope"] == {"start": day(6), "end": day(0), "sites": []}
+    h = data["headline"]
+    assert (h["pos"], h["lines"], h["sites"]) == (4, 8, 2)
+    assert (h["confirmed"], h["not_confirmed"], h["share_confirmed"]) == (3, 1, 75)
+    assert h["median_confirm_minutes"] == 4 and h["slow"] == 1  # order 7 took 467 minutes
+    assert (h["asn"], h["share_asn"]) == (2, 50)  # orders 1 and 3
+    assert (h["rejected_lines"], h["rejected_pos"]) == (1, 1)
+    assert (h["short_lines"], h["short_pos"], h["share_short"]) == (1, 1, 12.5)
+    assert data["data"]["loaded_at"]
+
+
+def test_dashboard_lines_per_day_by_status(dash_client):
+    by_day = get_dashboard(dash_client)["by_day"]
+    assert by_day["days"] == [day(n) for n in range(6, -1, -1)]  # every day of the week on the axis
+    assert set(by_day["series"]) == {"rejected", "asn", "confirmed", "not_confirmed"}  # the page orders them
+    today, three_ago, yesterday = 6, 3, 5
+    assert by_day["series"]["asn"][today] == 1 and by_day["series"]["asn"][three_ago] == 1
+    assert by_day["series"]["confirmed"][yesterday] == 2  # order 7's lines
+    assert by_day["series"]["rejected"][today] == 1 and by_day["series"]["not_confirmed"][today] == 1
+    assert sum(by_day["series"]["confirmed"]) == 4 and by_day["short"][three_ago] == 1 and sum(by_day["short"]) == 1
+
+
+def test_dashboard_hours(dash_client):
+    data = get_dashboard(dash_client)
+    received = data["by_hour_received"]["series"]
+    assert set(received) == {"within_15", "within_60", "within_240", "over_240", "not_confirmed"}
+    assert received["within_15"][11] == 1 and received["within_15"][9] == 1  # orders 1 and 3, 4 minutes each
+    assert received["over_240"][21] == 1  # the evening order
+    assert received["not_confirmed"][8] == 1  # order 2
+    assert sum(sum(values) for values in received.values()) == 4
+    created = data["by_hour_created"]["series"]
+    assert created["asn"][9] == 2 and created["no_asn"][9] == 1 and created["no_asn"][5] == 1
+
+
+def test_dashboard_sites_slowest_and_rejected(dash_client):
+    data = get_dashboard(dash_client)
+    rows = [(s["site"], s["pos"], s["lines"], s["confirmed"], s["slow"], s["asn"]) for s in data["sites"]]
+    assert rows == [(SITE_A[0], 2, 5, 2, 0, 2), (SITE_B[0], 2, 3, 1, 1, 0)]  # the most POs first, then by name
+    assert data["sites"][1]["site_name"] == SITE_B[1] and data["sites"][1]["median_confirm_minutes"] == 467
+    assert data["sites"][0]["median_asn_hours"] == pytest.approx(2.2, abs=0.05)  # 22 minutes and 4 hours
+    slowest = data["slowest"]
+    assert [o["order_no"][-1] for o in slowest] == ["7", "3", "1"]  # then the 4-minute ones, the oldest first
+    assert slowest[0]["minutes"] == 467 and slowest[0]["lines"] == 2 and slowest[0]["po"] == "3000000007"
+    assert slowest[0]["received_at"].endswith("21:58:28") and slowest[0]["confirmed_at"].endswith("05:45:22")
+    assert data["rejected"] == [{"rej_code": "E1", "medline_item": "INVALID PART", "item_on_po": "DYND70294BH",
+                                 "description": "CUP,DENTURE,8OZ", "lines": 1, "pos": 1}]
+
+
+def test_dashboard_days_and_sites_but_no_search_or_status(dash_client):
+    today = get_dashboard(dash_client, start=day(0), end=day(0))
+    assert today["headline"]["pos"] == 2 and today["by_day"]["days"] == [day(0)]
+    site_b = get_dashboard(dash_client, sites=SITE_B[0])
+    assert site_b["headline"]["pos"] == 2 and [s["site"] for s in site_b["sites"]] == [SITE_B[0]]
+    assert site_b["rejected"] == []
+    ignored = get_dashboard(dash_client, q="3000000001", status="rejected")
+    assert ignored["headline"]["pos"] == 4
+    held = get_dashboard(dash_client, start=day(60), end=day(0))
+    assert held["scope"]["start"] == day(29)  # held to the last 30 days, as Main
+    assert dash_client.get("/ordertiming/api/dashboard", query_string={"start": "11/20"}).status_code == 400
+
+
+def test_dashboard_without_its_view(sqlite_app):
+    _drop_line_view(sqlite_app)
+    admin = logged_in(sqlite_app, "admin@example.org", role="admin", plm=None, fillkill=("viewer",))
+    page = admin.get("/ordertiming/dashboard").get_data(as_text=True)
+    assert "db/ordertiming/01_views.sql" in page
+    response = admin.get("/ordertiming/api/dashboard")
+    assert response.status_code == 503 and "01_views.sql" in response.get_json()["message"]
+
+
+def test_confirm_bands():
+    def band(minutes, confirmed=True):
+        return dashboard.confirm_band({"confirmed": confirmed, "minutes": minutes})
+    assert [band(m) for m in (0, 15, 15.5, 60, 61, 240, 241, 467)] == [
+        "within_15", "within_15", "within_60", "within_60", "within_240", "within_240", "over_240", "over_240"]
+    assert band(None, confirmed=False) == "not_confirmed"
+
+
+def test_a_po_is_confirmed_when_every_line_is():
+    row = {"order_no": "1", "po": "P", "site": "S", "site_name": "N", "report_date": "2026-11-19",
+           "received_at": "2026-11-19 10:00:00", "created_at": "2026-11-19 10:05:00",
+           "confirmed_at": "2026-11-19 10:06:30", "confirmed_lines": 2, "line_rows": 2, "mins_to_confirm": None,
+           "asn_at": "2026-11-19 15:00:00", "asn_lines": 1, "lines": 2, "rejected_lines": 0, "short_lines": 0}
+    order = dashboard.order_figures(row)
+    assert order["confirmed"] and order["minutes"] == 6.5  # from the times, when Medline left them out
+    assert order["asn_hours"] == 5.0
+    unconfirmed = dashboard.order_figures({**row, "confirmed_lines": 1, "mins_to_confirm": 6})
+    assert not unconfirmed["confirmed"] and unconfirmed["minutes"] is None and unconfirmed["confirmed_at"] is None
+    assert dashboard.summary([])["share_confirmed"] is None and dashboard.headline([])["sites"] == 0

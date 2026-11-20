@@ -112,6 +112,29 @@ Detail file newer than Fill/Kill's last. Every Fill/Kill line on an order in thi
 it. Medline's Order Detail feed starts on 11/17: 11/16's orders (129 kill lines) aren't in it,
 which stops mattering once 11/16 is past the 30 days.
 
+## Dashboard (2026-11-20)
+
+The Dashboard reads only `vw_MedlineOrderLine`, in the same days and sites as Main (no search, no
+status), so it needs nothing new here: no script to run before the release that adds it. Its SQL
+groups the lines per PO, per day and status, and per reject code and item (`dashboard_*` in
+`app/ordertiming/queries.py`); `app/ordertiming/dashboard.py` makes the figures.
+
+What O2 showed when it was built (11/17 to 11/19: 748 POs, 8,264 lines):
+
+- **Time to confirm.** Mins to Confirm is the same on every line of a PO, and equals the minutes from
+  `Received At` to `Confirmed At`, and from `Received At` to `Order Created At`: Medline sends its 855
+  as it creates its order. The median PO took 3 minutes. The 38 that took over an hour were all
+  received between 19:00 and 22:00 (Medline's clock), mostly Einstein's 21:00 batch, and their orders
+  were created between 2 and 5 AM: 5 to 8 hours.
+- **ASNs come in waves**, at about 11:00 to 12:00 and 15:00, and only POs whose order was created by
+  about 9 AM had one. **The feed sees same-day ASNs only:** `Report Date` is the day Medline created
+  the order, each day's lines are as of that day's last file (about 11 PM), and no later file carries
+  an earlier Report Date. So an ASN sent the day after never reaches this table (every ASN on O2 was
+  dated its line's Report Date). The Dashboard says "ASN the same day" for that reason. Seeing later
+  ASNs would take a report from Medline that covers more than one order day.
+- **Rejected:** 38 lines, X1 (RESTRICTVENDR: "restricted vendor, please contact the division"), E1
+  (INVALID PART: "invalid material") and S5. Every line had its 855, rejected ones included.
+
 ## Before the deploy
 
 1. On O2: `01_views.sql` (after Fill/Kill's `10`, which its Short Ships views read). Its last

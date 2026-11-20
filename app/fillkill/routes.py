@@ -22,8 +22,11 @@ from ..utility import freshness
 from ..utility.access import DENIED_MESSAGES, FILLKILL, MODULES, can, deny, is_admin, require_module, roles_in
 from . import dashboard, health, queries, rollup, services
 from ..models.fillkill import INSTRUCTION_MAX, REASON_MAX, SUB_SOURCES, SUB_STATUSES, VendorItem
-from .rules import (INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_VENDOR_ID, NO_VENDOR_LABEL, SOURCE_LABELS, STATUS_LABELS,
-                    RuleError)
+from .rules import (INSTRUCTION_LABEL, MEDLINE_VENDOR_IDS, NO_SUB, NO_SUB_LABEL, NO_VENDOR_ID, NO_VENDOR_LABEL,
+                    SOURCE_LABELS, STATUS_LABELS, RuleError)
+
+# The Subs page's and the Dashboard's statuses: a sub's, then No sub, a Medline item's (2026-11-19).
+STATUSES_WITH_NO_SUB = [*([code, STATUS_LABELS[code]] for code in SUB_STATUSES), [NO_SUB, NO_SUB_LABEL]]
 
 bp = Blueprint("fillkill", __name__, url_prefix="/fillkill")
 
@@ -197,14 +200,20 @@ def check_db():
 @login_required
 @require_module(FILLKILL, "view")
 def subs_page():
-    """Every sub on file, as a reference (2026-10-16; it was a tab on Main)."""
+    """Every sub on file, as a reference (2026-10-16; it was a tab on Main), and each Medline item on
+    Fill/Kill with none (No sub, 2026-11-19)."""
     config = {
-        "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
+        "statuses": STATUSES_WITH_NO_SUB,
         "sources": [[code, SOURCE_LABELS.get(code, code)] for code in SUB_SOURCES],
         "limit": queries.LIBRARY_LIMIT,
+        # What Days or Weeks on Fill/Kill can count over, ending today (2026-11-19).
+        "fillkillPeriods": {"default": queries.FILLKILL_PERIOD,
+                            "choices": [_fillkill_period(code) for code in queries.FILLKILL_PERIODS]},
         # The vendor ID that says Infor has no such vendor (2026-10-19).
         "noVendor": {"id": NO_VENDOR_ID, "label": NO_VENDOR_LABEL},
-        "api": {"subs": url_for("fillkill.api_subs"), "export": url_for("fillkill.export_subs")},
+        # item: a Medline item and its subs, for the drawer a click on one opens (2026-11-20).
+        "api": {"subs": url_for("fillkill.api_subs"), "export": url_for("fillkill.export_subs"),
+                "item": url_for("fillkill.api_item")},
         "mainPage": url_for("fillkill.index"),
     }
     return render_template("fillkill/subs.html", config=plain(config))
@@ -218,10 +227,11 @@ def dashboard_page():
     start, end = default_dates(DASHBOARD_DAYS)
     config = {
         "bounds": {"first": first, "last": last},
-        "default": {"start": start, "end": end},
+        # quick: the quick-dates button the default dates are, pressed when the page opens (2026-11-20)
+        "default": {"start": start, "end": end, "quick": str(DASHBOARD_DAYS)},
         "today": now_ny_naive().date(),  # for "Today" (2026-10-21)
         "sites": queries.sites(),
-        "statuses": [[code, STATUS_LABELS[code]] for code in SUB_STATUSES],
+        "statuses": STATUSES_WITH_NO_SUB,
         "api": {"dashboard": url_for("fillkill.api_dashboard")},
         "mainPage": url_for("fillkill.index"),
     }
@@ -265,29 +275,62 @@ def api_history(entity, entity_id):
     return ok({"entity": entity, "entity_id": entity_id, "history": queries.history(entity, entity_id)})
 
 
+def _fillkill_period(code: str) -> dict:
+    """A period Days or Weeks on Fill/Kill counts over, as the page shows it (26w: 26 weeks)."""
+    unit, units = queries.FILLKILL_PERIODS[code]
+    return {"period": code, "unit": unit, "units": units, "label": f"{units} {unit}s"}
+
+
 def _library_filters() -> dict:
+    # Days or Weeks on Fill/Kill over the period the page chose, ending today (2026-11-19).
+    period = request.args.get("fillkill_period")
     return {
         "status": request.args.get("status") or None,
         "source": request.args.get("source") or None,
         "q": request.args.get("q") or None,
         "needs_details": request.args.get("needs_details") == "1",
         "deleted": request.args.get("deleted") == "1",
+        "today": now_ny_naive().date(),
+        "fillkill_period": period if period in queries.FILLKILL_PERIODS else queries.FILLKILL_PERIOD,
     }
+
+
+def _library(filters: dict, limit: int | None = queries.LIBRARY_LIMIT) -> tuple[list, list]:
+    """The subs the filters match, and the No sub items (2026-11-19): with any status or No sub
+    chosen, and none of the filters only a sub can meet (source, no vendor item yet, deleted)."""
+    subs = [] if filters["status"] == NO_SUB else queries.subs_library(**filters, limit=limit)
+    with_no_sub = filters["status"] in (None, NO_SUB) and not (filters["source"] or filters["needs_details"]
+                                                                or filters["deleted"])
+    no_sub = queries.no_sub_rows(q=filters["q"], limit=limit, today=filters["today"],
+                                 fillkill_period=filters["fillkill_period"]) if with_no_sub else []
+    return subs, no_sub
 
 
 @bp.get("/api/subs")
 @login_required
 @require_module(FILLKILL, "view")
 def api_subs():
-    return ok({"subs": queries.subs_library(**_library_filters()), "limit": queries.LIBRARY_LIMIT})
+    filters = _library_filters()
+    subs, no_sub = _library(filters)
+    return ok({
+        "subs": subs, "no_sub": no_sub, "limit": queries.LIBRARY_LIMIT,
+        # What each row's fillkill_count and fillkill_recent cover: from start (for weeks, a Monday) to
+        # today, a calendar week a stick, the last this week so far.
+        "fillkill": {**_fillkill_period(filters["fillkill_period"]), "today": filters["today"],
+                     "start": queries.period_start(filters["fillkill_period"], filters["today"])},
+    })
 
 
 # The Subs page's export: every sub the filters match, not just the first LIBRARY_LIMIT, one row per
 # vendor item (a sub without one has a row of its own). The Medline item killed, the sub's Reference
 # SKU, then its vendor item (2026-10-20: every column about what's ordered says "Sub"). Orders and
-# Last Ordered are the sub's, all its vendor items together.
+# Last Ordered are the sub's, all its vendor items together. The Medline item's days or weeks on
+# Fill/Kill (2026-11-19) are over the page's period, which their label says. After the subs, each
+# Medline item with no sub (Status "No sub", 2026-11-19), with only its own columns.
 EXPORT_COLUMNS = (
     ("Sub ID", "sub_id"), ("Medline Item", "medline_item"), ("Medline Item's Infor Item", "medline_infor_item"),
+    ("Medline Item {Unit}s on Fill/Kill (last {label})", "fillkill_count"),
+    ("Medline Item Last on Fill/Kill", "fillkill_last_seen"),
     ("Reference SKU", "reference_sku"), ("Vendor Item ID", "vendor_item_id"),
     ("Sub Vendor Part", "vendor_part"), ("Sub Manufacturer Part", "manufacturer_part"), ("Sub Infor Item", "infor_item"),
     ("Sub Vendor ID", "vendor_id"), ("Sub Vendor Name", "vendor"), ("Sub Description", "description"),
@@ -312,7 +355,7 @@ def _export_rows(subs):
 
 def _csv_cell(key: str, value):
     if key == "status":
-        return STATUS_LABELS.get(value, value)
+        return NO_SUB_LABEL if value == NO_SUB else STATUS_LABELS.get(value, value)
     if key == "source":
         return SOURCE_LABELS.get(value, value)
     if key == "latest_comment":
@@ -329,11 +372,13 @@ def _csv_cell(key: str, value):
 @login_required
 @require_module(FILLKILL, "view")
 def export_subs():
-    rows = queries.subs_library(**_library_filters(), limit=None)
+    filters = _library_filters()
+    subs, no_sub = _library(filters, limit=None)
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow([label for label, _ in EXPORT_COLUMNS])
-    for row in _export_rows(rows):
+    period = _fillkill_period(filters["fillkill_period"])
+    writer.writerow([label.format(Unit=period["unit"].title(), label=period["label"]) for label, _ in EXPORT_COLUMNS])
+    for row in [*_export_rows(subs), *no_sub]:
         writer.writerow([_csv_cell(key, row.get(key)) for _, key in EXPORT_COLUMNS])
     name = f"fillkill-subs-{now_ny_naive():%Y%m%d}.csv"
     return Response("\ufeff" + out.getvalue(), mimetype="text/csv",  # the BOM: Excel reads it as UTF-8

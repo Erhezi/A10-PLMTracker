@@ -148,6 +148,19 @@ async function setValue(selector, value, eventName = 'change') {
 const panelSays = (words) => waitFor(`document.getElementById('fk-panel-body').innerText.includes(${JSON.stringify(words)})`, `"${words}" in the panel`);
 const modalOpen = () => waitFor(`document.getElementById('fk-modal').classList.contains('show')`, 'the form');
 const modalClosed = () => waitFor(`!document.getElementById('fk-modal').classList.contains('show')`, 'the form to close');
+// The Subs page's drawer for a Medline item (2026-11-20).
+const drawerSays = (words) => waitFor(`document.getElementById('fk-item-drawer-body').innerText.includes(${JSON.stringify(words)})`,
+  `"${words}" in the drawer`);
+async function openDrawer(item) {
+  await click(`#fk-subs-rows a[data-item="${item}"]`);
+  await waitFor(`document.getElementById('fk-item-drawer').classList.contains('show')
+    && document.getElementById('fk-item-drawer-title').innerText === ${JSON.stringify(item)}
+    && !document.getElementById('fk-item-drawer-body').innerText.includes('Loading')`, `${item}'s drawer`);
+}
+async function closeDrawer() {
+  await click('#fk-item-drawer .btn-close');
+  await waitFor(`!document.querySelector('#fk-item-drawer.show, #fk-item-drawer.hiding, .offcanvas-backdrop')`, 'the drawer to close');
+}
 
 function expect(ok, message) {
   if (!ok) throw new Error(message);
@@ -255,15 +268,96 @@ const steps = [
     await panelSays('2 UOMs');
     expect((await evaluate('location.search')).includes('scope=infor'), 'the link lacks the panel');
     await click('[data-panel-tab="lines"]');
-    await waitFor(`document.querySelectorAll('#fk-panel-content tbody tr').length === 2`, 'two kill lines');
-    // Each line's ship-to by its code (Ship-To Name 2 without "- UBOAT"), and Medline's reason type (2026-11-16).
+    // Both at one site, folded like any other (2026-11-20, the user): a click shows its two lines.
+    await waitFor(`document.querySelectorAll('#fk-panel-content tr.fk-site-row').length === 1
+      && document.querySelectorAll('#fk-panel-content tr.fk-kill-line').length === 2`, 'one site, its two kill lines');
+    expect(await evaluate(`document.querySelector('#fk-panel-content tr.fk-site-row').getAttribute('aria-expanded')`) === 'false',
+      'a single site open before a click');
+    await click('#fk-panel-content tr.fk-site-row');
+    // Each line's ship-to by its code (Ship-To Name 2 without "- UBOAT"), and Medline's reason type (2026-11-16),
+    // its comment right after it on the same line (2026-11-20, the user).
     await panelSays('PWLREO3 · OR');
-    await panelSays('Allocated Item');
+    await panelSays('Allocated Item Allocation limit has been reached');
+    expect(await evaluate(`[...document.querySelectorAll('#fk-panel-content tr.fk-kill-line')]
+      .every((tr) => !tr.cells[tr.cells.length - 1].querySelector('div'))`), "a kill line's comment under its reason, not after it");
     expect(!(await evaluate(`document.getElementById('fk-panel-body').innerText.includes('UBOAT')`)), 'UBOAT in the kill lines');
     await click('[data-panel-focus="MDS2585HC"]');
-    await waitFor(`document.querySelectorAll('#fk-panel-content tbody tr').length === 1`, "one UOM's kill line");
+    await waitFor(`document.querySelectorAll('#fk-panel-content tr.fk-kill-line').length === 1`, "one UOM's kill line");
     await click('[data-panel-tab="history"]');
     await panelSays('Nothing yet.');
+  }],
+  ['Total Killed: its sites, and its kill lines by site', async () => {
+    // The cup, killed at both sample sites in these dates: "2 sites", each site's on hover (2026-11-19).
+    const cell = `document.querySelector('#fk-main td[data-kill-lines="DYND70294BH"]')`;
+    expect((await evaluate(`${cell}.innerText.replace(/\\s+/g, ' ').trim()`)) === '8 EA 2 sites',
+      `the cup's Total Killed: ${await evaluate(`${cell}.innerText`)}`);
+    const each = await evaluate(`${cell}.querySelector('[title]').title`);
+    expect(each === 'SAMPLE SITE A: 5 EA\nSAMPLE SITE B: 3 EA', `the sites on hover: ${each}`);
+    // One site: no tag.
+    expect(!(await evaluate(`document.querySelector('#fk-main td[data-kill-lines="MDS2585H"]').innerText`)).includes('sites'),
+      'a sites tag with one site');
+    // Double-click: the cup's kill lines in its panel.
+    await dblclick(cell, "the cup's Total Killed");
+    await waitFor(`document.getElementById('fk-panel-title').innerText === 'DYND70294BH'
+      && document.querySelector('[data-panel-tab="lines"].active')`, "the cup's kill lines in the panel");
+    // By site, as Order Timing's orders (2026-11-20): a row per site and one for all, most lines first,
+    // then by name; each site's lines hidden until it's clicked.
+    const bySite = () => evaluate(`[...document.querySelectorAll('#fk-panel-content tr.fk-site-row, #fk-panel-content .fk-site-total tr')]
+      .map((tr) => [...tr.cells].slice(1).map((c) => c.innerText.replace(/\\s+/g, ' ').trim()).join(';')).join('|')`);
+    const shown = () => evaluate(`[...document.querySelectorAll('#fk-panel-content tr.fk-kill-line')].filter((tr) => tr.offsetParent).length`);
+    await waitFor(`document.querySelectorAll('#fk-panel-content tr.fk-site-row').length === 2`, 'its two sites');
+    await panelSays('2 kill lines at 2 sites');
+    expect(await bySite() === 'SAMPLE SITE A;5 EA;1;1|SAMPLE SITE B;3 EA;1;1|All sites;8 EA;2;2', `the cup by site: ${await bySite()}`);
+    const where = await evaluate(`document.querySelector('#fk-panel-content tr.fk-site-row td:last-child [title]').title`);
+    expect(where === 'PWLREICU · INTENS CARE UNIT: 1 line', `site A's locations on hover: ${where}`);
+    expect(await shown() === 0, `kill lines showing before a site is clicked: ${await shown()}`);
+    // A click on site A shows its line, with its ship-to; Enter on site B, B's.
+    const siteRow = (name) => `#fk-panel-content tr.fk-site-row[data-site="${name}"]`;
+    await click(siteRow('SAMPLE SITE A'));
+    await waitFor(`document.querySelector('${siteRow('SAMPLE SITE A')}').getAttribute('aria-expanded') === 'true'`, 'site A open');
+    expect(await shown() === 1, `site A's kill lines: ${await shown()}`);
+    await panelSays('PWLREICU · INTENS CARE UNIT');
+    await evaluate(`document.querySelector('${siteRow('SAMPLE SITE B')}').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    expect(await shown() === 2, `sites A and B's kill lines: ${await shown()}`);
+    expect(await text('[data-lines-all]') === 'Hide all lines', `with every site open: ${await text('[data-lines-all]')}`);
+    await click('[data-lines-all]');
+    expect(await shown() === 0 && (await text('[data-lines-all]')) === 'Show all lines', 'Hide all lines left some showing');
+    await click('[data-lines-all]');
+    expect(await shown() === 2, `Show all lines: ${await shown()}`);
+    // The sites open stay open on another tab and back.
+    await click(siteRow('SAMPLE SITE B'));
+    await click('[data-panel-tab="subs"]');
+    await click('[data-panel-tab="lines"]');
+    await waitFor(`document.querySelector('${siteRow('SAMPLE SITE A')}')?.getAttribute('aria-expanded') === 'true'
+      && document.querySelector('${siteRow('SAMPLE SITE B')}').getAttribute('aria-expanded') === 'false'`, 'site A still open, B closed');
+    // The All UOMs line: the whole Infor item's; its one site folded, its UOMs in eaches too (3 BX of 100, 2 CS of 1,000).
+    await dblclick(`document.querySelector('#fk-main tr.fk-total td[data-kill-lines][data-scope="infor"]')`, 'the gloves\' All UOMs line');
+    await waitFor(`document.getElementById('fk-panel-title').innerText === 'Infor item 999999'`, 'the whole Infor item');
+    await waitFor(`document.querySelectorAll('#fk-panel-content tr.fk-site-row').length === 1`, 'its one site');
+    expect(await bySite() === 'SAMPLE SITE A;3 BX 2 CS 2,300 EA;2;2', `the gloves by site: ${await bySite()}`);
+    expect(await shown() === 0 && !(await count('[data-lines-all]')), 'one site: its lines showing, or a Show all lines');
+    // Total Killed (EA), the next to last cell: the whole Infor item's too, its sites closed again.
+    await dblclick(`[...[...document.querySelectorAll('#fk-main tbody.fk-item')].find((b) => b.innerText.includes('DYND70294BH'))
+      .rows[0].cells].at(-2)`, "the cup's Total Killed (EA)");
+    await waitFor(`document.getElementById('fk-panel-title').innerText === 'Infor item 100339'`, "the cup's Infor item");
+    await waitFor(`document.querySelectorAll('#fk-panel-content tr.fk-site-row').length === 2`, "the cup's Infor item's sites");
+    expect(await bySite() === 'SAMPLE SITE A;5 EA;1;1|SAMPLE SITE B;3 EA;1;1|All sites;8 EA;2;2', `the cup's Infor item by site: ${await bySite()}`);
+    expect(await shown() === 0, `another item's sites open: ${await shown()}`);
+    // A click on a Medline item, an Infor item or Subs Status opens the panel on its Subs tab,
+    // whichever tab was open (2026-11-19).
+    const onSubs = (title) => waitFor(`document.getElementById('fk-panel-title').innerText === '${title}'
+      && document.querySelector('[data-panel-tab="subs"].active')`, `${title} on its Subs tab`);
+    await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
+    await onSubs('DYND70294BH');
+    await click('[data-panel-tab="lines"]');
+    await clickText('#fk-main button[data-scope="infor"]', '999999');
+    await onSubs('Infor item 999999');
+    await click('[data-panel-tab="orders"]');
+    await click('#fk-main td[data-open="SAMPLE0001"]');
+    await onSubs('SAMPLE0001');
+    // Nothing outlines a cell to double-click any more (2026-11-19, the user).
+    expect(!(await evaluate(`[...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch { return []; } })
+      .some((r) => /data-(dblclick|kill-lines)\\]:hover/.test(r.selectorText || ''))`)), 'a hover outline on the cells to double-click');
   }],
   ['Nursing adds a Reference SKU: approved, so it can be ordered', async () => {
     await click('#fk-main button[data-open="DYND70294BH"]:not([data-scope])');
@@ -543,6 +637,85 @@ const steps = [
     expect((await text('#fk-subs-rows')).includes('88885 BX/100 · CARDINAL HEALTH (1000001)'), 'the sub and its vendor item are not listed');
     const cap = await evaluate(`getComputedStyle(document.getElementById('fk-subs-rows').closest('.fk-scroll')).maxHeight`);
     expect(cap === '600px', `the subs table is capped at ${cap}, not 600px`);
+    // 2026-11-19 (the user): Reference SKU says it's the sub item's; Weeks on Fill/Kill (26 weeks, or 10,
+    // or 30 days), a stick for each, after Latest Comment; Orders last, its header saying what it shows.
+    const heads = () => evaluate(`[...document.querySelectorAll('.fk-table thead th')].map((th) => th.innerText.replace(/\\s+/g, ' ').trim())`);
+    const head = await heads();
+    expect(head[1] === 'Reference SKU Sub Item SKU', `the Reference SKU header: ${head[1]}`);
+    expect(head[6] === 'Latest Comment'
+      && head[7] === 'Weeks on Fill/Kill # in last 26 weeks · last seen A stick a week (Mon–Sun), this week at right',
+      `the headers after Latest Comment: ${head[6]} | ${head[7]}`);
+    expect(head.at(-1) === 'Orders # of orders · last ordered', `the last header: ${head.at(-1)}`);
+    // The cups, killed today and yesterday: this calendar week's stick lit (2026-11-20, Monday to Sunday),
+    // and last week's too on a Monday, when yesterday was last week's Sunday; an order recorded on its sub.
+    const cups = `[...document.querySelectorAll('#fk-subs-rows tr')].find((tr) => tr.innerText.includes('88885 BX/100'))`;
+    const strip = () => evaluate(`[...${cups}.querySelectorAll('.fk-stick')].map((s) => s.classList.contains('fk-stick-on') ? 1 : 0).join('')`);
+    const onFillKill = () => evaluate(`${cups}.cells[7].innerText.replace(/\\s+/g, ' ').trim()`);
+    const today = `${daysAgo(0).slice(5, 7)}/${daysAgo(0).slice(8)}/${daysAgo(0).slice(0, 4)}`;
+    const monday = new Date(`${daysAgo(0)}T00:00:00Z`).getUTCDay() === 1;
+    const weeks = (n) => (monday ? `${'0'.repeat(n - 2)}11` : `${'0'.repeat(n - 1)}1`);
+    expect(await strip() === weeks(26), `the cups' 26 weeks: ${await strip()}`);
+    expect(await onFillKill() === `${monday ? 2 : 1} · ${today}`, `the cups' weeks on Fill/Kill: ${await onFillKill()}`);
+    const thisWeek = await evaluate(`[...${cups}.querySelectorAll('.fk-stick')].at(-1).title`);
+    expect(thisWeek.endsWith('(this week, so far): on Fill/Kill') || (thisWeek.includes(`–${today}`) && new Date().getDay() === 0),
+      `this week's stick: ${thisWeek}`);
+    const stick = await evaluate(`(() => { const r = ${cups}.querySelector('.fk-stick').getBoundingClientRect(); return [r.width, r.height]; })()`);
+    expect(stick[1] >= 10 && stick[0] >= 3, `the sticks are ${stick[0]}x${stick[1]}px`);
+    const ordered = await evaluate(`${cups}.cells[${cups}.cells.length - 1].innerText.trim()`);
+    expect(/^\d+ · \d\d\/\d\d\/\d{4}$/.test(ordered), `the cups' orders: ${ordered}`);
+    // 30 days: Days on Fill/Kill, a stick a day; the export follows.
+    await setValue('#fk-subs-period', '30d');
+    await waitFor(`document.getElementById('fk-subs-export').href.includes('fillkill_period=30d')
+      && ${cups}.querySelectorAll('.fk-stick').length === 30`, 'the days and the export to follow the period');
+    expect((await heads())[7].startsWith('Days on Fill/Kill # in last 30 days · last seen A stick a day'), `the header: ${(await heads())[7]}`);
+    expect(await strip() === `${'0'.repeat(28)}11` && await onFillKill() === `2 · ${today}`, `the cups' 30 days: ${await strip()}, ${await onFillKill()}`);
+    // 10 weeks: wider sticks, about as wide in all.
+    await setValue('#fk-subs-period', '10w');
+    await waitFor(`${cups}.querySelectorAll('.fk-stick').length === 10`, 'a stick a week for 10 weeks');
+    const wide = await evaluate(`${cups}.querySelector('.fk-sticks').getBoundingClientRect().width`);
+    expect(wide > 100 && wide < 130 && (await strip()) === weeks(10), `10 weeks: ${await strip()}, ${wide}px wide`);
+    // No sub (2026-11-19): MDS2585H, killed today with no sub, has a row of its own, after the subs.
+    const rows = () => evaluate(`[...document.querySelectorAll('#fk-subs-rows tr')].map((tr) => [tr.cells[0].innerText.split('\\n')[0].trim(),
+      tr.cells[3].innerText.trim()].join(' | '))`);
+    expect((await rows()).at(-1) === 'MDS2585H | No sub', `the last row: ${(await rows()).at(-1)}`);
+    expect((await text('#fk-subs-count')).includes('1 item with no sub'), `the count: ${await text('#fk-subs-count')}`);
+    // A Medline item opens its drawer here, not Main (2026-11-20, the user): the item, then every live sub on it.
+    await openDrawer('DYND70294BH');
+    expect(await evaluate('location.pathname') === '/fillkill/subs', `the click left the page: ${await evaluate('location.pathname')}`);
+    expect((await text('#fk-item-drawer-subtitle')) === 'Infor item 100339 · CUP,DENTURE,8OZ', `the drawer's subtitle: ${await text('#fk-item-drawer-subtitle')}`);
+    await drawerSays('CUP DENTURE 8 OZ');  // Infor's long description
+    await drawerSays('Total 1 sub');
+    const cupSub = await text('#fk-item-drawer-body .fk-drawer-sub');
+    expect(cupSub.includes('88885') && cupSub.includes('Hold') && cupSub.includes('88885 BX/100 · CARDINAL HEALTH (1000001)')
+      && /\d+ orders? · last ordered \d\d\/\d\d\/\d{4}/.test(cupSub), `the cups' sub in the drawer: ${cupSub}`);
+    expect((await evaluate(`document.querySelector('#fk-item-drawer-body a[href*="item="]').href`)).includes('item=DYND70294BH'),
+      'no Open on Main for the cups');
+    await closeDrawer();
+    await openDrawer('MDS2585H');
+    await drawerSays('No subs yet');
+    expect((await text('#fk-item-drawer-subtitle')) === 'Infor item 999999 · GLOVE,EXAM,NITRILE,M', `the gloves' subtitle: ${await text('#fk-item-drawer-subtitle')}`);
+    await closeDrawer();
+    await setValue('#fk-subs-status', 'no_sub');
+    await waitFor(`document.querySelectorAll('#fk-subs-rows tr').length === 1
+      && document.getElementById('fk-subs-rows').innerText.includes('No sub')`, 'only the item with no sub');
+    await setValue('#fk-subs-status', '');
+    await waitFor(`document.querySelectorAll('#fk-subs-rows tr').length > 1`, 'every status again');
+    // Sorting (2026-11-19): Status A to Z puts No sub last, Z to A first, a third click undoes it; Medline Item A to Z.
+    const sortBy = async (key) => { await click(`th[data-sort="${key}"] .fk-sort`); await sleep(100); };
+    await sortBy('status');
+    const byStatus = await rows();
+    expect(byStatus.at(-1).endsWith('No sub') && byStatus[0].endsWith('Approved')
+      && await evaluate(`document.querySelector('th[data-sort="status"]').getAttribute('aria-sort')`) === 'ascending', `by status: ${byStatus}`);
+    await sortBy('status');
+    expect((await rows())[0].endsWith('No sub'), `by status, Z to A: ${await rows()}`);
+    await sortBy('status');
+    expect(await evaluate(`document.querySelector('th[data-sort="status"]').hasAttribute('aria-sort')`) === false, 'still sorted after a third click');
+    await sortBy('medline_item');
+    const items = (await rows()).map((r) => r.split(' | ')[0]);
+    expect(JSON.stringify(items) === JSON.stringify([...items].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))),
+      `by Medline item: ${items}`);
+    await sortBy('medline_item');
+    await sortBy('medline_item');
     await setValue('#fk-subs-q', '88885', 'input');
     await waitFor(`document.getElementById('fk-subs-export').href.includes('q=88885')`, 'the export link to follow the search');
   }],
@@ -554,15 +727,21 @@ const steps = [
     expect(await count('#fk-chart-new-subs, #fk-dash-rejected') === 0, 'the sections taken off are there');
     expect(!(await text('#fk-dash-top')).includes('No order') && await evaluate(
       `[...document.querySelector('#fk-dash-top').closest('table').tHead.rows[0].cells].length`) === 5, 'the top items have an Ordering column');
-    await click('[data-days="today"]');
+    // 2026-11-20: the quick button the dates are is pressed, the default's (the last 30 days) on opening.
+    const pressed = `[...document.querySelectorAll('#fk-dash-quick [aria-pressed="true"]')].map((b) => b.innerText).join('|')`;
+    expect(await evaluate(pressed) === 'Last 30 days', 'Last 30 days not the one button pressed on opening');
+    await click('#fk-dash-quick [data-days="today"]');
     const [y, m, d] = daysAgo(0).split('-');
     await waitFor(`document.getElementById('fk-dash-range').innerText === '${m}/${d}/${y} to ${m}/${d}/${y}'`, 'the range on today');
     await waitFor(`document.querySelectorAll('#fk-dash-top tr').length === 2`, "today's two items");
+    expect(await evaluate(pressed) === 'Today', 'Today not the one button pressed');
   }],
-  ['Order Timing, a module of its own: a Viewer finds orders in Medline\'s feed, and opens its empty Dashboard', async () => {
+  ['Order Timing, a module of its own: a Viewer finds orders in Medline\'s feed, and opens its Dashboard', async () => {
     // 2026-10-30: any Fill/Kill role views it. 2026-11-16: Main finds our orders in Medline's feed.
     const current = (label) => evaluate(`[...document.querySelectorAll('a[aria-current="page"]')].map((a) => a.innerText.trim()).join('|') === ${JSON.stringify(label)}`);
     const orderRows = `document.querySelectorAll('#ot-rows .ot-order-row').length`;
+    // The quick range pressed (2026-11-20): its button's days, or '' for none.
+    const pressed = () => evaluate(`[...document.querySelectorAll('[data-days][aria-pressed="true"]')].map((b) => b.dataset.days).join('|')`);
     await go('/dev-login?as=viewer&next=/fillkill/', MAIN_READY, 'Main');
     await click('.module-nav a[href$="/ordertiming/"]');
     await waitFor(`${orderRows} === 5`, "Order Timing's today (2026-11-17): five orders");
@@ -570,6 +749,7 @@ const steps = [
     expect((await text('#ot-count')) === '5 orders', `the count: ${await text('#ot-count')}`);
     expect(await evaluate(`document.getElementById('ot-start').value === document.getElementById('ot-end').value`),
       'Main does not open on one day');
+    expect(await pressed() === '1', `Main's quick range pressed: '${await pressed()}'`);
     expect(/^Data as of \d\d\/\d\d\/\d{4} 09:02 · last loaded 09:30/.test(await text('#ot-as-of')),
       `the data as of: ${await text('#ot-as-of')}`);
     // Closed until clicked; a click shows its lines.
@@ -631,6 +811,7 @@ const steps = [
     await click('[data-days="30"]');
     await waitFor(`${orderRows} === 20 && !(document.getElementById('ot-pager').offsetParent === null)`, 'the first page of 20');
     expect((await text('#ot-count')) === '29 orders', `the count: ${await text('#ot-count')}`);
+    expect(await pressed() === '30', `the quick range pressed: '${await pressed()}'`);
     expect((await text('#ot-range')) === 'Orders 1–20 of 29', `the range: ${await text('#ot-range')}`);
     await click('#ot-pages [data-page="2"]');
     await waitFor(`${orderRows} === 9 && document.querySelector('#ot-pages .active').innerText.trim() === '2'`, 'page 2: nine orders');
@@ -654,6 +835,7 @@ const steps = [
     expect(await current('Order Timing|Short Ships'), 'Order Timing and its Short Ships are not the current module and page');
     expect(await evaluate(`document.getElementById('ot-start').value === document.getElementById('ot-end').value`),
       'Short Ships did not open on one day');
+    expect(await pressed() === '1', `Short Ships' quick range pressed: '${await pressed()}'`);
     expect((await text('#ot-count')) === '3 items', `the count: ${await text('#ot-count')}`);
     expect(await evaluate(`${cells('.ot-item')} === 'DYND70294BH|MDS2585H|B-D930103CS'`), `the items: ${await evaluate(cells('.ot-item'))}`);
     expect(await evaluate(`${kills} === '1|1|0/2|1|0/2|1|0'`), `the kill counts: ${await evaluate(kills)}`);
@@ -664,6 +846,7 @@ const steps = [
       `the quantities and QOEs: ${await evaluate(qtys)}`);
     await click('[data-days="7"]');
     await waitFor(`${cells('.ot-short-lines')} === '3 3 POs|1 1 PO|1 1 PO'`, 'the short lines of the last 7 days');
+    expect(await pressed() === '7', `the quick range pressed: '${await pressed()}'`);
     expect(await evaluate(`${cells('.ot-qty-short')}.startsWith('9 CS 108 EA|')`), `the cup's 7 days short: ${await evaluate(cells('.ot-qty-short'))}`);
     expect(/Fill\/Kill data as of \d\d\/\d\d\/\d{4} 09:04 · last loaded 09:30/.test(await text('#ot-as-of')),
       `the data as of: ${await text('#ot-as-of')}`);
@@ -693,8 +876,28 @@ const steps = [
     expect((await evaluate('location.search')).includes('item=DYND70294BH'), 'the item is not in the link');
     await go('/ordertiming/', `document.querySelectorAll('#ot-rows .ot-order-row').length`, "Order Timing's Main");
     await click('.page-nav a[href$="/ordertiming/dashboard"]');
-    await waitFor(`document.getElementById('ot-dash-empty')`, "Order Timing's Dashboard");
+    // 2026-11-20: the Dashboard, on the last 7 days (eight sample orders, one not confirmed, one rejected
+    // line): its headline, three charts, the two sites with their total, and the rejected line.
+    const tiles = `document.querySelectorAll('#ot-dash-headline .card')`;
+    await waitFor(`${tiles}.length === 7 && !document.getElementById('ot-dash-body').classList.contains('ot-dash-loading')`,
+      "Order Timing's Dashboard");
     expect(await current('Order Timing|Dashboard'), 'Order Timing and its Dashboard are not the current module and page');
+    expect(await pressed() === '7', `the Dashboard's quick range pressed: '${await pressed()}'`);
+    const tile = (n) => evaluate(`${tiles}[${n}].innerText.replace(/\\s+/g, ' ').trim()`);
+    expect((await tile(0)).startsWith('POs 8 '), `the POs tile: ${await tile(0)}`);
+    expect((await tile(1)).includes('1 PO not confirmed yet'), `the Confirmed tile: ${await tile(1)}`);
+    expect(await evaluate('Object.keys(Chart.instances).length') === 3, 'not three charts');
+    expect(await count('#ot-dash-sites tr') === 2 && await count('#ot-dash-sites-total tr') === 1, 'not two sites and their total');
+    expect((await text('#ot-dash-rejected')).includes('INVALID PART'), `the rejected lines: ${await text('#ot-dash-rejected')}`);
+    // Today: five orders; the days are in the link.
+    await click('[data-days="1"]');
+    await waitFor(`${tiles}[0].innerText.replace(/\\s+/g, ' ').startsWith('POs 5 ')`, "today's five orders");
+    expect((await evaluate('location.search')).includes(`start=${daysAgo(0)}`), 'the days are not in the link');
+    expect(await pressed() === '1', `the quick range pressed: '${await pressed()}'`);
+    // Days of one's own: no quick range pressed.
+    await setValue('#ot-start', daysAgo(2), 'change');
+    await waitFor(`location.search.includes('start=${daysAgo(2)}')`, 'the days typed in');
+    expect(await pressed() === '', `a quick range pressed for days typed in: '${await pressed()}'`);
   }],
   ['No sub approved: SCM adds a vendor item for the item itself, and a Materials Manager orders it', async () => {
     // 2026-11-02, the user: SCM may direct the sites to order the same item from another vendor, with
@@ -938,6 +1141,48 @@ const steps = [
     expect(await count('#fk-main .bi-pencil-square') === 0, 'a viewer sees the pencil of a sub without vendor items (GLV-3)');
     expect(await count('#fk-main div.fk-vi-tile') >= 3, 'a viewer sees no vendor item tiles');
     expect(await count('#fk-reset') === 0, 'a viewer has Reset data');
+  }],
+  ['The Subs page: an item with more than one sub has them together, and all of them in its drawer', async () => {
+    // Still the viewer. DYND70294BH has 88885 (on hold) and 930103; MDS2585H, GLV-2 and GLV-3 (2026-11-20, the user).
+    await go('/fillkill/subs', `document.querySelectorAll('#fk-subs-rows a[data-item]').length
+      && !document.getElementById('fk-subs-rows').innerText.includes('Loading')`, 'the subs');
+    // An item's rows: its cell on the first ("Total 2 subs" under it), their Reference SKUs, and the rows
+    // after the first blank where the item's own cells are (the item, its weeks on Fill/Kill).
+    const groupOf = (item) => evaluate(`(() => {
+      const first = document.querySelector('#fk-subs-rows a[data-item="${item}"]').closest('tr');
+      const rows = [first];
+      while (rows.at(-1).classList.contains('fk-group-continues')) rows.push(rows.at(-1).nextElementSibling);
+      return [first.cells[0].innerText.replace(/\\s+/g, ' ').trim(), rows.map((tr) => tr.cells[1].innerText.trim()).sort().join(','),
+        rows.slice(1).every((tr) => !tr.cells[0].innerText.trim() && !tr.cells[7].innerText.trim())].join(' | ');
+    })()`);
+    expect(await groupOf('MDS2585H') === 'MDS2585H 999999 Total 2 subs | GLV-2,GLV-3 | true', `the gloves' subs: ${await groupOf('MDS2585H')}`);
+    expect(await groupOf('DYND70294BH') === 'DYND70294BH 100339 Total 2 subs | 88885,930103 | true', `the cups' subs: ${await groupOf('DYND70294BH')}`);
+    expect(await count('#fk-subs-rows a[data-item="MDS2585H"]') === 1, 'the gloves on more than one row of their own');
+    // A filter keeping one of them still says how many the item has.
+    await setValue('#fk-subs-status', 'hold');
+    await waitFor(`document.querySelectorAll('#fk-subs-rows tr').length === 1`, 'the sub on hold');
+    expect(await groupOf('DYND70294BH') === 'DYND70294BH 100339 Total 2 subs · 1 shown | 88885 | true', `on hold: ${await groupOf('DYND70294BH')}`);
+    await setValue('#fk-subs-status', '');
+    await waitFor(`document.querySelectorAll('#fk-subs-rows a[data-item="MDS2585H"]').length === 1`, 'every status again');
+    // Sorted by Status, each row is on its own, with its item and the total; a third click groups them again.
+    const sortBy = async (key) => { await click(`th[data-sort="${key}"] .fk-sort`); await sleep(100); };
+    await sortBy('status');
+    expect(await evaluate(`[...document.querySelectorAll('#fk-subs-rows a[data-item="MDS2585H"]')]
+      .map((a) => a.closest('td').innerText.includes('Total 2 subs')).join()`) === 'true,true', 'the gloves by status, each on its own row');
+    await sortBy('status');
+    await sortBy('status');
+    expect(await count('#fk-subs-rows a[data-item="MDS2585H"]') === 1, 'the gloves not together again');
+    // The drawer: every sub, approved first, and how many of each.
+    await openDrawer('DYND70294BH');
+    await drawerSays('Total 2 subs · 1 Approved · 1 Hold');
+    const skus = () => evaluate(`[...document.querySelectorAll('#fk-item-drawer-body .fk-drawer-sub .fs-6')].map((e) => e.innerText).join(',')`);
+    expect(await skus() === '930103,88885', `the cups' subs in the drawer: ${await skus()}`);
+    await drawerSays('B-D930103CSZ');  // 930103's vendor items
+    await closeDrawer();
+    await openDrawer('MDS2585H');
+    await drawerSays('Total 2 subs');
+    expect(await skus() === 'GLV-2,GLV-3', `the gloves' subs in the drawer: ${await skus()}`);
+    await closeDrawer();
   }],
   // Last: it empties what the steps before added (2026-11-02, the development server only).
   ['An admin resets the data: every sub, vendor item, order and comment goes', async () => {

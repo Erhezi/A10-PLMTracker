@@ -84,7 +84,7 @@
             <th scope="col" data-sort="description"><button type="button" class="fk-sort">Item Description</button><div class="fw-normal small text-muted">Infor's long description below</div></th>
             <th scope="col" class="text-end" data-sort="qoe"><button type="button" class="fk-sort">QOE</button></th>
             <th scope="col" class="text-end" data-sort="ordered"><button type="button" class="fk-sort">Total Ordered</button></th>
-            <th scope="col" class="text-end" data-sort="killed"><button type="button" class="fk-sort">Total Killed</button></th>
+            <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, in each UOM, with how many sites when several. Double-click a cell for its kill lines" data-sort="killed"><button type="button" class="fk-sort">Total Killed</button></th>
             <th scope="col" class="text-end" data-sort="filled"><button type="button" class="fk-sort">Total Filled</button></th>
             <th scope="col" class="text-end" data-sort="lines"><button type="button" class="fk-sort">PO Lines</button></th>
             <th scope="col" data-sort="reason"><button type="button" class="fk-sort">Latest Reason</button></th>
@@ -93,8 +93,8 @@
             {# Before Vendor Item Detail (the user, 2026-10-27): read before ordering from the tiles. #}
             <th scope="col" title="SCM's latest comment to the sites' Materials Managers on how to order the item" data-sort="instruction"><button type="button" class="fk-sort">{{ instruction_label }}</button></th>
             <th scope="col" title="What can be ordered: each approved sub's vendor items, and on a line without one, the vendor items SCM directs (e.g. the same item from another vendor)" data-sort="vendor_items"><button type="button" class="fk-sort">Vendor Item Detail</button></th>
-            <th scope="col" title="Orders recorded in these Fill/Kill dates for the sites shown, each with its site" data-sort="ordering"><button type="button" class="fk-sort">Ordering</button></th>
-            <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, all UOMs, in eaches" data-sort="killed_each"><button type="button" class="fk-sort">Total Killed (EA)</button></th>
+            <th scope="col" title="Orders recorded in these Fill/Kill dates for the sites shown, each with its site" data-sort="ordering"><button type="button" class="fk-sort">Sub Ordering</button></th>
+            <th scope="col" class="text-end" title="Killed in these Fill/Kill dates, all UOMs, in eaches. Double-click a cell for the Infor item's kill lines" data-sort="killed_each"><button type="button" class="fk-sort">Total Killed (EA)</button></th>
             <th scope="col" class="text-end" title="Ordered in these Fill/Kill dates for the sites shown, all its subs, in eaches: each order's quantity times its QOE. With kills at several sites, each site that's short says so" data-sort="sub_ordered_each"><button type="button" class="fk-sort">Total Sub Ordered (EA)</button></th>
           </tr>
         </thead>

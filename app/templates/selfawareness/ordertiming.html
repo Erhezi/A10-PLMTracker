@@ -23,7 +23,9 @@
         what it's short, and, when Medline flags it as a bad line, Medline's reject code.</li>
       <li><strong>Short Ships</strong> lists the items Medline short shipped, one row per item, with how many times
         Fill/Kill shows the item killed today, in the last 7 days and in the last 30. See below.</li>
-      <li>The <strong>Dashboard</strong> will show trends. It's empty for now.</li>
+      <li>The <strong>Dashboard</strong> gives the whole picture in the days and sites chosen: how many POs Medline got,
+        how fast it confirmed them, when they come in and which got their ASN the same day, and what it rejected or
+        short shipped, site by site. See below.</li>
     </ul>
   </section>
 
@@ -108,6 +110,33 @@
       <li><strong>Export CSV</strong> downloads every short-shipped line the filters find, each with its QOE, its
         quantities in eaches and its item's kill counts.</li>
     </ul>
+  </section>
+
+  <section class="card shadow-sm border-0 p-4">
+    <h2 class="h5 fw-semibold mb-2">The Dashboard</h2>
+    <p class="mb-2">
+      The whole of Medline's order feed in the order days and sites chosen. It opens on the last 7 days, and reaches
+      as far back as Main. A PO's time to confirm runs from when Medline received it to its 855, the same
+      minutes Main shows.
+    </p>
+    <ul class="mb-2">
+      <li>The figures across the top: POs and lines, the share confirmed, the median time to confirm, the share with an
+        ASN the same day, the median time from receipt to ASN, and the rejected and short-shipped lines. The links
+        open those POs on Main, or their items on Short Ships, in the same days and sites.</li>
+      <li><strong>Lines per day, by status</strong>: each day's lines in each status. Hover a day for its short-shipped
+        lines.</li>
+      <li><strong>When POs come in, and how fast Medline confirms them</strong>: POs by the hour Medline received them,
+        shaded by how long it took to confirm them. POs received late in the evening can wait until Medline creates
+        their orders early the next morning, five hours or more.</li>
+      <li><strong>Which POs get their ASN the same day</strong>: POs by the hour Medline created the order, with an ASN
+        that day or not. Medline's report covers each order day only, so an ASN sent the next day never shows up in
+        this feed: a PO without one may well have shipped the day after.</li>
+      <li><strong>Slowest POs to confirm</strong>: click a PO to open it on Main.</li>
+      <li><strong>By site</strong>: the same figures for each site, with all sites at the bottom.</li>
+      <li><strong>Rejected lines</strong>: by Medline's reject code and item, as Medline wrote the item and as our PO
+        had it.</li>
+    </ul>
+    <p class="mb-0">Hours are on Medline's clock, as Medline sends its times.</p>
   </section>
 
   <section class="card shadow-sm border-0 p-4">

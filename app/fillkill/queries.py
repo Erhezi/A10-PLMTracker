@@ -17,8 +17,10 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import and_, bindparam, func, or_, select, text, true
 
 from .. import db
+from ..models import now_ny_naive
 from ..models.fillkill import History, ItemInstruction, Sub, SubOrder, VendorItem
 from . import rollup
+from .rules import NO_SUB
 
 log = logging.getLogger(__name__)
 
@@ -265,7 +267,7 @@ def _site_condition(sites):
 
 def orders_in_range(scope: Scope, items=None) -> list[dict]:
     """Non-voided orders dated inside the scope's Fill/Kill dates, for its sites (2026-10-27): the
-    main table's Ordering column (S4; 2026-10-20, back from "on or after the first day"), so Ordered
+    main table's Sub Ordering column (S4; 2026-10-20, back from "on or after the first day"), so Ordered
     and No order are about those dates and sites."""
     return _orders(and_(_range_condition(SubOrder.ordered_dt, scope), _site_condition(scope.sites)), items)
 
@@ -594,6 +596,18 @@ def infor_items_of(medline_items) -> dict[str, str]:
     return found
 
 
+def _live_sub_counts(medline_items) -> dict[str, int]:
+    """Per Medline item: how many live subs it has, whatever the Subs page's filters show (2026-11-20,
+    the user: so the page can say an item has more than one)."""
+    found: dict[str, int] = {}
+    for chunk in _chunks(sorted({item for item in medline_items if item})):
+        found.update(db.session.execute(
+            select(Sub.medline_item, func.count()).where(Sub.medline_item.in_(chunk), Sub.deleted_at.is_(None))
+            .group_by(Sub.medline_item)
+        ).all())
+    return found
+
+
 def _order_stats(sub_ids) -> dict[int, dict]:
     """Per sub: how many orders that aren't voided, and the latest one's date."""
     found = {}
@@ -606,11 +620,90 @@ def _order_stats(sub_ids) -> dict[int, dict]:
     return found
 
 
+# The Subs page's Days or Weeks on Fill/Kill (2026-11-19, the user): how often the sub's Medline item
+# has been killed, over a period ending today, a stick a day or a calendar week, Monday to Sunday,
+# the last being this week so far (the user, 2026-11-20). Code: (unit, how many).
+FILLKILL_PERIODS = {"30d": ("day", 30), "10w": ("week", 10), "26w": ("week", 26)}
+FILLKILL_PERIOD = "26w"
+
+
+def period_start(period: str, today: date) -> date:
+    """The first day of ``period`` (FILLKILL_PERIODS) ending ``today``: for weeks, the Monday of the
+    first, this week counting as one however far into it ``today`` is."""
+    unit, units = FILLKILL_PERIODS[period]
+    if unit == "week":
+        return today - timedelta(days=today.weekday()) - timedelta(weeks=units - 1)
+    return today - timedelta(days=units - 1)
+
+
+def fillkill_presence(medline_items, today: date, period: str = FILLKILL_PERIOD) -> dict[str, dict]:
+    """Per Medline item, its days or weeks on Fill/Kill (with a kill line for it) in ``period``
+    (FILLKILL_PERIODS) ending ``today``: ``fillkill_recent``, each of them oldest first, "1" when it
+    was on Fill/Kill and "0" when not (this week: so far); ``fillkill_count``, how many were;
+    ``fillkill_last_seen``, its latest day on Fill/Kill, however long ago."""
+    unit, units = FILLKILL_PERIODS[period]
+    width = 7 if unit == "week" else 1
+    since = period_start(period, today)
+    wanted = sorted({item for item in medline_items if item})
+    items = [bindparam("items", expanding=True)]
+    last_seen, lit = {}, defaultdict(set)
+    for chunk in _chunks(wanted):
+        for row in _rows(
+            f"""SELECT [Item] AS item, MAX([Order Date]) AS last_seen
+                FROM {LINES} WHERE [Item] IN :items AND [Order Date] <= :today GROUP BY [Item]""",
+            {"items": chunk, "today": today}, items,
+        ):
+            last_seen[row["item"]] = _as_date(row["last_seen"])
+        for row in _rows(
+            f"""SELECT DISTINCT [Item] AS item, [Order Date] AS day
+                FROM {LINES} WHERE [Item] IN :items AND [Order Date] BETWEEN :since AND :today""",
+            {"items": chunk, "since": since, "today": today}, items,
+        ):
+            lit[row["item"]].add((_as_date(row["day"]) - since).days // width)
+    found = {}
+    for item in wanted:
+        recent = "".join("1" if n in lit[item] else "0" for n in range(units))
+        found[item] = {"fillkill_count": recent.count("1"), "fillkill_last_seen": last_seen.get(item),
+                       "fillkill_recent": recent}
+    return found
+
+
+def items_without_subs() -> set[str]:
+    """Medline items on Fill/Kill (a kill line, ever) with no live sub: "No sub" (2026-11-19, the
+    user), a Medline item's state, not a sub's status. One whose subs were all deleted counts; one
+    whose subs are all rejected doesn't (it has subs), unlike Main's Needs subs."""
+    killed = {row["item"] for row in _rows(f"SELECT DISTINCT [Item] AS item FROM {LINES}") if row["item"]}
+    with_subs = set(db.session.execute(select(Sub.medline_item).where(Sub.deleted_at.is_(None)).distinct()).scalars())
+    return killed - with_subs
+
+
+def no_sub_rows(*, q: str | None = None, limit: int | None = LIBRARY_LIMIT, today: date | None = None,
+                fillkill_period: str = FILLKILL_PERIOD) -> list[dict]:
+    """The Subs page's No sub rows (items_without_subs): each Medline item with its Infor item and its
+    days or weeks on Fill/Kill, the latest on Fill/Kill first. ``q`` finds the Medline or Infor item,
+    as the subs' search does, with or without dashes, spaces, dots and slashes."""
+    items = items_without_subs()
+    infor = infor_items_of(items)
+    if q:
+        like, bare = q.strip().lower(), _compact(q)
+        items = {item for item in items
+                 if any(like in value.lower() or (bare and bare in _compact(value)) for value in (item, infor.get(item) or ""))}
+    presence = fillkill_presence(items, today or now_ny_naive().date(), fillkill_period)
+    rows = sorted(({"medline_item": item, "medline_infor_item": infor.get(item), "status": NO_SUB, **presence[item]}
+                   for item in items), key=lambda row: row["medline_item"])
+    rows.sort(key=lambda row: row["fillkill_last_seen"] or date.min, reverse=True)
+    return rows[:limit] if limit else rows
+
+
 def subs_library(*, status: str | None = None, source: str | None = None, q: str | None = None,
-                 needs_details: bool = False, deleted: bool = False, limit: int | None = LIBRARY_LIMIT) -> list[dict]:
+                 needs_details: bool = False, deleted: bool = False, limit: int | None = LIBRARY_LIMIT,
+                 today: date | None = None, fillkill_period: str = FILLKILL_PERIOD) -> list[dict]:
     """Every sub across all items (the Subs page), newest change first, with its vendor items, its
-    Infor item, who approved it, and its orders. ``deleted`` shows the deleted ones instead (who,
-    when, why); ``needs_details`` keeps those without a vendor item yet; ``limit`` None means all."""
+    Infor item, who approved it, its orders, its Medline item's days or weeks on Fill/Kill in
+    ``fillkill_period`` ending ``today`` (fillkill_presence), and how many live subs its Medline item
+    has (``item_subs``, 2026-11-20, whatever the filters keep). ``deleted`` shows the deleted ones
+    instead (who, when, why); ``needs_details`` keeps those without a vendor item yet; ``limit``
+    None means all."""
     query = select(Sub).where(Sub.deleted_at.is_not(None) if deleted else Sub.deleted_at.is_(None))
     live_items = select(VendorItem.vendor_item_id).where(VendorItem.sub_id == Sub.sub_id, VendorItem.deleted_at.is_(None))
     if needs_details:
@@ -639,11 +732,15 @@ def subs_library(*, status: str | None = None, source: str | None = None, q: str
     ids = [s.sub_id for s in subs]
     comments, approvals, orders = _latest_comments("sub", ids), _latest_approvals(ids), _order_stats(ids)
     infor = infor_items_of(s.medline_item for s in subs)
+    presence = fillkill_presence((s.medline_item for s in subs), today or now_ny_naive().date(), fillkill_period)
+    live = _live_sub_counts(s.medline_item for s in subs)
     return [{
         # medline_infor_item: the killed Medline item's Infor item (a vendor item's infor_item is its own)
-        **d, "medline_infor_item": infor.get(s.medline_item), "latest_comment": comments.get(s.sub_id),
+        **d, "medline_infor_item": infor.get(s.medline_item), "item_subs": live.get(s.medline_item, 0),
+        "latest_comment": comments.get(s.sub_id),
         "approved_by": None, "approved_at": None, **approvals.get(s.sub_id, {}),
         "orders": 0, "last_ordered": None, **orders.get(s.sub_id, {}),
+        **presence.get(s.medline_item, {}),
         "deleted_at": s.deleted_at, "deleted_by": s.deleted_by, "delete_reason": s.delete_reason,
     } for s, d in zip(subs, _sub_dicts(subs))]
 

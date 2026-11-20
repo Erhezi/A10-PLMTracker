@@ -24,6 +24,7 @@ export const state = {
   panelItem: null,
   panelTab: 'subs',
   panelScope: 'medline',  // 'infor': the whole Infor item; 'medline': only panelItem (one UOM)
+  linesOpen: new Set(),  // the panel's kill lines: the sites whose lines show (2026-11-20), until another item opens
   panelData: null,
   contractLines: [],  // the contract search's latest results
   vendorResults: [],  // the vendor search's latest results

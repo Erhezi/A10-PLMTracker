@@ -12,6 +12,7 @@ from statistics import median
 
 from ..models.fillkill import SYSTEM_ACTOR
 from . import queries, rollup
+from .rules import NO_SUB
 
 TOP_ITEMS = 10
 
@@ -186,7 +187,9 @@ def build(scope: queries.Scope) -> dict:
     subs = queries.all_subs()
     history = queries.sub_history(("status", "comment"))
     hours = review_hours(subs, history, scope.start, scope.end)
-    status_counts = rollup.subs_status(subs)
+    # Every sub by its status, and the Medline items on Fill/Kill with none (No sub, the user,
+    # 2026-11-19): all of them, whatever the dates and sites, as on the Subs page.
+    status_counts = {**rollup.subs_status(subs), NO_SUB: len(queries.items_without_subs())}
     killed = queries.first_kills(scope)
     return {
         "scope": {"start": scope.start, "end": scope.end, "sites": scope.sites},

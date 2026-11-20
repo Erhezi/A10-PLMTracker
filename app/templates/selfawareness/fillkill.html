@@ -109,10 +109,16 @@
         Materials Manager's to add; for them, a pencil beside each opens the form), <em>Needs order</em> (approved, or with a
         vendor item without a substitute, and no order in these dates), <em>Ordered</em>. An item can need more than one thing.</li>
       <li class="mb-1"><strong>Killed against ordered:</strong> <em>Total Killed (EA)</em> and <em>Total Sub Ordered (EA)</em>, after
-        <em>Ordering</em>, put the Infor item's kills and its substitutes' orders in these dates side by side, in eaches (an order counts its
+        <em>Sub Ordering</em>, put the Infor item's kills and its substitutes' orders in these dates side by side, in eaches (an order counts its
         quantity times its QOE). Kill lines keep arriving through the day: when the orders fall short, it says how many eaches, in red, so
         you can see which items need another order. Each site orders for itself: when an item was killed at several sites, each site
-        that's short says so, and <em>Ordering</em> shows each order's site. With sites chosen, only their kills and orders count.</li>
+        that's short says so, and <em>Sub Ordering</em> shows each order's site. With sites chosen, only their kills and orders count.</li>
+      <li class="mb-1"><strong>Total Killed</strong> is in each UOM's own units. When several sites killed the item, it says how many,
+        with each site's quantity on hover, as <em>Total Killed (EA)</em> does. Double-click it to see the kill lines behind it in the
+        item's panel (on the <em>All UOMs</em> line, and in <em>Total Killed (EA)</em>, the whole Infor item's). There the lines are
+        grouped by site, as Order Timing groups its lines by order: each site's row says what it killed, how many kill lines, and
+        how many locations requested them (the ship-tos, by their code, such as PMOSK6), each listed on hover. Every site starts
+        folded: click one to see its lines under it, or <em>Show all lines</em> to open every site.</li>
       <li class="mb-1"><strong>Click an item</strong> to open its panel: the Infor item's details, {{ instruction_label }}, the substitutes,
         the kill lines behind them, the Sub History (every substitute added, reviewed or deleted, and every vendor item added or deleted),
         and every order, in a table like the kill lines. Click the <em>Infor item</em> to see all its UOMs together, or a <em>Medline item</em> to
@@ -124,7 +130,7 @@
         <em>Total Ordered</em>, <em>Killed</em> and <em>Filled</em> sort by eaches (when every UOM has a QOE) and <em>QOE</em> by the largest;
         <em>Latest Reason</em> sorts by Medline's reason type, then its date; <em>Subs Status</em> by how many substitutes, then how many
         approved; <em>Sub Approved by Nursing</em> and <em>Vendor Item Detail</em> by how many; {{ instruction_label }} and
-        <em>Ordering</em> by the latest one's date.</li>
+        <em>Sub Ordering</em> by the latest one's date.</li>
       <li class="mb-1"><strong>Share what you see:</strong> the page's address keeps the dates, sites, search, Needs
         filter, sort and the open item, so copying it gives someone else the same view.</li>
       <li class="mb-1"><strong>Sub Orders Recorded,</strong> below the table: the orders recorded, with their own dates (today
@@ -133,9 +139,20 @@
         The search box beside them finds an order by the Medline item, its Infor item, the vendor part, the substitute's Reference SKU,
         or the PO number.</li>
     </ul>
-    <p class="mb-2"><strong>Subs</strong> lists every substitute on file, as a reference, with its Reference SKU and
-      vendor items: search it, filter by status, source, no vendor item yet, or deleted ones, and export what you see
-      as a spreadsheet (a row per vendor item). Click an item to open it on Main.</p>
+    <p class="mb-2"><strong>Subs</strong> lists every substitute on file, as a reference, with its Reference SKU (the
+      sub item's SKU), vendor items and orders (how many, and the latest), and how often its Medline item is killed:
+      <em>Weeks on Fill/Kill</em> counts the weeks (Monday to Sunday) it was on Fill/Kill in the last 26 weeks (or 10
+      weeks), with a stick for each week, lit when it was killed, this week's lit as soon as it's killed this week; over the last 30 days it's <em>Days on Fill/Kill</em>, a stick a day. Under
+      the count is the last day it was on Fill/Kill. Every Medline item on Fill/Kill with no substitute has a row too,
+      with the status <em>No sub</em>: choose <em>No sub</em> under Status to see just those, and open one on Main to
+      add a substitute (the Dashboard's <em>Subs by status</em> counts them too). A Medline item with more than one
+      substitute has them together, the item once, with <em>Total N subs</em> in grey under it (and how many are
+      shown when the filters hide some). Click <em>Medline Item</em>, <em>Reference SKU</em> or <em>Status</em> to sort
+      by it. Search it, filter by status, source, no vendor item yet, or deleted ones, and export what you see as a
+      spreadsheet (a row per vendor item). Click a Medline item to open its drawer: the item, its Infor item and
+      descriptions, and every substitute on it, approved first, each with its vendor items, who entered and approved
+      it, its latest comment and its orders. Substitutes are changed on Main: <em>Open on Main</em> in the drawer (or
+      Ctrl+click the item) takes you there.</p>
     <p class="mb-0"><strong>Dashboard</strong> shows trends for the chosen dates and sites (<em>Today</em>, the last 7
       or 30 days, all, or dates you choose): kill lines by reason and by site, the most killed items with their
       substitutes, and how substitutes are being reviewed. It also shows how fast killed items move: the median time

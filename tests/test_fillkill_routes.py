@@ -603,6 +603,17 @@ def test_vendor_lookup_and_the_library_finds_subs_by_their_vendor_items(app, vie
     assert status == 400 and "isn't in Infor's vendor list" in data["message"]
 
 
+def test_library_says_how_many_live_subs_each_medline_item_has(app, viewer, finder_approver):
+    # The Subs page's "Total N subs" (2026-11-20): every live sub of the item, whatever the filters keep.
+    for item, sku in (("MDS2585H", "OM1"), ("MDS2585H", "OM2"), ("MDS2585H", "OM3"), ("DYND70294BH", "LS-1")):
+        _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": item, "reference_sku": sku})
+    _, data = get(viewer, "/fillkill/api/subs")
+    assert sorted((s["reference_sku"], s["item_subs"]) for s in data["subs"]) == [
+        ("LS-1", 1), ("OM1", 3), ("OM2", 3), ("OM3", 3)]
+    _, data = get(viewer, "/fillkill/api/subs", q="OM2")
+    assert [(s["reference_sku"], s["item_subs"]) for s in data["subs"]] == [("OM2", 3)]
+
+
 def test_library_search_ignores_dashes_spaces_dots_and_slashes(app, viewer, finder_approver):
     post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM-12.5/A"})
     for q in ("om125a", "OM-12.5", "om 12", "mds2585"):
@@ -753,7 +764,8 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     response = viewer.get("/fillkill/subs/export", query_string={"status": "approved"})
     assert response.mimetype == "text/csv" and "attachment" in response.headers["Content-Disposition"]
     text = response.get_data(as_text=True)
-    assert text.startswith("﻿Sub ID,Medline Item,Medline Item's Infor Item,Reference SKU,Vendor Item ID,Sub Vendor Part,"
+    assert text.startswith("﻿Sub ID,Medline Item,Medline Item's Infor Item,Medline Item Weeks on Fill/Kill (last 26 weeks),"
+                           "Medline Item Last on Fill/Kill,Reference SKU,Vendor Item ID,Sub Vendor Part,"
                            "Sub Manufacturer Part,Sub Infor Item,Sub Vendor ID,Sub Vendor Name,Sub Description,Sub UOM,Sub QOE,")
     header, *lines = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     box, case = [dict(zip(header, line)) for line in lines]
@@ -771,6 +783,134 @@ def test_the_subs_page_is_a_reference_with_filters_and_an_export(app, viewer, fi
     header, *lines = list(csv.reader(io.StringIO(response.get_data(as_text=True).lstrip("﻿"))))
     [line] = [dict(zip(header, line)) for line in lines]
     assert (line["Reference SKU"], line["Vendor Item ID"], line["Sub Vendor Part"]) == ("OM1", "", "")
+
+
+def test_the_subs_page_says_how_often_each_medline_item_is_on_fillkill(app, viewer, finder_approver, monkeypatch):
+    # Days or Weeks on Fill/Kill (the user, 2026-11-19): over the last 30 days, 10 weeks or 26 weeks
+    # (the default), the days or calendar weeks (Monday to Sunday, the last this week so far,
+    # 2026-11-20) the sub's Medline item had a kill line, a stick for each, oldest first; and its
+    # latest day on Fill/Kill, however long ago.
+    from app import db
+    from app.fillkill import routes
+    from app.models.fillkill import Sub
+
+    monkeypatch.setattr(routes, "now_ny_naive", lambda: datetime(2026, 10, 15, 9, 0))  # a Thursday
+    old = lambda item, day: {**line(1, "09:00:00", WP, item, 5, "MBO", "Backorder", so=f"OLD-{day}"), "Order Date": day}  # noqa: E731
+    add_view_rows(app, "vw_MedlineFillKill", [
+        old("DYND70294BH", "2026-06-01"), old("DYND70294BH", "2026-10-11"),  # a Monday; last week's Sunday
+        old("MDS2585H", "2026-10-13"),  # this week's Tuesday
+        old("MDSOLD", "2025-12-01"),
+    ])
+    post(finder_approver, "/fillkill/api/subs", {"medline_item": "DYND70294BH", "reference_sku": "88885"})
+    post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
+    with app.app_context():  # Medline's, on an item killed long ago and on one never killed
+        now = datetime(2026, 10, 1, 9, 0)
+        db.session.add_all([Sub(medline_item=item, reference_sku=sku, status="pending_review", source="medline_pbo",
+                                entered_by="Medline", create_dt=now, update_dt=now)
+                            for item, sku in (("MDSOLD", "MDSO"), ("MDSNEVER", "MDSX"))])
+        db.session.commit()
+
+    def presence(**params):
+        status, data = get(viewer, "/fillkill/api/subs", **params)
+        assert status == 200
+        return data["fillkill"], {s["reference_sku"]: (s["fillkill_count"], s["fillkill_last_seen"], s["fillkill_recent"])
+                                  for s in data["subs"]}
+
+    # 26 weeks from Monday 4/20, the last this week (10/12-10/18) so far: the cups killed 6/1 (week 7),
+    # 9/28 and 9/30 (week 24, 9/28-10/4) and Sunday 10/11 (week 25); the gloves 9/29 and this Tuesday.
+    period, rows = presence()
+    assert period == {"period": "26w", "unit": "week", "units": 26, "label": "26 weeks", "today": "2026-10-15",
+                      "start": "2026-04-20"}
+    assert rows == {"88885": (3, "2026-10-11", "0" * 6 + "1" + "0" * 16 + "110"),
+                    "OM1": (2, "2026-10-13", "0" * 23 + "101"),
+                    "MDSO": (0, "2025-12-01", "0" * 26),
+                    "MDSX": (0, None, "0" * 26)}
+    # 10 weeks from Monday 8/10: 6/1 is before them.
+    period, rows = presence(fillkill_period="10w")
+    assert (period["unit"], period["units"], period["label"], period["start"]) == ("week", 10, "10 weeks", "2026-08-10")
+    assert (rows["88885"], rows["OM1"]) == ((2, "2026-10-11", "0" * 7 + "110"), (2, "2026-10-13", "0" * 7 + "101"))
+    # 30 days, 9/16 to 10/15: a stick a day, 9/30 once though killed twice.
+    period, rows = presence(fillkill_period="30d")
+    assert (period["unit"], period["units"], period["label"], period["start"]) == ("day", 30, "30 days", "2026-09-16")
+    assert (rows["88885"], rows["OM1"]) == ((3, "2026-10-11", "0" * 12 + "101" + "0" * 10 + "1" + "0" * 4),
+                                            (2, "2026-10-13", "0" * 13 + "1" + "0" * 13 + "1" + "00"))
+    for wrong in ("", "365", "abc", "26W"):
+        assert presence(fillkill_period=wrong)[0]["period"] == "26w", wrong
+
+    # On a Monday, this week is that day alone; on a Sunday, the whole week.
+    for today, start in ((datetime(2026, 10, 12, 9, 0), "2026-04-20"), (datetime(2026, 10, 11, 9, 0), "2026-04-13")):
+        monkeypatch.setattr(routes, "now_ny_naive", lambda today=today: today)
+        period, rows = presence()
+        assert period["start"] == start and rows["88885"][2][-2:] == ("10" if today.day == 12 else "11"), today
+
+    # The export: its label says the unit and the period.
+    monkeypatch.setattr(routes, "now_ny_naive", lambda: datetime(2026, 10, 15, 9, 0))
+
+    def exported(**params):
+        text = viewer.get("/fillkill/subs/export", query_string=params).get_data(as_text=True)
+        header, *lines = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
+        return header, {row["Reference SKU"]: row for row in (dict(zip(header, line)) for line in lines)}
+
+    header, rows = exported(fillkill_period="30d")
+    assert header[3:5] == ["Medline Item Days on Fill/Kill (last 30 days)", "Medline Item Last on Fill/Kill"]
+    assert [rows[sku][header[3]] for sku in ("88885", "MDSO")] == ["3", "0"]
+    assert [rows[sku][header[4]] for sku in ("88885", "MDSO", "MDSX")] == ["2026-10-11", "2025-12-01", ""]
+    header, rows = exported()
+    assert header[3] == "Medline Item Weeks on Fill/Kill (last 26 weeks)" and rows["88885"][header[3]] == "3"
+
+    page = viewer.get("/fillkill/subs").get_data(as_text=True)
+    config = json.loads(re.search(r'<script id="fk-config" type="application/json">(.*?)</script>', page, re.S).group(1))
+    assert config["fillkillPeriods"] == {"default": "26w", "choices": [
+        {"period": "30d", "unit": "day", "units": 30, "label": "30 days"},
+        {"period": "10w", "unit": "week", "units": 10, "label": "10 weeks"},
+        {"period": "26w", "unit": "week", "units": 26, "label": "26 weeks"}]}
+    headers = [re.sub(r"<[^>]+>", " ", th).split() for th in re.findall(r'<th scope="col"[^>]*>(.*?)(?:<div|</th>)', page, re.S)]
+    # Weeks on Fill/Kill after Latest Comment, Orders last (the user, 2026-11-19); three headers sort.
+    assert [" ".join(words) for words in headers] == [
+        "Medline Item", "Reference SKU", "Vendor Items", "Status", "Entered", "Approved", "Latest Comment",
+        "Weeks on Fill/Kill", "Orders"]
+    assert re.findall(r'data-sort="(\w+)"', page) == ["medline_item", "reference_sku", "status"]
+    assert "Sub Item SKU" in page and "# of orders · last ordered" in page
+
+
+def test_no_sub_is_a_medline_items_status_on_the_subs_page_and_the_dashboard(app, viewer, finder_approver):
+    # No sub (the user, 2026-11-19): a Medline item on Fill/Kill with no live sub. Not a sub's status:
+    # nothing stores it. Its own rows on the Subs page, latest on Fill/Kill first, found by the search
+    # and the No sub status; counted in the Dashboard's Subs by status; in the export after the subs.
+    def library(**params):
+        status, data = get(viewer, "/fillkill/api/subs", **params)
+        assert status == 200
+        return [s["reference_sku"] for s in data["subs"]], [(r["medline_item"], r["medline_infor_item"], r["status"])
+                                                            for r in data["no_sub"]]
+
+    cups, gloves = ("DYND70294BH", "100339", "no_sub"), ("MDS2585H", "999999", "no_sub")
+    assert library() == ([], [cups, gloves])  # the cups last killed 9/30, the gloves 9/29
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "DYND70294BH", "reference_sku": "88885"})
+    cup_sub = data["sub"]["sub_id"]
+    assert library() == (["88885"], [gloves])
+    assert library(status="no_sub") == ([], [gloves])
+    assert library(status="approved") == (["88885"], [])
+    for only_subs in ({"source": "manual"}, {"needs_details": "1"}, {"deleted": "1"}):
+        assert library(**only_subs)[1] == [], only_subs
+    for q, found in (("mds2585", [gloves]), ("MDS-2585H", [gloves]), ("999999", [gloves]), ("88885", [])):
+        assert library(q=q)[1] == found, q
+    page = viewer.get("/fillkill/subs").get_data(as_text=True)
+    statuses = json.loads(re.search(r'<script id="fk-config" type="application/json">(.*?)</script>', page, re.S).group(1))["statuses"]
+    assert statuses[-1] == ["no_sub", "No sub"]
+
+    # A rejected sub is still a sub; a deleted one isn't.
+    _, data = post(finder_approver, "/fillkill/api/subs", {"medline_item": "MDS2585H", "reference_sku": "OM1"})
+    post(finder_approver, f"/fillkill/api/subs/{data['sub']['sub_id']}/status", {"status": "rejected"})
+    post(finder_approver, f"/fillkill/api/subs/{cup_sub}/delete", {"reason": "wrong item"})
+    assert library() == (["OM1"], [cups])
+    _, dashboard = get(viewer, "/fillkill/api/dashboard")
+    assert dashboard["subs_by_status"] == {"approved": 0, "hold": 0, "pending_review": 0, "rejected": 1, "no_sub": 1}
+
+    header, *lines = list(csv.reader(io.StringIO(viewer.get("/fillkill/subs/export").get_data(as_text=True).lstrip("﻿"))))
+    rows = [dict(zip(header, line)) for line in lines]
+    assert [(r["Medline Item"], r["Reference SKU"], r["Status"], r["Medline Item's Infor Item"]) for r in rows] == [
+        ("MDS2585H", "OM1", "Rejected", "999999"), ("DYND70294BH", "", "No sub", "100339")]
+    assert rows[1]["Medline Item Last on Fill/Kill"] == "2026-09-30" and rows[1]["Sub ID"] == ""
 
 
 def test_medlines_subs_say_which_list_they_came_from(app, viewer):

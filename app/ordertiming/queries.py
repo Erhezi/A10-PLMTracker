@@ -474,3 +474,64 @@ def export_short_lines(filters: Filters, today: date, limit: int = EXPORT_LIMIT)
     for line in lines:
         line.update(kills.get(line["medline_item"], NO_KILLS))
     return lines
+
+
+# --- Dashboard (2026-11-20) -------------------------------------------------------------------
+# The user: an overall picture of the order timing report. It reads Main's view only, in the days and
+# sites chosen (no search, no status), so it needs nothing new on O2. The grouping is here, in SQL;
+# app/ordertiming/dashboard.py turns these rows into the page's figures.
+
+REJECTED_ROWS = 20  # rejected lines' (code, item) rows the Dashboard lists, the most lines first
+
+
+def dashboard_orders(filters: Filters) -> list[dict]:
+    """One row per order (PO) in the days and sites: when Medline received it (the first line), created
+    its order and confirmed it (the last 855, of ``confirmed_lines`` of ``lines``), Medline's Mins to
+    Confirm, its first ASN (on ``asn_lines`` lines), and its rejected and short-shipped lines. Each order
+    line counts once in ``lines``, as on Main, even if it ever shows up under two days."""
+    def lines_where(condition):
+        return func.sum(case((condition, 1), else_=0))
+
+    statement = (select(col("order_no").label("order_no"),
+                        func.max(col("po")).label("po"),
+                        func.max(col("site")).label("site"),
+                        func.max(col("site_name")).label("site_name"),
+                        func.max(col("report_date")).label("report_date"),
+                        func.min(col("received_at")).label("received_at"),
+                        func.min(col("created_at")).label("created_at"),
+                        func.max(col("confirmed_at")).label("confirmed_at"),
+                        func.count(col("confirmed_at")).label("confirmed_lines"),
+                        func.max(col("mins_to_confirm")).label("mins_to_confirm"),
+                        func.min(col("asn_at")).label("asn_at"),
+                        func.count(col("asn_at")).label("asn_lines"),
+                        func.count(func.distinct(col("order_line"))).label("lines"),
+                        func.count().label("line_rows"),
+                        lines_where(col("status") == "rejected").label("rejected_lines"),
+                        lines_where(col("short_qty") > 0).label("short_lines"))
+                 .where(*_conditions(filters, scope_only=True))
+                 .group_by(col("order_no")))
+    return _rows(statement)
+
+
+def dashboard_days(filters: Filters) -> list[dict]:
+    """The lines per order day and Line Status, and how many of them are short shipped."""
+    statement = (select(col("report_date").label("day"), col("status").label("status"),
+                        func.count().label("lines"),
+                        func.sum(case((col("short_qty") > 0, 1), else_=0)).label("short_lines"))
+                 .where(*_conditions(filters, scope_only=True))
+                 .group_by(col("report_date"), col("status")))
+    return _rows(statement)
+
+
+def dashboard_rejected(filters: Filters, limit: int = REJECTED_ROWS) -> list[dict]:
+    """The rejected lines by Medline's reject code and item (as Medline wrote it, and as our PO had
+    it), the most first, with the POs they're on."""
+    keys = ("rej_code", "medline_item", "item_on_po", "description")
+    statement = (select(*(col(key).label(key) for key in keys),
+                        func.count().label("lines"),
+                        func.count(func.distinct(col("order_no"))).label("pos"))
+                 .where(*_conditions(filters, scope_only=True), col("status") == "rejected")
+                 .group_by(*(col(key) for key in keys))
+                 .order_by(func.count().desc(), col("rej_code"), col("medline_item"))
+                 .limit(limit))
+    return _rows(statement)

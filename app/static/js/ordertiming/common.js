@@ -93,14 +93,15 @@ export function filterState() {
   return state;
 }
 
-// Wires the search box, the days, the quick ranges and the sites menu to ``state``; ``reload`` runs
-// when one changes. Returns setDays, for the "Search the last 30 days" link.
+// Wires the search box (when the page has one: the Dashboard hasn't), the days, the quick ranges and
+// the sites menu to ``state``; ``reload`` runs when one changes. Returns setDays, for the "Search the
+// last 30 days" link.
 export function setupFilters(state, reload) {
   const qInput = $('ot-q');
   const startInput = $('ot-start');
   const endInput = $('ot-end');
   const siteMenu = $('ot-sites');
-  qInput.value = state.q;
+  if (qInput) qInput.value = state.q;
   startInput.value = state.start;
   endInput.value = state.end;
   [startInput, endInput].forEach((input) => {
@@ -122,28 +123,50 @@ export function setupFilters(state, reload) {
   };
   siteLabel();
 
-  const setDays = (start, end) => {
+  // ``days``: the quick range asked for (a button's, or the whole window's), so it's the one pressed
+  // when another one's days are the same.
+  const setDays = (start, end, days = null) => {
     state.start = start;
     state.end = end;
     startInput.value = start;
     endInput.value = end;
+    pickedDays = days == null ? null : String(days);
+    markQuickDays(start, end);
     reload();
   };
-  qInput.addEventListener('input', debounce(() => { state.q = qInput.value.trim(); reload(); }, 300));
+  if (qInput) qInput.addEventListener('input', debounce(() => { state.q = qInput.value.trim(); reload(); }, 300));
   [startInput, endInput].forEach((input) => input.addEventListener('change', () => {
     if (!startInput.value || !endInput.value) return;
     const [start, end] = startInput.value <= endInput.value ? [startInput.value, endInput.value] : [endInput.value, startInput.value];
     setDays(inWindow(start), inWindow(end));  // a day typed past the last 30 comes back to them
   }));
   document.querySelectorAll('[data-days]').forEach((button) => button.addEventListener('click', () => {
-    setDays(shiftDays(config.today, 1 - Number(button.dataset.days)), config.today);
+    setDays(inWindow(shiftDays(config.today, 1 - Number(button.dataset.days))), config.today, button.dataset.days);
   }));
   siteMenu.addEventListener('change', () => {
     state.sites = Array.from(siteMenu.querySelectorAll('input:checked')).map((b) => b.value);
     siteLabel();
     reload();
   });
+  markQuickDays(state.start, state.end);
   return { setDays };
+}
+
+// The quick range pressed (2026-11-20, as on Fill/Kill's Main): the button of Today, the last 7 or the
+// last 30 days (each ending today, and starting no earlier than the pages reach) that start..end is,
+// and none for any other days. Until the go-live is 30 days old, the last 7 and the last 30 days can
+// be the same days: then the one asked for is pressed, or else the shorter, so a page opening on its
+// last 7 days shows Last 7 days.
+let pickedDays = null;
+function markQuickDays(start, end) {
+  const buttons = Array.from(document.querySelectorAll('[data-days]'));
+  const fits = buttons.filter((button) => end === config.today
+    && start === inWindow(shiftDays(config.today, 1 - Number(button.dataset.days))));
+  const on = fits.find((button) => button.dataset.days === pickedDays) || fits[0];
+  buttons.forEach((button) => {
+    button.classList.toggle('active', button === on);
+    button.setAttribute('aria-pressed', String(button === on));
+  });
 }
 
 // The days the server took (held to the last 30, which can move at midnight), shown in the inputs.
@@ -152,6 +175,7 @@ export function showDays(state, { start, end }) {
   state.end = end;
   $('ot-start').value = start;
   $('ot-end').value = end;
+  markQuickDays(start, end);
 }
 
 // Whether the days are already all the pages can reach.

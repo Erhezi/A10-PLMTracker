@@ -19,6 +19,11 @@ STATUS_LABELS = {
     "hold": "Hold",
     "rejected": "Rejected",
 }
+# Not a sub's status but a Medline item's (2026-11-19, the user): on Fill/Kill with no live sub.
+# Nothing stores it: the Subs page lists such items as rows of their own, and the Dashboard's Subs by
+# status counts them (queries.items_without_subs).
+NO_SUB = "no_sub"
+NO_SUB_LABEL = "No sub"
 # Where a sub came from, as the Subs page's and the panel's Entered say it. Medline's are named as in
 # 11's vw_MedlineSubList (DataSource), and 14_pbo_sync.sql writes the same labels into History.
 SOURCE_LABELS = {

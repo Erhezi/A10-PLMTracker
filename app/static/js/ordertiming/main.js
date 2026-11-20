@@ -88,7 +88,7 @@ expandButton.addEventListener('click', () => showAll(!state.allOpen));
 const rows = $('ot-rows');
 rows.addEventListener('click', (event) => {
   if (event.target.closest('[data-search-window]')) {
-    setDays(config.earliest, config.today);
+    setDays(config.earliest, config.today, config.max_days);
     return;
   }
   const row = event.target.closest('.ot-order-row');

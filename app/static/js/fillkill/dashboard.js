@@ -2,10 +2,10 @@
  * Chart.js is loaded with `defer` in base.html's head, so it has run before this module does.
  */
 
-import { $, config, esc, fmtDate, getJSON, itemLink } from './common.js';
+import { $, config, esc, fmtDate, getJSON, itemLink, shiftDay } from './common.js';
 
 const statusLabels = config.statusLabels;
-const STATUS_COLOR = { approved: '#198754', hold: '#ffc107', pending_review: '#0dcaf0', rejected: '#dc3545' };
+const STATUS_COLOR = { approved: '#198754', hold: '#ffc107', pending_review: '#0dcaf0', rejected: '#dc3545', no_sub: '#6c757d' };
 const PALETTE = ['#003769', '#d6336c', '#2a9d8f', '#e9c46a', '#f4a261', '#6c757d', '#7b2cbf', '#0d6efd'];
 
 const state = { start: config.default.start, end: config.default.end, sites: [] };
@@ -17,6 +17,31 @@ const startInput = $('fk-dash-start');
 const endInput = $('fk-dash-end');
 startInput.value = state.start || '';
 endInput.value = state.end || '';
+
+// Today (2026-10-21), like Main's; the last 7 and 30 days end on the latest day with
+// kill lines, which on the live server is today too. Null when there's no such day.
+function quickRange(key) {
+  const last = config.bounds.last;
+  if (key === 'today') return config.today ? [config.today, config.today] : null;
+  if (!last) return null;
+  if (key === 'all') return [config.bounds.first, last];
+  const start = shiftDay(last, 1 - Number(key));
+  return [start < config.bounds.first ? config.bounds.first : start, last];
+}
+
+// The quick button pressed (2026-11-20): the default's when the page opens, then the one clicked.
+// Remembered rather than matched to the dates: while the data is short, the last 7 days, the last 30
+// and All are the same dates, and only one of them was chosen.
+const quick = $('fk-dash-quick');
+function pressQuick(key) {
+  quick.querySelectorAll('[data-days]').forEach((button) => {
+    const on = button.dataset.days === key;
+    button.classList.toggle('active', on);
+    button.setAttribute('aria-pressed', String(on));
+  });
+}
+pressQuick(config.default.quick);
+
 [startInput, endInput].forEach((input) => {
   if (config.bounds.first) input.min = config.bounds.first;
   const last = [config.bounds.last, config.today].filter(Boolean).sort().pop();  // today, even before its lines
@@ -25,35 +50,22 @@ endInput.value = state.end || '';
     if (!startInput.value || !endInput.value) return;
     [state.start, state.end] = startInput.value <= endInput.value
       ? [startInput.value, endInput.value] : [endInput.value, startInput.value];
+    // Dates typed in: the pressed button stays if they're still its dates, else the first one they are.
+    const same = (key) => String(quickRange(key)) === String([state.start, state.end]);
+    const pressed = quick.querySelector('[aria-pressed="true"]')?.dataset.days;
+    const keys = [...quick.querySelectorAll('[data-days]')].map((button) => button.dataset.days);
+    pressQuick(pressed && same(pressed) ? pressed : keys.find(same));
     load();
   });
 });
 
-// Today (2026-10-21), like Main's; the last 7 and 30 days end on the latest day with
-// kill lines, which on the live server is today too.
-document.querySelectorAll('[data-days]').forEach((button) => button.addEventListener('click', () => {
-  const last = config.bounds.last;
-  if (button.dataset.days === 'today') {
-    if (!config.today) return;
-    state.start = config.today;
-    state.end = config.today;
-    startInput.value = state.start;
-    endInput.value = state.end;
-    load();
-    return;
-  }
-  if (!last) return;
-  if (button.dataset.days === 'all') {
-    state.start = config.bounds.first;
-  } else {
-    const d = new Date(`${last}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - Number(button.dataset.days) + 1);
-    const start = d.toISOString().slice(0, 10);
-    state.start = start < config.bounds.first ? config.bounds.first : start;
-  }
-  state.end = last;
+quick.querySelectorAll('[data-days]').forEach((button) => button.addEventListener('click', () => {
+  const range = quickRange(button.dataset.days);
+  if (!range) return;
+  [state.start, state.end] = range;
   startInput.value = state.start;
   endInput.value = state.end;
+  pressQuick(button.dataset.days);
   load();
 }));
 
@@ -178,8 +190,9 @@ async function load() {
       seriesDatasets(data.by_reason.series, (name) => name), stacked);  // Medline's reason types, as sent
     draw('fk-chart-site', 'bar', data.by_site.days.map(fmtDate),
       seriesDatasets(data.by_site.series, (name) => name), stacked);
+    // No sub counts Medline items, not subs (2026-11-19): its label says so.
     const statuses = Object.keys(data.subs_by_status);
-    draw('fk-chart-status', 'doughnut', statuses.map((s) => statusLabels[s] || s),
+    draw('fk-chart-status', 'doughnut', statuses.map((s) => (s === 'no_sub' ? `${statusLabels[s]} (items)` : statusLabels[s] || s)),
       [{ data: statuses.map((s) => data.subs_by_status[s]), backgroundColor: statuses.map((s) => STATUS_COLOR[s]) }]);
     flow(data.flow);
     topItems(data.top_items);

@@ -317,13 +317,33 @@ const eachesText = (n) => `${fmtNumber(n)} <span class="text-muted small">EA</sp
 const killedSites = (row) => (row.sites || []).filter((s) => s.site && s.kills.some((k) => k.killed > 0));
 const eachesOrUnknown = (n) => (n == null ? "can't be counted" : `${fmtNumber(n)} EA`);
 
+const sitesTag = (n) => `<div class="small text-muted">${n} sites</div>`;
+
 function killedEachCell(row) {
   if (row.killed_each == null) return eachesUnknown("A UOM killed has no QOE in Infor, so it can't be counted in eaches");
   const sites = killedSites(row);
   if (sites.length < 2) return eachesText(row.killed_each);
   const each = sites.map((s) => `${siteName(s.site)}: ${eachesOrUnknown(s.killed_each)}`).join('\n');
-  return `<span title="${esc(each)}">${eachesText(row.killed_each)}</span><div class="small text-muted">${sites.length} sites</div>`;
+  return `<span title="${esc(each)}">${eachesText(row.killed_each)}</span>${sitesTag(sites.length)}`;
 }
+
+// Total Killed, in the UOM's own units: with kills at several sites, how many, each site's on hover
+// (2026-11-19, the user: as Total Killed (EA) has it).
+function killedCell(row, p) {
+  const sites = (row.sites || []).filter((s) => s.site).map((s) => ({
+    site: s.site, kills: s.kills.filter((k) => k.medline_item === p.medline_item && k.killed > 0),
+  })).filter((s) => s.kills.length);
+  const own = qtyLines(p.quantities, 'killed');
+  if (sites.length < 2) return own;
+  const each = sites.map((s) => `${siteName(s.site)}: ${s.kills.map((k) => `${fmtNumber(k.killed)} ${k.uom}`).join(', ')}`).join('\n');
+  return `<div title="${esc(each)}">${own}</div>${sitesTag(sites.length)}`;
+}
+
+// Double-click Total Killed for the kill lines behind it, in the item's panel (2026-11-19, the
+// user), for everyone: a UOM's for that Medline item, the All UOMs line's and Total Killed (EA)'s
+// for the whole Infor item.
+const killedTd = (item, attrs, scope, cls = 'text-end fw-semibold') => `<td class="${cls}" data-kill-lines="${esc(item)}"${scope
+  ? ` data-scope="${scope}"` : ''} title="Double-click for the kill lines"${attrs}>`;
 
 // With orders that fall short of what was killed, how many eaches short: with kills at several
 // sites, each site that's short (2026-10-27), since each orders for itself.
@@ -386,7 +406,7 @@ function itemRows(row) {
         ${first ? `<td class="fk-desc" data-to-end${all}><div class="text-truncate" title="${esc(row.description)}">${esc(row.description)}</div>${inforDesc}</td>` : ''}
         ${j ? '' : `<td class="text-end"${own}>${qoeLines(p.quantities)}</td>
         <td class="text-end"${own}>${qtyLines(p.quantities, 'ordered')}</td>
-        <td class="text-end fw-semibold"${own}>${qtyLines(p.quantities, 'killed')}</td>
+        ${killedTd(p.medline_item, own)}${killedCell(row, p)}</td>
         <td class="text-end"${own}>${qtyLines(p.quantities, 'filled')}</td>
         <td class="text-end"${own}>${fmtNumber(p.lines)}</td>
         <td${own}>${reasonCell(p.latest_reason)}</td>
@@ -396,7 +416,7 @@ function itemRows(row) {
         <td${split}>${vendorItemsCell(sub, subs.length > 1, p)}</td>
         ${first ? `<td data-to-end${all} role="button" data-open="${esc(packs[0].medline_item)}" data-scope="infor" data-tab="orders"
             title="Orders recorded in these Fill/Kill dates. Click for all of its orders">${ordering}</td>
-          <td class="text-end" data-to-end${all}>${killedEachCell(row)}</td>
+          ${killedTd(packs[0].medline_item, ` data-to-end${all}`, 'infor', 'text-end')}${killedEachCell(row)}</td>
           <td class="text-end" data-to-end${all}>${subOrderedEachCell(row)}</td>` : ''}
       </tr>`);
     });
@@ -414,7 +434,7 @@ function totalRow(row, note) {
     <td class="small text-muted">All UOMs, in EA</td>
     <td></td>
     <td class="text-end">${each('ordered')}</td>
-    <td class="text-end fw-semibold">${each('killed')}</td>
+    ${killedTd(row.packagings[0].medline_item, '', 'infor')}${each('killed')}</td>
     <td class="text-end">${each('filled')}</td>
     <td class="text-end">${fmtNumber(row.lines)}</td>
     <td></td>
@@ -459,16 +479,18 @@ export function setupTable() {
       openVendorItemForm(null, null, addWithoutSub.dataset.addItemVi);
       return;
     }
+    // On its Subs tab (2026-11-19, the user), unless the cell names another (Sub Ordering: Orders).
     const opener = event.target.closest('[data-open]');
-    if (opener) openPanel(opener.dataset.open, opener.dataset.tab || null, opener.dataset.scope);
+    if (opener) openPanel(opener.dataset.open, opener.dataset.tab || 'subs', opener.dataset.scope);
   });
   // A cell's buttons keep their own click: double-clicking one doesn't open the form too.
   mainTable.addEventListener('dblclick', (event) => {
-    const cell = event.target.closest('td[data-dblclick]');
+    const cell = event.target.closest('td[data-dblclick], td[data-kill-lines]');
     if (!cell || event.target.closest('button, a')) return;
     window.getSelection()?.removeAllRanges();  // the word the double-click selected
     closePopover();
-    if (cell.dataset.instruct) openInstructionForm(state.rows.find((row) => row.medline_items.includes(cell.dataset.instruct)));
+    if (cell.dataset.killLines) openPanel(cell.dataset.killLines, 'lines', cell.dataset.scope);
+    else if (cell.dataset.instruct) openInstructionForm(state.rows.find((row) => row.medline_items.includes(cell.dataset.instruct)));
     else if (cell.dataset.addSub) openAddSubForm(cell.dataset.addSub);
   });
 }

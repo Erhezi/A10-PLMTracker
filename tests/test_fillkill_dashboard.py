@@ -111,7 +111,9 @@ def test_dashboard_page_and_api(sqlite_app):
     assert data["headline"]["items"] == 1 and data["headline"]["lines"] == 30
     assert len(data["by_reason"]["days"]) == 30 and data["by_reason"]["series"]["MBO"] == [1] * 30
     assert data["by_site"]["series"] == {"WHITE PLAINS": [1] * 30}
-    assert data["subs_by_status"] == {"approved": 0, "hold": 0, "pending_review": 0, "rejected": 0}
+    # A, killed with no sub: No sub, a Medline item's (2026-11-19).
+    assert data["subs_by_status"] == {"approved": 0, "hold": 0, "pending_review": 0, "rejected": 0, "no_sub": 1}
+    assert '["no_sub", "No sub"]' in page.replace("\n", "").replace("  ", "")
     assert data["flow"] == {"items": 1, "kill_to_sub": None, "items_with_sub": 0, "sub_to_order": None,
                             "items_sub_ordered": 0, "kill_to_order": None, "items_ordered": 0}
     # Off for now (2026-10-21): subs added per week, rejected subs by vendor, and Ordering in the top items.

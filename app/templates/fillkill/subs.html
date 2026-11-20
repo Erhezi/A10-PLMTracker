@@ -2,9 +2,11 @@
 {% block title %}Fill/Kill Subs — Item Management{% endblock %}
 
 {% block content %}
-{# Every sub on file (2026-10-16; it was the "All subs" tab on Main): a reference for every
-   Fill/Kill role, read-only. Drawn by static/js/fillkill-subs.js from /fillkill/api/subs. Subs are
-   changed in the item panel on Main, which each row's Medline item opens. #}
+{# Every sub on file (2026-10-16; it was the "All subs" tab on Main), and each Medline item on
+   Fill/Kill with none, Status "No sub" (2026-11-19): a reference for every Fill/Kill role, read-only.
+   Drawn by static/js/fillkill/subs.js from /fillkill/api/subs. A row's Medline item opens its drawer
+   here (2026-11-20, the user; it went to Main before): the item and every live sub on it. Subs are
+   changed in the item panel on Main, which the drawer links to. #}
 <div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
   <h1 class="h4 fw-semibold mb-0">Fill/Kill Subs</h1>
   <span class="small text-muted" id="fk-subs-count" aria-live="polite"></span>
@@ -25,6 +27,10 @@
       <label for="fk-subs-source" class="form-label small text-muted mb-1">Source</label>
       <select class="form-select form-select-sm" id="fk-subs-source"><option value="">Any source</option></select>
     </div>
+    <div>
+      <label for="fk-subs-period" class="form-label small text-muted mb-1">On Fill/Kill over</label>
+      <select class="form-select form-select-sm" id="fk-subs-period"></select>
+    </div>
     <div class="form-check mb-1">
       <input class="form-check-input" type="checkbox" id="fk-subs-needs" />
       <label class="form-check-label small" for="fk-subs-needs">No vendor item yet</label>
@@ -34,7 +40,7 @@
       <label class="form-check-label small" for="fk-subs-deleted">Deleted subs</label>
     </div>
     <a class="btn btn-sm btn-outline-primary" id="fk-subs-export" href="{{ config.api.export }}"
-       title="Every sub these filters match, as a spreadsheet: a row per vendor item"><i class="bi bi-download"></i> Export CSV</a>
+       title="Every sub these filters match, as a spreadsheet: a row per vendor item, then the items with no sub"><i class="bi bi-download"></i> Export CSV</a>
   </div>
 </div>
 
@@ -45,22 +51,43 @@
       <table class="table table-sm table-hover align-middle mb-0 fk-table">
         <thead class="table-light">
           <tr>
-            <th scope="col">Medline Item<div class="fw-normal small text-muted">Its Infor Item</div></th>
-            <th scope="col">Reference SKU</th>
+            {# Medline Item, Reference SKU and Status sort the table (the user, 2026-11-19; subs.js). #}
+            <th scope="col" data-sort="medline_item"><button type="button" class="fk-sort">Medline Item</button><div class="fw-normal small text-muted">Its Infor Item</div></th>
+            <th scope="col" data-sort="reference_sku"><button type="button" class="fk-sort">Reference SKU</button><div class="fw-normal small text-muted">Sub Item SKU</div></th>
             <th scope="col">Vendor Items<div class="fw-normal small text-muted">Sub vendor part · UOM · vendor</div></th>
-            <th scope="col">Status</th>
-            <th scope="col">Orders</th>
+            <th scope="col" data-sort="status"><button type="button" class="fk-sort">Status</button></th>
             <th scope="col">Entered</th>
             <th scope="col">Approved</th>
             <th scope="col">Latest Comment</th>
+            {# The Medline item's days or calendar weeks (Mon-Sun, 2026-11-20) with a kill line in the
+               period chosen (2026-11-19; after Latest Comment, the user): how many, the latest day, and
+               a stick for each, the latest on the right. subs.js fills in the period's words. #}
+            <th scope="col" title="The days or calendar weeks (Monday to Sunday) the Medline item had a kill line in the period chosen above: how many, its latest day on Fill/Kill, and a stick for each day or week, lit when it was killed, the latest on the right (this week counts so far)">
+              <span data-period-head="Unit">Weeks</span> on Fill/Kill
+              <div class="fw-normal small text-muted"># in last <span data-period-head="label">26 weeks</span> · last seen</div>
+              <div class="fw-normal small text-muted" data-period-head="stick">A stick a week (Mon–Sun), this week at right</div>
+            </th>
+            <th scope="col">Orders<div class="fw-normal small text-muted"># of orders · last ordered</div></th>
           </tr>
         </thead>
         <tbody id="fk-subs-rows">
-          <tr><td colspan="8" class="text-muted small p-3">Loading…</td></tr>
+          <tr><td colspan="9" class="text-muted small p-3">Loading…</td></tr>
         </tbody>
       </table>
     </div>
   </div>
+</div>
+
+{# A Medline item's drawer (2026-11-20, the user): its details and all its subs, read-only. #}
+<div class="offcanvas offcanvas-end fk-panel" tabindex="-1" id="fk-item-drawer" aria-labelledby="fk-item-drawer-title">
+  <div class="offcanvas-header border-bottom align-items-start">
+    <div class="me-3">
+      <h2 class="h5 mb-0" id="fk-item-drawer-title"></h2>
+      <div class="small text-muted" id="fk-item-drawer-subtitle"></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  </div>
+  <div class="offcanvas-body" id="fk-item-drawer-body"></div>
 </div>
 
 <script id="fk-config" type="application/json">{{ config|tojson }}</script>

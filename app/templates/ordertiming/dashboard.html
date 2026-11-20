@@ -2,18 +2,142 @@
 {% block title %}Order Timing Dashboard — Item Management{% endblock %}
 
 {% block content %}
-{# Order Timing's Dashboard (2026-10-30): read-only for every Fill/Kill role. Trends from Medline's
-   order feed; empty until that data is ready. #}
+{# Order Timing's Dashboard (2026-11-20): the whole picture of Medline's order feed in the days and
+   sites chosen. Read-only for every Fill/Kill role. Drawn by static/js/ordertiming/dashboard.js from
+   /ordertiming/api/dashboard (app/ordertiming/dashboard.py) with Chart.js, which base.html loads.
+   The filters are Main's, with the same IDs (static/js/ordertiming/common.js), without the search;
+   it opens on the last 7 days. #}
 <div class="d-flex flex-wrap align-items-baseline gap-2 mb-3">
   <h1 class="h4 fw-semibold mb-0">Order Timing Dashboard</h1>
+  <span class="small text-muted" id="ot-dash-range" aria-live="polite"></span>
+  <span class="ms-auto small d-flex flex-wrap gap-3" id="ot-as-of" aria-live="polite"
+        title="When Medline's order data was last loaded. Times are Medline's, as Medline sends them."></span>
 </div>
 
-<div class="card shadow-sm border-0">
-  <div class="card-body text-center text-muted py-5" id="ot-dash-empty">
-    <i class="bi bi-bar-chart-line fs-2 d-block mb-2" aria-hidden="true"></i>
-    <p class="mb-1">This page will show trends in when Medline receives and fills our EDI orders, from Medline's
-      own data feed.</p>
-    <p class="small mb-0">That data isn't ready yet, so there's nothing to show here.</p>
+<div id="ot-problem"></div>
+
+<div class="card shadow-sm border-0 mb-3">
+  <div class="card-body d-flex flex-wrap gap-3 align-items-end">
+    <div>
+      <span class="form-label small text-muted d-block mb-1" id="ot-dates-label">Order days</span>
+      <div class="d-flex gap-2 align-items-center" role="group" aria-labelledby="ot-dates-label">
+        <input type="date" id="ot-start" class="form-control form-control-sm" aria-label="First order day" />
+        <span class="small text-muted">to</span>
+        <input type="date" id="ot-end" class="form-control form-control-sm" aria-label="Last order day" />
+      </div>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges">
+      <button type="button" class="btn btn-outline-secondary" data-days="1">Today</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
+      <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
+    </div>
+    <div>
+      <span class="form-label small text-muted d-block mb-1">Sites</span>
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="ot-sites-button"
+                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">All sites</button>
+        <div class="dropdown-menu p-2 fk-sites-menu" id="ot-sites" aria-labelledby="ot-sites-button"></div>
+      </div>
+    </div>
   </div>
 </div>
+
+<div id="ot-dash-error"></div>
+
+<div class="ot-dash-body" id="ot-dash-body">
+  <div class="row g-3 mb-3" id="ot-dash-headline"></div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm border-0 h-100"><div class="card-body">
+        <h2 class="h6 fw-semibold mb-1">Lines per day, by status</h2>
+        <p class="small text-muted mb-2">Each line where it is with Medline, by the day Medline created the order.
+          Hover a day for its short-shipped lines.</p>
+        <div class="fk-chart"><canvas id="ot-chart-days" role="img"
+          aria-label="Order lines per day, by status: ASN sent, confirmed, not confirmed, rejected"></canvas></div>
+      </div></div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm border-0 h-100"><div class="card-body">
+        <h2 class="h6 fw-semibold mb-1">When POs come in, and how fast Medline confirms them</h2>
+        <p class="small text-muted mb-2">POs by the hour Medline received them (Medline's clock), shaded by the time to
+          its confirmation (855). Evening POs can wait for Medline to create their order overnight.</p>
+        <div class="fk-chart"><canvas id="ot-chart-received" role="img"
+          aria-label="POs by the hour Medline received them, by time to confirm"></canvas></div>
+      </div></div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm border-0 h-100"><div class="card-body">
+        <h2 class="h6 fw-semibold mb-1">Which POs get their ASN the same day</h2>
+        <p class="small text-muted mb-2">POs by the hour Medline created the order (Medline's clock). Medline's report
+          covers each order day only: an ASN sent the day after doesn't reach this feed.</p>
+        <div class="fk-chart"><canvas id="ot-chart-created" role="img"
+          aria-label="POs by the hour Medline created the order, with an ASN that day or without one"></canvas></div>
+      </div></div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card shadow-sm border-0 h-100"><div class="card-body">
+        <h2 class="h6 fw-semibold mb-1">Slowest POs to confirm</h2>
+        <p class="small text-muted mb-2">From Medline receiving the PO to its 855. Click a PO to open it on Main.</p>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0 ot-dash-table">
+          <thead class="table-light"><tr>
+            <th scope="col">PO</th>
+            <th scope="col">Site</th>
+            <th scope="col">Received</th>
+            <th scope="col" title="When Medline sent its 855; hover for when it created the order">Confirmed</th>
+            <th scope="col" class="text-end">Took</th>
+            <th scope="col" class="text-end">Lines</th>
+          </tr></thead>
+          <tbody id="ot-dash-slowest"></tbody>
+        </table></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0 mb-3"><div class="card-body">
+    <h2 class="h6 fw-semibold mb-1">By site</h2>
+    <p class="small text-muted mb-2">Each Sold-To's POs in these days.</p>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0 ot-dash-table">
+      <thead class="table-light"><tr>
+        <th scope="col">Site</th>
+        <th scope="col" class="text-end">POs</th>
+        <th scope="col" class="text-end">Lines</th>
+        <th scope="col" class="text-end" title="POs with Medline's 855 on every line">Confirmed</th>
+        <th scope="col" class="text-end" title="From Medline receiving the PO to its 855">Median to confirm</th>
+        <th scope="col" class="text-end" title="POs Medline took over an hour to confirm">Over 1 hour</th>
+        <th scope="col" class="text-end" title="POs with an ASN on the day Medline created the order">ASN same day</th>
+        <th scope="col" class="text-end" title="From Medline receiving the PO to its first ASN, for POs with one">Median receipt to ASN</th>
+        <th scope="col" class="text-end">Rejected lines</th>
+        <th scope="col" class="text-end" title="Lines Medline shipped fewer of than ordered, and their share of the site's lines">Short-shipped lines</th>
+      </tr></thead>
+      <tbody id="ot-dash-sites"></tbody>
+      <tfoot id="ot-dash-sites-total"></tfoot>
+    </table></div>
+  </div></div>
+
+  <div class="card shadow-sm border-0 mb-4"><div class="card-body">
+    <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
+      <h2 class="h6 fw-semibold mb-0">Rejected lines, by Medline's reject code</h2>
+      <a class="small ms-auto" id="ot-dash-rejected-link" href="#">See them on Main</a>
+    </div>
+    <p class="small text-muted mb-2">Lines Medline flagged as bad lines: they won't be filled. The item as Medline
+      wrote it, and as our PO had it.</p>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0 ot-dash-table">
+      <thead class="table-light"><tr>
+        <th scope="col">Reject code</th>
+        <th scope="col">Medline item<div class="fw-normal small text-muted">Item # on our PO</div></th>
+        <th scope="col">Description</th>
+        <th scope="col" class="text-end">Lines</th>
+        <th scope="col" class="text-end">POs</th>
+      </tr></thead>
+      <tbody id="ot-dash-rejected"></tbody>
+    </table></div>
+  </div></div>
+</div>
+
+<script id="ot-config" type="application/json">{{ config|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/ordertiming/dashboard.js') }}"></script>
 {% endblock %}

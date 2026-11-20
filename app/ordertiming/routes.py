@@ -3,8 +3,10 @@
 Medline sends a feed of the EDI orders it received from us (A13 loads it hourly into SCSFileIngestor).
 Main (2026-11-16) finds orders in it, by PO, item, site and status, to see whether Medline received
 and confirmed them. Short Ships (2026-11-17) lists the items Medline short shipped, with how often
-Fill/Kill's feed killed each one. The Dashboard is still empty. Nothing is entered here. Every
-Fill/Kill role can view it (``access.MODULES[ORDERTIMING]`` has no roles of its own).
+Fill/Kill's feed killed each one. The Dashboard (2026-11-20) gives the whole picture: volumes, how fast
+Medline confirms, when POs come in and ship, and what it rejects or short ships, per site
+(dashboard.py). Nothing is entered here. Every Fill/Kill role can view it
+(``access.MODULES[ORDERTIMING]`` has no roles of its own).
 """
 
 from __future__ import annotations
@@ -23,12 +25,13 @@ from ..fillkill import queries as fillkill_queries
 from ..models import now_ny_naive
 from ..utility import freshness
 from ..utility.access import ORDERTIMING, is_admin, require_module
-from . import queries
+from . import dashboard, queries
 
 bp = Blueprint("ordertiming", __name__, url_prefix="/ordertiming")
 
 MAIN_DAYS = 1  # Main opens on today (the user, 2026-11-17; the last 7 days before)
 SHORT_SHIPS_DAYS = 1  # Short Ships too (the user, 2026-11-18; the last 7 days before)
+DASHBOARD_DAYS = 7  # the Dashboard on the last 7 days (2026-11-20): trends need more than a day
 MAX_DAYS = 30  # and both look back no further than the last 30 (the user, 2026-11-16: volume, speed),
 # nor before ORDERTIMING_FIRST_DAY (config.py: Medline's LUM go-live, 2026-11-16)
 Q_MAX = 500  # characters of search text taken (a pasted list of POs fits)
@@ -221,7 +224,17 @@ def shortships_page():
 @login_required
 @require_module(ORDERTIMING, "view")
 def dashboard_page():
-    return render_template("ordertiming/dashboard.html")
+    """The Dashboard (2026-11-20): the days and sites as Main has them, no search; drawn by
+    static/js/ordertiming/dashboard.js from /ordertiming/api/dashboard."""
+    config = {
+        **page_config(now_ny_naive().date(), DASHBOARD_DAYS),
+        # Lists, not objects, to keep their order (page_config says why).
+        "confirm_bands": [[key, label] for key, label, _limit in dashboard.CONFIRM_BANDS] + [list(dashboard.NOT_CONFIRMED)],
+        "slow_minutes": dashboard.SLOW_MINUTES,
+        "api": {"dashboard": url_for("ordertiming.api_dashboard"), "main": url_for("ordertiming.index"),
+                "shortships": url_for("ordertiming.shortships_page")},
+    }
+    return render_template("ordertiming/dashboard.html", config=plain(config))
 
 
 # --- reads --------------------------------------------------------------------------------
@@ -305,6 +318,18 @@ def api_shortships():
         "data": data_as_of(),
         "fillkill_data": fillkill_as_of(),
     }))
+
+
+# --- Dashboard (2026-11-20) -----------------------------------------------------------------------
+
+@bp.get("/api/dashboard")
+@login_required
+@require_module(ORDERTIMING, "view")
+def api_dashboard():
+    """The Dashboard's figures (dashboard.build) for the days and sites; a search or status is ignored."""
+    picked = filters_from_request(DASHBOARD_DAYS)
+    filters = queries.Filters(picked.start, picked.end, picked.sites)
+    return jsonify(plain({**dashboard.build(filters), "data": data_as_of()}))
 
 
 # Short Ships' export: every short-shipped line, each with its item's kill counts.

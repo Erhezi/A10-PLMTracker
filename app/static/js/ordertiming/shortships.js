@@ -78,7 +78,7 @@ expandButton.addEventListener('click', () => showAll(!state.allOpen));
 const rows = $('ot-rows');
 rows.addEventListener('click', (event) => {
   if (event.target.closest('[data-search-window]')) {
-    setDays(config.earliest, config.today);
+    setDays(config.earliest, config.today, config.max_days);
     return;
   }
   if (event.target.closest('a')) return;  // Open in Fill/Kill

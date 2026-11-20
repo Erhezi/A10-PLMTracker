@@ -392,7 +392,7 @@ Trends and analytics live on a separate Dashboard page (section 7).
   newest day with lines). The page link leaves today's dates out. **Find an item** comes first,
   before the dates, as on Order Timing (2026-11-19).
 - **Site filter:** one or more sites. Default: all. It applies to the kill lines and, since
-  2026-10-27, to the orders: with sites chosen, only their orders count in Ordering Status, Total Sub
+  2026-10-27, to the orders: with sites chosen, only their orders count in Sub Ordering, Total Sub
   Ordered (EA), the Needs filter and the orders under the table. Orders recorded before sites were
   (no site) count only when every site is shown.
 - **Needs filter:** All · Needs subs · Needs review · Needs details · Needs order · Ordered (9.8;
@@ -442,7 +442,7 @@ rest:
 | Sub Approved by Nursing | ("Approved by Nursing" from 2026-10-28 until the user renamed it on 2026-11-02; 2026-10-28: every approved sub, since every one can be ordered; before, the picks: "Approver's Pick" until 2026-10-21, "Picked for Ordering" until 2026-10-28) per UOM: each approved sub's **Reference SKU**, as entered (2026-10-20), on a line of its own (2026-10-21; oldest first), the UOM's other cells spanning its subs' lines. A sub put on hold or rejected leaves it. A pencil when it has no vendor item yet, so nothing can be ordered, shown only to those who add vendor items, for whom it opens the vendor item form (2026-10-21: to Viewers and Sub Approvers it looked like a button that didn't work). A comments icon beside each (2026-10-21, the user) counts its comments and opens them all, newest first, in a popover, for everyone, without the panel. **Under the Reference SKU, its latest comment as text** (2026-10-27, for the nursing manager): up to two lines (the whole on hover), with who wrote it and when. **Double-click the cell** (Sub Approvers and Sub Finders, 2026-10-27, the user): a modal adds a sub for that line's Medline item (Reference SKU and note, the panel's Add sub), showing the subs on file and the approved ones |
 | SCM Comments | (2026-10-27; "MM Instruction" until the user renamed it and moved it before Vendor Item Detail the same day, "Will's Comments" until 2026-11-02) for the Infor item: SCM's latest instruction to the sites' Materials Managers, up to three lines (the whole on hover), with who and when. Its icon counts them and opens them all, newest first, in a popover. SCM **double-clicks the cell** to write a new one (no button in the cell; the cell is outlined under the pointer, and says so on hover), or uses the panel's Add comment. It isn't tied to the Fill/Kill dates: the latest stays in force until a newer one replaces it, and its date shows how old it is |
 | Vendor Item Detail | per approved sub, on its line (2026-10-20; beside it from 2026-10-21): a tile for each of its vendor items (vendor part, UOM/QOE as in `CA/400`, vendor ID and name). A Materials Manager clicks one to record an order; "+ Vendor item" adds another. **Without a sub** (2026-11-02, the user): on the UOM's line with no approved sub (the only line when none is approved, an extra one once it has vendor items without a sub), the tiles of its vendor items without a sub, and, for Materials Managers and SCM, "+ Vendor item" to add one (section Ordering) |
-| Ordering Status | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
+| Sub Ordering (renamed 2026-11-19, the user; "Ordering" before, "Ordering Status" at first) | for the Infor item: *ordered* when a non-voided order for any of its Medline items, for a site shown (2026-10-27), has an Ordered DT inside the Fill/Kill dates (9.3; 2026-10-20, back from "on or after the first day"), otherwise *no order*; it lists each order's quantity, UOM, **site** (2026-10-27) and date, newest first (three, then "+N more"); click for the Orders tab, which has all of them |
 | Total Killed (EA) | (2026-10-21, the user) for the Infor item: killed in the Fill/Kill dates at the sites shown, all its UOMs, in eaches by Infor's QOE (an EA without one counts 1); "—" when a UOM has no QOE. Killed at several sites: each site's eaches on hover |
 | Total Sub Ordered (EA) | (2026-10-21) for the Infor item: its subs' orders in the Fill/Kill dates for the sites shown, in eaches, each order's quantity times its own QOE; "—" when an order's UOM has none. Fewer than killed: "N EA short" in red. Killed at several sites (2026-10-27): a red line per site that's short ("Moses: 20 EA short"), since each site orders for itself. Why: kill lines keep coming in through the day, so an item ordered for 10 EA at 11:00 may have 30 EA killed by 2:15 |
 
@@ -485,6 +485,15 @@ not on it yet. The API returns the whole Infor item either way; the page filters
   Under each section, the other UOMs' subs not on it yet, with "Add to <Medline item>" (the
   Reference SKU only: vendor items are per UOM). Add a sub, choosing the Medline item (the one
   clicked by default); a sub's History includes its vendor items'.
+- **Kill lines** (by site, 2026-11-20, the user: as Order Timing's orders and their lines; before,
+  a table of every line, and on 2026-11-19 a switch between each line and by site): a row per site,
+  most lines first, then *All sites*: what it killed per UOM (in eaches too with several UOMs, when
+  each has a QOE), its kill lines, and how many requesting locations (ship-to codes), each listed
+  on hover. Every site starts folded, a single one too (the user, same day). A click on a site (or
+  Enter) opens its lines in a table under it, newest first: ordered, Medline item (with several
+  UOMs), ship-to, PO, killed / ordered, and Medline's reason type with its comment right after it
+  on the same line (the user, same day; the comment was on a line of its own). *Show all lines*
+  opens every site. The sites open stay open across tabs and reloads until another item opens.
 - **Sub History** (was "Pick history"; renamed 2026-10-15, since "pick" means something specific to
   Materials Managers): every sub added, every status change and deletion on the item's subs,
   and every vendor item added and deleted (2026-10-20), across all days, so the Sub Approver sees
@@ -659,7 +668,7 @@ a Sub Finder's; until then these were the sub's own "vendor details", one set pe
     approved subs). The form is the usual vendor item form; its contract search starts from the
     Infor item, to find the same item from other vendors. The Medline item itself from Medline is
     still refused.
-  - Orders of one have no sub (`SubOrder.sub_id` empty) and count like any other: Ordering, Total
+  - Orders of one have no sub (`SubOrder.sub_id` empty) and count like any other: Sub Ordering, Total
     Sub Ordered (EA), the recommendation. The panel's Orders tab says "no sub, as SCM directs".
   - Needs: such a vendor item makes the item *Needs order* (until ordered) and never *Needs
     details*; *Needs subs* still shows while it has no live sub. Dashboard: it counts in kill to
@@ -761,7 +770,7 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
     sort by: Total Ordered/Killed/Filled, eaches when every UOM has a QOE (else the quantities as
     they are); QOE, the largest; Latest Reason, Medline's reason type then its date; Subs Status,
     how many subs then how many approved; Sub Approved by Nursing and Vendor Item Detail, how many;
-    SCM Comments and Ordering, the latest one's date. In the browser only (`main/sort.js`).
+    SCM Comments and Sub Ordering, the latest one's date. In the browser only (`main/sort.js`).
   - **Sub Orders Recorded** (named so 2026-11-19; "Orders Recorded" from 2026-11-16, "Orders" before): the orders recorded, voided ones included, by their own date, with **date controls of
     their own** (default: today since 2026-11-19, the last 30 days before; Today / 7 / 30 days, the one the dates are pressed), independent of the table's, so a
     Materials Manager can look up past orders on the fly (2026-10-19; the user kept it on Main
@@ -786,19 +795,73 @@ In the PLM schema: `UserModuleRole` (user, module, role, granted by/at); admin i
 - **Subs** (`/subs`, 2026-10-16; it was the "All subs" tab on Main): every sub on file, as a data
   asset. Filters: text (item, Reference SKU, or a vendor item's vendor part, manufacturer part,
   Infor item, vendor, vendor ID or description), status, source, "no vendor item yet", and deleted
-  subs (with who, when, why). Columns: the Medline item and its Infor item, the **Reference SKU**,
-  the **Vendor Items** (each: vendor part, UOM/QOE, vendor and vendor ID, with manufacturer part,
-  Infor item and description under it; 2026-10-20), status, orders (count, last date), who entered
-  and approved it, and the latest comment. **Export CSV** gives everything the filters match, **one
+  subs (with who, when, why). Columns: the Medline item and its Infor item, the **Reference SKU**
+  (its header says "Sub Item SKU", 2026-11-19), the **Vendor Items** (each: vendor part, UOM/QOE,
+  vendor and vendor ID, with manufacturer part, Infor item and description under it; 2026-10-20),
+  status, who entered and approved it, the latest comment, **Weeks (or Days) on Fill/Kill** (below;
+  after Latest Comment, the user, 2026-11-19), and last (2026-11-19, the user) **Orders**: the sub's
+  orders that aren't voided, every site's and all time, as "# of orders · last ordered". **Medline
+  Item, Reference SKU and Status sort the table** (the user, 2026-11-19), in the browser, as Main's
+  headers do: A to Z, Z to A, then the page's own order (Status: Approved, Hold, Pending Review,
+  Rejected, No sub). **Export CSV** gives everything the filters match, **one
   row per vendor item** (a sub without one has a row of its own): Reference SKU, then the vendor
   item's columns, which all start with "Sub" (Sub Vendor Part, Sub Manufacturer Part, Sub Infor
   Item, Sub Vendor ID, Sub Vendor Name, Sub Description, Sub UOM, Sub QOE), apart from the Medline
-  item's; Orders and Last Ordered are the sub's. Read-only; a row's Medline item opens the panel on
-  Main.
+  item's; Orders and Last Ordered are the sub's; then a row per No sub item. Read-only.
+  - **A Medline item's subs together** (the user, 2026-11-20: so an item with more than one sub or
+    sub candidate can't be missed): in the page's own order and sorted by Medline Item, its subs
+    are on rows next to each other, where its newest change puts it; the item and its Weeks on
+    Fill/Kill on the first row only, a dashed line between its subs, and **"Total N subs"** in grey
+    under the item: every live sub it has (`item_subs`, `queries._live_sub_counts`), with "M shown"
+    when the filters keep fewer. Sorted by Reference SKU or Status, each row stands alone, the total
+    under its item. Deleted subs: "N live subs".
+  - **The item's drawer** (the user, 2026-11-20; a row's Medline item went to the panel on Main
+    before): a click on a Medline item opens a drawer on the Subs page: the Medline item (UOM,
+    QOE), its description, the Infor item (active or not), long description, commodity,
+    manufacturer, and its days or weeks on Fill/Kill; then **every live sub on it**, whatever the
+    filters show, approved first, then hold, pending review, rejected, under "Total N subs · 2
+    Approved · 1 Hold": each with its Reference SKU, status, who entered and approved it, its
+    vendor items, latest comment and orders (not voided: how many, the last); then its vendor items
+    without a sub. Read-only; **Open on Main** (or Ctrl+click on the item) goes to its panel there,
+    where subs are changed. It reads `/fillkill/api/item`, the panel's own.
+  - **No sub** (the user, 2026-11-19): a status of its own, for every Medline item on Fill/Kill (a
+    kill line, ever) with no live sub. It's a Medline item's state, not a sub's: nothing stores it
+    (`queries.items_without_subs`, `rules.NO_SUB`), so the workflow, the tables and the roles don't
+    change; nursing adds a sub in the item's panel on Main as before, and the item leaves No sub.
+    An item whose subs were all deleted is No sub; one whose subs are all rejected isn't (it has
+    subs, listed as Rejected), unlike Main's *Needs subs*, which counts it. On the Subs page each
+    such item has a row after the subs (latest on Fill/Kill first): the Medline item and its Infor
+    item, the *No sub* badge, and Weeks on Fill/Kill; the Status filter's *No sub* shows only them,
+    the text search finds them by the Medline or Infor item, and a filter only subs meet (a source,
+    no vendor item yet, deleted) leaves them out. The count says "N subs · M items with no sub".
+    The Dashboard's *Subs by status* counts them as *No sub (items)*.
+  - **Weeks or Days on Fill/Kill** (2026-11-19, the user): how often the sub's Medline item is
+    killed, over a period ending today that a filter, *On Fill/Kill over*, picks: the last **26
+    weeks** (the default), **10 weeks** or **30 days** (only these three). Over weeks, the column
+    is *Weeks on Fill/Kill* and counts the weeks with a kill line for the item; a week is a
+    **calendar week, Monday to Sunday** (the user, 2026-11-20; 7 days ending today the day before),
+    the last being this week so far: lit if the item was on Fill/Kill any day of it yet, so 26
+    weeks start on the Monday 25 weeks before this one (`queries.period_start`). Over 30 days it's
+    *Days on Fill/Kill*, counting days. Under the count, the item's latest day on Fill/Kill, however
+    long ago; then a stick per week (or day) of the period, the latest on the right, lit when it was
+    killed, with the week's Monday-Sunday dates (or the day) on hover, "this week, so far" on the
+    last. Fewer sticks are wider, so the bar is about as wide (~120 px)
+    whichever period. "Never" when it has no kill lines at all (e.g. a Medline PBO sub for an item
+    not killed). Read from `vw_MedlineFillKill`'s Item and Order Date (`queries.fillkill_presence`;
+    ~30 ms on O2); no script. The export has it as *Medline Item Weeks on Fill/Kill (last 26 weeks)*
+    (or the period chosen) and *Medline Item Last on Fill/Kill*.
 - **Dashboard** (`/dashboard`): trends and analytics, e.g. kills over time by reason and site, sub
   coverage, time to review, and the most killed items with their subs. Read-only for every Fill/Kill
   role. Separate from PLM Tracker's dashboard. Quick dates: Today, Last 7 days, Last 30 days, All
-  (2026-10-21: Today added; the 7 and 30 days end on the latest day with kill lines).
+  (2026-10-21: Today added; the 7 and 30 days end on the latest day with kill lines). It opens on
+  the last 30 days (`DASHBOARD_DAYS`). The button in effect shows pressed (2026-11-20, the user):
+  the default's when the page opens, then the one clicked. Dates typed in keep it pressed if they
+  are still its dates, or press the first button whose dates they are. It isn't matched to the
+  dates, unlike Main's: while the data is short, the last 7 days, the last 30 and All are the same
+  dates.
+  **Subs by status** counts every live sub by its status, whatever the dates and sites, and
+  (2026-11-19, the user) the Medline items on Fill/Kill with no sub as a grey *No sub (items)* slice,
+  the same items as the Subs page's No sub rows.
   **Off for now** (the user, 2026-10-21): subs added per week by source, rejected subs by vendor,
   and the Ordering column of the most killed items (over a period it added nothing and could
   mislead). `dashboard.weekly_new_subs` and `rejected_groups` stay, to bring the first two back.

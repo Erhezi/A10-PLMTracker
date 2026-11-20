@@ -10,7 +10,7 @@ import { can, siteName, state } from './state.js';
 import { customerFlag } from './table.js';
 
 export function renderPanelTab(tab, view) {
-  if (tab === 'lines') return linesTab(view.lines, view.many);
+  if (tab === 'lines') return linesTab(view);
   if (tab === 'history') return historyTab(view.history, view.many);
   if (tab === 'orders') return ordersTab(view.orders, view.many);
   return subsTab(view);
@@ -186,19 +186,109 @@ function shipTo(l) {
   return [code, esc(l.department || '')].filter(Boolean).join(' · ');
 }
 
-function linesTab(lines, many) {
+// The kill lines by site (2026-11-20, the user; as Order Timing's orders and their lines, instead of
+// switching between each line and by site): a row per site with what it killed, per UOM (in eaches
+// too with several UOMs, when each has a QOE), its kill lines and how many locations requested them,
+// each listed on hover; most lines first, then "All sites". Every site starts folded, a single one
+// too (the user, 2026-11-20); a click on a site (or Enter) shows its lines under it. Which are open
+// is kept while the item is open.
+function linesTab(view) {
+  const { lines, many } = view;
   if (!lines.length) return '<p class="text-muted small">No kill lines for these dates and sites.</p>';
-  return `<div class="table-responsive"><table class="table table-sm align-middle fk-panel-table">
-    <thead class="table-light"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Site · Ship-To</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
-    <tbody>${lines.map((l) => `<tr>
+  const qoe = new Map(view.packs.flatMap((p) => (p.uom_qoes || []).map((u) => [`${p.medline_item}|${u.uom}`, u.qoe])));
+  const rollUp = (group) => {
+    const units = new Map();
+    let each = 0;
+    const locations = new Map();
+    group.forEach((l) => {
+      units.set(l.um || '', (units.get(l.um || '') || 0) + (l.killed || 0));
+      const q = qoe.get(`${l.medline_item}|${l.um}`);
+      each = each == null || q == null ? null : each + (l.killed || 0) * q;
+      const where = locationOf(l);
+      if (where) {
+        const found = locations.get(where) || { name: l.department, lines: 0 };
+        found.lines += 1;
+        locations.set(where, found);
+      }
+    });
+    return { units, each, locations, lines: group };
+  };
+  const killed = (r) => [...r.units].map(([um, n]) => `<div>${fmtNumber(n)} <span class="text-muted small">${esc(um)}</span></div>`).join('')
+    + (r.units.size > 1 && r.each != null ? `<div class="text-muted small">${fmtNumber(r.each)} EA</div>` : '');
+  const places = (r) => {
+    const list = [...r.locations].sort(([a], [b]) => a.localeCompare(b))
+      .map(([code, l]) => `${code}${l.name && l.name !== code ? ` · ${l.name}` : ''}: ${l.lines} line${l.lines > 1 ? 's' : ''}`).join('\n');
+    return `<span title="${esc(list)}">${fmtNumber(r.locations.size)}</span>`;
+  };
+  const cells = (r) => `<td class="text-end text-nowrap">${killed(r)}</td><td class="text-end">${fmtNumber(r.lines.length)}</td>
+    <td class="text-end">${places(r)}</td>`;
+  const groups = new Map();
+  lines.forEach((l) => groups.set(l.site || '', [...(groups.get(l.site || '') || []), l]));  // newest first, as sent
+  const sites = [...groups].map(([site, group]) => ({ site, ...rollUp(group) }))
+    .sort((a, b) => b.lines.length - a.lines.length || a.site.localeCompare(b.site));
+  const one = sites.length === 1;
+  const isOpen = (site) => state.linesOpen.has(site);
+  const body = sites.map((r) => {
+    const open = isOpen(r.site);
+    const name = r.site ? esc(r.site) : '<span class="text-muted">No site</span>';
+    return `<tbody class="fk-site-group">
+      <tr class="fk-site-row" data-site="${esc(r.site)}" tabindex="0" role="button" aria-expanded="${open}"
+          title="${open ? 'Hide' : 'Show'} its kill lines">
+        <td class="fk-caret text-muted"><i class="bi bi-chevron-${open ? 'down' : 'right'}" aria-hidden="true"></i></td>
+        <td class="fw-semibold">${name}</td>${cells(r)}
+      </tr>
+      <tr class="fk-site-lines-row"${open ? '' : ' hidden'}><td></td><td colspan="4" class="pt-0 pb-2">${siteLines(r.lines, many)}</td></tr>
+    </tbody>`;
+  }).join('');
+  const total = one ? '' : `<tbody class="fk-site-total"><tr class="fw-semibold"><td></td><td>All sites</td>${cells(rollUp(lines))}</tr></tbody>`;
+  const allOpen = sites.every((r) => isOpen(r.site));
+  const showAll = one ? '' : `<button type="button" class="btn btn-sm btn-link p-0 ms-auto" data-lines-all="${allOpen ? 'open' : 'closed'}">${allOpen
+    ? 'Hide all lines' : 'Show all lines'}</button>`;
+  return `<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+      <span class="small text-muted">${plural(lines.length, 'kill line')} at ${plural(sites.length, 'site')} · click a site for its lines</span>${showAll}</div>
+    <div class="table-responsive"><table class="table table-sm align-middle fk-panel-table">
+      <thead class="table-light"><tr><th class="fk-caret"><span class="visually-hidden">Lines</span></th><th>Site</th>
+        <th class="text-end">Killed</th><th class="text-end">Kill lines</th>
+        <th class="text-end" title="Requesting locations: the ship-tos, by their code (Ship-To Name 2)">Locations</th></tr></thead>
+      ${body}${total}</table></div>`;
+}
+
+const plural = (n, word) => `${fmtNumber(n)} ${word}${n === 1 ? '' : 's'}`;
+
+// A line's requesting location: its ship-to code (Ship-To Name 2 up to its hyphen, e.g. PMOSK6), or
+// Medline's Ship-To Name when it has none.
+const locationOf = (l) => l.ship_to_code || l.department || '';
+
+// A site's kill lines, newest first, under its row.
+function siteLines(lines, many) {
+  return `<table class="table table-sm mb-0 fk-panel-table fk-site-lines">
+    <thead class="text-nowrap"><tr><th>Ordered</th>${many ? '<th>Medline Item</th>' : ''}<th>Ship-To</th><th>PO</th><th class="text-end">Killed</th><th>Reason</th></tr></thead>
+    <tbody>${lines.map((l) => `<tr class="fk-kill-line">
       <td class="text-nowrap">${fmtDate(l.order_date)} ${esc(String(l.order_time || '').slice(0, 5))}</td>
       ${many ? `<td class="text-nowrap">${esc(l.medline_item)}</td>` : ''}
-      <td>${esc(l.site)}<div class="text-muted">${shipTo(l)}</div></td>
+      <td>${shipTo(l)}</td>
       <td class="text-nowrap">${esc(l.po)}${l.po_line != null ? `-${esc(l.po_line)}` : ''}</td>
       <td class="text-end text-nowrap">${fmtNumber(l.killed)} / ${fmtNumber(l.ordered)} ${esc(l.um)}</td>
-      <td>${l.reason ? `<span class="badge text-bg-light border">${esc(l.reason)}</span>` : ''}
-          <div class="text-muted">${esc(l.comment)}</div></td>
-    </tr>`).join('')}</tbody></table></div>`;
+      <td>${[l.reason ? `<span class="badge text-bg-light border">${esc(l.reason)}</span>` : '',
+        l.comment ? `<span class="text-muted">${esc(l.comment)}</span>` : ''].filter(Boolean).join(' ')}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+// Open or close a site's kill lines (``show`` true or false; a click toggles), in place, so the
+// keyboard keeps its place; "Show all lines" follows.
+export function toggleSite(row, show) {
+  const open = show == null ? row.getAttribute('aria-expanded') !== 'true' : show;
+  if (open) state.linesOpen.add(row.dataset.site); else state.linesOpen.delete(row.dataset.site);
+  row.setAttribute('aria-expanded', String(open));
+  row.title = `${open ? 'Hide' : 'Show'} its kill lines`;
+  row.querySelector('.fk-caret i').className = `bi bi-chevron-${open ? 'down' : 'right'}`;
+  row.nextElementSibling.hidden = !open;
+  const all = row.closest('#fk-panel-content')?.querySelector('[data-lines-all]');
+  if (all) {
+    const allOpen = [...row.closest('table').querySelectorAll('.fk-site-row')].every((r) => r.getAttribute('aria-expanded') === 'true');
+    all.dataset.linesAll = allOpen ? 'open' : 'closed';
+    all.textContent = allOpen ? 'Hide all lines' : 'Show all lines';
+  }
 }
 
 const FIELD_LABELS = { reference_sku: 'Reference SKU', vendor_part: 'vendor part', vendor_id: 'vendor ID', uom: 'UOM', qoe: 'QOE',

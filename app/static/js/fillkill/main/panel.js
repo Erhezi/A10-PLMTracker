@@ -13,7 +13,7 @@ import {
 import { afterChange } from './refresh.js';
 import { api, can, historyUrl, orderUrl, scopeParams, state, subUrl, syncLink } from './state.js';
 import { customerFlag, instructionList } from './table.js';
-import { renderPanelTab, timeline } from './tabs.js';
+import { renderPanelTab, timeline, toggleSite } from './tabs.js';
 
 export const panelEl = $('fk-panel');
 const panel = window.bootstrap ? window.bootstrap.Offcanvas.getOrCreateInstance(panelEl) : null;
@@ -25,6 +25,7 @@ export async function openPanel(item, tab, scope) {
   state.panelItem = item;
   state.panelScope = scope === 'infor' ? 'infor' : 'medline';
   if (tab) state.panelTab = tab;
+  state.linesOpen = new Set();  // another item: its kill lines' sites start closed
   $('fk-panel-title').textContent = item;
   $('fk-panel-subtitle').textContent = '';
   $('fk-panel-body').innerHTML = '<div class="text-muted small">Loading…</div>';
@@ -185,6 +186,15 @@ async function onClick(event) {
   if (tab) {
     state.panelTab = tab.dataset.panelTab;
     renderPanel();
+    return;
+  }
+  // The kill lines by site (2026-11-20): a site's row opens to its lines; or all of them.
+  const site = event.target.closest('.fk-site-row');
+  if (site) { toggleSite(site); return; }
+  const all = event.target.closest('[data-lines-all]');
+  if (all) {
+    const show = all.dataset.linesAll !== 'open';
+    panelEl.querySelectorAll('.fk-site-row').forEach((row) => toggleSite(row, show));
     return;
   }
   // One Medline item, or (empty) the whole Infor item: the data is already here.
@@ -363,6 +373,14 @@ function setupResizer() {
 export function setupPanel() {
   setupResizer();
   panelEl.addEventListener('click', onClick);
+  // Enter or Space on a kill-line site's row opens or closes it, as a click does.
+  panelEl.addEventListener('keydown', (event) => {
+    const site = event.target.closest('.fk-site-row');
+    if (site && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      toggleSite(site);
+    }
+  });
   trimOnChange(panelEl);  // the add-sub and comment boxes (2026-10-20)
   panelEl.addEventListener('change', onStatusChange);
   panelEl.addEventListener('submit', onSubmit);

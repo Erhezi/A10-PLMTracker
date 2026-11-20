@@ -19,7 +19,7 @@
         <input type="date" id="fk-dash-end" class="form-control form-control-sm" aria-label="Last Fill/Kill date" />
       </div>
     </div>
-    <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Quick ranges" id="fk-dash-quick">
       <button type="button" class="btn btn-outline-secondary" data-days="today">Today</button>
       <button type="button" class="btn btn-outline-secondary" data-days="7">Last 7 days</button>
       <button type="button" class="btn btn-outline-secondary" data-days="30">Last 30 days</button>
@@ -50,7 +50,9 @@
   </div>
   <div class="col-12 col-xl-4">
     <div class="card shadow-sm border-0 h-100"><div class="card-body">
-      <h2 class="h6 fw-semibold">Subs by status <span class="small text-muted fw-normal">(all subs)</span></h2>
+      {# No sub (2026-11-19): the Medline items on Fill/Kill without one, counted beside the subs. #}
+      <h2 class="h6 fw-semibold">Subs by status <span class="small text-muted fw-normal">(all subs; No sub: Medline items on
+        Fill/Kill without one)</span></h2>
       <div class="fk-chart"><canvas id="fk-chart-status" aria-label="Subs by status" role="img"></canvas></div>
     </div></div>
   </div>
